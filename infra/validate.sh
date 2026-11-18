@@ -58,12 +58,13 @@ check() { # runs a command, records failure, prints its output; warnings are fai
 }
 
 step "bicep build + lint"
-for f in infra/main.bicep infra/apps.bicep infra/lib/*.bicep infra/modules/*.bicep; do
+for f in infra/main.bicep infra/apps.bicep infra/apsis-landing.bicep infra/lib/*.bicep infra/modules/*.bicep; do
   check "$BICEP" build "$f" --stdout >/dev/null
   check "$BICEP" lint "$f"
 done
 "$BICEP" build infra/main.bicep --outfile "$OUT/main.json"
 "$BICEP" build infra/apps.bicep --outfile "$OUT/apps.json"
+"$BICEP" build infra/apsis-landing.bicep --outfile "$OUT/apsis-landing.json"
 
 step "bicep build-params"
 # A throwaway value satisfies the password's minLength at compile time; the deploy supplies the real one.

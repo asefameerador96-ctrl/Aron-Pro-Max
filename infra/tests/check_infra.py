@@ -32,6 +32,7 @@ ALLOWED_ROLES = {
     "db58b8e5-c6ad-4a2a-8342-4190687cbf4a",  # Storage Blob Delegator
     "8a0f0c08-91a1-4084-bc3d-661d67233fed",  # Storage Queue Data Message Processor
     "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",  # Storage Queue Data Message Sender
+    "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",  # Storage Blob Data Reader (infra/apsis-landing.bicep, deployed by the owner, not by the pipeline identity)
 }
 
 
@@ -2605,6 +2606,110 @@ class FinalAccountStage(unittest.TestCase):
         self.assertIn("die ", block)
         self.assertNotRegex(block, r"echo[^\n]*\$tmp/lab|cat \"\$tmp/lab|--value", "the key is never printed or put on a command line")
         self.assertIn("ec_paramgen_curve:P-256", block)
+
+
+class ApsisLanding(unittest.TestCase):
+    """D-FINAL-INFRA-06: the private landing place of the Apsis dump (infra/apsis-landing.bicep, final account only)."""
+
+    def tpl(self):
+        return load("apsis-landing.json")
+
+    def test_template_is_resource_group_scoped_and_standalone(self):
+        self.assertEqual(self.tpl().get("$schema"), RG_SCHEMA)
+        for name in ("main.bicep", "apps.bicep"):
+            self.assertNotIn("apsis-landing", (ROOT / "infra" / name).read_text(encoding="utf-8"),
+                             "the dump account is never part of the pipeline's deployment or of rg-aron-<env>")
+        self.assertFalse(list((ROOT / "infra" / "params").glob("apsis*")), "no parameter file: ids are given on the command line")
+        reset = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
+        self.assertIn('== "apsis-landing"', reset, "a reset of rg-aron-<env> never compares the landing account with the profile")
+
+    def test_storage_account_is_private_keyless_and_entra_only(self):
+        (st,) = resources_of(self.tpl(), "Microsoft.Storage/storageAccounts")
+        p = st["properties"]
+        self.assertEqual(st["kind"], "StorageV2")
+        self.assertEqual(st["sku"]["name"], "Standard_LRS", "a transient copy: no zone or geo redundancy is paid for")
+        self.assertIs(p["allowSharedKeyAccess"], False, "Entra only: no account key, no account SAS")
+        self.assertIs(p["defaultToOAuthAuthentication"], True)
+        self.assertIs(p["allowBlobPublicAccess"], False)
+        self.assertEqual(p["minimumTlsVersion"], "TLS1_2")
+        self.assertIs(p["supportsHttpsTrafficOnly"], True)
+        self.assertIs(p["isSftpEnabled"], False)
+        self.assertIs(p["isLocalUserEnabled"], False)
+        self.assertIs(p["allowCrossTenantReplication"], False)
+        self.assertEqual(p["allowedCopyScope"], "AAD")
+        self.assertEqual(p["networkAcls"]["defaultAction"], "Deny", "nothing is reachable until an address is allowed")
+        self.assertNotIn("isHnsEnabled", p)
+        self.assertEqual(st["tags"], "[variables('allTags')]")
+        self.assertIn("component", json.dumps(self.tpl()["variables"]["allTags"]))
+        self.assertIn("apsis-landing", json.dumps(self.tpl()["variables"]["allTags"]))
+
+    def test_two_private_containers_and_soft_delete(self):
+        t = self.tpl()
+        cs = {c["name"].split("'")[-2] if "'" in c["name"] else c["name"]: c for c in resources_of(t, "Microsoft.Storage/storageAccounts/blobServices/containers")}
+        text = json.dumps(sorted(c["name"] for c in cs.values()))
+        self.assertEqual(t["variables"]["dumpContainer"], "apsis-dump")
+        self.assertEqual(t["variables"]["reportsContainer"], "apsis-reports")
+        self.assertEqual(len(cs), 2, text)
+        for c in cs.values():
+            self.assertEqual(c["properties"]["publicAccess"], "None")
+        (bs,) = resources_of(t, "Microsoft.Storage/storageAccounts/blobServices")
+        self.assertEqual(bs["properties"]["deleteRetentionPolicy"], {"enabled": True, "days": 7})
+        self.assertEqual(bs["properties"]["containerDeleteRetentionPolicy"], {"enabled": True, "days": 7})
+
+    def test_lifecycle_deletes_only_the_dump_container(self):
+        t = self.tpl()
+        (pol,) = resources_of(t, "Microsoft.Storage/storageAccounts/managementPolicies")
+        (rule,) = pol["properties"]["policy"]["rules"]
+        self.assertEqual(rule["name"], "dump-expiry")
+        self.assertEqual(rule["definition"]["filters"]["prefixMatch"], ["[format('{0}/', variables('dumpContainer'))]"])
+        self.assertEqual(rule["definition"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], "[parameters('dumpDeleteAfterDays')]")
+        self.assertEqual(t["parameters"]["dumpDeleteAfterDays"]["defaultValue"], 60)
+        self.assertGreaterEqual(t["parameters"]["dumpDeleteAfterDays"]["minValue"], 7)
+
+    def test_roles_are_container_scoped_least_privilege_and_never_on_the_account(self):
+        t = self.tpl()
+        ras = resources_of(t, "Microsoft.Authorization/roleAssignments")
+        self.assertEqual(len(ras), 3, "owner on the dump; loader reads the dump and writes the reports")
+        by_role = {}
+        for r in ras:
+            role = r["properties"]["roleDefinitionId"]
+            self.assertIn("scope", r)
+            self.assertNotRegex(r["scope"], r"storageAccounts'[^/]*\)\]$", "never at account scope")
+            self.assertIn("containers", r["scope"], "container scope only")
+            by_role.setdefault(role, []).append(r)
+        text = json.dumps(ras) + json.dumps(t["variables"])
+        self.assertEqual(t["variables"]["blobDataContributor"], "ba92f5b4-2d11-453d-a403-e96b0029c9fe")  # Storage Blob Data Contributor
+        self.assertEqual(t["variables"]["blobDataReader"], "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1")  # Storage Blob Data Reader
+        for forbidden in ("8e3af657-a8ff-443c-a75c-2fe8c4bcb635",  # Owner
+                          "b24988ac-6180-42a0-ab88-20f7382dd24c",  # Contributor
+                          "18d7d88d-d35e-4fb5-a5c3-7773c20a72d9",  # User Access Administrator
+                          "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"):  # Storage Blob Data Owner
+            self.assertNotIn(forbidden, text)
+        uploaders = [r for r in ras if "uploaderPrincipalIds" in json.dumps(r)]
+        self.assertEqual(len(uploaders), 1)
+        self.assertEqual(uploaders[0]["properties"]["principalType"], "User")
+        self.assertIn("variables('dumpContainer')", json.dumps(uploaders[0]), "the owner has no role on the reports container")
+
+    def test_every_blob_request_is_logged_to_log_analytics(self):
+        t = self.tpl()
+        (d,) = resources_of(t, "Microsoft.Insights/diagnosticSettings")
+        self.assertEqual(d["properties"]["logs"], [{"categoryGroup": "allLogs", "enabled": True}])
+        self.assertTrue(d["properties"]["metrics"])
+        (law,) = resources_of(t, "Microsoft.OperationalInsights/workspaces")
+        self.assertEqual(law["properties"]["workspaceCapping"]["dailyQuotaGb"], 1)
+        self.assertEqual(law["condition"], "[empty(parameters('logAnalyticsWorkspaceId'))]", "an existing workspace can be given instead")
+
+    def test_no_identifier_or_secret_is_committed(self):
+        src = (ROOT / "infra" / "apsis-landing.bicep").read_text(encoding="utf-8")
+        guids = set(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", src, re.I))
+        self.assertEqual(guids, {"ba92f5b4-2d11-453d-a403-e96b0029c9fe", "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"}, "only built-in role ids")
+        self.assertNotRegex(src, r"(?i)password|sig=|accountkey|connectionstring|sv=\d{4}")
+        self.assertNotRegex(src, r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "no IP address in the template")
+        doc = (ROOT / "docs" / "requests" / "apsis-dump-landing.md")
+        if doc.exists():
+            text = doc.read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "placeholders only")
+            self.assertNotRegex(text, r"sig=[A-Za-z0-9%]{20,}", "no SAS token")
 
 
 if __name__ == "__main__":
