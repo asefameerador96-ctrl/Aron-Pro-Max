@@ -1,3 +1,9 @@
+# HANDOVER (2026-11-18, lane P-TSO session 1, context about 300k): read this first
+**State.** Branch `lane/android-parity-tso`; checked green heads: bfea7197 (slice 1, run 44236070032), fd8625c8 (slice 2, run 44259556314); 069816a6 PASS by the lead's static check. Slice 3 (lead lows, clear icon on a white disc) recorded in run 44280607404, goldens copied in this push. Recording switch is OFF; keep it off.
+**Done:** six highs, Select Outlets, route-card line/pill, Settings row, the lead's lows 1-7, D-PAR-TSO-01..10 (at the end of DECISIONS.md).
+**Open (next session):** Target details 41/42 "Show all categories" link and the Bangla single-category view (`feature-tso/.../targets`); RECORD rows (button gradients Lime on Set plan/Select outlets/Get sales data/My Feedback, Leave screens, Success and Logout dialogs, drawer icons need kit art, login and quick ticket are shared modules); request rows 1-2 (clear action server call, online map golden).
+**Method that works (no Android SDK in the container):** push with `val bootstrapRecord = true` in `android/ui-screenshots/build.gradle.kts`, the Android job then fails only on `ScreenshotTests.recordingRunNeverPasses`; download artifact `android-test-reports` from `api.github.com/repos/asefameerador96-ctrl/Aron-Pro-Max/actions/runs/<id>/artifacts`, `cmp` `build/test-results/screenshots-recorded/*.png` against `src/test/screenshots`, copy only changed `tso_*`, set it false, merge INT (DECISIONS.md always conflicts: keep both), push. A push cancels the running ci; the stop hook forces pushes.
+
 # Lane android-parity-tso (P-TSO): TSO app parity with the Apsis app (audit PARITY-AUDIT-2026-11-13, "## TSO app")
 
 Branch `lane/android-parity-tso` from INT 4e064555. Only `android/app-tso` and `android/feature-tso` (plus tests and goldens) are touched; no shared module. Nothing is walked on a device in this lane; the lane CI is the proof. The container has no Android SDK, so nothing is compiled or run locally.
