@@ -261,3 +261,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 120 (UI): lane/lead-train120 4f6f688ed = 4d310d8c0 + docs + SR look e017b2d7 + AMO ff9fb511 (Android and docs only; 637 D-lines). GO given 09:27.
 - Train 121 = android-integrity: A-INT3 told to merge the train-120 branch tip 4f6f688ed, regenerate, report; then a delta check and GO (V0205..V0208, contract 1.21.0, Room 11).
 - Then: SV6 follow-ups (V0209), Loyalty push B (contract 1.22.0), gates-2 follow-ups (A-GATE8 6a86c275, under review), programmes (A-PROG2 1c88247e, round 4 under review), targets server (T-KPI2), TSO slice 2.
+
+
+### 2026-11-18 09:40 update: train 119 migrate console read (ops-diagnose 44275051321)
+- Flyway on dev, verbatim: 'Current version of schema "public": 0203'; 'Migrating schema "public" to version "0204 - cfg waiting sweep keys"'; 'Successfully applied 1 migration to schema "public", now at version v0204'; exit code 0. No ERROR lines; worker revision --0000229 started, first aggregation pass 19198 ms; 'bundle coverage 100.0% of 4 active field users'.
+- GAP: ops-diagnose prints NO API container lines, so the waiting-item sweep (runs in the API process) is not confirmed from logs; no pre-flight line in any of today's deploys. Task given to SV6 on branch lane/ops-diagnose-api (API console in ops-diagnose; pre-flight 'nothing to do' line; sweep start-up line).
+- Loyalty push B (4cdece42, contract 1.22.0 provisional, no migration) under review. L-A11 handed over to L-A12 session_014mnioPiSLCgFdQst8dAsY8 (portal points adjustment: scope first).
