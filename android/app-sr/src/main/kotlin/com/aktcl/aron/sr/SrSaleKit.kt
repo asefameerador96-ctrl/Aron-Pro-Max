@@ -322,7 +322,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * which; nothing throws.
      */
     suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode, onRefused: (DayRefusal) -> Unit = {}): Boolean {
-        val queued = SrLockGate.skip(onRefused) {
+        val queued = SrLockGate.skip(onRefused, onAttendanceRefused = { day.refreshDayGate() }) {
             day.capture.recordVisitSkip(
                 com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
             )

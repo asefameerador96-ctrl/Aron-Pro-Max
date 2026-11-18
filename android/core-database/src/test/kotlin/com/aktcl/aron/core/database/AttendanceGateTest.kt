@@ -202,4 +202,16 @@ class AttendanceGateTest {
         assertEquals(AttendanceRefusal.CHECKED_OUT, gated.attendanceRefusal("2026-10-05"))
         refused(AttendanceRefusal.CHECKED_OUT) { gated.recordStock(listOf(TestRows.stock())) }
     }
+
+    /** Round-3 low: a retry of a memo already saved is not a new write: after the day closed it does NOT become a new check-in refusal (it behaves as the replay it is). */
+    @Test fun aReplayOfASavedMemoIsNotRefusedByTheGateAfterCheckOut() = runTest {
+        checkIn()
+        val (v, f) = TestRows.visit(); gated.recordVisitOpen(v, f)
+        val sale = TestRows.sale(v.clientUuid)
+        gated.recordSale(sale)
+        checkOut()
+        val thrown = runCatching { gated.recordSale(sale) }.exceptionOrNull()
+        assertFalse("the replay is not judged as a new write: $thrown", thrown is AttendanceRefusedException)
+        assertEquals("and it wrote nothing more", 1, count("memo"))
+    }
 }

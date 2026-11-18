@@ -227,7 +227,9 @@ class AmoDay(
         refreshDayGate()
         runCatching {
             val policy = DeviceOwnerPolicy.get(context)
-            if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
+            if (e.kind == "check_in") policy.onCheckInCommitted()
+            // the close of an EARLIER day (a forgotten day) must not mark TODAY as checked out and release today's attendance-held apps (round-3 low)
+            else if (e.meta.businessDate == businessDate()) policy.onCheckOutCommitted()
         }
         // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
         runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }

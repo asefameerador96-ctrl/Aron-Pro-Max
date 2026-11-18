@@ -250,7 +250,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     suspend fun skipOutlet(
         outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode, onRefused: (com.aktcl.aron.core.database.repo.DayRefusal) -> Unit = {},
     ): Boolean {
-        val queued = AmoLockGate.skip(onRefused) {
+        val queued = AmoLockGate.skip(onRefused, onAttendanceRefused = { day.refreshDayGate() }) {
             day.capture.recordVisitSkip(
                 com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
             )

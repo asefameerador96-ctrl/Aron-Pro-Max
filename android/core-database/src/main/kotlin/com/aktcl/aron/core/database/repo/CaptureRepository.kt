@@ -152,10 +152,15 @@ class CaptureRepository(
         }
         db.withTransaction {
             if (purged(m.clientUuid)) return@withTransaction emptyList()
-            requireCheckedIn(m.meta.businessDate) // rule 1
-            requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
-            if (capture.memo(m.clientUuid) == null) requireEditTargetLive(m)
-            if (enforceStock && capture.memo(m.clientUuid) == null) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
+            // a replay of a memo already saved is not a NEW write: the gates (check-in, route-day) judge new writes only, so a retry after the day closed
+            // behaves exactly as it always did (the insert below aborts without writing), never as a new refusal (round-3 low)
+            val replay = capture.memo(m.clientUuid) != null
+            if (!replay) {
+                requireCheckedIn(m.meta.businessDate) // rule 1
+                requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
+                requireEditTargetLive(m)
+            }
+            if (enforceStock && !replay) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {

@@ -130,7 +130,12 @@ class CheckOutOrderSyncTest {
         assertTrue(t.indexOf("day_submit") > t.indexOfLast { it !in setOf("day_submit", "attendance_event") })
         assertTrue("the check-out is the last record of the day", t.last() == "attendance_event")
         // nothing doubled on the server
-        assertEquals(fake.registry.size, fake.registry.keys.toSet().size)
+        // nothing doubled on the server: the server stored exactly one record per distinct uuid the phone ever sent (a resent uuid is answered, not stored again),
+        // and every record the phone holds is there once. (The old assertion compared a map's size with its own key set: always true.)
+        val sentUuids = wire().map { it.substringAfter(':') }.toSet()
+        assertEquals(sentUuids, fake.registry.keys.toSet())
+        assertEquals(sentUuids.size, fake.registry.size)
+        assertEquals("every record of the phone reached the server exactly once", db.query("SELECT COUNT(*) FROM outbox", null).use { it.moveToFirst(); it.getInt(0) }, fake.registry.size)
     }
 
     private class KillAfterFirst(private val d: BatchSender) : BatchSender {
