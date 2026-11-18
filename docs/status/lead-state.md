@@ -303,3 +303,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 121: INT ce6792f67, ci success (run 44289497108), deploy in progress (run 44293328876). Dev health still build 4d310d8c0.
 - apsis-migration 8a637747: FAIL (12 blocking) sent to M-APSIS1 as a ten-item fix round incl. opening balances at cutover.
 - infra-final 2f13c5bc3: lead review running (wf_5a2f731f-e97).
+
+## 2026-11-18 11:50
+- TRAIN 121 LANDED: INT ce6792f67, ci 44289497108 success, deploy #361 (44293328876) success, SR slice smoke passed, health build ce6792f67. APK aron-release-signed-dev-2393 41980672 B (-285037 B vs train 120). PITR point 2026-11-18T11:24:36Z. Migrate console not in the deploy log; ops-diagnose run 44297116585 dispatched to read 0204 -> 0208.
+- Post-landing messages sent: SV6 (V0240 -> V0209), L-A12 (1.22.0 / 1.23.0), A-GATE8, A-PROG2 (ActionGate first, Room 12), T-KPI2, P-SR1b, P-TSO, P-AMO3, M-APSIS1.
+- infra-final 2f13c5bc3: FAIL, 4 blocking (governance.ps1 stray brace; runbook dead end at main; no test-account guard on apsis-landing; lab-grant public key read). Sent to F-INFRA1; lane head 84652afed (round 2) to be delta-reviewed after the fix.
+- ops-diagnose-api 9496e81d: scope PASS, leak lens FAIL (OTP joined to key name; Authorization non-Bearer). Round 5 sent: messages off by default in queries.
+- A-PROG2 head b880dfee (deterministic gift photo uuid); full final pass owed after its INT merge.
+- lane/lead-ci-gitleaks is an old branch of mine (2026-10-22), not new.
