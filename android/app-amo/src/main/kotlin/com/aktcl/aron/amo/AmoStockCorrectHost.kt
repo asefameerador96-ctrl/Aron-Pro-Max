@@ -13,6 +13,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.amo.CorrectionReason
 import com.aktcl.aron.feature.amo.CorrectionRow
+import com.aktcl.aron.feature.amo.AmoScreen
 import com.aktcl.aron.feature.amo.StockCorrectionContent
 import com.aktcl.aron.feature.stock.StockAdjustments
 import com.aktcl.aron.feature.stock.StockTracker
@@ -29,7 +30,8 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
     // D-AGATE-19: the screen guards ITSELF from the day's gate when the app gave it no guard (an open fallback would let a Save through before check-in); the app's own guard still wins
     if (com.aktcl.aron.feature.attendance.LocalWriteGuard.current != null) { AmoStockCorrectBody(day, onDone); return }
     val gate by day.dayGate.collectAsState()
-    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gate, null, onCheckIn = {}) { AmoStockCorrectBody(day, onDone) }
+    val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gate, null, onCheckIn = { navigate(AmoScreen.ATTENDANCE) }) { AmoStockCorrectBody(day, onDone) }
 }
 
 @Composable

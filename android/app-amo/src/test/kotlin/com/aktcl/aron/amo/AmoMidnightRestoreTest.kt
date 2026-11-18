@@ -247,5 +247,16 @@ class AmoMidnightRestoreTest {
         assertEquals(com.aktcl.aron.core.printing.flow.SaveAndPrint.Step.SaveFailed, vm.saveAndPrint.step.value)
         assertTrue(f.db.captureDao().memosOn(d0).none { it.visitClientUuid == v.visitUuid })
         assertEquals("abandoned", f.db.captureDao().visitClosesOn(d0).single { it.visitClientUuid == v.visitUuid }.outcomeCode)
+        assertEquals(listOf<com.aktcl.aron.feature.sale.domain.ReviewProblem>(com.aktcl.aron.feature.sale.domain.ReviewProblem.CallClosed), f.day.sale.flow.state.value.refusal)
+    }
+
+    /** Lead item 1 on the AMO: a retry of a Save that already landed returns its memo after the call was closed. */
+    @Test fun aRetryOfASaveThatAlreadyLandedReturnsItsMemoAfterTheCallWasClosed() = runBlocking {
+        val v = f.controlCall(); f.day.visitSession.restore(v)
+        f.savedSale(v) { }
+        val memo = f.db.captureDao().memosOn(d0).single { it.visitClientUuid == v.visitUuid }
+        f.day.closeVisit(phoneEnd = true)
+        assertEquals("the same memo", memo.clientUuid, f.day.sale.commitSale().memoClientUuid)
+        assertEquals(1, f.db.captureDao().memosOn(d0).count { it.visitClientUuid == v.visitUuid })
     }
 }

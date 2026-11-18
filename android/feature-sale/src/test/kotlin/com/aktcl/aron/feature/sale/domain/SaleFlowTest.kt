@@ -69,6 +69,23 @@ class SaleFlowTest {
         assertNull(store.load(v.visitUuid))
     }
 
+    /** Lead item 6: a SALE draft file left behind for a call the phone already closed (a kill between the close and the drop) is never loaded into a later memo EDIT of that visit. */
+    @Test fun aLeftoverSaleDraftOfAClosedCallIsNotLoadedIntoALaterEdit() = runTest {
+        val store = MemStore(); val v = visit()
+        val first = flow(store); first.start(v); first.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(1, store.load(v.visitUuid)!!.lines.size)
+        // the call is closed; the process died before the drop; later an edit of a memo of that visit starts
+        val later = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer(), isCallClosed = { true })
+        later.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals("the edit starts clean", 0, later.state.value.draft!!.lines.size)
+        assertEquals(0, store.load(v.visitUuid)!!.lines.size)
+        // a draft of a call that is NOT closed is still resumed by an edit start (nothing else changed)
+        val open = flow(store); open.start(v); open.setQuantity(100, 5, QtyUnit.STICK)
+        val resumed = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer(), isCallClosed = { false })
+        resumed.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals(1, resumed.state.value.draft!!.lines.size)
+    }
+
     @Test fun commitIsRememberedSoADoubleTapWritesOneMemo() = runTest {
         val store = MemStore(); val v = visit(); val f = flow(store); f.start(v)
         f.setQuantity(100, 5, QtyUnit.STICK)

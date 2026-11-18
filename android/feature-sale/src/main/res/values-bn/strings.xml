@@ -158,4 +158,5 @@
     <string name="sale_amo_discount">ডিসকাউন্ট</string>
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">পরিমাণ</string>
+    <string name="review_problem_call_closed">এই কলটি আগেই শেষ হয়েছে, তাই বিক্রিটি সংরক্ষণ হয়নি। এর জন্য কিছুই লেখা হয়নি।</string>
 </resources>

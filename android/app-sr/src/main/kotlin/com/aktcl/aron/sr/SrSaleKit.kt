@@ -117,6 +117,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
             dao.discountsOf(memoUuid).filter { it.kind == "drp" && it.skuId != null }.forEach { taken.merge(it.skuId!!, it.qtyBase ?: 0L, Long::plus) }
             taken
         },
+        isCallClosed = { d -> dao.visitClosesOn(d.businessDate).any { it.visitClientUuid == d.visitUuid } }, // D-AGATE-19
     )
 
     /** When each call was started (the SR tapped Yes on the start prompt); read when the visit closes. */
@@ -171,20 +172,17 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     /** The host has shown the text of a refused save. */
     fun clearLockRefusal() { _lockRefused.value = null; _submitRefused.value = null }
 
-    /** D-AGATE-19: a new sale's Save finds the call it belongs to already closed (the phone ended it, or the rep did, while the sale screen was open): nothing is stored. */
-    class CallAlreadyClosedException : IllegalStateException("the call this sale belongs to is already closed")
-
     /**
      * D-AGATE-19 (step-5 low 1): the sale's commit runs under the SAME [SrDay.closeLock] as every close of a call, so a Save and the phone's 04:00 end cannot interleave: either the memo is
      * committed first (the close then reads it: `sold`) or the close came first and the Save is refused here, inside the lock, before anything is written (a memo is never stored on a call the
      * phone just closed as abandoned). A memo EDIT is a new memo on an old call and is not refused for a closed call. The print step that follows runs outside the lock.
      */
     private suspend fun commitUnderCloseLock(): com.aktcl.aron.core.printing.flow.CommittedMemo = day.closeLock.withLock {
-        val d = flow.state.value.draft
-        if (d != null && d.edit == null && dao.visitClosesOn(d.businessDate).any { it.visitClientUuid == d.visitUuid }) throw CallAlreadyClosedException()
-        commitStep()
+        commitStep() // the closed-call refusal is the flow's own (isCallClosed), after its "already committed" answer
     }
 
+    /** The Save as the sale screen runs it (also the entry the retry test uses). */
+    internal suspend fun commitSale() = commitUnderCloseLock()
     fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(::commitUnderCloseLock, day.printing) { why ->
         val key = flow.state.value.draft?.let(::refusalKey)
         when (why) {

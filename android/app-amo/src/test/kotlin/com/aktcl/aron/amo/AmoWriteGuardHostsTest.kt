@@ -232,4 +232,22 @@ class AmoWriteGuardHostsTest {
         refusedAtTheButton()
         assertEquals("no request queued", rows, outboxRows())
     }
+
+    /** D-AGATE-19 (lead item 4): the fallback guard's "Go to check-in" really navigates to the Attendance screen (it was a no-op). */
+    @Test fun theStockCorrectionsOwnGuardSendsTheRepToCheckIn() {
+        f.stockedCatalog()
+        f.day.dayGate.value = AttendanceRefusal.NOT_CHECKED_IN // the UI mirror of a day with no check-in
+        var went: com.aktcl.aron.feature.amo.AmoScreen? = null
+        show { CompositionLocalProvider(com.aktcl.aron.feature.amo.LocalAmoNavigate provides { went = it }) { AmoStockCorrectHost(f.day, onDone = {}) } }
+        assertTrue(f.work.awaitSettled()); compose.waitForIdle()
+        compose.waitUntil(30_000) { runCatching { compose.onNodeWithTag(CorrectionTags.row(105)).assertExists() }.isSuccess }
+        compose.onNodeWithTag(CorrectionTags.row(105)).performClick()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction() and (androidx.compose.ui.test.hasTestTag(CorrectionTags.TOTAL) or androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag(CorrectionTags.TOTAL)))).performTextInput("1")
+        compose.onNodeWithTag(CorrectionTags.reason(CorrectionReason.COUNT_ERROR)).performClick()
+        compose.onNodeWithTag(CorrectionTags.SAVE).performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Go to check-in").assertExists() }.isSuccess }
+        compose.onNodeWithText("Go to check-in").performClick()
+        compose.waitUntil(5_000) { went != null }
+        assertEquals(com.aktcl.aron.feature.amo.AmoScreen.ATTENDANCE, went)
+    }
 }

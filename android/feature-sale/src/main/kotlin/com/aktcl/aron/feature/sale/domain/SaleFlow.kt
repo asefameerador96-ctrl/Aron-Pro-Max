@@ -55,6 +55,12 @@ class SaleFlow(
      * back: the old memo is still live in the stock figure until the new one is saved (D-OWNER-PREREQ-01 rule 2). Production: Room.
      */
     private val ownTaken: suspend (memoUuid: String) -> Map<Long, Long> = { emptyMap() },
+    /**
+     * D-AGATE-19: true when the call this draft belongs to already has its close (the phone ended it, or the rep did). Asked INSIDE the flow's lock, after the "already committed" answer, so a
+     * NEW sale is refused ([ReviewProblem.CallClosed], nothing written) and a retry of a Save that already landed still returns its memo. An edit is never refused for a closed call.
+     * Production: Room (`visit_close` of the draft's visit and date).
+     */
+    private val isCallClosed: suspend (SaleDraft) -> Boolean = { false },
 ) {
     private val lock = Mutex()
     private val ui = MutableStateFlow(SaleUiState())
@@ -67,7 +73,10 @@ class SaleFlow(
     /** [editing] is the memo an edit will supersede (null for a new sale); a resumed edit draft names it itself. */
     suspend fun start(visit: SaleVisit, editing: String? = null) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
-        val loaded = store.load(visit.visitUuid) ?: SaleDraft(
+        // D-AGATE-19: an EDIT starts clean when the stored draft is a leftover SALE draft of a call the phone already closed (a kill between the close and the drop leaves the file): never loaded into the edit
+        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && isCallClosed(it) }
+        if (stored == null) store.clear(visit.visitUuid)
+        val loaded = stored ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
             priceType = visit.priceType, memoUuid = ClientIds.newUuid(),
         ).also(store::save)
@@ -136,6 +145,12 @@ class SaleFlow(
         val s = ui.value
         s.committed?.let { return it }
         val draft = checkNotNull(s.draft) { "no sale in progress" }
+        if (draft.edit == null && isCallClosed(draft)) {
+            // D-AGATE-19: the call was closed while this sale was open: nothing is written; the rep is told so (never the generic "save failed")
+            val problems = listOf<ReviewProblem>(ReviewProblem.CallClosed)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
+        }
         val result = try {
             committer.commit(draft, s.catalog, editFix, qcCapMtkBySku())
         } catch (e: com.aktcl.aron.core.database.repo.EditTargetSupersededException) {

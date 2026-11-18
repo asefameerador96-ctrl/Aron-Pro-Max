@@ -213,6 +213,31 @@ class RoomDayAdaptersTest {
         assertTrue("and the screen offers no Send again for them", entries.filter { it.code == "retry_exhausted" }.none { it.canSendAgain })
     }
 
+    /**
+     * Lead follow-up item 5: the server's TypeRules give `memo` the parents `visit_client_uuid` and `supersedes_client_uuid`, so an EDIT whose superseded memo was refused for good can only answer
+     * `parent_missing`: Send again is withheld (and offered when that memo is stored). Through the real recordSale of an edit, the real DAO and reader.
+     */
+    @Test fun anEditWhoseSupersededMemoWasRefusedIsWithheldFromSendAgainButNotWhenItIsStored() = runTest {
+        sell(due = 0)
+        val old = db.captureDao().memosOn("2026-10-05").single()
+        val fixId = ClientIds.newUuid()
+        val fix = GeoFixEntity(fixId, old.clientUuid, "memo_edit", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        val editUuid = ClientIds.newUuid()
+        repo.recordSale(SaleCapture(
+            old.copy(clientUuid = editUuid, memoNo = "sr334001-261005-002", supersedesClientUuid = old.clientUuid, editReasonCode = "wrong_sku", editFixClientUuid = fixId),
+            listOf(MemoLineEntity(ClientIds.newUuid(), meta(), editUuid, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)), editFix = fix,
+        ))
+        val rows = db.outboxDao().nextPending(100)
+        val oldRow = rows.first { it.clientUuid == old.clientUuid }
+        db.outboxDao().applyAck(oldRow.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(editUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        assertEquals("the original is stored: the edit can be sent again", 1, db.outboxDao().requeueRetryExhausted(editUuid))
+        db.outboxDao().applyAck(editUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:10:00.000Z")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'price_invalid' WHERE client_uuid = '${oldRow.clientUuid}'")
+        assertEquals("the memo it supersedes was refused: parent_missing for ever, withheld", 0, db.outboxDao().requeueRetryExhausted(editUuid))
+        assertTrue(RoomDaySource(db).rejectedRows("2026-10-05").filter { it.code == "retry_exhausted" }.none { it.canSendAgain })
+    }
+
     /** Contract 1.9 row 4: the digest adds this phone's received counts and the server's rows this install does not hold. */
     @Test fun theDigestFeedsThePerDeviceCountsAndTheServerList() = runTest {
         db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",

@@ -70,6 +70,9 @@ sealed interface ReviewProblem {
      */
     data class AttendanceRefused(val why: com.aktcl.aron.core.database.repo.AttendanceRefusal) : ReviewProblem
 
+    /** The call this NEW sale belongs to was already closed (by the phone at its limit, or by the rep) before the Save: nothing was saved. Raised by the save, never by the review. */
+    data object CallClosed : ReviewProblem
+
     /** The phone's clock was set back after the memo was opened, so an edit cannot carry its own date: nothing was saved (never the generic text). */
     data object ClockMovedBack : ReviewProblem
 }

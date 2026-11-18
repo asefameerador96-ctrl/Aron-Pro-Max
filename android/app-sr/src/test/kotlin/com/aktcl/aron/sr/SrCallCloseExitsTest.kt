@@ -156,6 +156,21 @@ class SrCallCloseExitsTest {
         assertEquals("the save stopped before the print step", com.aktcl.aron.core.printing.flow.SaveAndPrint.Step.SaveFailed, vm.saveAndPrint.step.value)
         assertTrue("no memo stored on a call the phone closed as abandoned", runBlocking { f.db.captureDao().memosOn(f.date) }.none { it.visitClientUuid == v.visitUuid })
         val c = close(v).single(); assertEquals("abandoned", c.outcomeCode); assertEquals(true, c.isZeroSale)
+        // D-AGATE-19 (lead item 2): the sale screen's own text, not the generic "save failed"
+        assertEquals(listOf<com.aktcl.aron.feature.sale.domain.ReviewProblem>(com.aktcl.aron.feature.sale.domain.ReviewProblem.CallClosed), f.day.sale.flow.state.value.refusal)
+    }
+
+    /** Lead item 1: a retry of a Save whose memo ALREADY landed (the print read-back failed) returns the same memo even though the call was closed in between; no second memo. */
+    @Test fun aRetryOfASaveThatAlreadyLandedReturnsItsMemoAfterTheCallWasClosed() {
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        f.savedSale(v) { }
+        val memosBefore = runBlocking { f.db.captureDao().memosOn(f.date) }.filter { it.visitClientUuid == v.visitUuid }
+        assertEquals(1, memosBefore.size)
+        runBlocking { f.day.sale.closeCall(phoneEnd = true) }
+        assertEquals("sold", close(v).single().outcomeCode)
+        val again = runBlocking { f.day.sale.commitSale() }
+        assertEquals("the same memo", memosBefore.single().clientUuid, again.memoClientUuid)
+        assertEquals("no second memo", 1, runBlocking { f.db.captureDao().memosOn(f.date) }.count { it.visitClientUuid == v.visitUuid })
     }
 
     /** Low 1, the other order: the Save commits first, then the phone's end finds the memo and writes `sold`. */
@@ -188,7 +203,7 @@ class SrCallCloseExitsTest {
         show { SrCheckInGate(f.day, AttendanceRefusal.EARLIER_CALL_OPEN, canCloseCall = true, earlierOutlet = null, onCheckIn = {}, onCallClosed = { closed++ }) }
         compose.onNodeWithTag(CheckInFirstTags.CLOSE_CALL).performClick()
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("The call was ended on the phone").assertExists() }.isSuccess }
-        compose.onNodeWithText("Today's sales are already submitted", substring = true).assertExists()
+        compose.onNodeWithText("The sales of the day of this call are already submitted", substring = true).assertExists()
         assertEquals("not sent Home in silence", 0, closed)
         assertTrue("nothing was written", close(v).isEmpty())
         compose.onNodeWithText("OK").performClick()
