@@ -49,6 +49,7 @@ object RedemptionTags {
     const val SUCCESS_OK = "redeem_success_ok"
     const val EMPTY = "redeem_empty"
     const val FAILED = "redeem_failed"
+    const val CASHBACK = "redeem_cashback"
     fun plus(giftId: Long) = "redeem_plus_$giftId"
     fun minus(giftId: Long) = "redeem_minus_$giftId"
     fun qty(giftId: Long) = "redeem_qty_$giftId"
@@ -103,6 +104,10 @@ fun RedemptionScreen(
             Text(stringResource(R.string.pg_remaining, LoyaltyModel.pointsText(remaining, locale, unit)), style = TextStyle(fontSize = 15.sp, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold))
         }
         if (remaining < 0) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(RedemptionTags.OVERDRAWN), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
+        // Cash-back stays visible but cannot be confirmed until the owner gives the rule (cash_points is 0; never a cash amount on a memo).
+        Row(Modifier.fillMaxWidth().testTag(RedemptionTags.CASHBACK).clip(RoundedCornerShape(12.dp)).background(look.card).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.pg_cashback_waiting), style = TextStyle(fontSize = 14.sp, color = look.inkMuted))
+        }
         if (gifts.isEmpty()) {
             Text(stringResource(R.string.pg_no_gifts), Modifier.testTag(RedemptionTags.EMPTY), style = TextStyle(fontSize = 16.sp, color = look.ink))
         } else {

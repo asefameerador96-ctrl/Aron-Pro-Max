@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -72,14 +73,14 @@ class RedemptionScreenTest {
         compose.onNodeWithTag(RedemptionTags.plus(2)).performClick(); compose.waitForIdle() // 400 against 220
         compose.onNodeWithTag(RedemptionTags.OVERDRAWN).assertIsDisplayed()
         compose.onNodeWithText("-180 Pts Remaining").assertExists()
-        compose.onNodeWithTag(RedemptionTags.CONFIRM).performClick(); compose.waitForIdle() // still confirmable: the server decides
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle() // still confirmable: the server decides
         compose.onNodeWithTag(RedemptionTags.DIALOG_OK).assertIsDisplayed()
     }
 
     @Test fun confirmSavesOnceAndTheSuccessSaysSavedOnThisPhone() {
         show()
         compose.onNodeWithTag(RedemptionTags.plus(1)).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(RedemptionTags.CONFIRM).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
         assertEquals(1, confirmed.size); assertEquals(1, confirmed[0].second)
         compose.onNodeWithText("Redemption saved on this phone. It goes out with the next sync.").assertExists()
@@ -90,7 +91,7 @@ class RedemptionScreenTest {
     @Test fun cancelInTheDialogSavesNothing() {
         show()
         compose.onNodeWithTag(RedemptionTags.plus(1)).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(RedemptionTags.CONFIRM).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(RedemptionTags.DIALOG_CANCEL).performClick(); compose.waitForIdle()
         assertTrue(confirmed.isEmpty())
         compose.onNodeWithText("20 Pts Remaining").assertExists() // the basket stays
@@ -99,9 +100,9 @@ class RedemptionScreenTest {
     @Test fun aFailedSaveSaysNothingWasDeductedAndKeepsTheBasket() {
         show(accept = false)
         compose.onNodeWithTag(RedemptionTags.plus(1)).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(RedemptionTags.CONFIRM).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(RedemptionTags.FAILED).assertIsDisplayed()
+        compose.onNodeWithTag(RedemptionTags.FAILED).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("20 Pts Remaining").assertExists()
     }
 
@@ -114,5 +115,12 @@ class RedemptionScreenTest {
         show(AppLanguage.BN)
         compose.onNodeWithText("২২০ পয়েন্ট বাকি").assertExists()
         compose.onNodeWithText("চেয়ার।").assertExists()
+    }
+
+    @Test fun cashBackIsVisibleButCannotBeConfirmed() {
+        show()
+        compose.onNodeWithTag(RedemptionTags.CASHBACK).assertExists()
+        compose.onNodeWithText("Cash-back: awaiting the owner's rule. It cannot be redeemed yet.").assertExists()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).assertIsNotEnabled() // nothing to confirm from the cash-back card: no stepper, no points
     }
 }

@@ -56,6 +56,7 @@
     <string name="pg_confirm_no">Cancel</string>
     <string name="pg_redeem_saved">Redemption saved on this phone. It goes out with the next sync.</string>
     <string name="pg_redeem_failed">The redemption could not be saved. Nothing was deducted. Try again.</string>
+    <string name="pg_cashback_waiting">Cash-back: awaiting the owner\'s rule. It cannot be redeemed yet.</string>
     <string name="pg_ok">OK</string>
     <string name="pg_shop_code">Retailer code</string>
     <string name="pg_gift_route">Route</string>
