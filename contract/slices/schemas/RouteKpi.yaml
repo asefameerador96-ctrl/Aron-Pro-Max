@@ -1,0 +1,65 @@
+RouteKpi:
+  type: object
+  description: Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures
+    through `through_date` (never today; the phone adds its own memos by UUID). Volume in base units, money in integer
+    milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every
+    `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0.
+  required:
+  - month
+  - through_date
+  - as_of
+  - allocated_mtk
+  - achieved_mtk
+  - achievement_bp
+  - volume
+  - memo
+  - brands
+  - brands_truncated
+  - categories
+  - cpr
+  additionalProperties: false
+  properties:
+    month:
+      $ref: '#/components/schemas/Month'
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    allocated_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    achieved_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    achievement_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    volume:
+      $ref: '#/components/schemas/KpiTotal'
+    memo:
+      $ref: '#/components/schemas/KpiTotal'
+    brands:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/KpiBrand'
+    brands_truncated:
+      type: boolean
+    categories:
+      type: array
+      maxItems: 4
+      items:
+        $ref: '#/components/schemas/KpiCategory'
+    cpr:
+      oneOf:
+      - $ref: '#/components/schemas/KpiCpr'
+      - type: 'null'

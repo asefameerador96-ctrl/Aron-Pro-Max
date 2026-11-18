@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.22.0.
 
 
-## Schemas (653)
+## Schemas (663)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -243,7 +243,17 @@ Source: contract/openapi.yaml, version 1.22.0.
 - `schemas/TargetRow.yaml` (826 B)
 - `schemas/AchievementRow.yaml` (1188 B)
 - `schemas/RouteCalendar.yaml` (1300 B)
-- `schemas/RouteSnapshot.yaml` (2660 B)
+- `schemas/KpiBrandTargetWriteRow.yaml` (560 B)
+- `schemas/KpiMonthTargetWriteRow.yaml` (606 B)
+- `schemas/RouteKpiTargetWrite.yaml` (544 B)
+- `schemas/RouteKpiTargetPreview.yaml` (910 B)
+- `schemas/RouteKpiTargetList.yaml` (1372 B)
+- `schemas/RouteKpi.yaml` (1606 B)
+- `schemas/KpiTotal.yaml` (431 B)
+- `schemas/KpiBrand.yaml` (1187 B)
+- `schemas/KpiCategory.yaml` (549 B)
+- `schemas/KpiCpr.yaml` (509 B)
+- `schemas/RouteSnapshot.yaml` (2880 B)
 - `schemas/PrintTemplate.yaml` (736 B)
 - `schemas/SupervisorSection.yaml` (1006 B)
 - `schemas/TeamMember.yaml` (544 B)
@@ -659,7 +669,7 @@ Source: contract/openapi.yaml, version 1.22.0.
 - `schemas/DeviceCommandAck.yaml` (351 B)
 - `schemas/DeviceCommandAckResult.yaml` (238 B)
 
-## Operations (281)
+## Operations (283)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -887,6 +897,8 @@ Source: contract/openapi.yaml, version 1.22.0.
 - `operations/decideDuesAdjustment.yaml`  POST /v1/admin/dues-adjustments/{adjustment_id}/decision (1039 B)
 - `operations/listRouteTargets.yaml`  GET /v1/admin/route-targets (911 B)
 - `operations/putRouteTargets.yaml`  PUT /v1/admin/route-targets (1698 B)
+- `operations/listRouteKpiTargets.yaml`  GET /v1/admin/route-kpi-targets (971 B)
+- `operations/putRouteKpiTargets.yaml`  PUT /v1/admin/route-kpi-targets (1669 B)
 - `operations/replaceDevice.yaml`  POST /v1/admin/devices/{device_id}/replace (1127 B)
 - `operations/configWhatIf.yaml`  GET /v1/admin/config/whatif (1019 B)
 - `operations/configBlastRadius.yaml`  GET /v1/admin/config/blast-radius (658 B)

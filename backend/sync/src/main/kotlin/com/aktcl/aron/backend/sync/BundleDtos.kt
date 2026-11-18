@@ -295,6 +295,8 @@ data class RouteSnapshot(
     val day_state: RouteDayStateDto,
     /** N-2 (contract 1.22.0, optional): working-day numbers; absent in zone-wide bundles. */
     val calendar: RouteCalendarDto? = null,
+    /** N-5 (contract 1.22.0, optional): brand-wise KPI; absent in zone-wide bundles. */
+    val kpi: JsonObject? = null,
     /**
      * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
      * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent

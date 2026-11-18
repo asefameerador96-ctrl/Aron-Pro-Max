@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 183 | 3039 |
+| `app` | 185 | 3057 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -154,10 +154,12 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.role_grant_map`](#approle_grant_map) | table | backend:auth | REFERENCE | master | none | Admin permission granted to each role, carried as the web permission claim. |
 | [`app.route`](#approute) | table | backend:masterdata | ONLINE | master | none | A sales route in a zone with its code, kind, visit days and label. |
 | [`app.route_assignment`](#approute_assignment) | table | backend:masterdata | ONLINE | master | none | Assignment of a user to a route as primary or cover for a date range. |
+| [`app.route_brand_kpi_target`](#approute_brand_kpi_target) | table | backend:admin | ONLINE | master | none | Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05). |
 | [`app.route_day`](#approute_day) | table | backend:sync | SERVER | transaction | none | One row per route and business date holding the day state and submit timestamps; created by the server from assignments. |
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
 | [`app.route_history`](#approute_history) | table | db | SERVER | master | none | One row is a period of a route's kind, visit kind, class and status (its zone is in app.route_zone_history) (V0119); written by the history trigger on app.route, seeded from app.audit_log. |
+| [`app.route_kpi_month`](#approute_kpi_month) | table | backend:admin | ONLINE | master | none | Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row. |
 | [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
 | [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
@@ -4037,6 +4039,28 @@ Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.route_brand_kpi_target
+
+Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `brand_id` | bigint | not null |  | Brand: an app.product_node of level brand (checked by the upload API). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `memo_target` | integer | not null |  | Number of memos containing the brand the route should reach in the month. |
+| `kpi_alloc_mtk` | bigint | not null |  | KPI money allocated to the brand for the month, integer milli-taka. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, brand_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (brand_id) REFERENCES app.product_node(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.route_day
 
 One row per route and business date holding the day state and submit timestamps; created by the server from assignments.
@@ -4182,6 +4206,28 @@ One row is a period of a route's kind, visit kind, class and status (its zone is
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id) ON DELETE CASCADE`
+
+## app.route_kpi_month
+
+Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `kpi_alloc_mtk` | bigint | not null |  | Total KPI money allocated to the route for the month, integer milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points (5000 = 50.00%); null when none is set. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR, integer milli-taka; null when none is set. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.route_monthly_target
 

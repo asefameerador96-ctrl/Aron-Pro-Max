@@ -5750,6 +5750,54 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
+  /v1/admin/route-kpi-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listRouteKpiTargets
+      summary: One route's KPI targets of a month (memo target and allocated KPI per brand, and the month row).
+      parameters:
+        - { name: route_code, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 40 } }
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'Month as YYYY-MM; default the current Dhaka month.' }
+      responses:
+        '200':
+          description: The route's rows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteKpiTargetList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-targets]
+      operationId: putRouteKpiTargets
+      summary: Validate (dry_run) or commit KPI targets (brand memo targets and allocated KPI, month allocation and CPR), upsert by route, brand and month.
+      description: >-
+        Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is
+        idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never
+        rewrites a past Dhaka month. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is
+        basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteKpiTargetWrite' }
+      responses:
+        '200':
+          description: Preview (dry_run) or commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/RouteKpiTargetPreview' }
+                  - { $ref: '#/components/schemas/RouteTargetCommitResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
   /v1/admin/devices/{device_id}/replace:
     post:
       tags: [admin-devices]
@@ -10211,6 +10259,161 @@ components:
         last_month_working_days: { type: integer, minimum: 0, maximum: 31 }
         through_date: { $ref: '#/components/schemas/BusinessDate' }
         as_of: { $ref: '#/components/schemas/Timestamp' }
+    KpiBrandTargetWriteRow:
+      type: object
+      required: [route_code, brand_code, month, memo_target]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        brand_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        memo_target: { type: integer, minimum: 0, maximum: 1000000 }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0, maximum: 100000000000, default: 0 }
+    KpiMonthTargetWriteRow:
+      type: object
+      required: [route_code, month, kpi_alloc_mtk]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0, maximum: 100000000000 }
+        cpr_target_bp: { type: [integer, 'null'], minimum: 0, maximum: 10000 }
+        cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0, maximum: 100000000000 }
+    RouteKpiTargetWrite:
+      type: object
+      required: [batch_uuid, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        dry_run: { type: boolean }
+        change_reason: { type: string, minLength: 1, maxLength: 500 }
+        brand_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiBrandTargetWriteRow' }
+        month_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiMonthTargetWriteRow' }
+    RouteKpiTargetPreview:
+      type: object
+      required: [batch_uuid, brand_rows, month_rows, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        brand_rows: { type: integer, minimum: 0 }
+        month_rows: { type: integer, minimum: 0 }
+        errors:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required: [section, row, column, code]
+            additionalProperties: false
+            properties:
+              section: { type: string, enum: [brand_rows, month_rows] }
+              row: { type: integer, minimum: 1 }
+              column: { type: string, maxLength: 40 }
+              code: { type: string, maxLength: 40 }
+        errors_truncated: { type: boolean }
+    RouteKpiTargetList:
+      type: object
+      required: [route_code, month, brand_rows, month_row]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        brand_rows:
+          type: array
+          items:
+            type: object
+            required: [brand_code, brand_name, memo_target, kpi_alloc_mtk]
+            additionalProperties: false
+            properties:
+              brand_code: { type: string, maxLength: 40 }
+              brand_name: { type: string, maxLength: 120 }
+              memo_target: { type: integer, minimum: 0 }
+              kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+        month_row:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk]
+              additionalProperties: false
+              properties:
+                kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+                cpr_target_bp: { type: [integer, 'null'], minimum: 0 }
+                cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+    RouteKpi:
+      type: object
+      description: 'Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the phone adds its own memos by UUID). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0.'
+      required: [month, through_date, as_of, allocated_mtk, achieved_mtk, achievement_bp, volume, memo, brands, brands_truncated, categories, cpr]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/Month' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        allocated_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achieved_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achievement_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        volume: { $ref: '#/components/schemas/KpiTotal' }
+        memo: { $ref: '#/components/schemas/KpiTotal' }
+        brands:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/KpiBrand' }
+        brands_truncated: { type: boolean }
+        categories:
+          type: array
+          maxItems: 4
+          items: { $ref: '#/components/schemas/KpiCategory' }
+        cpr:
+          oneOf:
+            - { $ref: '#/components/schemas/KpiCpr' }
+            - { type: 'null' }
+    KpiTotal:
+      type: object
+      description: Target, achievement and percentage of a KPI total (sums of the brand rows).
+      required: [target, achieved, bp]
+      additionalProperties: false
+      properties:
+        target: { type: integer, format: int64, minimum: 0 }
+        achieved: { type: integer, format: int64, minimum: 0 }
+        bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+    KpiBrand:
+      type: object
+      description: One brand row of the KPI screens.
+      required: [brand_id, volume_target, volume_achieved, volume_bp, memo_target, memo_achieved, memo_bp, kpi_alloc_mtk, kpi_today_mtk]
+      additionalProperties: false
+      properties:
+        brand_id: { $ref: '#/components/schemas/Id' }
+        volume_target: { type: integer, format: int64, minimum: 0, description: 'Sum of the route targets of the brand SKUs in base units.' }
+        volume_achieved: { type: integer, format: int64, minimum: 0 }
+        volume_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        memo_target: { type: integer, format: int64, minimum: 0 }
+        memo_achieved: { type: integer, format: int64, minimum: 0, description: 'Memos containing the brand, once per memo.' }
+        memo_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+        kpi_today_mtk: { type: [integer, 'null'], format: int64, minimum: 0, description: Null until the owner defines it. }
+    KpiCategory:
+      type: object
+      description: 'Volume of a category row (BLM, match and lighter).'
+      required: [category_code, volume_target, volume_achieved, volume_bp]
+      additionalProperties: false
+      properties:
+        category_code: { type: string, enum: [match, lighter] }
+        volume_target: { type: integer, format: int64, minimum: 0 }
+        volume_achieved: { type: integer, format: int64, minimum: 0 }
+        volume_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+    KpiCpr:
+      type: object
+      description: CPR (call productivity) block; achieved is null until the owner defines the source.
+      required: [target_bp, alloc_mtk, achieved_bp]
+      additionalProperties: false
+      properties:
+        target_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achieved_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
     RouteSnapshot:
       type: object
       description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
@@ -10250,6 +10453,11 @@ components:
             - { $ref: '#/components/schemas/RouteCalendar' }
             - { type: 'null' }
           description: 'Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.22.0, optional.'
+        kpi:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteKpi' }
+            - { type: 'null' }
+          description: 'Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional.'
         sr_user_id:
           type: [integer, 'null']
           format: int64

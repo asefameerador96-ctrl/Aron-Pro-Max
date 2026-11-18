@@ -1,0 +1,29 @@
+KpiBrandTargetWriteRow:
+  type: object
+  required:
+  - route_code
+  - brand_code
+  - month
+  - memo_target
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    brand_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    memo_target:
+      type: integer
+      minimum: 0
+      maximum: 1000000
+    kpi_alloc_mtk:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 100000000000
+      default: 0

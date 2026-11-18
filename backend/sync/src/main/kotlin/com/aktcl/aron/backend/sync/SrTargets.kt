@@ -25,7 +25,7 @@ import java.time.YearMonth
  * - `calendar`: the working days at the route's zone path (division and wing weekend and holidays honoured).
  */
 object SrTargets {
-    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto)
+    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto, val kpi: JsonObject? = null)
 
     private const val MAX_ROWS = 500
 
@@ -34,8 +34,7 @@ object SrTargets {
         val month = YearMonth.from(date)
         val first = month.atDay(1)
         val through = date.minusDays(1)
-        val asOf = h.createQuery("SELECT last_updated_at FROM dw.summary_freshness WHERE table_name = 'agg_daily_route_sku'")
-            .map { rs, _ -> rs.getTimestamp(1).toInstant() }.findOne().orElse(Instant.EPOCH)
+        val asOf = asOf(h)
         val routeIds = routes.keys.toList()
 
         val targets = h.createQuery(
@@ -86,6 +85,10 @@ object SrTargets {
             )
         }
     }
+
+    /** The projector time of the route aggregates; the epoch when the projector has not run (the figure then claims nothing). */
+    fun asOf(h: Handle): Instant = h.createQuery("SELECT last_updated_at FROM dw.summary_freshness WHERE table_name = 'agg_daily_route_sku'")
+        .map { rs, _ -> rs.getTimestamp(1).toInstant() }.findOne().orElse(Instant.EPOCH)
 
     /** A base quantity as the contract's exact Decimal3 string: "500.000". */
     fun decimal3(q: Long): String = java.math.BigDecimal.valueOf(q, 0).setScale(3).toPlainString()

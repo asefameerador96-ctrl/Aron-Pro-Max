@@ -1,0 +1,23 @@
+KpiTotal:
+  type: object
+  description: Target, achievement and percentage of a KPI total (sums of the brand rows).
+  required:
+  - target
+  - achieved
+  - bp
+  additionalProperties: false
+  properties:
+    target:
+      type: integer
+      format: int64
+      minimum: 0
+    achieved:
+      type: integer
+      format: int64
+      minimum: 0
+    bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0

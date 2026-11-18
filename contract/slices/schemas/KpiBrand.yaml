@@ -1,0 +1,58 @@
+KpiBrand:
+  type: object
+  description: One brand row of the KPI screens.
+  required:
+  - brand_id
+  - volume_target
+  - volume_achieved
+  - volume_bp
+  - memo_target
+  - memo_achieved
+  - memo_bp
+  - kpi_alloc_mtk
+  - kpi_today_mtk
+  additionalProperties: false
+  properties:
+    brand_id:
+      $ref: '#/components/schemas/Id'
+    volume_target:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Sum of the route targets of the brand SKUs in base units.
+    volume_achieved:
+      type: integer
+      format: int64
+      minimum: 0
+    volume_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    memo_target:
+      type: integer
+      format: int64
+      minimum: 0
+    memo_achieved:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Memos containing the brand, once per memo.
+    memo_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    kpi_alloc_mtk:
+      type: integer
+      format: int64
+      minimum: 0
+    kpi_today_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Null until the owner defines it.

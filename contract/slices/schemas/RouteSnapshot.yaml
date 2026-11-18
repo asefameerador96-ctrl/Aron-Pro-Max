@@ -73,6 +73,12 @@ RouteSnapshot:
       - type: 'null'
       description: Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles.
         Contract 1.22.0, optional.
+    kpi:
+      oneOf:
+      - $ref: '#/components/schemas/RouteKpi'
+      - type: 'null'
+      description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0,
+        optional.
     sr_user_id:
       type:
       - integer

@@ -1,0 +1,63 @@
+RouteKpiTargetList:
+  type: object
+  required:
+  - route_code
+  - month
+  - brand_rows
+  - month_row
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    brand_rows:
+      type: array
+      items:
+        type: object
+        required:
+        - brand_code
+        - brand_name
+        - memo_target
+        - kpi_alloc_mtk
+        additionalProperties: false
+        properties:
+          brand_code:
+            type: string
+            maxLength: 40
+          brand_name:
+            type: string
+            maxLength: 120
+          memo_target:
+            type: integer
+            minimum: 0
+          kpi_alloc_mtk:
+            type: integer
+            format: int64
+            minimum: 0
+    month_row:
+      oneOf:
+      - type: 'null'
+      - type: object
+        required:
+        - kpi_alloc_mtk
+        - cpr_target_bp
+        - cpr_alloc_mtk
+        additionalProperties: false
+        properties:
+          kpi_alloc_mtk:
+            type: integer
+            format: int64
+            minimum: 0
+          cpr_target_bp:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+          cpr_alloc_mtk:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            minimum: 0

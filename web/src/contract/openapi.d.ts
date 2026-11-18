@@ -3725,6 +3725,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/route-kpi-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One route's KPI targets of a month (memo target and allocated KPI per brand, and the month row). */
+        get: operations["listRouteKpiTargets"];
+        /**
+         * Validate (dry_run) or commit KPI targets (brand memo targets and allocated KPI, month allocation and CPR), upsert by route, brand and month.
+         * @description Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never rewrites a past Dhaka month. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
+         */
+        put: operations["putRouteKpiTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/devices/{device_id}/replace": {
         parameters: {
             query?: never;
@@ -6765,6 +6786,140 @@ export interface components {
             through_date: components["schemas"]["BusinessDate"];
             as_of: components["schemas"]["Timestamp"];
         };
+        KpiBrandTargetWriteRow: {
+            route_code: string;
+            brand_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            memo_target: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            kpi_alloc_mtk: number;
+        };
+        KpiMonthTargetWriteRow: {
+            route_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /** Format: int64 */
+            kpi_alloc_mtk: number;
+            cpr_target_bp?: number | null;
+            /** Format: int64 */
+            cpr_alloc_mtk?: number | null;
+        };
+        RouteKpiTargetWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            dry_run: boolean;
+            change_reason?: string;
+            brand_rows?: components["schemas"]["KpiBrandTargetWriteRow"][];
+            month_rows?: components["schemas"]["KpiMonthTargetWriteRow"][];
+        };
+        RouteKpiTargetPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            brand_rows: number;
+            month_rows: number;
+            errors: {
+                /** @enum {string} */
+                section: "brand_rows" | "month_rows";
+                row: number;
+                column: string;
+                code: string;
+            }[];
+            errors_truncated: boolean;
+        };
+        RouteKpiTargetList: {
+            route_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            brand_rows: {
+                brand_code: string;
+                brand_name: string;
+                memo_target: number;
+                /** Format: int64 */
+                kpi_alloc_mtk: number;
+            }[];
+            month_row: null | {
+                /** Format: int64 */
+                kpi_alloc_mtk: number;
+                cpr_target_bp: number | null;
+                /** Format: int64 */
+                cpr_alloc_mtk: number | null;
+            };
+        };
+        /** @description Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the phone adds its own memos by UUID). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0. */
+        RouteKpi: {
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            allocated_mtk: number | null;
+            /** Format: int64 */
+            achieved_mtk: number | null;
+            /** Format: int64 */
+            achievement_bp: number | null;
+            volume: components["schemas"]["KpiTotal"];
+            memo: components["schemas"]["KpiTotal"];
+            brands: components["schemas"]["KpiBrand"][];
+            brands_truncated: boolean;
+            categories: components["schemas"]["KpiCategory"][];
+            cpr: components["schemas"]["KpiCpr"] | null;
+        };
+        /** @description Target, achievement and percentage of a KPI total (sums of the brand rows). */
+        KpiTotal: {
+            /** Format: int64 */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
+            /** Format: int64 */
+            bp: number | null;
+        };
+        /** @description One brand row of the KPI screens. */
+        KpiBrand: {
+            brand_id: components["schemas"]["Id"];
+            /**
+             * Format: int64
+             * @description Sum of the route targets of the brand SKUs in base units.
+             */
+            volume_target: number;
+            /** Format: int64 */
+            volume_achieved: number;
+            /** Format: int64 */
+            volume_bp: number | null;
+            /** Format: int64 */
+            memo_target: number;
+            /**
+             * Format: int64
+             * @description Memos containing the brand, once per memo.
+             */
+            memo_achieved: number;
+            /** Format: int64 */
+            memo_bp: number | null;
+            /** Format: int64 */
+            kpi_alloc_mtk: number;
+            /**
+             * Format: int64
+             * @description Null until the owner defines it.
+             */
+            kpi_today_mtk: number | null;
+        };
+        /** @description Volume of a category row (BLM, match and lighter). */
+        KpiCategory: {
+            /** @enum {string} */
+            category_code: "match" | "lighter";
+            /** Format: int64 */
+            volume_target: number;
+            /** Format: int64 */
+            volume_achieved: number;
+            /** Format: int64 */
+            volume_bp: number | null;
+        };
+        /** @description CPR (call productivity) block; achieved is null until the owner defines the source. */
+        KpiCpr: {
+            /** Format: int64 */
+            target_bp: number | null;
+            /** Format: int64 */
+            alloc_mtk: number | null;
+            /** Format: int64 */
+            achieved_bp: number | null;
+        };
         /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. */
         RouteSnapshot: {
             route_id: components["schemas"]["Id"];
@@ -6785,6 +6940,8 @@ export interface components {
             day_state: components["schemas"]["RouteDayState"];
             /** @description Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.22.0, optional. */
             calendar?: components["schemas"]["RouteCalendar"] | null;
+            /** @description Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional. */
+            kpi?: components["schemas"]["RouteKpi"] | null;
             /**
              * Format: int64
              * @description The route's assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set"). Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit it. Contract 1.10.0, optional.
@@ -18884,6 +19041,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listRouteKpiTargets: {
+        parameters: {
+            query: {
+                route_code: string;
+                /** @description Month as YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteKpiTargetList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putRouteKpiTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteKpiTargetWrite"];
+            };
+        };
+        responses: {
+            /** @description Preview (dry_run) or commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteKpiTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

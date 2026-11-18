@@ -22,5 +22,15 @@ A server figure never contains the bundle date. The phone adds, de-duplicated by
 - E (elapsed) and R (remaining) come from ONE function, `SkuProgress.dayCounts(calendar, convention)`: `BEFORE_TODAY` (default, K-13: 14 and 11 on 2026-04-18) uses `elapsed_working_days_before_today` and `remaining_working_days_after_today`; `THROUGH_TODAY` (screen 62) adds today when `today_is_working`. Lead ruling: both live behind that one named function until the owner answers Q-A; the K-13 and screen 62 fixtures are tests.
 - Fixtures: target 500 gives TADS 36 and RADS 45; 900 gives 64 and 82 (E=14, R=11).
 
-## Later slices (not built yet; listed so the numbers can be planned)
-N-5 `RouteSnapshot.kpi`, N-8 `RouteSnapshot.star`, N-3 `RouteSnapshot.campaigns`; each additive and optional, written here when built.
+## Slice N-5 (built): brand-wise KPI (screens 60 and 61)
+
+| Where | Change | Notes |
+|---|---|---|
+| `RouteSnapshot.kpi` (`RouteKpi`, optional, null or absent in zone bundles) | New | `month`, `through_date`, `as_of`; `allocated_mtk` (admin-entered month allocation, null when none); `achieved_mtk`, `achievement_bp` (null: the owner has not defined them); `volume` and `memo` totals (`KpiTotal`: `target`, `achieved`, `bp`), which are SUMS of the brand rows (volume: cigarette brands only); `brands[]` (`KpiBrand`: `brand_id`, `volume_target` = sum of the brand's SKU route targets in base units, `volume_achieved`, `volume_bp`, `memo_target`, `memo_achieved` = memos containing the brand once per memo, `memo_bp`, `kpi_alloc_mtk`, `kpi_today_mtk` null) up to 200 with `brands_truncated`; `categories[]` (match, lighter: volume target, achieved, bp: the BLM rows); `cpr` (`target_bp`, `alloc_mtk`, `achieved_bp` null) or null. Percentages are integer basis points, null when the target is 0 (the dash). Brand names come from the bundle `products` section by `brand_id`. |
+| `PUT /v1/admin/route-kpi-targets` (`putRouteKpiTargets`) | New admin operation | Validate (dry_run) or commit `brand_rows` (route_code, brand_code, month, memo_target, kpi_alloc_mtk) and `month_rows` (route_code, month, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk); all or none; idempotent by `batch_uuid` (shared record with `putRouteTargets`); audited `route_kpi_target`. |
+| `GET /v1/admin/route-kpi-targets` (`listRouteKpiTargets`) | New admin operation | One route's rows of a month (`route_code` required). |
+
+Same no-double-count rule as N-2: figures are through `through_date` (the bundle date minus one day); the phone adds today's memos by UUID.
+
+## Later slices (not built yet)
+N-8 `RouteSnapshot.star`, N-3 `RouteSnapshot.campaigns`; each additive and optional, written here when built.

@@ -1,0 +1,46 @@
+RouteKpiTargetPreview:
+  type: object
+  required:
+  - batch_uuid
+  - brand_rows
+  - month_rows
+  - errors
+  - errors_truncated
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    brand_rows:
+      type: integer
+      minimum: 0
+    month_rows:
+      type: integer
+      minimum: 0
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        type: object
+        required:
+        - section
+        - row
+        - column
+        - code
+        additionalProperties: false
+        properties:
+          section:
+            type: string
+            enum:
+            - brand_rows
+            - month_rows
+          row:
+            type: integer
+            minimum: 1
+          column:
+            type: string
+            maxLength: 40
+          code:
+            type: string
+            maxLength: 40
+    errors_truncated:
+      type: boolean
