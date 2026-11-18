@@ -88,7 +88,11 @@ class SrBundleThroughAndSnapshotTest {
         return Seen(t, a, c.elapsed_working_days_before_today, c.today_is_working, c.remaining_working_days_after_today, c.working_days)
     }
 
-    private fun assertCounts(s: Seen, what: String) = assertEquals(s.workingDays, s.elapsed + (if (s.today) 1 else 0) + s.remaining, "before + today + after = the month's working days: $what")
+    /** The three day counts pinned to LITERAL values (hand-worked: Friday weekend, no holiday in January or February 2027 in the seed), and their sum to the month's working days. */
+    private fun assertCounts(s: Seen, before: Int, today: Boolean, after: Int, what: String) {
+        assertEquals(listOf<Any>(before, today, after), listOf(s.elapsed, s.today, s.remaining), "elapsed / today_is_working / remaining: $what")
+        assertEquals(s.workingDays, s.elapsed + (if (s.today) 1 else 0) + s.remaining, "before + today + after = the month's working days: $what")
+    }
 
     @Test
     fun aBundleBuiltAheadOnTheSameDayCutsAtTheLastClosedDayAndEveryFamilyReportsIt() {
@@ -97,13 +101,13 @@ class SrBundleThroughAndSnapshotTest {
         val ahead = seen("2027-01-04")   // today is Sunday 2027-01-03 08:00: the bundle for Monday is built AHEAD
         assertEquals(setOf("2027-01-02"), ahead.through, "built ahead on Sunday: complete through Saturday (the last CLOSED day), not through Sunday which is still open; every family says so")
         assertEquals(5L, ahead.achieved, "today's memo is in no figure")
-        assertCounts(ahead, "Sunday 2027-01-03 is the anchor (the day still open)")
+        assertCounts(ahead, 1, true, 24, "built Sun 3 Jan for Mon 4 Jan: the anchor is Sunday 3 Jan (Sat 2 Jan elapsed; Jan 1 is a Friday)")
         assertEquals(setOf("2027-01-02"), seen("2027-01-03").through)
         nowAt = Instant.parse("2027-01-04T02:00:00Z")   // Monday 08:00: Sunday has ended
         val next = seen("2027-01-04")
         assertEquals(setOf("2027-01-03"), next.through, "built on Monday for Monday: complete through Sunday")
         assertEquals(12L, next.achieved, "the memo of Sunday is in the figure once Sunday has closed")
-        assertCounts(next, "Monday 2027-01-04 is the anchor")
+        assertCounts(next, 2, true, 23, "built Mon 4 Jan for Mon 4 Jan: the anchor is Monday 4 Jan (Sat 2 and Sun 3 Jan elapsed)")
     }
 
     @Test
@@ -114,7 +118,7 @@ class SrBundleThroughAndSnapshotTest {
         val s = seen("2027-01-09")
         assertEquals(setOf("2027-01-06"), s.through, "Thursday is still open: the figure is complete through Wednesday, not through Friday")
         assertEquals(5L, s.achieved)
-        assertCounts(s, "Thursday 2027-01-07 is the anchor (through is Wednesday)")
+        assertCounts(s, 5, true, 20, "built Thu 7 Jan for Sat 9 Jan: through is Wednesday 6 Jan, the anchor is Thursday 7 Jan (Sat 2, Sun 3, Mon 4, Tue 5, Wed 6 elapsed)")
     }
 
     @Test
@@ -122,6 +126,9 @@ class SrBundleThroughAndSnapshotTest {
         nowAt = Instant.parse("2027-01-31T02:00:00Z")   // Sunday 2027-01-31 08:00: the bundle for Monday 2027-02-01 is built ahead
         fx.memo("00000000-0000-4000-8000-0000000b0021", route, outlet, "2027-01-30", listOf(SrMemoFixture.L(skuC, 5)))
         fx.memo("00000000-0000-4000-8000-0000000b0022", route, outlet, "2027-01-31", listOf(SrMemoFixture.L(skuC, 9)))
+        val s0 = seen("2027-02-01")   // asserts calendar, kpi, star and campaigns are all present before comparing
+        assertEquals(setOf("2027-01-30"), s0.through, "calendar, achievement, kpi, star and campaigns all report through 30 January")
+        assertCounts(s0, 0, true, 23, "built Sun 31 Jan for Mon 1 Feb: the anchor is Monday 1 Feb, not Sunday 31 Jan")
         val r = service.bundle(principal, LocalDate.parse("2027-02-01"), "1.0.0+1").full.routes.single { it.route_id == route }
         assertEquals("2027-02", r.calendar?.month, "the bundle's month is February")
         assertEquals("2027-01-30", r.calendar?.through_date, "complete through the last closed day, which is in January: the window of February is empty")
@@ -186,5 +193,22 @@ class SrBundleThroughAndSnapshotTest {
         guarded.bundle(principal, LocalDate.parse("2027-01-04"), "1.0.0+1")   // a bundle built ahead too
         assertTrue(violations.isEmpty(), "no cache-backed loader ran inside the snapshot: $violations")
         assertTrue(!BundleService.inSnapshot.get(), "the flag is cleared after a build")
+    }
+
+    /** D1: Star's last month is cut at the last CLOSED day too (a bundle built ahead on the last day of a month), and `lmwd` counts the same days. */
+    @Test
+    fun starLastMonthIsCutAtTheLastClosedDayAndLmwdCountsTheSameDays() {
+        val skuM = q("SELECT id FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 1")
+        nowAt = Instant.parse("2027-01-31T02:00:00Z")   // Sunday 31 Jan 08:00: the bundle for Mon 1 Feb is built ahead
+        fx.memo("00000000-0000-4000-8000-0000000b0041", route, outlet, "2027-01-30", listOf(SrMemoFixture.L(skuM, 10)))   // closed
+        fx.memo("00000000-0000-4000-8000-0000000b0042", route, outlet, "2027-01-31", listOf(SrMemoFixture.L(skuM, 40)))   // today, still open
+        fun star(): JsonObject = service.bundle(principal, LocalDate.parse("2027-02-01"), "1.0.0+1").full.routes.single { it.route_id == route }.star!!.jsonObject
+        val ahead = star()
+        assertEquals("10.000", ahead["lms"]!!.jsonPrimitive.content, "last month's sold quantity excludes the open 31 Jan")
+        assertEquals(25, ahead["lmwd"]!!.jsonPrimitive.content.toInt(), "lmwd counts the closed days of January only (26 working days, minus Sunday 31 Jan)")
+        nowAt = Instant.parse("2027-02-01T02:00:00Z")   // Monday 1 Feb: January has closed
+        val onTheDay = star()
+        assertEquals("50.000", onTheDay["lms"]!!.jsonPrimitive.content, "built on the day: all of January")
+        assertEquals(26, onTheDay["lmwd"]!!.jsonPrimitive.content.toInt(), "lmwd is the whole of January")
     }
 }

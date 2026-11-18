@@ -70,7 +70,9 @@ RouteStar:
       type: integer
       minimum: 0
       maximum: 31
-      description: Working days of last month.
+      description: Working days of last month that have CLOSED at the cut (all of them once `through_date` is past
+        the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the
+        divisor of `lmads`, over the same days as `lms`.
     wd:
       type: integer
       minimum: 0
@@ -80,7 +82,9 @@ RouteStar:
       type: integer
       minimum: 0
       maximum: 31
-      description: Elapsed working days under the single day-count convention (SkuProgress.dayCounts).
+      description: Elapsed working days under the single day-count convention (SkuProgress.dayCounts) of the calendar
+        anchor, `max(through_date + 1, the 1st of the bundle month)`; 0 when the window is empty (the 1st of the
+        month), and the figures that divide by it are then null, never zero.
     target:
       $ref: '#/components/schemas/Decimal3'
     std:

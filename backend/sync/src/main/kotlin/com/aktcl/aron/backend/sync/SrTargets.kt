@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.sync
 
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.WorkingCalendarRepo
+import com.aktcl.aron.backend.platform.WorkingCalendars
 import com.aktcl.aron.backend.platform.wire
 import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.serialization.json.JsonObject
@@ -34,7 +35,7 @@ object SrTargets {
 
     fun load(
         h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?,
-        /** The last CLOSED day ([SrMemoFigures.through]); the working-day counts are anchored on the day after it (the day still open), so counts and figures describe the same cut. */
+        /** The last CLOSED day ([SrMemoFigures.through]); the working-day counts are anchored on `max(through + 1, the 1st of the bundle month)` (the day still open, never before the month), so counts and figures describe the same cut. */
         through: LocalDate = SrMemoFigures.through(date, now),
         figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), through),
     ): Map<Long, Snapshot> {
@@ -83,11 +84,22 @@ object SrTargets {
                 RouteCalendarDto(
                     month = month.toString(), working_days = cals.workingDays(path), elapsed_working_days_before_today = before,
                     remaining_working_days_after_today = after, today_is_working = cal.isWorking(anchor.toKotlinLocalDate()),
-                    last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (figures[routeId]?.asOf ?: Instant.EPOCH).wire(),
+                    last_month_working_days = lastMonthWorkingDaysThrough(prevCals, path, month.minusMonths(1), through), through_date = through.toString(), as_of = (figures[routeId]?.asOf ?: Instant.EPOCH).wire(),
                 ),
                 truncated = targets[routeId].orEmpty().size > MAX_ROWS || achieved[routeId].orEmpty().size > MAX_ROWS,
             )
         }
+    }
+
+    /**
+     * Working days of last month that have CLOSED at the cut: all of them once `through` is past the end of last month, else those up to and including `through` (a bundle built ahead on the last day of
+     * a month: Star's last-month sold quantity is cut at the same day, so its divisor counts the same days; the bundle built on the 1st has the whole month).
+     */
+    private fun lastMonthWorkingDaysThrough(cals: WorkingCalendars, path: com.aktcl.aron.rules.NodePath, last: YearMonth, through: LocalDate): Int {
+        if (!through.isBefore(last.atEndOfMonth())) return cals.workingDays(path)
+        val cal = cals.at(path); var n = 0; var d = last.atDay(1)
+        while (!d.isAfter(through) && !d.isAfter(last.atEndOfMonth())) { if (cal.isWorking(d.toKotlinLocalDate())) n++; d = d.plusDays(1) }
+        return n
     }
 
     /** A base quantity as the contract's exact Decimal3 string: "500.000". */

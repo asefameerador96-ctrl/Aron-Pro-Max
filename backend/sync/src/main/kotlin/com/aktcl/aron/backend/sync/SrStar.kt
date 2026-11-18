@@ -53,7 +53,8 @@ object SrStar {
                 .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list().toMap()
         }
         // last month's sold quantity of every Star route in ONE read (was one query per route)
-        val lastMonth = SrMemoFigures.forRoutes(h, progs.keys, last.atDay(1), last.atEndOfMonth())
+        // cut at the last CLOSED day like every other window: when last month is not closed yet (a bundle built ahead on its last day), LMS holds its closed days only and `lmwd` counts the same days
+        val lastMonth = SrMemoFigures.forRoutes(h, progs.keys, last.atDay(1), minOf(last.atEndOfMonth(), through))
         return progs.mapValues { (routeId, p) ->
             val info = routes.getValue(routeId)
             val rules = parseRules(p.rules)

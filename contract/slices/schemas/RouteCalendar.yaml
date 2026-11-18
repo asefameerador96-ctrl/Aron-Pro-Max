@@ -51,6 +51,8 @@ RouteCalendar:
       type: integer
       minimum: 0
       maximum: 31
+      description: 'Working days of last month that have CLOSED at the cut: all of them once `through_date` is past
+        the end of last month, else those up to `through_date` (a bundle built ahead on the last day of the month).'
     through_date:
       $ref: '#/components/schemas/BusinessDate'
     as_of:
