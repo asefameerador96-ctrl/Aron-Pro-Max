@@ -63,3 +63,14 @@ Branch `lane/android-parity-sr-2` from INT 4e0645556. Lead `session_01MbUQSxrP7A
 ## Tests run
 - feature-memo unit (incl. `MemoManualScreensTest`: selector assertion changed to the manual's wording, new `vendorLayoutHas...` test), feature-sale unit, app-sr unit, ui-screenshots verify (all green locally).
 - Not run: device or emulator; lane CI Android job (see the report to the lead).
+
+## Review round on ed947557c (docs/reviews/android-parity-sr-2-2026-11-18.md): state after D-PAR-SR2-09
+Done: B1 (Slide pop-up state plain remember), B2 (QC Back asks first; submitted QC never restored; vendor route tests), B3 (tasks_resolve_ask golden shows its dialog; audit of the 22 modified goldens: only the tasks ask and the logout ask interact), and the cheap lows (one `restoreQc` instead of six launches; বাতিল gated by locked; stale `SrQcRouteRestoreTest` references corrected in D-PAR-SR2-09 and the QcManual comment; QC tiles are a lazy row).
+
+Known, not taken in this round (no new scope; each is a low):
+- Memo: zero discount line absent in the vendor layout (manual 36 lists it; deferral holds, amount is zero); header card (memo number) dropped in the vendor layout (matches manual 36/38); `MemoSwitcherBar` restyle also reaches AMO and TSO; unused `memo_due_word`.
+- KPI: month label built with `Locale.ENGLISH` (not localised); `KpiDashboardContent`/`BrandKpiContent` have golden coverage only, no behavioural test; `LilacBand` is a literal colour, not a look token (contrast is computed from it, about 7.9:1).
+- Forms/UI: `VendorLetterChip` 40 dp wide (under 48 dp touch target; "All" may clip at font scale 1.9); `GeoPhotoBlock(vendor)` shows no busy state during capture; `saleBarTitle` is plain `remember` (title may flash "Sale" after process death); `out_pick_all` is now Latin "All" in every Bangla picker (D-PAR-SR2-04); unused `out_req_close_notice`.
+- Tasks: one-tap Resolve button replaced by swipe or TalkBack custom action only (a keyboard or switch-access user cannot resolve); swipe hint wraps under the floating circle at font scale 2.
+- Goldens: `sale_data_font20` SKU column breaks mid-word; `sr2_submit_due_bn` equals `sr2_submit_bn` (no visual golden of the dues dialog; behaviour is tested in `SalesSubmitScreenTest`); `req_close` no longer shows the permanent-close banner and the location-not-taken line; summary column headers crowded; `sr2_memo_credit_bn_font20` due box wraps; Save button glyph checked by eye only.
+- Merge/gate: Home hero "বিস্তারিত" goes straight to TARGET_HOOK (reads and writes nothing, outside the check-in gate); QC entry-page Back now acts as বাতিল (landed behaviour change, intended per the manual, logged here); retailer phone numbers and owner names from the owner's screenshots sit in comments, D-PAR-SR2-05 and `Sr2Shot` fixtures (same strings are already in `docs/ui-reference`).
