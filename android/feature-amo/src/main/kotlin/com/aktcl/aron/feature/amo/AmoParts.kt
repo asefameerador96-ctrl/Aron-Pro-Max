@@ -147,7 +147,7 @@ fun AmoFrame(
     com.aktcl.aron.core.ui.aron.AronScaffold(
         topBar = {
             com.aktcl.aron.core.ui.aron.AronTopBar(
-                title, icon = icon?.let { androidx.compose.ui.res.painterResource(it) }, onBack = onBack,
+                title, icon = null, onBack = onBack, // D-PAR-AMO-20: the old AMO bars carry the back arrow and the centred title only (screenshots 14, 17, 21, 41, 42, 45); [icon] is accepted for the callers and not drawn
                 backLabel = androidx.compose.ui.res.stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back), trailing = trailing,
             )
         },

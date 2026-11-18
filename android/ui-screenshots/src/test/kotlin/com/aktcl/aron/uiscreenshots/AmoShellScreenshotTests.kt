@@ -99,7 +99,7 @@ class AmoShellScreenshotTests {
     private val done = open.copy(checkedOutAt = "2026-11-06T11:30:00.000Z", checkOutEnabled = false)
 
     @Composable private fun Attendance(st: com.aktcl.aron.feature.attendance.AttendanceState) = ParityFrame(
-        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance,
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_attendance), null,
     ) {
         com.aktcl.aron.feature.attendance.AttendanceContent(st, "17:00", {}, {}, onRefreshFix = {}, nowIso = now, userTitle = "AMO-Dariapur (amo5864)", userSubtitle = "Dariapur AMO, 2026-11-06", amoStyle = true)
     }
@@ -133,7 +133,7 @@ class AmoShellScreenshotTests {
         com.aktcl.aron.feature.stock.CategoryTotal("cigarette", 600), com.aktcl.aron.feature.stock.CategoryTotal("lighter", 400), com.aktcl.aron.feature.stock.CategoryTotal("match", 400),
     )
     @Composable private fun Stock(connected: Boolean, saved: Boolean) = ParityFrame(
-        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = connected,
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_stock), null, printerConnected = connected,
     ) {
         com.aktcl.aron.feature.stock.StockContent(
             stockRows, stockTotals, if (saved) com.aktcl.aron.feature.stock.StockMessage.SAVED else null, slipNotPrinted = saved,
