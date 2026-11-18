@@ -85,16 +85,30 @@ object BundleProgrammes {
         val assignments = if (asthaIds.isEmpty()) Capped(emptyList(), false) else giftAssignments(h, asthaIds, outlets, q).also { if (it.truncated) cut += "gift_assignments" }
         val pending = if ("campaign" in kinds) pendingGiftVerifications(h, outlets, date).also { if (it.truncated) cut += "pending_gift_verifications" } else Capped(emptyList(), false)
         probe?.at("between", h)
-        val month = date.withDayOfMonth(1); val after = month.plusMonths(1)
-        // The cut (lead ruling, push B2): only the CURRENT month (earlier months are the online read), only outlets enrolled in an active Astha programme, no all-zero row.
+        val month = date.withDayOfMonth(1)
+        // The cut (lead rulings, push B2 and N-1 of sr-programmes-server-needs): the WHOLE current quarter (three months, so the phone's quarter and month chips work offline), only outlets
+        // enrolled in an active Astha programme, no all-zero row. ONE bound of MAX_ASTHA_ROWS rows in all: the CURRENT month is filled first, then the other months in order, and a month that did not
+        // fit (wholly or in part) is NAMED in `astha_truncated_months`, so the phone knows exactly which month is incomplete and reads it online (never a silent cut).
         val enrolled = if (asthaIds.isEmpty()) emptyList() else enrolledOutlets(h, asthaIds, outlets, date)
-        val rows = if (enrolled.isEmpty()) emptyList() else asthaTargets(h, routeIds, enrolled, month, after, Instant.EPOCH, MAX_ASTHA_ROWS + 1, 0, dropEmpty = true, perRowAsOf = false)
-        val truncated = rows.size > MAX_ASTHA_ROWS
-        val sent = rows.take(MAX_ASTHA_ROWS)
+        val cutMonths = mutableListOf<LocalDate>()
+        val byMonth = LinkedHashMap<LocalDate, List<JsonObject>>()
+        if (enrolled.isNotEmpty()) {
+            var remaining = MAX_ASTHA_ROWS
+            for (m in listOf(month) + q.months.filter { it != month }) {
+                // The bound is spent: the month cannot send a row, so a cheap EXISTS on its target rows tells whether it is incomplete (named, never silent) without running the memo
+                // aggregation for one row. It is a superset (a month whose rows would all be dropped as empty is named too: conservative, the phone reads it online).
+                if (remaining == 0) { if (monthHasTargets(h, routeIds, enrolled, m)) cutMonths += m; byMonth[m] = emptyList(); continue }
+                val rows = asthaTargets(h, routeIds, enrolled, m, m.plusMonths(1), Instant.EPOCH, remaining + 1, 0, dropEmpty = true, perRowAsOf = false)
+                if (rows.size > remaining) { cutMonths += m; byMonth[m] = rows.take(remaining); remaining = 0 } else { byMonth[m] = rows; remaining -= rows.size }
+            }
+        }
+        val sent = q.months.flatMap { byMonth[it].orEmpty() }
+        val truncatedMonths = q.months.filter { it in cutMonths }.map { it.toString().substring(0, 7) }
+        val truncated = truncatedMonths.isNotEmpty()
         // `astha_as_of` is the newest memo ingest among the outlets of the rows ACTUALLY SENT (a memo at another outlet of a supervisor's zone moves nothing here), "data as of" for display only.
         val sentOutlets = sent.mapNotNull { (it["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() }.distinct()
-        val asOf = contentAsOf(h, sentOutlets, month, after)
-        if (truncated) log.warn("bundle programmes section: more than {} Astha rows for the user's routes; sent the first {} and set astha_truncated", MAX_ASTHA_ROWS, MAX_ASTHA_ROWS)
+        val asOf = contentAsOf(h, sentOutlets, q.months.first(), q.months.last().plusMonths(1))
+        if (truncated) log.warn("bundle programmes section: more than {} Astha rows for the user's routes in the quarter; sent the first {} and set astha_truncated for {}", MAX_ASTHA_ROWS, sent.size, truncatedMonths)
         if (cut.isNotEmpty()) log.warn("bundle programmes section: cap reached for {}", cut)
         probe?.at("end", h)
         return buildJsonObject {
@@ -104,6 +118,7 @@ object BundleProgrammes {
             put("astha_targets", JsonArray(sent))
             put("astha_as_of", asOf.wire())
             put("astha_truncated", truncated)
+            put("astha_truncated_months", JsonArray(truncatedMonths.map { JsonPrimitive(it) }))
             put("truncated_sections", JsonArray(cut.map { JsonPrimitive(it) }))
             put("gift_assignments", JsonArray(assignments.items))
             put("pending_gift_verifications", JsonArray(pending.items))
@@ -111,26 +126,34 @@ object BundleProgrammes {
     }
 
     /**
-     * Redeemed campaign gifts of [outlets] still short of their Gift Verify photos (SRM-B-77 to 80): per redemption and gift, `qty` units against the photos stored for it (a flagged duplicate does not count,
-     * a voided photo does not count). Redemptions of the last [PENDING_VERIFICATION_DAYS] business days; a partial submit is allowed, so a gift with some photos stays listed with `photos_captured` < `qty`.
+     * Redeemed campaign gifts of [outlets] still short of their Gift Verify photos (SRM-B-77 to 80): per redemption and gift, `qty` units against the units that hold a stored photo (a flagged duplicate does not
+     * count, a voided photo does not count, a photo without a unit or above the CURRENT `qty` does not count). ONE filtered set per row, the distinct units 1..qty, decides everything: the row is listed when that set
+     * is smaller than `qty`, `units_captured` IS that set and `photos_captured` is its size (so a stale photo of a unit above a lowered `qty` can neither hide an open unit nor be offered). Redemptions of the last
+     * [PENDING_VERIFICATION_DAYS] business days; a partial submit is allowed, so a gift with some photos stays listed with `photos_captured` < `qty`.
      */
     internal fun pendingGiftVerifications(h: Handle, outlets: List<Long>, date: LocalDate): Capped<JsonObject> = h.createQuery(
         """
         SELECT * FROM (
-          SELECT r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty,
-                 (SELECT count(*) FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate)::int AS photos
-            FROM app.redemption r
-            JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
-            JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
-           WHERE r.voided_at IS NULL AND r.outlet_id = ANY(CAST(:o AS bigint[])) AND r.business_date > :from AND r.business_date <= :d
-           GROUP BY r.client_uuid, r.outlet_id, l.gift_id
-        ) x WHERE photos < qty ORDER BY ru, gift_id LIMIT :lim
+          SELECT g.ru, g.outlet_id, g.gift_id, g.qty,
+                 COALESCE((SELECT array_agg(DISTINCT p.unit_no::int ORDER BY p.unit_no::int) FROM app.gift_photo p
+                            WHERE p.redemption_client_uuid = g.client_uuid AND p.gift_id = g.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate
+                              AND p.unit_no IS NOT NULL AND p.unit_no::int BETWEEN 1 AND g.qty), '{}') AS units
+            FROM (SELECT r.client_uuid, r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty
+                    FROM app.redemption r
+                    JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
+                    JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
+                   WHERE r.voided_at IS NULL AND r.outlet_id = ANY(CAST(:o AS bigint[])) AND r.business_date > :from AND r.business_date <= :d
+                   GROUP BY r.client_uuid, r.outlet_id, l.gift_id) g
+        ) x WHERE cardinality(units) < qty ORDER BY ru, gift_id LIMIT :lim
         """.trimIndent(),
     ).bindArray("o", Long::class.javaObjectType, outlets).bind("from", date.minusDays(PENDING_VERIFICATION_DAYS)).bind("d", date).bind("lim", MAX_PENDING_VERIFICATIONS + 1)
         .map { rs, _ ->
             buildJsonObject {
                 put("redemption_client_uuid", rs.getString("ru")); put("outlet_id", rs.getLong("outlet_id")); put("gift_id", rs.getLong("gift_id"))
-                put("qty", rs.getInt("qty")); put("photos_captured", rs.getInt("photos"))
+                // S-1 (contract 1.23.0): WHICH units hold a (non-duplicate, non-voided) photo, ascending, each 1..qty: the same set that decided the row is listed; the phone offers exactly the open units.
+                val units = (rs.getArray("units").array as Array<*>).map { (it as Number).toInt() }
+                put("qty", rs.getInt("qty")); put("photos_captured", units.size)
+                put("units_captured", JsonArray(units.map { JsonPrimitive(it) }))
             }
         }.list().capped(MAX_PENDING_VERIFICATIONS)
 
@@ -180,21 +203,21 @@ object BundleProgrammes {
      * The programme's scope is applied PER OUTLET ([ProgrammeScopeSql.outlet]): an AMO who covers two zones gets no balance for an outlet outside the programme's scope.
      */
     fun loyalty(h: Handle, outlets: List<Long>, programmeIds: List<Long>, date: LocalDate, limit: Int = MAX_BALANCES): Capped<JsonObject> {
-        class Pair3(val outlet: Long, val programme: Long, val label: String?)
+        class Pair3(val outlet: Long, val programme: Long, val label: String?, val tier: String? = null)
         val pairs = h.createQuery(
             """
-            SELECT e.outlet_id, e.programme_id, e.league_label
+            SELECT e.outlet_id, e.programme_id, e.league_label, e.tier_code
             FROM app.programme_enrolment e
             JOIN app.outlet o ON o.id = e.outlet_id
             JOIN app.programme pp ON pp.id = e.programme_id LEFT JOIN app.programme_version pv ON pv.id = pp.current_version_id
             WHERE e.programme_id = ANY(CAST(:pids AS bigint[])) AND e.outlet_id = ANY(CAST(:outlets AS bigint[])) AND e.valid_from <= :d AND (e.valid_to IS NULL OR e.valid_to > :d)
               AND ${ProgrammeScopeSql.outlet("pv", "o")}
-            GROUP BY e.outlet_id, e.programme_id, e.league_label
+            GROUP BY e.outlet_id, e.programme_id, e.league_label, e.tier_code
             ORDER BY e.programme_id, e.outlet_id
             LIMIT :limit
             """.trimIndent(),
         ).bind("d", date).bind("limit", limit + 1).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets)
-            .map { rs, _ -> Pair3(rs.getLong(1), rs.getLong(2), rs.getString(3)) }.list()
+            .map { rs, _ -> Pair3(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4)) }.list()
         if (pairs.isEmpty()) return Capped(emptyList(), false)
         val kept = pairs.take(limit)
         val rowsOf = HashMap<Pair<Long, Long>, MutableList<LoyaltyLedger.Row>>()
@@ -217,7 +240,7 @@ object BundleProgrammes {
             val balance = rows.sumOf { it.points.toLong() }
             val next = LoyaltyLedger.upcoming(rows, date)
             buildJsonObject {
-                put("outlet_id", p.outlet); put("programme_id", p.programme); put("league_label", p.label)
+                put("outlet_id", p.outlet); put("programme_id", p.programme); put("league_label", p.label); put("tier_code", p.tier)
                 put("balance_points", balance); put("overdrawn", balance < 0); put("expiring_points", (next?.second ?: 0L).coerceIn(0, maxOf(balance, 0)))
                 put("expiry_date", next?.first?.toString()); put("as_of_date", date.toString())
             }
@@ -244,6 +267,11 @@ object BundleProgrammes {
      * content gives equal bytes and a rebuild moves the bundle version only when a memo arrived (a wall-clock `as_of` would mint a new snapshot on every build). The
      * Dhaka start of the MONTH when there is none. Display only; the achievement rule (what the phone adds) is the ACHIEVEMENT RULE of the contract's `ProgrammesSection`, stated once there.
      */
+    /** True when [month] has any Astha target row for these routes and enrolled outlets (the same filter as [asthaTargets], without the achievement). */
+    internal fun monthHasTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, month: LocalDate): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM app.astha_target WHERE route_id = ANY(CAST(:routes AS bigint[])) AND month >= :first AND month < :after AND (outlet_id IS NULL OR outlet_id = ANY(CAST(:outlets AS bigint[]))))",
+    ).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).bind("first", month).bind("after", month.plusMonths(1)).mapTo(Boolean::class.java).one()
+
     internal fun contentAsOf(h: Handle, outlets: List<Long>, first: LocalDate, after: LocalDate): Instant {
         return h.createQuery(
             "SELECT max(GREATEST(received_at, status_changed_at)) FROM app.memo WHERE business_date >= :first AND business_date < :after AND outlet_id = ANY(CAST(:outlets AS bigint[]))",
@@ -287,9 +315,10 @@ object BundleProgrammes {
               FROM app.memo m WHERE m.status = 'active' AND m.voided_at IS NULL AND m.memo_kind = 'sale' AND m.business_date >= :first AND m.business_date < :after
                 AND m.outlet_id = ANY(CAST(:outlets AS bigint[])) AND NOT EXISTS (SELECT 1 FROM app.memo e WHERE e.supersedes_client_uuid = m.client_uuid AND e.status = 'active' AND e.voided_at IS NULL) GROUP BY 1, 2
             )
-            SELECT t.route_id, t.outlet_id, t.brand_id, t.month, t.std_target::text AS std_target, t.memo_target, t.value_target_mtk,
+            SELECT t.route_id, t.outlet_id, t.brand_id, pb.name AS brand_name, pb.name_bn AS brand_name_bn, pb.status AS brand_status, t.month, t.std_target::text AS std_target, t.memo_target, t.value_target_mtk,
                    COALESCE(s.std, 0)::text AS std_achieved, COALESCE(s.value_mtk, 0) AS value_achieved, COALESCE(s.packs, '[]') AS packs, COALESCE(mm.n, 0) AS memo_achieved
             FROM t
+            LEFT JOIN app.product_node pb ON pb.id = t.brand_id   -- the brand's display name whatever its status (an inactive brand is not in the bundle's product nodes)
             LEFT JOIN sales s ON t.brand_id IS NOT NULL AND s.outlet_id = t.outlet_id AND s.month = t.month AND s.brand_id = t.brand_id
             LEFT JOIN memos mm ON t.brand_id IS NULL AND mm.outlet_id = t.outlet_id AND mm.month = t.month
             WHERE (NOT CAST(:dropEmpty AS boolean) OR t.std_target > 0 OR t.memo_target > 0 OR t.value_target_mtk > 0 OR COALESCE(s.std, 0) > 0 OR COALESCE(s.value_mtk, 0) > 0 OR COALESCE(mm.n, 0) > 0)
@@ -300,6 +329,8 @@ object BundleProgrammes {
             buildJsonObject {
                 put("route_id", rs.getLong("route_id")); put("outlet_id", rs.getObject("outlet_id")?.let { (it as Number).toLong() })
                 put("brand_id", rs.getObject("brand_id")?.let { (it as Number).toLong() })
+                // The brand's name is sent ONLY for a brand that is not an active product node (the bundle's `products.nodes` carry the active ones), so a normal row costs no bytes and the phone never shows an id.
+                if (rs.getObject("brand_id") != null && rs.getString("brand_status") != "active") { put("brand_name", rs.getString("brand_name")); rs.getString("brand_name_bn")?.let { put("brand_name_bn", it) } }
                 put("month", rs.getObject("month", LocalDate::class.java).toString().substring(0, 7))
                 put("std_target", rs.getString("std_target")); put("std_achieved", rs.getString("std_achieved"))
                 put("memo_target", rs.getInt("memo_target")); put("memo_achieved", rs.getInt("memo_achieved"))

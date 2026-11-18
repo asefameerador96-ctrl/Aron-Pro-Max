@@ -2,6 +2,11 @@
 
 Branch `lane/android-gates-2` (from the integration branch 29e8d86f3). Closes the ten follow-ups of `docs/reviews/android-gates-final-pass-2026-11-18.md`. Decisions: D-AGATE-22 onward. Room stays 10.
 
+## KNOWN, RECORDED (D-AGATE-27)
+- `AmoRecordWriter.decideRequest` and `commitOutletRequest` now ask the Developer options gate BEFORE the already-decided check, the fix read and the photo claim. `ActionGate.requireOpen()` throws `GateClosedException`, which is a CancellationException: the coroutine ends quietly and `ActionGate.onClosed` puts the block screen up at once (read from `ActionGate.kt`; not walked on a device). It is not a generic "save failed". Device walk: with Developer options on, press the verify button of an outlet request: expect the block screen, no error text.
+- `AmoRecordWriter.saveSurveyLocked`: its REPLAY branch (answers already stored, only the photos are claimed again) claims photos without asking the gate. Pre-existing and harmless for data (nothing new is written, the claim is idempotent); recorded here, not changed in this round.
+- The writer discovery scan (`EveryWriterIsGatedTest`) is a heuristic: it finds files that use `withTransaction` or an `outbox...insert`; a direct DAO insert without a transaction and without the outbox is NOT discovered.
+
 ## DEVICE WALK: steps a person can follow on a phone (SR and AMO apps; labels as shown in Bangla)
 Use a test phone with a test login (an SR for the SR steps, an AMO for the AMO steps). Do each part with the network OFF first (airplane mode), then ON. Say "OK" only if the result is exactly as written.
 

@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.app.TsoWorld.Companion.json
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -75,19 +76,49 @@ class ProgrammesBundleSizeTest {
                 exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$month', $route, o.id, b.id, 100, 0, 250000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id OFFSET $skip LIMIT $count) b WHERE o.route_id = $route AND o.status = 'active'")
             }
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
-            // A previous-month row per outlet and an all-zero row per outlet: neither may reach the bundle.
-            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '${month.minusMonths(1)}', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
+            // A row of the month BEFORE the quarter (since 1.22.0 the bundle carries the whole quarter, so the cut month must lie outside it) per outlet and an all-zero row per outlet: neither may reach the bundle.
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '${com.aktcl.aron.backend.platform.AsthaQuarter.of(month, 1).months.first().minusMonths(1)}', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, (SELECT id FROM app.product_node WHERE code = 'SZB-55'), 0, 0 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
 
             // Realistic: 6 brands with a target per outlet (+ the memo-target row) for the month.
             targets(0, 6); val realistic = measureNow("realistic (6 brands with targets, current month)")
-            assertEquals(120 * 7, realistic.rows, "120 outlets x (6 brands + the memo row); the previous-month and all-zero rows are cut")
+            assertEquals(120 * 7, realistic.rows, "120 outlets x (6 brands + the memo row); the row before the quarter and the all-zero rows are cut")
             // The lead's budget (docs/04): the whole programmes section at most 300 KB raw and 32 KB gzip for a 120-outlet SR.
             assertTrue(realistic.sectionRaw <= 300 * 1024, "section raw ${realistic.sectionRaw} B over 300 KB")
             assertTrue(realistic.sectionGz <= 32 * 1024, "section gzip ${realistic.sectionGz} B over 32 KB")
+            // N-9: the user's OWN geography names, once per bundle (not per outlet): wing, division, territory, zone, Bangla and English, and the zone is the user's zone
+            run {
+                val doc = json(bundleText()); val user = doc["user"]!!.jsonObject; val geo = user["geography"]!!.jsonObject
+                assertEquals(setOf("wing", "division", "territory", "zone"), geo.keys)
+                for ((k, v) in geo) { val n = v.jsonObject; assertEquals(setOf("id", "code", "name", "name_bn"), n.keys, k); assertTrue(n["name"]!!.jsonPrimitive.content.isNotBlank(), k) }
+                assertEquals(user["zone_id"]!!.jsonPrimitive.content, geo["zone"]!!.jsonObject["id"]!!.jsonPrimitive.content, "the zone is the user's own zone"); assertEquals(user["territory_id"]!!.jsonPrimitive.content, geo["territory"]!!.jsonObject["id"]!!.jsonPrimitive.content)
+            }
+            // N-1: the current month (840 rows) fits; ANOTHER month of the quarter then overflows the ONE bound: only that month is named, the current month stays complete.
+            val otherMonth = com.aktcl.aron.backend.platform.AsthaQuarter.of(month, 1).months.first { it != month }
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$otherMonth', $route, o.id, b.id, 50, 0, 1000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id LIMIT 3) b WHERE o.route_id = $route AND o.status = 'active'")
+            val otherCut = measureNow("current month complete, another month of the quarter over the bound")
+            assertEquals(BundleProgrammesBound, otherCut.rows); assertTrue(otherCut.truncated); assertEquals(listOf(otherMonth.toString().substring(0, 7)), otherCut.truncatedMonths, "only the month that did not fit is named")
+            exec("DELETE FROM app.astha_target WHERE month = DATE '$otherMonth' AND programme_id = $astha AND brand_id IS NOT NULL")
+            // Push-B review low: a REALISTIC three-month quarter (6 brands x 120 outlets in EVERY month = 2,520 rows with the memo rows of the current month). Truncation is the normal case here: the current
+            // month (840 rows) is whole, the first other month gets the 160 rows that are left and is NAMED, the last other month is named by the cheap EXISTS (the bound is spent). The budget holds.
+            val others = com.aktcl.aron.backend.platform.AsthaQuarter.of(month, 1).months.filter { it != month }
+            for (m in others) exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$m', $route, o.id, b.id, 50, 0, 1000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id LIMIT 6) b WHERE o.route_id = $route AND o.status = 'active'")
+            val three = measureNow("realistic three-month quarter (6 brands, every month)")
+            assertEquals(BundleProgrammesBound, three.rows); assertTrue(three.truncated)
+            assertEquals(others.map { it.toString().substring(0, 7) }, three.truncatedMonths, "both other months are named")
+            assertEquals(setOf(month.toString().substring(0, 7), others.first().toString().substring(0, 7)), three.monthsSent, "the current month whole, the first other month with what is left, the last other month sends nothing")
+            assertTrue(three.sectionRaw <= 300 * 1024 && three.sectionGz <= 32 * 1024, "a realistic quarter stays in budget: ${three.sectionRaw} B raw, ${three.sectionGz} B gzip")
+            exec("DELETE FROM app.astha_target WHERE month IN (${others.joinToString(",") { "DATE '$it'" }}) AND programme_id = $astha AND brand_id IS NOT NULL")
             // Over the bound: 54 more brands would be 6,500+ rows. The builder cuts at 1,000 rows, loudly: the flag is true, never a silent cut.
             targets(6, 48); val capped = measureNow("over the bound (54 brands with targets)")
             assertEquals(BundleProgrammesBound, capped.rows); assertTrue(capped.truncated, "astha_truncated must be true")
+            // N-1: the bound is ONE for the quarter, the CURRENT month fills first; the months that did not fit in whole or in part are NAMED (here the current month itself overflows, and the other months of the quarter are named too)
+            assertEquals(listOf(month.toString().substring(0, 7)), capped.truncatedMonths, "only the incomplete current month is named (the other months have no target rows here)")
+            assertEquals(setOf(month.toString().substring(0, 7)), capped.monthsSent, "no row of another month is sent when the current month alone fills the bound"); assertTrue(realistic.truncatedMonths.isEmpty())
+            // With a target row in another month the spent bound still NAMES that month (EXISTS, no memo aggregation) and sends nothing of it.
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '${others.first()}', $route, o.id, NULL, 0, 4 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active' LIMIT 1")
+            measureNow("current month over the bound, one row in another month").also { assertEquals(listOf(month, others.first()).map { it.toString().substring(0, 7) }.sorted(), it.truncatedMonths.sorted()); assertEquals(setOf(month.toString().substring(0, 7)), it.monthsSent) }
+            exec("DELETE FROM app.astha_target WHERE month = DATE '${others.first()}' AND programme_id = $astha")
             assertTrue(!realistic.truncated)
             assertTrue(capped.sectionRaw <= 300 * 1024 && capped.sectionGz <= 32 * 1024, "even cut at the bound the section stays in budget: ${capped.sectionRaw} B raw, ${capped.sectionGz} B gzip")
             // Equal content, equal version: with no memo arriving in between, a rebuild is the same bundle version (a wall-clock `as_of` in the target rows would make every
@@ -99,14 +130,14 @@ class ProgrammesBundleSizeTest {
 
     private val BundleProgrammesBound = com.aktcl.aron.backend.sync.BundleProgrammes.MAX_ASTHA_ROWS
 
-    private class Size(val rows: Int, val sectionRaw: Int, val sectionGz: Int, val restRaw: Int, val restGz: Int, val truncated: Boolean)
+    private class Size(val rows: Int, val sectionRaw: Int, val sectionGz: Int, val restRaw: Int, val restGz: Int, val truncated: Boolean, val truncatedMonths: List<String> = emptyList(), val monthsSent: Set<String> = emptySet())
 
     private suspend fun io.ktor.client.HttpClient.measureNow(label: String): Size {
         val doc = json(bundleText())
         val section = doc["programmes"]!!.jsonObject
         val rest = kotlinx.serialization.json.JsonObject(doc.filterKeys { it != "programmes" }).toString()
         val rows = section["astha_targets"]!!.jsonArray.size
-        val size = Size(rows, section.toString().length, gz(section.toString()), rest.length, gz(rest), section["astha_truncated"]?.toString() == "true")
+        val size = Size(rows, section.toString().length, gz(section.toString()), rest.length, gz(rest), section["astha_truncated"]?.toString() == "true", section["astha_truncated_months"]!!.jsonArray.map { it.jsonPrimitive.content }, section["astha_targets"]!!.jsonArray.map { it.jsonObject["month"]!!.jsonPrimitive.content }.toSet())
         report.appendLine("$label: astha_targets=$rows loyalty=${section["loyalty"]!!.jsonArray.size} gifts=${section["gifts"]!!.jsonArray.size} assignments=${section["gift_assignments"]!!.jsonArray.size}; " +
             "programmes section raw ${size.sectionRaw} B, gzip ${size.sectionGz} B; rest of the bundle raw ${size.restRaw} B, gzip ${size.restGz} B; total gzip ${size.sectionGz + size.restGz} B (sum of the parts)")
         return size

@@ -34,6 +34,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.jdbi.v3.core.Handle
 import java.math.BigDecimal
@@ -94,6 +96,8 @@ data class BatchResultOut(val batch_uuid: String, val inserted: Int, val updated
 
 class AdminLoyaltyDeps(
     val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val blob: BlobSasIssuer = UnconfiguredBlobSasIssuer, val clock: AronClock = AronClock.SYSTEM,
+    /** Test seam only (null in production): called inside the adjustment transaction at "before_pair_lock", "after_balance_read" and "before_insert", so a test can make transactions really overlap with a latch. */
+    val adjustHook: ((stage: String, h: Handle) -> Unit)? = null,
 )
 
 private val LOY_READERS = setOf(Role.SUPERADMIN, Role.ADMIN, Role.NATIONAL, Role.TOP, Role.BRAND, Role.WM, Role.DMO, Role.TSO)
@@ -111,6 +115,8 @@ private val LOY_PRODUCT_LEVELS = setOf("category", "brand", "variant", "sku")
 private val LOY_SCOPE_TYPES = setOf("wing", "division", "territory", "zone", "route", "channel", "sub_channel")
 private const val LOY_MODULE = "loyalty"
 private const val MAX_BATCH_ROWS = 20_000
+/** Debit rows (ALL of them, with or without allow_overdraw) per adjustment file: each debit outlet needs its pair lock, and advisory locks live in the shared lock table (D-LOY-API-38, D-LOY-API-40). Credits are not capped. */
+private const val MAX_DEBIT_ROWS = 2_000
 private const val MAX_LIST = 500
 
 private enum class Need { READ, READ_ENROLMENTS, WRITE, SUPER }
@@ -126,6 +132,9 @@ fun Route.adminLoyaltyRoutes(d: AdminLoyaltyDeps) {
         post("/admin/programmes/{id}/status") { respondProgramme(call, setProgrammeStatus(call, d), HttpStatusCode.OK) }
         get("/admin/programmes/{id}/enrolments") { call.respond(listEnrolments(call, d)) }
         put("/admin/programmes/{id}/enrolments") { call.respond(putEnrolments(call, d)) }
+        post("/admin/programmes/{id}/adjustments") { val (o, code) = postAdjustment(call, d); call.respond(code, o) }
+        put("/admin/programmes/{id}/adjustments") { call.respond(putAdjustments(call, d)) }
+        get("/admin/programmes/{id}/ledger") { call.respond(listLedger(call, d)) }
         get("/admin/gifts") { call.respond(listGifts(call, d)) }
         post("/admin/gifts") { val (g, code) = createGift(call, d); respondGift(call, g, code) }
         get("/admin/gifts/{id}") { respondGift(call, getGift(call, d), HttpStatusCode.OK) }
@@ -150,7 +159,7 @@ private suspend fun respondGift(call: ApplicationCall, g: GiftOut, code: HttpSta
 private fun loyForbidden(what: String) = ApiProblem(ProblemCode.ERR_FORBIDDEN, what)
 
 /** Portal only, role-gated, and the ADMIN module grant judged here too when the grants are live (the guard judged it first). */
-private fun ApplicationCall.loyaltyPrincipal(need: Need): AronPrincipal {
+private fun ApplicationCall.loyaltyPrincipal(need: Need, strict: Boolean = false): AronPrincipal {
     val p = principal
     if (p.isPhone) throw loyForbidden("the loyalty programmes are a portal screen")
     val allowed = when (need) { Need.READ -> LOY_READERS; Need.READ_ENROLMENTS -> LOY_ENROLMENT_READERS; Need.WRITE -> LOY_WRITERS; Need.SUPER -> setOf(Role.SUPERADMIN) }
@@ -162,6 +171,8 @@ private fun ApplicationCall.loyaltyPrincipal(need: Need): AronPrincipal {
             Need.SUPER -> "only a SUPERADMIN may do this (activation and the gift catalogue)"
         },
     )
+    // [strict] (the points adjustment, L-A12 review 11): an ADMIN token WITHOUT the `modules` claim (grants not live) fails CLOSED here, where the older writers let it through (the guard judged the grant first).
+    if (strict && p.role == Role.ADMIN && p.modules == null) throw loyForbidden("module grants are not available for this session")
     if (p.role == Role.ADMIN) p.modules?.let { m ->
         val a = m[LOY_MODULE] ?: throw loyForbidden("no access to module $LOY_MODULE")
         if (need == Need.WRITE && a != "w") throw loyForbidden("read-only access to module $LOY_MODULE")
@@ -971,6 +982,307 @@ private suspend fun updateGift(call: ApplicationCall, d: AdminLoyaltyDeps): Gift
                 .bind("g", id).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("s", giftSnapshotJson(after, nextAsset)).bind("rv", after.version).bind("a", p.userId).execute()
             AuditWriter.write(h, p, "gift", id.toString(), "update", giftAudit(cur, curAsset), JsonObject(giftAudit(after, nextAsset) + mapOf("request_uuid" to JsonPrimitive(uuid.toString()))), reason, call.requestId)
             after
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------ points adjustments (D-LOY-API-35)
+// The portal's way to load or correct points: one signed `adjustment` row of app.loyalty_ledger per outlet and programme (no earning rule is invented: the amount is
+// whatever the admin enters, with a reason). Idempotent by the client's id with NO new table: `source_id` of the ledger row IS the request uuid (single) or
+// "<batch_uuid>:<row index>" (bulk), and the ledger is UNIQUE on (source_type, source_id); a replay is told from a reused id by comparing the stored row. Writers:
+// SUPERADMIN and ADMIN with the `loyalty` write grant. Scope: the programme must be visible to the caller and its CURRENT VERSION's scope must contain the outlet
+// (ProgrammeScopeSql.outlet, the rule of the bundle's balances: points on an outlet outside the scope would never be shown). The audit row (hash-chained by the
+// database) is written in the same transaction. The ledger job needs no change: it finds an adjustment by id window and, for a late commit, by the daily sweep.
+
+private const val ADJ_SOURCE = "adjustment"
+private const val MAX_ADJ_POINTS = 1_000_000L
+private const val MAX_ADJ_ERRORS = 200
+
+private class AdjRow(val outlet: Long, val points: Int, val expires: LocalDate?)
+private class AdjErr(val row: Int, val column: String, val code: String, val balance: Long? = null)
+
+private fun adjRows(o: JsonObject, bulk: Boolean): Pair<List<AdjRow?>, List<AdjErr>> {
+    val a = o["rows"] as? JsonArray ?: adminBad("body.rows", "required")
+    if (a.isEmpty() || a.size > MAX_BATCH_ROWS) adminBad("body.rows", "out_of_range")
+    val errs = ArrayList<AdjErr>()
+    val seen = HashSet<Long>()
+    val rows = a.mapIndexed { i, e ->
+        try {
+            val r = e as? JsonObject ?: adminBad("body.rows[$i]", "not_an_object")
+            atElement("body.rows[$i]") {
+                r.only(setOf("outlet_id", "points", "expires_on"))
+                val row = adjRow(r)
+                if (bulk && !seen.add(row.outlet)) adminBad("body.rows[$i].outlet_id", "duplicate")
+                row
+            }
+        } catch (p: ApiProblem) {
+            val ptr = p.errors.firstOrNull()?.pointer ?: "body.rows[$i]"
+            errs += AdjErr(i, if (ptr.endsWith("]")) "row" else ptr.substringAfterLast('.'), p.errors.firstOrNull()?.code ?: "invalid_value"); null
+        }
+    }
+    return rows to errs
+}
+
+private fun adjAllow(o: JsonObject): Boolean = o["allow_overdraw"]?.let { (it as? JsonPrimitive)?.takeIf { p -> !p.isString }?.content.let { c -> when (c) { "true" -> true; "false" -> false; else -> adminBad("body.allow_overdraw", "not_a_boolean") } } } ?: false
+
+private fun adjRow(r: JsonObject): AdjRow {
+    val outlet = r.id("outlet_id", required = true)!!
+    val points = r.int("points", -MAX_ADJ_POINTS, MAX_ADJ_POINTS, required = true)!!
+    if (points == 0) adminBad("body.points", "zero")
+    val exp = r.ldate("expires_on")
+    if (exp != null && points < 0) adminBad("body.expires_on", "debit_has_no_expiry")
+    return AdjRow(outlet, points, exp)
+}
+
+/** The programme's current version id, when the programme is visible to the caller; a programme the caller cannot see is 404 (never told apart from a missing one). */
+private class AdjProg(val status: String, val versionId: Long?, val kind: String)
+
+private fun adjProgramme(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, id: Long, lock: Boolean = true): AdjProg {
+    val vis = loyVisSql(loyVisibility(h, p, d), "v")
+    return h.createQuery("SELECT p.status, p.current_version_id, p.kind FROM app.programme p LEFT JOIN app.programme_version v ON v.id = p.current_version_id WHERE p.id = :o" + (vis?.let { " AND " + it.sql } ?: "") + (if (lock) " FOR SHARE OF p" else ""))
+        .bind("o", id).bindLVis(vis).map { rs, _ -> AdjProg(rs.getString(1), rs.getObject(2) as Long?, rs.getString(3)) }.findOne().orElse(null) ?: throw noProgramme()
+}
+
+/** Outlets that exist and, among them, those inside the programme version's scope AND the caller's own reach (a writer's reach is national today; a narrower one is honoured). */
+private class AdjOutlets(val known: Set<Long>, val inScope: Set<Long>, val enrolled: Set<Long>)
+
+private fun adjOutlets(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, prog: AdjProg, programme: Long, ids: List<Long>): AdjOutlets {
+    if (ids.isEmpty()) return AdjOutlets(emptySet(), emptySet(), emptySet())
+    val known = h.createQuery("SELECT id FROM app.outlet WHERE id IN (<ids>)").bindList("ids", ids).mapTo(Long::class.java).list().toSet()
+    val geo = loyVisibility(h, p, d)
+    val sql = StringBuilder("SELECT o.id FROM app.outlet o LEFT JOIN app.programme_version v ON v.id = :vid WHERE o.id IN (<ids>) AND " + com.aktcl.aron.backend.platform.ProgrammeScopeSql.outlet("v", "o"))
+    if (geo === LVis.Nobody) sql.append(" AND FALSE") else if (geo is LVis.Geo) sql.append(" AND (o.zone_id IN (<vz>) OR o.route_id IN (<vr>))")
+    val q = h.createQuery(sql.toString()).bind("vid", prog.versionId as Any?).bindList("ids", ids)
+    if (geo is LVis.Geo) { q.bindList("vz", geo.scope.reachZones.ifEmpty { listOf(-1L) }); q.bindList("vr", geo.scope.routes.ifEmpty { listOf(-1L) }) }
+    val scoped = q.mapTo(Long::class.java).list().toSet()
+    // Enrolled TODAY, for EVERY kind (the bundle's loyalty[] is built from programme_enrolment only, a campaign included): points on an outlet the phone never shows would be dead.
+    val day = today(d)
+    val enrolled = h.createQuery("SELECT DISTINCT outlet_id FROM app.programme_enrolment WHERE programme_id = :p AND outlet_id IN (<ids>) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
+        .bind("p", programme).bindList("ids", ids).bind("d", day).mapTo(Long::class.java).list().toSet()
+    return AdjOutlets(known, scoped, enrolled)
+}
+
+/**
+ * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key `loyalty:<outlet>:<programme>` and call), for the outlets of EVERY debit row (with or without allow_overdraw: the guard AND the
+ * 'overdraw' flag and balance_before are decided under it), in ONE statement over the sorted array (two bulks, and the job, never wait in a cycle). Credits take none (a credit racing a debit only
+ * makes the debit's check more conservative). Advisory locks live in the shared lock table, so the caller caps the number (MAX_DEBIT_ROWS); SQLSTATE 53200 is still mapped to a clean refusal (adjDb).
+ */
+private fun adjLockPairs(h: Handle, programme: Long, outlets: Collection<Long>) {
+    val sorted = outlets.distinct().sorted()
+    if (sorted.isEmpty()) return
+    h.createQuery("SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended('loyalty:' || s.o || ':' || CAST(:p AS bigint), 0)) FROM (SELECT o FROM unnest(CAST(:o AS bigint[])) AS u(o) ORDER BY o OFFSET 0) s) x")
+        .bind("p", programme).bindArray("o", Long::class.javaObjectType, sorted).mapTo(Long::class.java).one()
+}
+
+/** The two per-uuid locks in ONE fixed order in both handlers (a uuid is a request or a batch, never both): batch first, then request. */
+private fun adjLockUuid(h: Handle, uuid: UUID) {
+    lockRequest(h, uuid, "adjustment_batch")
+    lockRequest(h, uuid, "adjustment_req")
+}
+
+/** mapDb plus SQLSTATE 53200 (the shared lock table is full: another load holds many locks) as a clean 503, never a 500. */
+private fun <T> adjDb(block: () -> T): T = mapDb {
+    try { block() } catch (e: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
+        if ((e.cause as? java.sql.SQLException)?.sqlState == "53200")
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the database has no free lock slots right now; try again shortly or send a smaller file")
+        throw e
+    }
+}
+
+/**
+ * The balance the phone shows for the pair: every ledger row MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (the rule of `loyalty[].balance_points`).
+ * An adjustment that would take it below zero needs `allow_overdraw` (the owner has not decided the overdraw policy).
+ */
+private fun adjBalances(h: Handle, programme: Long, outlets: List<Long>): Map<Long, Long> {
+    if (outlets.isEmpty()) return emptyMap()
+    // ONE statement (one snapshot): the ledger sum minus the unposted redemptions, with the pair locks held by the caller so the ledger job cannot move rows between two reads.
+    return h.createQuery(
+        "SELECT o.id, COALESCE((SELECT sum(l.points) FROM app.loyalty_ledger l WHERE l.programme_id = :p AND l.outlet_id = o.id), 0) - " +
+            "COALESCE((SELECT sum(r.points_total) FROM app.redemption r WHERE r.programme_id = :p AND r.outlet_id = o.id AND r.voided_at IS NULL " +
+            "AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text)), 0) " +
+            "FROM unnest(CAST(:o AS bigint[])) AS o(id)",
+    ).bind("p", programme).bindArray("o", Long::class.javaObjectType, outlets).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+}
+
+private fun overdraw(balance: Long, points: Int, pointer: String) = ApiProblem(
+    ProblemCode.ERR_CONFLICT, "this debit would take the balance below zero; send allow_overdraw: true to allow it", errors = listOf(FieldError(pointer, "would_overdraw")),
+    context = mapOf("balance_points" to JsonPrimitive(balance), "points" to JsonPrimitive(points)),
+)
+
+private fun adjLedgerJson(rs: java.sql.ResultSet): JsonObject = buildJsonObject {
+    put("ledger_id", rs.getLong("id")); put("source_type", rs.getString("source_type")); put("source_id", rs.getString("source_id"))
+    put("outlet_id", rs.getLong("outlet_id")); put("programme_id", rs.getLong("programme_id")); put("points", rs.getInt("points"))
+    put("business_date", rs.getObject("business_date", LocalDate::class.java).toString()); put("expires_on", rs.getObject("expires_on", LocalDate::class.java)?.toString())
+    put("flags", buildJsonArray { (rs.getArray("flags").array as Array<*>).forEach { add(JsonPrimitive(it.toString())) } })
+    put("reason", rs.getString("reason")); put("created_at", rs.getObject("created_at", OffsetDateTime::class.java).toInstant().wire())
+}
+
+private const val ADJ_SELECT = "SELECT l.id, l.source_type, l.source_id, l.outlet_id, l.programme_id, l.points, l.business_date, l.expires_on, l.flags, l.created_at, " +
+    "(SELECT a.reason FROM app.audit_log a WHERE a.entity = 'programme_adjustment' AND a.entity_id = split_part(l.source_id, ':', 1) AND l.source_type = 'adjustment' ORDER BY a.id LIMIT 1) AS reason " +
+    "FROM app.loyalty_ledger l"
+
+private fun posted0(rows: List<AdjRow?>, i: Int): Int = rows[i]!!.points
+
+private fun adjErrorProblem(errs: List<AdjErr>) = ApiProblem(ProblemCode.ERR_VALIDATION, "invalid body", errors = errs.take(MAX_ADJ_ERRORS).map { FieldError(if (it.column == "row") "body.rows[${it.row}]" else "body.rows[${it.row}].${it.column}", it.code) })
+
+private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): Pair<JsonObject, HttpStatusCode> {
+    val p = call.loyaltyPrincipal(Need.WRITE, strict = true)
+    val id = call.pathId()
+    val o = call.bodyObject()
+    o.only(setOf("request_uuid", "outlet_id", "points", "reason", "expires_on", "allow_overdraw"))
+    val request = loyRequestUuid(o)
+    val reason = loyReason(o, "reason")
+    val row = adjRow(o)
+    val allow = adjAllow(o)
+    val today = today(d)
+    return adjDb {
+        d.db.jdbi.inTransaction<Pair<JsonObject, HttpStatusCode>, Exception> { h ->
+            adjLockUuid(h, request)                            // one uuid is either a request or a batch, never both (judged below); the two locks in one fixed order
+            val prog = adjProgramme(h, p, d, id)               // 404: a programme outside the caller's reach is never told apart from a missing one
+            // A genuine resend gets its stored row FIRST (the scope may have narrowed since; an ended programme still answers its own resend).
+            val prior = h.createQuery("$ADJ_SELECT WHERE l.source_type = :t AND l.source_id = :s").bind("t", ADJ_SOURCE).bind("s", request.toString()).map { rs, _ -> adjLedgerJson(rs) }.findOne().orElse(null)
+            if (prior != null) {
+                val same = prior.getValue("programme_id").jsonPrimitive.content.toLong() == id && prior.getValue("outlet_id").jsonPrimitive.content.toLong() == row.outlet &&
+                    prior.getValue("points").jsonPrimitive.content.toInt() == row.points && prior["expires_on"]?.jsonPrimitive?.contentOrNull == row.expires?.toString()
+                if (!same) throw loyConflict("request_uuid already used for a different adjustment")
+                return@inTransaction prior to HttpStatusCode.OK
+            }
+            // A batch's rows are `<uuid>:0..n-1` and all-or-nothing, so row 0 is always there: an EQUALITY probe on the unique index (no LIKE prefix, which cannot seek under a non-C collation).
+            if (h.createQuery("SELECT 1 FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id = :s").bind("s", "$request:0").mapTo(Int::class.java).findOne().isPresent)
+                throw loyConflict("this uuid is already a batch_uuid")
+            val ao = adjOutlets(h, p, d, prog, id, listOf(row.outlet))
+            if (row.outlet !in ao.known) adminBad("body.outlet_id", "not_found")
+            if (row.outlet !in ao.inScope) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "outlet ${row.outlet} is outside the programme's scope or your reach", errors = listOf(FieldError("body.outlet_id", "out_of_scope")))
+            if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
+            if (row.outlet !in ao.enrolled) adminBad("body.outlet_id", "not_enrolled")
+            if (row.expires != null && row.expires.isBefore(today)) adminBad("body.expires_on", "in_the_past")
+            // A DEBIT reads the balance under the job's pair lock and in ONE statement, so two admin debits (two admins, a single beside a bulk) and a ledger-job pass cannot both pass the guard
+            // (a phone redemption arriving at the same instant is not serialised with it: the ledger job's next pass and the 'overdraw' flag show it). A credit needs no lock.
+            if (row.points < 0) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, listOf(row.outlet)) }
+            val before = adjBalances(h, id, listOf(row.outlet)).getValue(row.outlet)
+            d.adjustHook?.invoke("after_balance_read", h)
+            val below = row.points < 0 && before + row.points < 0
+            if (below && !allow) throw overdraw(before, row.points, "body.points")
+            d.adjustHook?.invoke("before_insert", h)
+            h.createUpdate("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) VALUES (:o, :p, 'adjustment', :sid, :pts, :bd, :exp, CAST(:fl AS text[]))")
+                .bind("o", row.outlet).bind("p", id).bind("sid", request.toString()).bind("pts", row.points).bind("bd", today).bind("exp", row.expires as Any?).bind("fl", if (below) "{portal,overdraw}" else "{portal}").execute()
+            AuditWriter.write(h, p, "programme_adjustment", request.toString(), "post", null,
+                auditObj("programme_id" to id, "outlet_id" to row.outlet, "points" to row.points, "expires_on" to row.expires?.toString(), "business_date" to today.toString(), "allow_overdraw" to allow, "balance_before" to before, "overdrawn" to below), reason, call.requestId)
+            h.createQuery("$ADJ_SELECT WHERE l.source_type = :t AND l.source_id = :s").bind("t", ADJ_SOURCE).bind("s", request.toString()).map { rs, _ -> adjLedgerJson(rs) }.one() to HttpStatusCode.Created
+        }
+    }
+}
+
+private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): JsonObject {
+    val p = call.loyaltyPrincipal(Need.WRITE, strict = true)
+    val id = call.pathId()
+    val o = call.bodyObject()
+    o.only(setOf("batch_uuid", "dry_run", "change_reason", "rows", "allow_overdraw"))
+    val batch = loyRequestUuid(o, "batch_uuid")
+    val dry = (o["dry_run"] as? JsonPrimitive)?.takeIf { !it.isString }?.content.let { when (it) { "true" -> true; "false" -> false; else -> adminBad("body.dry_run", "required") } }
+    val reason = loyReason(o)
+    val allow = adjAllow(o)
+    val (parsed, shapeErrs) = adjRows(o, bulk = true)
+    // The cap on DEBIT rows (every debit outlet needs its pair lock, allow_overdraw or not), judged at the dry run too and before any database work; counted on the raw rows (a malformed row still counts), like the mock.
+    if ((o["rows"] as? JsonArray).orEmpty().count { r -> ((r as? JsonObject)?.get("points") as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()?.let { it < 0 } == true } > MAX_DEBIT_ROWS) adminBad("body.rows", "too_many_debit_rows")
+    val today = today(d)
+    return adjDb {
+        d.db.jdbi.inTransaction<JsonObject, Exception> { h ->
+            adjLockUuid(h, batch)
+            val prog = adjProgramme(h, p, d, id)
+            val errs = ArrayList(shapeErrs)
+            val ok = parsed.withIndex().filter { it.value != null }.map { it.index to it.value!! }
+            // Replay FIRST: the rows of this batch uuid already exist (all-or-nothing, so all or none); equal = replayed (answered even when the scope or the state has changed since),
+            // other rows = 409. A replay is judged on the stored rows, not on today's dates, scope or balances.
+            // The rows are looked up by EQUALITY on the unique index: `<batch>:0..n` (n = the size of THIS file, so a stored batch of any other size shows up as a different row count or as row n).
+            val prior = h.createQuery("SELECT source_id, outlet_id, programme_id, points, expires_on FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id = ANY(CAST(:ids AS text[]))")
+                .bindArray("ids", String::class.java, (0..parsed.size).map { "$batch:$it" }).map { rs, _ -> rs.getString(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getInt(4).toLong(), rs.getObject(5, LocalDate::class.java)?.toString()) }.list().toMap()
+            val replayed = prior.isNotEmpty()
+            if (replayed) {
+                val same = errs.isEmpty() && prior.size == parsed.size && parsed.withIndex().all { (i, r) -> r != null && prior["$batch:$i"] == listOf(r.outlet, id, r.points.toLong(), r.expires?.toString()) }
+                if (!same) throw loyConflict("batch_uuid already used for a different batch", "body.batch_uuid")
+            } else if (h.createQuery("SELECT 1 FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id = :s").bind("s", batch.toString()).mapTo(Int::class.java).findOne().isPresent)
+                throw loyConflict("this uuid is already a request_uuid", "body.batch_uuid")
+            val ao = adjOutlets(h, p, d, prog, id, ok.map { it.second.outlet }.distinct())
+            var firstScope: AdjErr? = null
+            if (!replayed) for ((i, r) in ok) {
+                if (r.outlet !in ao.known) errs += AdjErr(i, "outlet_id", "not_found")
+                else if (r.outlet !in ao.inScope) { errs += AdjErr(i, "outlet_id", "out_of_scope").also { if (firstScope == null) firstScope = it } }
+                else if (r.outlet !in ao.enrolled) errs += AdjErr(i, "outlet_id", "not_enrolled")
+                else if (r.expires != null && r.expires.isBefore(today)) errs += AdjErr(i, "expires_on", "in_the_past")
+            }
+            // The balances under the job's pair locks (sorted) and in ONE statement; a debit row is checked against the balance BEFORE the file (an outlet appears once per file).
+            val debitOutlets = ok.filter { it.second.points < 0 && it.second.outlet in ao.enrolled }.map { it.second.outlet }.distinct()
+            val flagged = HashSet<Int>()
+            // The outlets of EVERY debit row are locked (one statement, sorted), allow_overdraw or not, and the balances, the guard and the 'overdraw' flag are decided AFTER the lock;
+            // a credit-only file takes no pair lock at all.
+            if (!replayed && !dry && debitOutlets.isNotEmpty()) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, debitOutlets) }
+            var bal = emptyMap<Long, Long>()
+            if (!replayed) {
+                bal = adjBalances(h, id, debitOutlets)
+                d.adjustHook?.invoke("after_balance_read", h)
+                for ((i, r) in ok) if (r.points < 0 && r.outlet in ao.enrolled) bal[r.outlet]?.let { b -> if (b + r.points < 0) { if (allow) flagged += i else errs += AdjErr(i, "points", "would_overdraw", b) } }
+            }
+            errs.sortBy { it.row }
+            val good = errs.isEmpty()
+            val posted = parsed.filterNotNull()
+            val total = posted.sumOf { it.points.toLong() }
+            if (dry) return@inTransaction buildJsonObject {
+                put("batch_uuid", batch.toString()); put("dry_run", true); put("rows", parsed.size); put("valid", good && (replayed || prog.status == "active"))
+                put("replayed", replayed); put("outlets", posted.map { it.outlet }.distinct().size)
+                put("credit_points", posted.filter { it.points > 0 }.sumOf { it.points.toLong() }); put("debit_points", posted.filter { it.points < 0 }.sumOf { it.points.toLong() }); put("total_points", total)
+                put("programme_status", prog.status)
+                put("errors", buildJsonArray { errs.take(MAX_ADJ_ERRORS).forEach { e -> add(buildJsonObject { put("row", e.row); put("column", e.column); put("code", e.code); e.balance?.let { b -> put("balance_points", b) } }) } })
+                put("error_count", errs.size); put("errors_truncated", errs.size > MAX_ADJ_ERRORS)
+            }
+            if (!good) {
+                if (firstScope != null && errs.all { it.code == "out_of_scope" }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "an outlet is outside the programme's scope or your reach", errors = listOf(FieldError("body.rows[${firstScope!!.row}].outlet_id", "out_of_scope")))
+                errs.firstOrNull { it.code == "would_overdraw" }?.takeIf { errs.all { e -> e.code == "would_overdraw" } }?.let { e -> throw overdraw(e.balance!!, posted0(parsed, e.row), "body.rows[${e.row}].points") }
+                throw adjErrorProblem(errs)
+            }
+            if (replayed) return@inTransaction buildJsonObject { put("batch_uuid", batch.toString()); put("dry_run", false); put("rows", parsed.size); put("posted", 0); put("replayed", true); put("total_points", total) }
+            if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
+            val n = posted.size
+            d.adjustHook?.invoke("before_insert", h)
+            val flags = posted.indices.map { i -> if (flagged.contains(parsed.indexOf(posted[i]))) "{portal,overdraw}" else "{portal}" }
+            val n1 = h.createUpdate(
+                "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) " +
+                    "SELECT t.o, :p, 'adjustment', :b || ':' || (t.i - 1), t.pts, :bd, t.exp, CAST(t.fl AS text[]) FROM unnest(CAST(:outlets AS bigint[]), CAST(:pts AS int[]), CAST(:exp AS date[]), CAST(:fl AS text[])) WITH ORDINALITY AS t(o, pts, exp, fl, i)",
+            ).bind("p", id).bind("b", batch.toString()).bind("bd", today)
+                .bindArray("outlets", Long::class.javaObjectType, posted.map { it.outlet }).bindArray("pts", Int::class.javaObjectType, posted.map { it.points }).bindArray("exp", String::class.java, posted.map { it.expires?.toString() })
+                .bindArray("fl", String::class.java, flags).execute()
+            check(n1 == n) { "adjustment batch wrote $n1 of $n rows" }
+            AuditWriter.write(h, p, "programme_adjustment", batch.toString(), "post_batch", null,
+                auditObj("programme_id" to id, "rows" to n, "total_points" to total, "business_date" to today.toString(), "allow_overdraw" to allow, "overdrawn_rows" to flagged.size,
+                    // which outlets went below zero and what each held before the file (at most 200, in row order; the count above is the whole)
+                    "overdrawn" to buildJsonArray { flagged.sorted().take(MAX_ADJ_ERRORS).forEach { i -> val r = parsed[i]!!; add(buildJsonObject { put("row", i); put("outlet_id", r.outlet); put("balance_before", bal[r.outlet] ?: 0L) }) } }), reason, call.requestId)
+            buildJsonObject { put("batch_uuid", batch.toString()); put("dry_run", false); put("rows", n); put("posted", n1); put("replayed", false); put("total_points", total) }
+        }
+    }
+}
+
+private fun listLedger(call: ApplicationCall, d: AdminLoyaltyDeps): JsonObject {
+    val p = call.loyaltyPrincipal(Need.READ_ENROLMENTS)
+    val id = call.pathId(); val limit = call.pageLimit(); val cursor = call.pageCursor(); val outlet = call.queryId("outlet_id")
+    val type = call.request.queryParameters["source_type"]?.also { if (!Regex("^[a-z][a-z_]{1,40}$").matches(it)) adminBad("query.source_type", "pattern") }
+    return d.db.jdbi.withHandle<JsonObject, Exception> { h ->
+        val prog = adjProgramme(h, p, d, id, lock = false)
+        val where = mutableListOf("l.programme_id = :p")
+        if (cursor != null) where += "l.id < :cursor"
+        if (outlet != null) where += "l.outlet_id = :out"
+        if (type != null) where += "l.source_type = :type"
+        val geo = loyVisibility(h, p, d)
+        if (geo is LVis.Geo) where += "EXISTS (SELECT 1 FROM app.outlet o WHERE o.id = l.outlet_id AND (o.zone_id IN (<vz>) OR o.route_id IN (<vr>)))"
+        else if (geo === LVis.Nobody) where += "FALSE"
+        val q = h.createQuery("$ADJ_SELECT WHERE ${where.joinToString(" AND ")} ORDER BY l.id DESC LIMIT :lim").bind("p", id).bind("lim", limit + 1)
+        if (cursor != null) q.bind("cursor", cursor); if (outlet != null) q.bind("out", outlet); if (type != null) q.bind("type", type)
+        if (geo is LVis.Geo) { q.bindList("vz", geo.scope.reachZones.ifEmpty { listOf(-1L) }); q.bindList("vr", geo.scope.routes.ifEmpty { listOf(-1L) }) }
+        val rows = q.map { rs, _ -> adjLedgerJson(rs) }.list()
+        val page = rows.take(limit)
+        buildJsonObject {
+            put("programme_id", id); put("programme_status", prog.status)
+            put("items", buildJsonArray { page.forEach { add(it) } })
+            put("next_cursor", if (rows.size > limit) page.last().getValue("ledger_id").jsonPrimitive.content else null)
         }
     }
 }

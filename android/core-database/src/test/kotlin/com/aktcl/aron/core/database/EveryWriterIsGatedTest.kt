@@ -49,8 +49,9 @@ class EveryWriterIsGatedTest {
 
     private fun file(rel: String): String = listOf(File(rel), File("android/$rel"), File("../$rel")).first { it.isFile }.readText()
 
-    // ---- D-AGATE-26: DISCOVERY scan. Every non-test source file under android/*/src/main that opens a Room write transaction or inserts into the outbox must be on ONE of two named lists, so a
-    // writer added later cannot slip past the Developer options gate unnoticed.
+    // ---- D-AGATE-26: DISCOVERY scan (a HEURISTIC, honestly): every non-test source file under android/*/src/main that uses a Room transaction (`withTransaction`) or inserts into the outbox through
+    // a variable or DAO named `outbox...` must be on ONE of two named lists, so a writer of that kind added later cannot slip past the Developer options gate unnoticed. NOT discovered: a direct DAO
+    // insert without a transaction and without the outbox (it is not caught by this scan; review it by hand).
 
     private val writeMarker = Regex("""[oO]utbox(Dao\(\))?\.insert|withTransaction""")
 
@@ -92,7 +93,37 @@ class EveryWriterIsGatedTest {
     }
 
     @Test fun everyGatedFileCallsTheGate() {
-        for (rel in gatedFiles) assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in file(rel))
+        for (rel in gatedFiles) {
+            val f = listOf(File(rel), File("android/$rel"), File("../$rel")).firstOrNull { it.isFile }
+            assertTrue("$rel is on gatedFiles but does not exist (renamed? update the list)", f != null)
+            assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in f!!.readText())
+        }
+        // a stale gated entry: it must still be a file the discovery finds, except ProgrammeStore (it writes through the repository, so it has no marker of its own)
+        val staleGated = gatedFiles - discovered() - setOf("app-sr/src/main/kotlin/com/aktcl/aron/sr/ProgrammeStore.kt")
+        assertEquals("these gated files no longer write (stale entries hide a moved writer): $staleGated", emptySet<String>(), staleGated)
+    }
+
+    /**
+     * D-AGATE-26 (RESTORED and strengthened after the lead's check): the gate comes BEFORE the force-photo claim and the visit write in the visit commit of the SR and AMO days (the committer lambda
+     * of `visitFlow`), and before the transaction in the TSO outbox entry. Moving the gate below `claimPhoto(` or `recordVisitOpen(` fails this test.
+     */
+    @Test fun theVisitCommitsAndTheTsoEntryGateBeforeTheirClaimsAndWrites() {
+        for ((rel, label) in listOf("app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt" to "SR", "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt" to "AMO")) {
+            val src = file(rel)
+            val write = src.indexOf("capture.recordVisitOpen(v, f)")
+            assertTrue("$label: the visit commit was not found", write > 0)
+            val from = src.lastIndexOf("committer = { v, f ->", write)
+            assertTrue("$label: the committer lambda of visitFlow was not found", from in 0 until write)
+            val segment = src.substring(from, write + "capture.recordVisitOpen(v, f)".length)
+            val gate = segment.indexOf("ActionGate.requireOpen()")
+            val claim = segment.indexOf("claimPhoto(")
+            assertTrue("$label: the visit commit must call ActionGate.requireOpen()", gate >= 0)
+            assertTrue("$label: the gate comes before the photo claim", claim < 0 || gate < claim)
+            assertTrue("$label: the gate comes before the visit write", gate < segment.indexOf("capture.recordVisitOpen(v, f)"))
+        }
+        val tsoFile = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
+        val tso = tsoFile.substring(tsoFile.indexOf("suspend fun enqueueAll("))
+        assertTrue("the TSO outbox entry (enqueueAll) gates before its transaction", tso.indexOf("ActionGate.requireOpen()") in 0 until tso.indexOf("withTransaction"))
     }
 
     /**
@@ -107,6 +138,15 @@ class EveryWriterIsGatedTest {
         // retires a plan MIRROR row once the server plan holds the outlet: a read-model refresh, not an operational record
         "TsoReadModels.kt" to setOf("plans"),
     )
+
+    /** Each exemption names ONE function: a same-named overload added later would be exempt silently, so each name must be declared exactly once in its file. */
+    @Test fun eachNamedExemptionIsOneUniqueFunction() {
+        val files = gatedFiles.associateBy { it.substringAfterLast('/') }
+        for ((name, fns) in gatedByCaller) for (fn in fns) {
+            val n = Regex("""\bfun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?$fn\(""").findAll(file(files.getValue(name))).count()
+            assertEquals("$name.$fn must be declared exactly once (pin the signature if you add an overload)", 1, n)
+        }
+    }
 
     @Test fun everyWriteInTheGatedAppFilesIsAfterTheGateOrBehindACallerThatIs() {
         val funHead = Regex("""\n\s*(?:(?:private|internal|public|override|protected|inline|suspend)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")

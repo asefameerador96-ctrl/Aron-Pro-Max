@@ -1,0 +1,26 @@
+LedgerPage:
+  type: object
+  required:
+  - programme_id
+  - programme_status
+  - items
+  - next_cursor
+  additionalProperties: false
+  description: From 1.23.0.
+  properties:
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    programme_status:
+      type: string
+      enum:
+      - draft
+      - active
+      - inactive
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/LedgerEntry'
+    next_cursor:
+      type:
+      - string
+      - 'null'

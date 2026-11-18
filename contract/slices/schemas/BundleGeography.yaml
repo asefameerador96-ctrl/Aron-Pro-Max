@@ -1,0 +1,17 @@
+BundleGeography:
+  type: object
+  required:
+  - wing
+  - division
+  - territory
+  - zone
+  additionalProperties: false
+  properties:
+    wing:
+      $ref: '#/components/schemas/BundleGeoName'
+    division:
+      $ref: '#/components/schemas/BundleGeoName'
+    territory:
+      $ref: '#/components/schemas/BundleGeoName'
+    zone:
+      $ref: '#/components/schemas/BundleGeoName'
