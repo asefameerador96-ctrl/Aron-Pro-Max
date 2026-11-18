@@ -56,7 +56,8 @@ class EnrolmentViewModelTest {
         vm.onSubmit()
         assertEquals(EnrolMessage.Unreadable, vm.state.value.message)
         assertEquals("typo", vm.state.value.input)
-        vm.onScanned("{qr}")
+        vm.onInput("{qr}")
+        vm.onSubmit()
         assertEquals(EnrolMessage.Refused("ERR_ENROLMENT_TOKEN_EXPIRED"), vm.state.value.message)
         assertFalse(vm.state.value.pending)
         assertFalse(vm.state.value.enrolled)
@@ -67,7 +68,8 @@ class EnrolmentViewModelTest {
         val vm = EnrolmentViewModel({ calls++; EnrolmentOutcome.Enrolled }, pending = false, refusedCode = "ERR_ENROLMENT_TOKEN_EXHAUSTED")
         assertEquals(EnrolMessage.Refused("ERR_ENROLMENT_TOKEN_EXHAUSTED"), vm.state.value.message)
         assertEquals(0, calls)
-        vm.onScanned(null)
+        vm.onInput("")
+        vm.onSubmit()
         assertEquals(0, calls)
     }
 

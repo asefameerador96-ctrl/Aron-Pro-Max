@@ -1,26 +1,12 @@
 package com.aktcl.aron.dpc
 
 import android.app.admin.DeviceAdminReceiver
-import android.content.Context
-import android.content.Intent
 
 /**
- * The device-owner component of every Aron field app (docs/24 s10). On enable it re-applies the stored policy, if any;
- * enrolment (N-030) and app blocking (N-032) hook in here too.
+ * Empty on purpose (D-OWNER-MDM-02, D-AINT-01). Aron no longer is a device owner and enrols no phone as one. This
+ * component stays for one release only so that a phone enrolled by an older build still has a resolvable admin
+ * component while [com.aktcl.aron.dpc.release.DeviceOwnerRelease] releases device-owner mode on the first start. It has
+ * no provisioning intent filter. Delete it, its manifest entry and `res/xml/aron_device_admin.xml` in the release after
+ * every pilot phone has upgraded (DECISIONS.md D-AINT-01).
  */
-class AronDeviceAdminReceiver : DeviceAdminReceiver() {
-    /** Before Android 12 the admin extras arrive here (docs/24 s10.4); from 12 on, PolicyComplianceActivity gets them. */
-    override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
-        com.aktcl.aron.dpc.enrolment.acceptProvisioningExtras(context, intent)
-    }
-
-    override fun onEnabled(context: Context, intent: Intent) {
-        val pending = goAsync() // file and policy work off the main thread
-        Thread { try { runCatching { DeviceOwnerPolicy.get(context).reapply() } } finally { pending.finish() } }.start()
-    }
-
-    companion object {
-        /** Class name used in android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME (docs/24 s10.4). */
-        const val CLASS_NAME: String = "com.aktcl.aron.dpc.AronDeviceAdminReceiver"
-    }
-}
+class AronDeviceAdminReceiver : DeviceAdminReceiver()

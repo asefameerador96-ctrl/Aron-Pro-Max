@@ -19,8 +19,6 @@ import com.aktcl.aron.core.network.DeviceProofSigner
 import com.aktcl.aron.core.network.ProofResult
 import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.network.WireJson
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
-import com.aktcl.aron.dpc.blocking.BlockingStore
 import com.aktcl.aron.dpc.enrolment.EnrolmentStore
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
@@ -28,16 +26,11 @@ import java.util.TimeZone
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** [DeviceFacts] from the system services and the device-owner policy (docs/24 s10.3). Every read is guarded: a fact that cannot be read is null or a safe default. */
-class AndroidDeviceFacts(context: Context, private val policy: () -> DeviceOwnerPolicy) : DeviceFacts {
+/** [DeviceFacts] from the system services (docs/24 s10.3). Every read is guarded: a fact that cannot be read is null or a safe default. Policy and blocking facts are neutral since D-OWNER-MDM-02. */
+class AndroidDeviceFacts(context: Context) : DeviceFacts {
     private val app = context.applicationContext
-    // Read-only view of the blocking state the DPC persists (evaluating it here would change what it reports).
-    private val blockingStore = BlockingStore(File(app.noBackupFilesDir, "dpc"))
 
     override fun read(): DeviceFactsSnapshot {
-        val p = runCatching(policy).getOrNull()
-        val applied = p?.lastReport
-        val blocking = runCatching { blockingStore.load() }.getOrNull()
         val battery = runCatching { app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }.getOrNull()
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
@@ -52,14 +45,14 @@ class AndroidDeviceFacts(context: Context, private val policy: () -> DeviceOwner
         return DeviceFactsSnapshot(
             deviceInfo = deviceInfo(app),
             deviceOwner = runCatching { app.getSystemService(android.app.admin.DevicePolicyManager::class.java)?.isDeviceOwnerApp(app.packageName) == true }.getOrDefault(false),
-            lockdownLevelApplied = applied?.lockdownLevel?.takeIf { it == "dev" || it == "prod" } ?: "dev",
-            policyVersionApplied = applied?.policyVersion,
-            policyApplyErrors = applied?.errors.orEmpty(),
-            restrictionsApplied = applied?.restrictionsApplied,
+            lockdownLevelApplied = "dev", // no device-owner policy is applied any more (D-OWNER-MDM-02)
+            policyVersionApplied = null,
+            policyApplyErrors = emptyList(),
+            restrictionsApplied = null,
             batteryOptimisationIgnored = runCatching { app.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(app.packageName) }.getOrNull(),
-            blockingActive = blocking?.activeSince != null,
-            blockingSinceMs = blocking?.activeSince,
-            suspendedPackages = blocking?.suspended,
+            blockingActive = false,
+            blockingSinceMs = null,
+            suspendedPackages = null,
             locationEnabled = locationOn,
             locationMode = if (locationOn) "unknown" else "off",
             timeZone = TimeZone.getDefault().id,

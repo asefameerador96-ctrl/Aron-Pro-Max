@@ -13,7 +13,6 @@ import kotlinx.coroutines.launch
 sealed interface EnrolMessage {
     data object Empty : EnrolMessage
     data object Unreadable : EnrolMessage
-    data object ScanUnavailable : EnrolMessage
     data class Waiting(val offline: Boolean) : EnrolMessage
     data class Refused(val code: String) : EnrolMessage
 }
@@ -29,9 +28,8 @@ data class EnrolUiState(
 )
 
 /**
- * The enrolment step before the first login of a new install (docs/24 s10.4): a token from the admin portal (scanned QR
- * or pasted text) goes to [submit] (core-sync `DeviceEnrolment.submit`); null retries the stored one. A stored token is
- * retried once when the screen opens (the device-owner QR path stores it during setup). Nothing here is on a sale path.
+ * The enrolment step before the first login of a new install (docs/24 s10.4): a token from the admin portal (typed or pasted) goes to [submit] (core-sync `DeviceEnrolment.submit`); null retries the stored one. A stored token is
+ * retried once when the screen opens (a kill mid-enrolment leaves it stored). Nothing here is on a sale path.
  */
 class EnrolmentViewModel(
     private val submit: suspend (input: String?) -> EnrolmentOutcome,
@@ -46,15 +44,6 @@ class EnrolmentViewModel(
     }
 
     fun onInput(value: String) = _state.update { it.copy(input = value, message = null) }
-
-    /** A scanned QR is submitted at once (nothing to correct by hand). */
-    fun onScanned(text: String?) {
-        if (text.isNullOrBlank()) return
-        _state.update { it.copy(input = "") }
-        send(text)
-    }
-
-    fun onScanUnavailable() = _state.update { it.copy(message = EnrolMessage.ScanUnavailable) }
 
     fun onSubmit() {
         val s = _state.value
