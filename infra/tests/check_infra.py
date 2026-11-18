@@ -767,7 +767,8 @@ class Workflows(unittest.TestCase):
         w = sh[i:sh.index('section "worker app $WORKER_APP"')]
         self.assertIn("ContainerAppConsoleLogs_CL", w)
         self.assertIn("where app == '$WORKER_APP'", w)
-        self.assertIn("substring(text, 0, 600)", w, "fetched long, redacted, then cut in the shell (redact before cut)")
+        self.assertNotIn("substring(", w, "the whole message is fetched, redacted, then cut in the shell (redact before cut)")
+        self.assertIn("gettype(j) == 'dictionary'", w, "a JSON line with no formattedMessage never falls back to the raw JSON")
         self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
         self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
         self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
@@ -792,32 +793,45 @@ class Workflows(unittest.TestCase):
         self.assertIn("pre-?flight", a)
         # The exclusion works on the projected text, not on the raw line (whose stack trace names org.jdbi.v3.core.statement / PgStatement).
         console = a[:a.index("system log of $API_APP")]
-        self.assertIn("extend dropped = text matches regex", console)
+        self.assertIn("extend held = text matches regex", console)
+        self.assertIn("where not(held)", console, "the hold-back is done in KQL")
+        self.assertIn("summarize held = countif(held), shown = countif(not(held))", console, "the count is done in KQL")
+        self.assertNotIn('== "true"', console, "az prints a KQL bool as True/False; the shell never compares it")
+        self.assertNotIn("awk", console, "no column split of az output in the shell (a message may hold a tab or a newline)")
+        self.assertIn("replace_regex(", console, "one row is one line")
         self.assertNotIn("where not(line matches regex", console, "no exclusion on the raw JSON line")
         self.assertNotIn("statement|parameters|bind", console, "the broad word list that dropped stack traces is gone")
-        self.assertIn("line(s) held back by the secret-word exclusion", console, "the count of dropped lines is printed")
+        self.assertIn("| held_note", console, "the count of held-back lines is printed")
+        self.assertIn("gettype(j) == 'dictionary'", console, "a JSON line with an empty message never prints the raw JSON")
         # The pre-flight query prints the message, not the raw line.
         pre = a[a.index("pre-flight lines"):]
         self.assertIn("tostring(j.formattedMessage)", pre)
+        self.assertIn("gettype(j) == 'dictionary'", pre)
         self.assertNotIn("project TimeGenerated, exec, line", pre)
         # Redact before cut: no query output is cut before it is redacted, and every query result goes through show (redact, then cut).
         self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
         for line in sh.splitlines():
             if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "analytics-query" in line and "-o tsv" in line:
-                self.assertTrue("| show " in line or "$out" in line or 'out="$(' in line, line)
-        for needle in ("substring(text, 0, 600)", "substring(msg, 0, 600)"):
-            self.assertIn(needle, sh, needle + ": fetch long, redact, then cut")
+                self.assertTrue("| show " in line or "| held_note" in line or "$out" in line or 'out="$(' in line, line)
+        code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("substring(", code.replace("substring(sha256", ""), "no KQL substring before redaction")
+        self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
+        self.assertNotIn("substr($0", code, "no byte-based awk cut")
         self.assertIn("exec > >(redact)", sh, "everything printed, the older sections too, passes the net")
         # All five inputs have fixed patterns, in the script and in the workflow before login.
         for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app"):
             self.assertIn('valid ' + name + ' ', sh, name)
         self.assertLess(w.index("Validate the inputs"), w.index("azure/login@"), "inputs are validated before the Azure login")
+        self.assertIn("set -o pipefail", w)
+        self.assertIn("grep -q '^diagnose: done (read-only)$' diagnose.txt", w, "a dead filter or an early stop turns the step red")
         self.assertIn("free-text names", sh.lower().replace("FREE-TEXT", "free-text"), "the comment says honestly what is not caught")
 
     def test_diagnose_redaction_behaviour(self):
         # D-OPS-DIAGNOSE-API-01: pipe sample lines through the real net (diagnose.sh --redact) and assert nothing sensitive survives.
         import subprocess
         script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run_note(text):
+            return subprocess.run(["bash", script, "--held-note"], input=text, capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"}).stdout
         def run(text, width=None):
             cmd = ["bash", script, "--redact"] + ([str(width)] if width else [])
             return subprocess.run(cmd, input=text, capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"}).stdout
@@ -840,6 +854,46 @@ class Workflows(unittest.TestCase):
             out = run(text + "\n")
             self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
         self.assertIn("[ip]", run("2001:db8::1\n"))
+        more = {
+            "access_token=" "abc123def": "abc123def", "refreshToken: " "abc123def": "abc123def", "otp_code=" "123456": "123456", "client_secret=" "zzTopSecret": "zzTopSecret",
+            "sessionid=" "abc123def": "abc123def", "pass=" "hunter22": "hunter22", "Instrumentation" "Key=" "abcabc111": "abcabc111", "sessionKey=" "abc123def": "abc123def",
+            'password="a b c d"': "b c", "'secret': 'two words'": "two words", "the password is <hunter22>": "hunter22", "the password is &lt;hunter22&gt;": "hunter22",
+            "otp sent, please enter 481516 now": "481516", "your pin 4821 was used": "4821", "SAS sig=abcdef123456": "abcdef123456",
+            "call (017) 1234-5678": "1234", "call 017.1234.5678": "1234", "call 017_1234_5678": "1234", "call 017/1234/5678": "1234", "call [+880] 1712345678": "1712345678",
+            "call 0 1 7 1 2 3 4 5 6 7 8": "7 8", "\u0660\u0661\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668": "\u0667",
+            "dev 123e4567e89b12d3a456426614174000": "123e4567e89b",
+        }
+        for text, secret in more.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # What the operator needs stays readable: a request id still matches across lines (a stable short hash), shas, versions, epoch seconds.
+        a, b = run("req 123e4567-e89b-12d3-a456-426614174000 start\nreq 123e4567-e89b-12d3-a456-426614174000 end\nreq 123e4567-e89b-12d3-a456-426614174999 other\n").splitlines()[:3], None
+        import re as _re
+        ids = [_re.search(r"\[uuid:([0-9a-f]{8})\]", x).group(1) for x in a]
+        self.assertEqual(ids[0], ids[1], "the same request id gives the same text")
+        self.assertNotEqual(ids[0], ids[2])
+        sha = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d"
+        for line in (f"build {sha} started", f"commit={sha}", f"image sha {sha}", f"health ok {sha}", "version 1.20.3.4 ready", "build 1.20.3.4", "exp=1731234567 iat=1731230000"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        self.assertNotIn(sha, run(f"token blob {sha}\n"), "a 40-hex run with no build/commit/sha context is still redacted")
+        # B2: a Bangla line cut in the middle of a character, and bytes that are not UTF-8 at all, never kill the filter: every later line still appears.
+        bangla = "\u09ac\u09be\u0982\u09b2\u09be " * 30
+        text = bangla + "\nafter-1\n"
+        out = run(text, 37)
+        self.assertEqual(2, len(out.splitlines()), out)
+        self.assertTrue(out.splitlines()[0].startswith("\u09ac"), out)
+        self.assertEqual(37, len(out.splitlines()[0]), "the cut counts characters, not bytes")
+        raw = b"ok-1\n" + "\u09ac\u09be".encode()[:4] + b"\xe0\xa6 broken\nok-3 01712345678\n\xff\xfe tail\nok-5\n"
+        r = subprocess.run(["bash", script, "--redact", "20"], input=raw, capture_output=True, env={"PATH": "/usr/bin:/bin"})
+        self.assertEqual(0, r.returncode, r.stderr)
+        lines = r.stdout.decode("utf-8").splitlines()
+        self.assertEqual(5, len(lines), lines)
+        self.assertEqual("ok-1", lines[0]); self.assertEqual("ok-5", lines[4]); self.assertNotIn("1712", lines[2])
+        # B1: the held-back count reads the two numbers whatever az prints (tab, newline, capitalised or not).
+        for sample in ("3\t12\n", "3\n12\n", "3 12", "3,12"):
+            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 shown)\n", run_note(sample), sample)
+        self.assertEqual("(held-back count unavailable)\n", run_note("True\tFalse\n"))
+        self.assertEqual("(held-back count unavailable)\n", run_note(""))
         # Ordinary diagnostics text survives: a timestamp, a level, a class name, a count.
         keep = "2026-11-18T09:54:57Z ERROR aron.sync waiting-item sweep failed: 3 rows, SQLState 57014 at 09:54:57"
         self.assertEqual(keep + "\n", run(keep + "\n"))
