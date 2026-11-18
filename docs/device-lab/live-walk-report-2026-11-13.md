@@ -95,6 +95,23 @@ Language was English during this pass; Bangla was not checked.
 | 17-19 | Sales Journey, Settings | open | Settings: App update, PDA to Support, Printer diagnostics, Sunlight mode, Log out, version 0.3.116 (2116) |
 | 20 | Outlet verification queues (new, closure, correction) | opens, **see O5** | Each says "Nothing to verify" |
 
+## 3b. TSO app (logged in by the owner as the test TSO; 2026-11-18; version 0.3.116)
+
+Same meaning of "opens" as above. Viewing only: nothing was submitted, no plan was set, no leave was applied. Reference match: not done yet.
+
+| # | Step | Result | Notes |
+|---|---|---|---|
+| 01 | Home | opens | Dark dashboard "Good day, Test TSO (Dhaka North)": four rings (Cigarette, Bidi, Lighter in Pieces, Match in Dozen) with total sales, total target and percent; menu button and a bell; cold start 717 ms |
+| 02 | Side menu | opens | Dashboard, Tickets, Leave, Final Submit, My Periphery (My Team), My Call (My Visit Plan, Set Plan), Target Status, My Feedback, Log Out, and a settings gear |
+| 03 | Leave | opens | "Apply For Leave" and "Leave Applications": "No leave applications yet" (decision comes from the DMO) |
+| 04 | Final Submit | opens | Selectors Central Wing, Dhaka Division, Dhaka North ("Select House", "Select Zone"), "Get Sales Data" and "Final Submit". **Not pressed** (it closes the day) |
+| 05 | Target Status | opens | Monthly Target, Till Date Target, Territory Dhaka North, Zone Banani |
+| 08-09 | My Visit Plan, Set Plan | open | Date, route and zone selectors, "Show Outlet" (not exercised) |
+| 10 | My Team | opens, **see O4** | Lists the SR with "No location yet"; "The map is not available on this phone" |
+| 11 | Dashboard | opens | Back to the home dashboard |
+
+Not touched: Tickets, My Feedback, Log Out, the bell (notifications), device codes for the team, route-day view, reopen, outlet request approval, call-photo review, My Call (the TSO's own visit) as an action, reports.
+
 ## Defects and observations, in the order a field user would notice them
 
 - **D1. Sales Submit: "6 records were rejected by the server", no reason given.** The device holds 1 outlet, a sale (Cigarette 3 packets,
@@ -106,7 +123,7 @@ Language was English during this pass; Bangla was not checked.
   memo with the item. A second tap on + did not raise it. Whether a soft warning is the intended rule needs a ruling (the stock card on Home
   says issue 31 / stock 28 packets, yet most SKUs show stock 0 or 1 on this list: please compare with the server's issue for this SR).
 - **O3. Settings and Sales Submit disagree on SR.** Settings says "0 waiting to upload, Last sync 3 min ago" while Sales Submit shows 1 packet waiting and 7 rejected records.
-- **O4. AMO Team Location shows no map** ("The map is not available on this phone"), while SR draws its map fine on the same phone; the cause is not determined (maps key or a missing map component in the AMO build).
+- **O4. AMO Team Location and TSO My Team show no map** ("The map is not available on this phone"), while SR draws its map fine on the same phone; the cause is not determined (maps key or a missing map component in the AMO build).
 - **O5. AMO Outlet tile shows a badge of 14** but the three verification queues all say "Nothing to verify"; where the 14 come from is not shown. The SR force-sale photos (outlet location correction requests) were not found in the queue either.
 - **O1. Attendance says "No location yet"** although check-in is done and location is on. Possibly by design (location is sampled on demand), worth a ruling.
 - **O2. Check Out is gated until 5 PM and until Sales Submit** (by design per the screen text); not exercised.
@@ -116,6 +133,6 @@ Language was English during this pass; Bangla was not checked.
 - Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
 - Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
 - Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
-- AMO: only viewing was done (no call, no verification, no task); the TSO walk is not started and TSO is not logged in.
+- AMO and TSO: only viewing was done (no call, verification, task, plan, leave or Final Submit); the TSO items listed as not touched in section 3b are untested.
 - Comparison of each screen with `docs/ui-reference/`, Bangla pass, rotation, font size and dark mode, Sunlight mode.
 - Section 6 budgets beyond the cold start above.
