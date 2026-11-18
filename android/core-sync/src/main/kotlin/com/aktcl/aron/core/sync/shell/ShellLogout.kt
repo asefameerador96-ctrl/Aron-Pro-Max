@@ -39,6 +39,8 @@ class ShellLogout(
             unsentPhotosCount = { unsentPhotos(userId) },
             closeDatabaseAction = { databases.close(userId) },
             forgetCredentialsAction = { components.session.forgetUser(userId) },
+            // The spoof checks' previous fix is a position of this phone, not of the database: it goes with the session.
+            clearDeviceTracesAction = { com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app).clear() },
         ),
     ))
 

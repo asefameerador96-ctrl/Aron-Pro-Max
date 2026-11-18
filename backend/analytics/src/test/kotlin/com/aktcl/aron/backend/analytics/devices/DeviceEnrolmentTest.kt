@@ -216,7 +216,7 @@ class DeviceEnrolmentTest : ReportFixture() {
     }
 
     @Test
-    fun productionDemandsATrustedRootAnOwnerAndAnIntactBoot() = app {
+    fun productionDemandsATrustedRootAnIntactBootAndAHardwareKeyButNoDeviceOwner() = app {
         val t = mintToken(lockdown = "prod", maxUses = 20); val secret = t.s("enrolment_token")
         suspend fun status(owner: Boolean, locked: Boolean, boot: Int, level: Int, root: Boolean): HttpResponse {
             val p = Phone(); val c = goodChain(p, secret, locked = locked, boot = boot, level = level)
@@ -225,11 +225,12 @@ class DeviceEnrolmentTest : ReportFixture() {
         }
         assertEquals(HttpStatusCode.Created, status(owner = true, locked = true, boot = 0, level = 1, root = true).status)
         assertTrue(status(owner = true, locked = true, boot = 0, level = 1, root = false).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))     // not a trusted root (and none configured)
-        assertTrue(status(owner = false, locked = true, boot = 0, level = 1, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))
+        // D-OWNER-MDM-02: a phone that is not device owner registers with its device key and the token (it can no longer be one).
+        assertEquals(HttpStatusCode.Created, status(owner = false, locked = true, boot = 0, level = 1, root = true).status)
         assertTrue(status(owner = true, locked = false, boot = 0, level = 1, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))     // unlocked bootloader
         assertTrue(status(owner = true, locked = true, boot = 2, level = 1, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))      // self-signed boot state
         assertTrue(status(owner = true, locked = true, boot = 0, level = 0, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))      // software-only key
-        assertEquals(1, count("SELECT count(*) FROM app.device"))
+        assertEquals(2, count("SELECT count(*) FROM app.device")) // the device owner phone and the phone that is not; every attestation failure stored nothing
     }
 
     @Test
