@@ -350,3 +350,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - apsis-migration 610d46d45: third review running (wf_eb8f3954-959).
 - P-SR1b / P-SR2b: both refused the relayed approval (correct); owner must type the push line inside each session; told the owner.
 - Train 122: waiting for the integrator's report.
+
+## 2026-11-18 14:35
+- Train 122b: lane/lead-train122 c13cf70a7, dispatched ci 44314621214 green; integrator pushed INT = ffbe8d6fd; deploy running (report pending). First head 5b379eb52 failed NoSecretsInRepoTest on a sample string in a lead review file (fixed; scratchpad nosecrets.py now run on the docs tree before each docs commit).
+- New lane L-A13 session_014mnioNoE3DBHVP3ANu1PPV (lane/portal-loyalty-api-c; L-A12 retired at 37ddbcbd + handover): bulk lock-table fix + 8 items.
+- Reviews done: loyalty 37ddbcbd (1 blocking: 20,000 advisory locks); sr-targets-server c30c52c63 (5 points: quarantine release, memo_count text, Star rule, status file, truncated tests) -> T-KPI3; android-sr-programmes 6d527e200 (6 blocking in quarter chips / retake) -> A-PROG3; apsis 610d46d45 third FAIL -> plan changed to PHASE 1 preserve + profile only; ops-diagnose-api 4d072962 PASS.
+- Binding rule added for both figure families: a quarantined memo is never added by the phone; awaiting until a resolution/ack reaches it.
+- After 122 lands: merge-INT word to A-GATE8, A-PROG3, T-KPI3, L-A13, SV6 (ops-diagnose-api), M-APSIS1, F-INFRA1, P-TSO; then train 123 = ops-diagnose-api (server, no migration) once merged and green.
