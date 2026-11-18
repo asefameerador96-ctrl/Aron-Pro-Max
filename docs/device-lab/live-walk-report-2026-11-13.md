@@ -5,6 +5,16 @@ This is a **partial** report: section 0 and the SR app's home and first outlet f
 "Not tested yet". Stated plainly: **one phone, one Android version, test data, test account** (dev, seeded pilot user `sr1001`).
 No password, OTP or token appears in this report or in the evidence kept with it.
 
+## Needs the lead (read this first)
+
+1. **Why does the server reject the SR's sync records? (D1, blocks the offline-day reconcile row)** The phone shows "7 records were rejected by the server" (6 on 2026-11-13, 7 after the 2026-11-18 sale) and the Sales Submit table never reaches device = server (Sale: device 2, server 1; Visit ends: device 1, server 0). The dev API answers `POST /v1/sync/batch` with **200** (for example at 2026-11-18 08:14:46 UTC, right when I pressed Sync data), so the rejections are per-record results inside the response; the API's INFO log does not say why. Please read the per-record rejection results for the test SR's device (dev database, sync tables) for 2026-11-13 and 2026-11-18, and consider showing the reason on the phone ("rejected: <reason>"), because a rep cannot fix what is not shown.
+2. **`ERR_DEVICE_PROOF_INVALID` on `GET /v1/devices/me/commands`**: 14 security events today (2026-11-18, 05:15 to 08:34 UTC) from two device ids (`d3d1f44024ca42fc`: 8, `6e76cddb3ec65df9`: 6, partly at the minutes when I used SR and AMO on the walk phone). I cannot tell from the phone which id is which app. If the device-command poll is how the portal's MDM reaches the phone, it is failing the signature check.
+3. A few 401s on `/v1/sync/totals`, `/v1/sync/digest`, `/v1/sync/bundle` and one on `/v1/sync/batch` were each followed by `/v1/auth/refresh` (200) and a 200 retry: looks like normal token expiry, noted only so nobody chases it.
+4. **Test data this walk probably left on dev** (test account, nothing personal): force-sale visits with shop photos and outlet-location correction requests for Friends Store (BAN11-001) on 2026-11-13 and 2026-11-18; memos `sr1001-261113-1002`, `sr1001-261118-1001` and `sr1001-261118-1002` (the last one: 92.00 BDT with 40.00 collected and 52.00 due). Discard on the server if unwanted.
+5. Rulings wanted: D2 (selling above stock is only warned), O1 (Attendance "No location yet"), O3 (Settings says 0 waiting while Sales Submit shows items), O4 (no map in AMO Team Location and TSO My Team), O5 (AMO Outlet badge 14 with empty queues), O6 (outlet "within range" with no fix after earlier force sales).
+
+How the server side was read: Azure Log Analytics workspace `log-aron-dev` (tables `AppRequests`, `ContainerAppConsoleLogs`), read-only, with the owner's existing Azure login. No credentials were used or kept.
+
 ## 0. Setup
 
 | Item | Value |
