@@ -187,7 +187,7 @@ class GiftPhotoRecordsTest {
         BundleProgrammes.section(h, com.aktcl.aron.backend.platform.Reach(userId, com.aktcl.aron.contract.Role.SR, today, false, emptySet(), setOf(route), true, emptyList()), listOf(route), setOf(outlet), today, BundleProgrammes.Flags(true, true, true), 1)
     }?.get("pending_gift_verifications")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it["redemption_client_uuid"]!!.jsonPrimitive.content == red }
     private fun units(r: JsonObject?) = r!!["units_captured"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() }
-    private fun sendUnit(red: String, unit: Int): JsonObject = photo(null, 100 + 7L * (++s1Seq), unit = red to unit, flat = lat + 0.00001 * (50 + s1Seq)).also { p -> ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) } }
+    private suspend fun io.ktor.client.HttpClient.sendUnit(red: String, unit: Int): JsonObject = with(world) { photo(null, 100 + 7L * (++s1Seq), unit = red to unit, flat = lat + 0.00001 * (50 + s1Seq)).also { p -> ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) } } }
 
     @Test
     fun pendingVerificationsUnitsCapturedAndMembershipComeFromOneFilteredSet() = world.withApi {
