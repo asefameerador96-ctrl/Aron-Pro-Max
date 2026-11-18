@@ -18,15 +18,19 @@ ProgrammesSection:
     Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary
     database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request
     was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle
-    request, keyed by memo_uuid, recomputed from scratch after each bundle; the SAME rule covers the loyalty balances:
-    every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and
-    everything the ledger holds, with no business-date cut), and the phone subtracts its own redemptions that had
-    NOT been acknowledged when it sent the request, keyed by redemption uuid; the phone never uploads records while
-    a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it
-    discards the section''s achievement and refetches. `astha_as_of` and a row''s `as_of` are display only ("data
-    as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty
-    (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and
-    `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
+    request, keyed by memo_uuid, recomputed from scratch after each bundle; NO TIMESTAMP IS COMPARED anywhere in
+    this rule (`astha_as_of` and a row''s `as_of` are display only): the server figure is the snapshot, and the
+    phone adds only its OWN memos that had not been acknowledged when it SENT the bundle request (the phone''s own
+    ordering), subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or
+    superseded locally, and sends NO bundle request while an upload batch is in flight (single-flight sync, both
+    directions); the SAME rule covers the loyalty balances: every `loyalty` figure includes every redemption of
+    this user acknowledged before the request was received (and everything the ledger holds, with no business-date
+    cut), and the phone subtracts its own redemptions that had NOT been acknowledged when it sent the request, keyed
+    by redemption uuid; the phone never uploads records while a bundle request is in flight (single-flight sync),
+    and if an acknowledgement arrives during the request it discards the section''s achievement and refetches. `astha_as_of`
+    and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections`
+    names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications
+    (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty
