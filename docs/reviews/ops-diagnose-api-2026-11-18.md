@@ -357,3 +357,100 @@ LOWS:
 - Inside V0209 the line-1 header comment changed from V0240 to V0209. This is comment-only; the SQL statements are identical to the reviewed V0240.
 - In IngestService.kt the isPhoneClose KDoc (D-SV2-15) now sits above the closedByProblem KDoc, so two KDoc blocks are stacked and the first no longer documents the function under it. This was already so in 9e6765d0 and is cosmetic.
 - Not run: Gradle build and tests (db test CheckoutClosedByV0203Test with the V0209 assert, backend tests), Flyway migrate or validate on a database, openapi-typescript regeneration of openapi.d.ts, and data-dictionary regeneration. These were compared by text only.
+
+
+## Re-check 7 (round 7, c1fe8c02), 2026-11-18
+
+Note: the "letters before the first colon" rule that fails here was the lead's own suggestion in round 6.
+
+### pg-download-path verdict=fail
+Lens: the downloaded PostgreSQL server-log path (pglog_head, diagnose.sh lines 145-154 and 231-249 at c1fe8c02). I copied the script to /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r7-pglog/ and ran it with GITHUB_ACTIONS=true and a fake az that lists the made-up files and copies them on download. Two problems block it.
+
+(1) The "letters before the first colon" rule prints free text. These made-up records reached the output:
+- `ERROR:  Rahim Uddin of Gulshan: could not find outlet` printed `ERROR Rahim Uddin of Gulshan`.
+- `PANIC:  Karim Ahmed Mobile Number: could not write` printed `PANIC Karim Ahmed Mobile Number`.
+- `FATAL:  OTP code for Rahim: could not` printed `FATAL OTP code for Rahim`.
+- `ERROR:  Mofiz Mia Gulshan: could not crlf` with CRLF printed `ERROR Mofiz Mia Gulshan`.
+- `ERROR:  Password is hunter two: could not` printed `ERROR Password [redacted] two`, so the second word of a password with a space leaked.
+- A prefix holding user@db (`UTC-rahim@aron-ERROR:  Karim Rahman: ...`) printed `ERROR Karim Rahman`. The prefix itself is never printed.
+
+A record only reaches pglog_head if its line passes the grep prefilter (FATAL, PANIC, terminat, could not, checkpoint and the other listed words). The head rule takes up to 61 ASCII letters and spaces, so Bangla text and anything with a quote, parenthesis, dot, underscore or digit gives [text]. The current migrations hold no RAISE whose message starts with a data value, except `sku %: ...` (an SKU code). So today it can only happen through a future RAISE, app text or a non-built-in message. But nothing in the rule stops it, and the round-7 test does not cover this shape. The same rule is in the KQL head on line 363, where ERROR records have no keyword prefilter; I did not run that path.
+
+(2) pglog_head is quadratic. The regex `(.*?)\s*$` on line 147 is quadratic when a long run of whitespace inside the message is followed by a non-space character:
+- Isolated pglog_head timings on one line: 10 KB took 0.18 s, 20 KB 0.71 s and 40 KB 2.74 s.
+- In the full script, 5 lines of about 100 KB each took 86.8 s, roughly 17 s per line.
+- Up to 80 lines per file pass `head -80`, which can exceed the job's 20-minute timeout.
+- Trailing whitespace only (no character after it) stays linear.
+- The other 100 KB shapes were all linear, at 0.13 to 0.7 s: no spaces, dashes, digits in the time, letters, letter-space runs, and a duration with 100 K digits (printed as `duration [long-token] ms`).
+
+What stays out (verified on the output):
+- Continuation lines (tab-indented SQL) and STATEMENT, DETAIL, HINT and CONTEXT records are dropped, and so are WARNING and NOTICE records.
+- `password authentication failed for user "rahim"`, `role "karim_uddin" does not exist`, `database "rahim" does not exist`, server process (PID ...) and `execute S_1:` / `execute <unnamed>:` all print [text].
+- `connection authorized: user=... host=...`, `connection received: host=...`, `disconnection: ... user=... host=...` and `statement: SELECT 'Rahim Uddin'` print only the fixed words before the colon.
+- Slow statements print only `duration N ms`.
+- Fixed phrases (ready to accept connections, terminating connection due to ..., checkpoint starting/complete, could not receive data from client) print as expected.
+- Other log_line_prefix shapes (`UTC [pid]: user=..,db=..` and `+06-`) are dropped whole: safe, but lost.
+- CRLF works (the \r is trimmed).
+- `--include-messages` under GITHUB_ACTIONS exits 2 and prints nothing. The workflow passes no such flag.
+
+Not verified:
+- A real `az postgres flexible-server server-logs download`: its file naming or subdirectories, its stdout, and real Azure log_line_prefix values.
+- The KQL head path (line 363) run on real or simulated Log Analytics.
+- The other sections of the script and the other lenses (Flyway labels, migrate job console labels, worker section, test-weakening diff).
+- Invalid UTF-8 input to the `perl -CSDA` decode.
+- The behaviour of `for f in $files` with globbing or odd file names.
+
+BLOCKING:
+- (upheld 3/3) infra/scripts/diagnose.sh:152 pglog_head prints free text (names and prose) from the downloaded PostgreSQL server log to the public job log: head rule ^([A-Za-z][A-Za-z ]{2,60}): printed `ERROR Rahim Uddin of Gulshan`, `PANIC Karim Ahmed Mobile Number`, `FATAL OTP code for Rahim`, `ERROR Mofiz Mia Gulshan` (CRLF line) and `ERROR Karim Rahman` (prefix with user@db). Only lines that pass the grep keyword prefilter (could not, FATAL, PANIC, terminat, checkpoint, ...) reach it. Fix: replace the open letters rule with an allowlist of known built-in PostgreSQL phrases, else [text]. The same rule is in the KQL head at line 363, where ERROR records have no prefilter. The round-7 test does not cover this shape.
+- (upheld 3/3) infra/scripts/diagnose.sh:147 pglog_head regex `(.*?)\s*$` is quadratic on a long whitespace run followed by a non-space: 10 KB 0.18 s, 20 KB 0.71 s, 40 KB 2.74 s; 5 lines of 100 KB took 86.8 s (about 17 s per line). Up to 80 such lines per file get through head -80, which can exceed the 20-minute job timeout. Fix: capture `(.*)` and trim trailing whitespace in a separate bounded step (or use `\s*+` / an atomic group).
+
+LOWS:
+- diagnose.sh:232 and :238: az stderr from the server-logs list and download failures is printed with only the outer redactor (no head or default-deny). A made-up error printed `(server-logs list failed: ERROR: (Forbidden) Client [ip] user [email] Rahim Uddin denied; ...)`. That text comes from the Azure platform, so the risk is low, but it is free text on an error path.
+- Partial leak through the redactor: `ERROR:  Password is hunter two: could not` printed `ERROR Password [redacted] two`. The prose rule `password is \S+` takes only one word. Fixing blocking item 1 with an allowlist removes this as well.
+- pglog_head drops records whose log_line_prefix does not fit `<date> <time> ?UTC\S*?-SEV:` (for example `%t [%p]: user=..,db=.. ERROR:` or an offset such as `+06-`). This is safe, but such records silently produce no output; consider printing a count of dropped records.
+- The grep prefilter keeps only records with the listed keywords, so a plain ERROR such as a duplicate key or a serialization failure without `could not` never shows. That matches the earlier behaviour; noted only so the lead knows what is not shown.
+- The round-7 test test_diagnose_downloaded_postgres_log_prints_no_free_text covers neither a head of letters and spaces before a colon nor a long whitespace line, so neither blocking item would have been caught.
+
+### whole-and-regression verdict=fail
+I checked the whole lane at c1fe8c02 against the integration branch (ce6792f67), plus the round-7 diff 5f0df7f0..c1fe8c02. Everything was read with git show. Copies are in /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r7-sanity/ with a fake az and made-up samples. There is one blocking finding: the new pglog_head takes quadratic time on a 100 KB line. Everything else in this lens passes.
+
+What I ran:
+- The 11 diagnose tests of infra/tests/check_infra.py from the scratch copy: all OK.
+- A full default run with the fake az and the workflow's default inputs. Every section printed, in this order: include_messages=false notice; az version; containerapp start/stop; PostgreSQL server; diagnostic settings; parameters; metrics; activity log; downloaded server-log excerpts (pg.log rows: `ERROR [text]` and `LOG checkpoint complete`, with no name or address); Log Analytics workspace; migrate job console; system log for the job and worker; AzureDiagnostics PostgreSQLLogs; worker console; API console; API system log; migrate pre-flight; worker app; and the final `diagnose: done (read-only)`.
+- The migrate job console labels and the worker section still print by default, so no lead-needed dev behaviour is lost.
+- The Flyway kind regexes, checked in Python on verbatim Flyway 10 lines (the lane's test plus my own failure line), give:
+  - `flyway current version 0204`
+  - `flyway migrating to 0205` (now anchored on `[^ ]+`)
+  - `flyway applied 4 now at 0208`
+  - `flyway validated 186`
+  - `flyway FAILED at 0209`, with SQLSTATE 42P01 from `SQL State  : 42P01` in the throwable text, and script `V0209__attendance_closed_by_comment` (stops before `.sql`)
+- The ms boundary works: `482913 msg` gives nothing, `18400 ms` and `5ms.` give their numbers, and a 10-digit number gives nothing. SQLSTATE matching is case-sensitive.
+- The lg/lvl/exc/cause shape checks reject spaces, `=` and anything over 160 characters, and come after `kind`. The `lvl in (...)` and `not(lg startswith 'aron.request')` filters still work on the checked values.
+
+Public output:
+- No message mode is reachable from the workflow. There is no input for it. Every input is validated before use, so `--include-messages` cannot be injected through an input. With GITHUB_ACTIONS=true and the flag, the script exits 2 and sends no az call (the query log stayed empty).
+- The redactor covers all stdout: `exec > >(redact)`, then the per-query show/showm. The step summary is cut from diagnose.txt, which is already redacted (head -c 60000 plus iconv -c).
+- Invalid UTF-8 in pglog_head gave no stderr and did not stop it.
+- The redactor stayed linear on 10 adversarial 100 KB lines (0.05 to 0.27 s each).
+
+Tests:
+- 5f0df7f0..c1fe8c02 removes or loosens nothing. The only changed line is the label-block slice end, which had to move because the `case(...)` now ends with `'-')\n` instead of `'-')"`. Two test blocks were added: failure, ms, sqlstate and shape assertions, and a test feeding a made-up downloaded-log file through the stub az.
+- Against ce6792f67, the only removed assertions are in the worker test that D-OPS-DIAGNOSE-API-07 documents. The workflow diff only adds the api_app input, input validation, pipefail, iconv and the final-line gate.
+
+Not verified:
+- The KQL in real Azure: RE2 handling of `\b`, `\x24` in a class, `[\x22]`, and reassigning columns inside one extend.
+- The real JSON form of the throwable from this app's logback encoder, and whether a Flyway 10 failure always carries `Migration V...sql failed` rather than only `Script V...sql failed`.
+- The real Azure PostgreSQL log_line_prefix and the line format of downloaded files.
+- An actual Actions run and its job log.
+- The stderr of az, grep and the like under every failure mode. diagnose.sh stderr goes to the public log without the redactor, but every az call I traced sends it to /dev/null or into the redacted stdout.
+
+BLOCKING:
+- (upheld 3/3) infra/scripts/diagnose.sh pglog_head (line 147 at c1fe8c02): the pattern `-(LOG|ERROR|FATAL|PANIC):\s*(.*?)\s*$` is quadratic on a long whitespace run in the middle of a record. Measured with the extracted perl program on a record `ERROR:  invalid input syntax for type uuid: "<N spaces>x" could not`: N=25 000 took 1.1 s, 50 000 took 4.45 s, and 100 KB took 17.6 s. The record passes the grep keyword filter (`could not`) and the window awk. Up to 80 lines per file then reach pglog_head, about 80 x 17.6 s = 23 min, over the 20-minute job timeout, per downloaded file. The path is live because logfiles.download_enable is on. A client-supplied value echoed in an ERROR message is enough to trigger it. Fix: do not lazily trim the tail. Capture `(.*)` greedily, or skip the trailing-space trim entirely: the duration, fixed-phrase and before-colon regexes are all anchored and bounded. Also do not replace it with `s/\s+$//`, which has the same problem. Add a 100 KB timing case for pglog_head (the downloaded-log path) next to the redactor's linear-time test, which does not cover this function.
+
+LOWS:
+- KQL PostgreSQL head (line 363): `extract(@'-(?:ERROR|FATAL|PANIC|LOG):[ ]*([A-Za-z][A-Za-z ]{2,60}):', 1, msg)` is not anchored to the record's own severity marker. When the record's own head has no colon, the next match inside an echoed value wins. In a Python check, a made-up message `-ERROR:  duplicate key value violates unique constraint "u" (note -LOG: Abu Zafar Store: could not)` gives `Abu Zafar Store`. This needs crafted text inside a record that passes the filters. pglog_head anchors on `^` and is not affected. Suggest anchoring the KQL head on the first severity marker, as pglog_head does.
+- Downloaded-log path: continuation lines of a multi-line record, for example a newline inside a slow statement or a bind value, are not tied to their record. A continuation line that a user forged to look like `YYYY-MM-DD HH:MM:SS UTC-x-ERROR:  Words:` would print `Words`. Crafted input only; a real continuation line fails the prefix match or the awk window.
+- The letters-before-colon head can print developer-defined RAISE text with a value in it. For example, V0003 `RAISE EXCEPTION 'sku %: ...'` prints `sku <CODE>` when the code is letters only. This is not personal data, and the KQL head behaves the same way.
+- The lg, lvl and exc shape checks let a single word through (lvl `[A-Z]{3,8}` accepts `RAHIM`; lg and exc accept `Rahim`). The values come from code-controlled fields, so this is a net, not the control.
+- check_infra.py: the helper `ex` contains a dead expression, `rx.replace("\\x24", "$") if False else rx`. Cosmetic.
+- The lane's stub test's fake az does not match `containerapp revision list -g ...` (its case key has four words). My copy of the stub had the same gap, so I did not exercise the revision table output. It is not a gate.
