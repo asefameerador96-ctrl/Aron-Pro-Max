@@ -94,6 +94,42 @@ class RoomDayAdaptersTest {
         assertEquals(RejectedOutcome.RETRY, listed.getValue("visit").outcome)
     }
 
+    /**
+     * D-AGATE-15 (T5): REAL parentage, not rank. The visit and the memo are accepted, a survey answer of the same visit (a rank-1 SIBLING of the memo) is refused for good, and
+     * a memo line the phone gave up on. The line's ancestors (memo, visit) are fine, so it can be sent again: the entry says Send again and the SQL re-queues it.
+     * A refused MEMO (its real parent) still withholds it.
+     */
+    @Test fun aRefusedSiblingNeverWithholdsSendAgainButARefusedParentDoes() = runTest {
+        sell(due = 0)
+        val visitUuid = db.captureDao().visitsOn("2026-10-05").single().clientUuid
+        repo.recordSurveyResponse(com.aktcl.aron.core.database.entity.SurveyResponseEntity(ClientIds.newUuid(), meta(), visitUuid, 1, 1, 1, "bool", true))
+        val rows = db.outboxDao().nextPending(100)
+        val visit = rows.first { it.recordType == "visit" }; val memo = rows.first { it.recordType == "memo" }
+        val line = rows.first { it.recordType == "memo_line" }; val survey = rows.first { it.recordType == "survey_response" }
+        db.outboxDao().applyAck(visit.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(memo.clientUuid, "acked", null, 2, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(survey.clientUuid, "rejected", "schema_invalid", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(line.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        val source = RoomDaySource(db)
+        val entries = source.rejectedRows("2026-10-05")
+        val lineEntry = entries.single { it.code == "retry_exhausted" }
+        assertEquals("the survey is a sibling: the line can be sent again", RejectedOutcome.PHONE_GAVE_UP, lineEntry.outcome)
+        assertTrue(lineEntry.canSendAgain)
+        assertEquals("and the SQL really re-queues it", 1, db.outboxDao().requeueRetryExhausted(line.clientUuid))
+    }
+
+    /** D-AGATE-15 (T5): the line's REAL parent (its memo) refused for good withholds Send again, in the reader and in the SQL. */
+    @Test fun aRefusedRealParentOfAnExhaustedLineWithholdsSendAgain() = runTest {
+        sell(due = 0)
+        val rows = db.outboxDao().nextPending(100)
+        val visit = rows.first { it.recordType == "visit" }; val memo = rows.first { it.recordType == "memo" }; val line = rows.first { it.recordType == "memo_line" }
+        db.outboxDao().applyAck(visit.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(memo.clientUuid, "rejected", "price_invalid", null, "2026-10-05T05:10:00.000Z")
+        db.outboxDao().applyAck(line.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:10:00.000Z")
+        assertEquals(0, db.outboxDao().requeueRetryExhausted(line.clientUuid))
+        assertFalse(RoomDaySource(db).rejectedRows("2026-10-05").any { it.canSendAgain })
+    }
+
     /** Contract 1.9 row 4: the digest adds this phone's received counts and the server's rows this install does not hold. */
     @Test fun theDigestFeedsThePerDeviceCountsAndTheServerList() = runTest {
         db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",

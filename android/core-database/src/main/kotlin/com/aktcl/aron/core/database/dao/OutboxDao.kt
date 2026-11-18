@@ -243,13 +243,20 @@ abstract class OutboxDao {
      * Each goes back to pending with the SAME client_uuid, payload and sig and `attempts` reset, in the engine's normal family order
      * (by seq), exactly as [resendAckedSince] does: the server's registry answers each by uuid (stored, or duplicate), so it keeps it once.
      * Only rows rejected with that code move; a server rejection is never resent from here. A child is NOT re-queued while a PARENT of its family
-     * was refused by the server (it could only answer `parent_missing` and exhaust again: a loop the rep cannot end). Returns the rows re-queued.
+     * was refused by the server (it could only answer `parent_missing` and exhaust again: a loop the rep cannot end). D-AGATE-15 (T5): "a PARENT" is a real ancestor
+     * of THAT record, never a sibling that merely has a lower rank: a memo line's parent is its memo (then the visit), a rank-1 record's (memo, visit close, content view,
+     * survey) is the visit; a refused survey does not stop an unsent memo line of an accepted memo. Returns the rows re-queued.
      */
     @Query(
         """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL
            WHERE state = 'rejected' AND last_code = 'retry_exhausted'
            AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)
-           AND NOT EXISTS (SELECT 1 FROM outbox p WHERE p.family_uuid = outbox.family_uuid AND p.state = 'rejected' AND IFNULL(p.last_code, '') != 'retry_exhausted' AND p.`rank` < outbox.`rank`)""",
+           AND NOT EXISTS (SELECT 1 FROM outbox p WHERE p.family_uuid = outbox.family_uuid AND p.state = 'rejected' AND IFNULL(p.last_code, '') != 'retry_exhausted' AND (
+               (outbox.`rank` >= 1 AND p.client_uuid = outbox.family_uuid)
+               OR p.client_uuid IN (SELECT memo_client_uuid FROM memo_line WHERE client_uuid = outbox.client_uuid
+                                    UNION SELECT memo_client_uuid FROM memo_discount WHERE client_uuid = outbox.client_uuid
+                                    UNION SELECT memo_client_uuid FROM qc_line WHERE client_uuid = outbox.client_uuid)
+               OR (outbox.`rank` >= 2 AND p.`rank` < outbox.`rank` AND outbox.client_uuid NOT IN (SELECT client_uuid FROM memo_line UNION SELECT client_uuid FROM memo_discount UNION SELECT client_uuid FROM qc_line))))""",
     )
     abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
 
@@ -305,6 +312,8 @@ data class RefusedRowLite(
     val state: String, val lastCode: String?, val lastMessageKey: String?, val seenAt: String?, val attempts: Int,
     /** From the domain tables by uuid (see [REFUSED_SELECT]) for every record type, never from `payload_json`. */
     val memoNo: String? = null, val outletId: Long? = null,
+    /** D-AGATE-15 (T5): the record's own PARENT uuid where it has one besides its family's visit: a memo line's, discount's or QC line's memo. */
+    val parentUuid: String? = null,
 )
 
 /**
@@ -319,6 +328,7 @@ private const val REFUSED_SELECT =
     """SELECT o.seq AS seq, o.client_uuid AS clientUuid, o.record_type AS recordType, o.family_uuid AS familyUuid, o.`rank` AS `rank`, o.business_date AS businessDate,
        o.state AS state, o.last_code AS lastCode, o.last_message_key AS lastMessageKey, o.seen_at AS seenAt, o.attempts AS attempts,
        COALESCE(m.memo_no, lm.memo_no, dm.memo_no, dc.against_memo_no, qm.memo_no) AS memoNo,
+       COALESCE(l.memo_client_uuid, d.memo_client_uuid, q.memo_client_uuid) AS parentUuid,
        COALESCE(m.outlet_id, lm.outlet_id, dm.outlet_id, v.outlet_id, dc.outlet_id, vs.outlet_id, cv.outlet_id, qm.outlet_id, qv.outlet_id, fv.outlet_id) AS outletId
        FROM outbox o
        LEFT JOIN memo m ON o.record_type = 'memo' AND m.client_uuid = o.client_uuid

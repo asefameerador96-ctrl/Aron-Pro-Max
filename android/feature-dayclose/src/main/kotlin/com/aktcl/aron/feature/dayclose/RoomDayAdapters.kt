@@ -98,9 +98,14 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             val exhausted = com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED
             val serverRefused = members.filter { it.state == OutboxState.REJECTED && it.lastCode != exhausted }
             val exhaustedRows = members.filter { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
-            // only a refused ANCESTOR (strictly lower rank than the record the phone gave up on: the record it depends on) stops Send again; a refused SIBLING at the
-            // same rank never does (same rule as the SQL guard in requeueRetryExhausted). A record that never reached the server whose parents are stored can always be sent again.
-            val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x -> serverRefused.any { it.rank < x.rank } }
+            // only a refused ANCESTOR (the record it depends on) stops Send again; a refused SIBLING never does (same rule as the SQL guard in requeueRetryExhausted). A record that never reached the server whose parents are stored can always be sent again.
+            // D-AGATE-15 (T5): REAL parentage, as the SQL guard: a memo line's memo, a rank-1 record's visit (the family's root); a refused survey, close or content view is a sibling
+            val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x ->
+                serverRefused.any { s ->
+                    (x.rank >= 1 && s.clientUuid == x.familyUuid) || s.clientUuid == x.parentUuid ||
+                        (x.parentUuid == null && x.rank >= 2 && s.rank < x.rank) // no domain row to name the parent (purged, or another type): the conservative rank rule
+                }
+            }
             val gaveUp = exhaustedRows.isNotEmpty() && !parentRefused
             val outcome = when {
                 gaveUp -> RejectedOutcome.PHONE_GAVE_UP
