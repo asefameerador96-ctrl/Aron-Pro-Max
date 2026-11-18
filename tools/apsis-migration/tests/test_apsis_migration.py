@@ -757,7 +757,7 @@ class Charset(Base):
         try:
             d = Path(self.tmp.name) / "long"
             d.mkdir()
-            (d / "master_sku.sql").write_text("CREATE TABLE `master_sku` (`sku_code` varchar(20));\nINSERT INTO `master_sku` VALUES " + ",".join("('%d')" % i for i in range(200)) + ";\n")
+            (d / "master_sku.sql").write_text("CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES " + ",".join("('%d')" % i for i in range(200)) + ";\n")
             with self.assertRaises(ValueError) as cm:
                 list(mysqldump.events(d / "master_sku.sql"))
             self.assertIn("net-buffer-length", str(cm.exception))
