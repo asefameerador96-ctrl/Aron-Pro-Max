@@ -292,3 +292,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 ### 2026-11-18 10:50 update: P-SR1b push blocked by its permission classifier
 - Session session_014mnioQAtKKTq9KrTS98tic ('…android-parity-sr-1 P-SR1b'): `git push origin lane/android-parity-sr-1` of local commit 41ee52a1 (five lows of the look-train-2 batch check) DENIED twice by the auto mode classifier ('Destructive or Unwanted Actions', then 'Undermining Oversight'). Not worked around. The remote head d60e2e2f (batch check PASS) is unaffected; 41ee52a1 exists only in that container. Needs the owner's approval in that session (same situation as P-SR2b). Until then the SR look lane cannot push its train-121 merge either.
 - Look train 2 fallback if the owner does not answer: pin d60e2e2f and let a fresh lane do the train-121 merge and re-apply the five lows from the review text (decide at landing time; do not copy the blocked commit out of that session).
+
+
+### 2026-11-18 10:55 update: train 121 gitleaks failure explained; re-run ordered
+- The one finding (generic-api-key, infra/tests/check_infra.py:859, commit 41df7f4d) was a made-up test sample that was briefly the tip of lane/ops-diagnose-api; the train's whole-history scan covers all refs fetched and ran one second after that push. Not reachable from a9d83d774; no remote ref holds it now (SV6 force-pushed it away before being told not to). SV6's scan with the pinned gitleaks: a9d83d774 history and all current refs clean. Integrator told to re-run the failed job once and continue.
+- CI weakness to fix (give to F-INFRA1): the whole-history secret scan of a branch run includes every other branch's tip, so one lane's flagged commit can fail an unrelated train; scan the checked-out commit's own history (and keep a separate all-refs scan as its own job).
+- T-KPI2 6af9be045: admin tab built, ci green; Opus pass on the whole targets-server branch running.
