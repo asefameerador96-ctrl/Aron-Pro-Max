@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -59,12 +60,18 @@ private val longDate = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLIS
 /** "November 3, 2025": the date field of the form prints the vendor's English long date in both languages. */
 fun formDateText(iso: String): String = runCatching { LocalDate.parse(iso).format(longDate) }.getOrDefault(iso)
 
-/** The alphabet bar (screenshot 38): a dark rounded panel of letters; the selected one is a green pill. "All" is the empty choice. */
+/** The words of the description error: a deep red for both looks (the normal look red 0xD5484A is only 4:1 on the page, the Sunlight red 6.5:1). */
+internal val DescriptionErrorInk = Color(0xFFA00018)
+
+/** The dark panel behind the letters (the vendor's #4F4F4F); the letters on it are pinned at 7:1 by AmoDrawnArtContrastTest. */
+internal val AlphabetPanel = Color(0xFF4F4F4F)
+
+/** The alphabet bar (screenshot 38): a dark rounded panel of letters; the selected one is a green rounded square. "All" is the empty choice. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AlphabetBar(letters: List<String>, selected: String?, onSelect: (String?) -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    FlowRow(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF4F4F4F)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AlphabetPanel).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         (listOf<String?>(null) + letters).forEach { l ->
             val on = l == selected
             Box(
@@ -170,14 +177,18 @@ private fun InfoLine(label: String, value: String) {
 @Composable
 private fun DescriptionBox(value: String, onValueChange: (String) -> Unit, hint: String, error: Boolean, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    val errorText = stringResource(R.string.amo_field_invalid)
     val shape = RoundedCornerShape(8.dp)
+    Column {
     androidx.compose.foundation.text.BasicTextField(
         value = value, onValueChange = onValueChange, textStyle = amoText(16),
         cursorBrush = androidx.compose.ui.graphics.SolidColor(look.purple),
         modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).clip(shape).background(look.card).border(BorderStroke(2.dp, if (error) look.red else look.purple), shape)
-            .androidx_semanticsLabel(hint),
+            .semantics { contentDescription = hint; if (error) error(errorText) },
         decorationBox = { inner -> Box(Modifier.padding(12.dp)) { if (value.isEmpty()) Text(hint, style = amoText(16, color = look.inkMuted)); inner() } },
     )
+    // the error is said in words as well as in the red outline (colour alone is not enough for TalkBack or the sun): the same "check this value" line the other fields print
+    if (error) Text(errorText, style = amoText(13, color = DescriptionErrorInk), modifier = Modifier.padding(top = 2.dp, start = 4.dp))
+    }
 }
 
-private fun Modifier.androidx_semanticsLabel(label: String): Modifier = this.then(Modifier.semantics { contentDescription = label })

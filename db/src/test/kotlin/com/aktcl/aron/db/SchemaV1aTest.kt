@@ -301,7 +301,10 @@ class SchemaV1aTest {
             "cfg.amo.joint_call_default_star", "cfg.rubric.distribution_brands", "cfg.geo.update_base_max_distance_m", "cfg.geo.update_base_max_move_m",
             "cfg.geo.update_base_max_per_outlet_month",
             // Master-data fit push 1b, lead ruling B2 (V0199, docs/requests/contract-1.18-masterdata-fit.md s3): the gate for 3-character rep ids.
-            "cfg.release.short_rep_id_version_code")
+            "cfg.release.short_rep_id_version_code",
+
+            // waiting-item sweep (V0204, D-LOY-API-29, lead ruling 2026-11-18): the keys that stop or slow the sweep without a deploy.
+            "cfg.sync.waiting_sweep_enabled", "cfg.sync.waiting_sweep_interval_s", "cfg.sync.waiting_sweep_batch")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
