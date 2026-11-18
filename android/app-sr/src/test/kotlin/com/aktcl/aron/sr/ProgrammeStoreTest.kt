@@ -16,6 +16,7 @@ import com.aktcl.aron.feature.programmes.SaveOutcome
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -167,5 +168,38 @@ class ProgrammeStoreTest {
         val m = com.aktcl.aron.feature.programmes.CampaignPhotoModel
         assertEquals(m.unitUuid(a, 1), m.unitUuid(a, 1))
         assertTrue(m.unitUuid(a, 1) != m.unitUuid(a, 2)); assertTrue(m.unitUuid(a, 1) != m.unitUuid(b, 1))
+    }
+
+    // ---- the Developer options gate (D-OWNER-MDM-02): first in every programme writer ----
+    private fun <T> withGateClosed(block: () -> T): T {
+        val before = com.aktcl.aron.core.common.ActionGate.check
+        com.aktcl.aron.core.common.ActionGate.check = { false }
+        try { return block() } finally { com.aktcl.aron.core.common.ActionGate.check = before }
+    }
+
+    @Test fun withTheGateClosedNoProgrammeRecordIsWrittenAndNoPhotoIsClaimed() = runTest {
+        val s = photoStore()
+        withGateClosed {
+            kotlinx.coroutines.runBlocking {
+                assertThrows(com.aktcl.aron.core.common.GateClosedException::class.java) { kotlinx.coroutines.runBlocking { s.saveProgramme(meta.meta(7), plan(ClientIds.newUuid(), 1)) } }
+                assertThrows(com.aktcl.aron.core.common.GateClosedException::class.java) { kotlinx.coroutines.runBlocking { s.saveGiftPhoto(meta.meta(7), photoPlan(ClientIds.newUuid(), ClientIds.newUuid()), ClientIds.newUuid(), fixEntity) } }
+                assertThrows(com.aktcl.aron.core.common.GateClosedException::class.java) { kotlinx.coroutines.runBlocking { repo.recordProgramme(plan(ClientIds.newUuid(), 1).map { com.aktcl.aron.core.database.entity.AmoRecordEntity(it.clientUuid, meta.meta(7), it.type, it.familyUuid, it.rank, it.payload.toString()) }) } }
+            }
+        }
+        assertEquals(0, db.outboxDao().countInState("pending")); assertTrue(claims.isEmpty())
+    }
+
+    /** Source scan in the style of EveryWriterIsGatedTest: the first statement of every `save*` function of the store is the gate, so a writer added later cannot forget it. */
+    @Test fun everySaveFunctionOfTheStoreCallsTheGateFirst() {
+        val rel = "src/main/kotlin/com/aktcl/aron/sr/ProgrammeStore.kt"
+        val src = listOf(java.io.File(rel), java.io.File("android/app-sr/$rel")).first { it.isFile }.readText()
+        val heads = Regex("""\n    suspend fun (save\w+)\(""").findAll(src).toList()
+        assertTrue("the scan found ${heads.size} save functions: it is broken", heads.size >= 2)
+        val bad = heads.filter { m ->
+            val body = src.substring(m.range.first, src.indexOf("\n    }\n", m.range.first).let { if (it < 0) src.length else it })
+            val lines = body.lines().dropWhile { !it.contains("suspend fun") }.drop(1).map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
+            lines.firstOrNull()?.startsWith("com.aktcl.aron.core.common.ActionGate.requireOpen()") != true
+        }.map { it.groupValues[1] }
+        assertEquals("these writers do not call ActionGate.requireOpen() first: $bad", emptyList<String>(), bad)
     }
 }

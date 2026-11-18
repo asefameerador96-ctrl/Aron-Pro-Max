@@ -329,6 +329,7 @@ class CaptureRepository(
      * exceptions [recordProgramme] would. Inside one transaction so it sees one state.
      */
     suspend fun requireProgrammeWriteOpen(meta: CaptureMeta, recordType: String) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requireRoute(meta)
         requireCheckedIn(meta.businessDate)
         requireOpenRouteDay(meta, recordType)
@@ -342,6 +343,7 @@ class CaptureRepository(
      * rank 1 under the redemption. The open-route-day guard is the same one every operational write uses.
      */
     suspend fun recordProgramme(records: List<com.aktcl.aron.core.database.entity.AmoRecordEntity>): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         require(records.isNotEmpty()) { "no records" }
         val parent = records.first()
         if (purged(parent.clientUuid)) return@withTransaction false

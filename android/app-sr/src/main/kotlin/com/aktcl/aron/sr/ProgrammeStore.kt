@@ -109,6 +109,7 @@ class ProgrammeStore(
      * programme write path. A photo that is gone, a refused gate or a failed claim leaves nothing saved; the result says why.
      */
     suspend fun saveGiftPhoto(meta: CaptureMeta, plan: PlannedRecord, photoUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity): SaveOutcome = withContext(Dispatchers.IO) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-OWNER-MDM-02): before the gates, the claim and the commit
         try {
             capture.requireProgrammeWriteOpen(meta, plan.type)
         } catch (e: com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException) { return@withContext SaveOutcome.DAY_SUBMITTED }
@@ -163,6 +164,7 @@ class ProgrammeStore(
      * unless the result is SAVED. No exception leaves this function.
      */
     suspend fun saveProgramme(meta: CaptureMeta, planned: List<PlannedRecord>): SaveOutcome = withContext(Dispatchers.IO) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-OWNER-MDM-02): closed means no write; the gate's own exception ends the coroutine quietly
         val records = planned.map { AmoRecordEntity(it.clientUuid, meta, it.type, it.familyUuid, it.rank, it.payload.toString()) }
         try {
             if (capture.recordProgramme(records)) { runCatching { requestSync() }; SaveOutcome.SAVED }
