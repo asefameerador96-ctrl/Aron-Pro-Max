@@ -90,7 +90,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order only memos that never left the phone are added
         val acked = day.programmes.ackedBeforeRequest()
         awaiting = AsthaLocal.awaiting(memos, acked)
-        unknownOrder = AsthaLocal.unknownOrder(memos, acked != null)
+        unknownOrder = AsthaLocal.unknownOrder(memos, acked != null, date?.take(7))
         held = AsthaLocal.heldForReview(memos)
         data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, acked, date.take(7)) }
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
@@ -143,7 +143,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
         RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(page.redemptions, o, pr, page.ackedBefore) })
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), givenUp = com.aktcl.aron.feature.programmes.LocalRedeemed.givenUp(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(page.redemptions, o, pr, page.ackedBefore) })
     }
 }
 
@@ -163,7 +163,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
+            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), givenUp = com.aktcl.aron.feature.programmes.LocalRedeemed.givenUp(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = page.cashRateMtk ?: 0L

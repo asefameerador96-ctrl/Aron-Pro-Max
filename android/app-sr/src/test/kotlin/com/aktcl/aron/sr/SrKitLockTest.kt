@@ -48,6 +48,9 @@ class SrKitLockTest {
         previousOwn = Thread.currentThread().uncaughtExceptionHandler; Thread.currentThread().uncaughtExceptionHandler = catcher
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         f = SrLockFixture(context, latePolicy = "reject")
+        // D-AGATE-29: the day's clock is pinned to noon Dhaka (06:00Z) of a fixed date, and the fixture's check-in (made on the REAL date at construction) is repeated for it, so no test of this class can
+        // see the business date change when the suite happens to run across Dhaka midnight (18:00:00Z)
+        f.trustAt(java.time.Instant.parse("2026-10-06T06:00:00Z").toEpochMilli()); f.checkIn()
     }
 
     @After fun tearDown() {

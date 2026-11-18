@@ -89,5 +89,8 @@ class RedemptionModelTest {
         assertEquals(0L, LocalRedeemed.heldPoints(listOf(lost, held), 10, 3, setOf("lost", "held"))); assertEquals(0L, LocalRedeemed.unconfirmedPoints(listOf(lost, held), 10, 3, setOf("lost", "held")))
         assertEquals(0L, LocalRedeemed.points(listOf(LocalRedemption(10, 3, 5, "t", "rejected", uuid = "x")), 10, 3, emptySet())) // refused: points come back
         assertEquals(1, LocalRedeemed.awaiting(listOf(lost, LocalRedemption(10, 3, 5, "t", "pending"))))
+        val gaveUp = LocalRedemption(10, 3, 5, "t", "uncertain", gaveUp = true)
+        assertEquals(1, LocalRedeemed.awaiting(listOf(lost, gaveUp))) // a given-up row is not promised an update after the next sync
+        assertEquals(1, LocalRedeemed.givenUp(listOf(lost, gaveUp)))
     }
 }
