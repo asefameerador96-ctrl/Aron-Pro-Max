@@ -891,7 +891,7 @@ class Workflows(unittest.TestCase):
         self.assertEqual("ok-1", lines[0]); self.assertEqual("ok-5", lines[4]); self.assertNotIn("1712", lines[2])
         # B1: the held-back count reads the two numbers whatever az prints (tab, newline, capitalised or not).
         for sample in ("3\t12\n", "3\n12\n", "3 12", "3,12"):
-            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 shown)\n", run_note(sample), sample)
+            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 not held; the list below is capped at the newest 150)\n", run_note(sample), sample)
         self.assertEqual("(held-back count unavailable)\n", run_note("True\tFalse\n"))
         self.assertEqual("(held-back count unavailable)\n", run_note(""))
         # Ordinary diagnostics text survives: a timestamp, a level, a class name, a count.
@@ -906,6 +906,54 @@ class Workflows(unittest.TestCase):
                     ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "UPPER"], ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "ok", "x;y"]):
             r = subprocess.run(["bash", script] + bad, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-aron-dev"})
             self.assertEqual(2, r.returncode, (bad, r.stdout, r.stderr))
+
+    def test_diagnose_redaction_is_linear_and_reads_well(self):
+        # Review of f16963bd: bounded patterns (no quadratic blow-up on an unbroken run), more key and value shapes, less over-redaction, a per-run salt, CRLF, the fail-closed notice.
+        import subprocess, time, re as _re
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        env0 = {"PATH": "/usr/bin:/bin"}
+        def run(text, extra=None, width=None):
+            e = dict(env0); e.update(extra or {})
+            cmd = ["bash", script, "--redact"] + ([str(width)] if width else [])
+            return subprocess.run(cmd, input=text.encode(), capture_output=True, env=e, check=True).stdout.decode("utf-8")
+        # (1) 100 KB unbroken runs finish in seconds (they took 30+ s per 16 KB before the prefixes were bounded).
+        n = 100000
+        for name, blob in {"letters": "a" * n, "hex": "0123456789abcdef" * (n // 16), "digits": "1" * n, "alnum then at": "a1" * (n // 2) + "@",
+                           "dots": "a." * (n // 2), "key at the end": "x" * n + "tok" + "en", "camel": "aKey" * (n // 4), "spaces": " " * n, "digit space": "1 " * (n // 2),
+                           "unclosed quote": 'pass' + 'word="' + "a" * n, "braces": "tok" + "en={" * (n // 8)}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n"); dt = time.time() - t0
+            self.assertLess(dt, 20, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+        # (2) more shapes
+        more = {"otpCode=" "481516": "481516", "pinCode: " "4821": "4821", "authCode=" "zz11aa": "zz11aa", "keyValue=" "hello22": "hello22",
+                'raw json \\"pass' 'word\\":\\"two words\\" done': "two words", 'pass' 'word="never closed here': "never closed", "tok" 'en={"a":{"b":"nested22"},"c":1} after': "nested22",
+                "pass" "word=ab;cd,ef gh": "cd", "pass" "word=ab;cd,ef gh x": "gh", "secret" ": [1,2,3]": "1,2,3"}
+        for text, secret in more.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # (3) reading is not hurt: a number 13..19 before a date, durations on a verification line, 0.0.0.0, an image reference with a 40-hex tag
+        sha = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d"
+        for line in ("call 17 2026-11-18 ok", "verification took 18400 ms and then 1500 retries", "listen 0.0.0.0:8080 and 127.0.0.1", f"image acr.azurecr.io/aron/api:{sha} ready",
+                     "image acr.azurecr.io/aron/api@sha256:" + "ab12" * 16 + " pulled"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        self.assertNotIn("481516", run("verification code 481516 sent\n"))
+        self.assertIn("[ip]", run("client 203.0.113.9\n"))
+        # (5) the UUID tag: stable within a run (same salt), different across runs (random salt), different for another id
+        u1, u2 = "123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174999"
+        def tag(text, extra=None): return _re.findall(r"\[uuid:([0-9a-f]{8})\]", run(text, extra))
+        t = tag(f"a {u1}\nb {u1}\nc {u2}\n", {"REDACT_SALT": "salt-one"})
+        self.assertEqual(t[0], t[1]); self.assertNotEqual(t[0], t[2])
+        self.assertEqual(t, tag(f"a {u1}\nb {u1}\nc {u2}\n", {"REDACT_SALT": "salt-one"}), "same salt, same tags")
+        self.assertNotEqual(t[0], tag(f"a {u1}\n", {"REDACT_SALT": "salt-two"})[0], "another salt, another tag")
+        self.assertNotEqual(tag(f"a {u1}\n")[0], tag(f"a {u1}\n")[0], "no salt given: every run draws its own")
+        # (6) CRLF, an empty line, and the fail-closed notice (a line the scrubber cannot process is replaced, never printed raw; later lines still come)
+        self.assertEqual("one\n\ntwo [phone]\n", run("one\r\n\r\ntwo 01712345678\r\n"))
+        self.assertEqual("\n\n", run("\n\n"))
+        self.assertEqual("", run(""))
+        self.assertEqual("no newline at the end", run("no newline at the end"))
+        out = run("before\nBOOM-MARKER pretend-secret\nafter 01712345678\n", {"REDACT_SELFTEST_DIE": "BOOM-MARKER"})
+        self.assertEqual("before\n[line withheld: redaction filter error]\nafter [phone]\n", out)
+        self.assertNotIn("pretend-secret", out)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")

@@ -21,19 +21,29 @@ set -uo pipefail
 # first 8 hex of its sha256 ([uuid:xxxxxxxx], the same UUID gives the same text), and 40-hex git shas after build/commit/sha/image or on a health line,
 # four-part versions after version/build/release/tag, and epoch seconds after exp/iat/ts/time keys are left alone.
 # What it does NOT catch: FREE-TEXT names and usernames that are not in a key=value or JSON form. The defence for those is that the API and worker log ids,
-# hashes and class names only (no payload, no person data); this net is not a licence to log such values. It over-redacts elsewhere on purpose.
+# hashes and class names only (no payload, no person data); this net is not a licence to log such values. It over-redacts elsewhere on purpose: a password-like key
+# takes up to 3 plain words after an unquoted value, a bare 10-digit number starting 13..19 reads as a phone (not before a date), and OTP/PIN digits next to an otp/pin/
+# sms/verification word go (durations and counts with a unit stay). Every pattern has a BOUNDED prefix, so an unbroken 100 KB run is linear (tested). The UUID tag
+# uses a per-run random salt (REDACT_SALT): the same id matches across lines of one run but cannot be followed across runs in public logs.
 read -r -d '' REDACT_PL <<'PERL' || true
 use strict; use warnings; no warnings 'utf8';
 use Encode qw(decode encode FB_DEFAULT);
 use Digest::SHA qw(sha256_hex);
 $| = 1; binmode(STDIN); binmode(STDOUT);
 my $W = (defined $ENV{REDACT_WIDTH} && $ENV{REDACT_WIDTH} =~ /^[0-9]+$/) ? $ENV{REDACT_WIDTH} + 0 : 0;
+my $SALT = (defined $ENV{REDACT_SALT} && length $ENV{REDACT_SALT}) ? $ENV{REDACT_SALT} : sprintf("%08x%08x", int(rand(4294967296)), int(rand(4294967296)));
+my $DIE_ON = $ENV{REDACT_SELFTEST_DIE};   # test seam only: a line holding this text makes the scrubber fail, to prove the fail-closed notice
 my $SEP = qr/[\s().\-_\/\[\]]/;
-my $VAL = qr/"(?:[^"\\]|\\.)*"|'[^']*'|[^",;}\s]+/;
-my $KEYLONG = qr/[A-Za-z0-9_.\-]*(?:token|secret|password|passwd|passcode|credential|authorization|apikey|api_key|accesskey|access_key|accountkey|account_key|privatekey|private_key|instrumentationkey|sessionid|session_id|cookie|connection_?string)[A-Za-z0-9_.\-]*/i;
-my $KEYSHORT = qr/(?<![A-Za-z0-9])(?:[A-Za-z0-9]+[_.\-])*(?:pass|pwd|pin|otp|key|sig|sas|session|auth)(?:[_.\-][A-Za-z0-9]+)*/i;
-my $KEYCAMEL = qr/[a-z][a-z0-9]*(?:Key|Pin|Otp|Pass|Sig|Sas|Session)[A-Za-z0-9]*/;
+# A value: an escaped-quoted string (raw JSON inside a JSON console line), a quoted string, an unclosed quote (to the end of the line), a nested object or array, or a bare run
+# that also takes ; and , (so the tail of a ;- or ,-separated secret goes too).
+my $VAL = qr/\\"(?:(?!\\").){0,500}\\"|"(?:[^"\\]|\\.){0,500}"|'[^']{0,500}'|\\"[^\n]*|["'][^\n]*|\{(?:[^{}]|\{[^{}]*\}){0,500}\}|\[[^\]]{0,500}\]|[^"\s}]+/;
+my $QE = qr/(?:\\?["'])?/;   # the closing quote of a key, escaped or not
+# Prefixes and suffixes around a stem are BOUNDED: an unbounded one is quadratic on an unbroken run of letters and digits (a 100 KB blob would hit the job timeout).
+my $KEYLONG = qr/[A-Za-z0-9_.\-]{0,64}(?:token|secret|password|passwd|passcode|credential|authorization|apikey|api_key|accesskey|access_key|accountkey|account_key|privatekey|private_key|instrumentationkey|sessionid|session_id|cookie|connection_?string)[A-Za-z0-9_.\-]{0,64}/i;
+my $KEYSHORT = qr/(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,32}[_.\-]){0,4}(?:pass|pwd|pin|otp|key|sig|sas|session|auth)(?:[_.\-][A-Za-z0-9]{1,32}){0,4}/i;
+my $KEYCAMEL = qr/[a-z][a-z0-9]{0,40}(?:Key|Pin|Otp|Pass|Sig|Sas|Session)[A-Za-z0-9]{0,40}|(?:key|pin|otp|pass|sig|sas|session|auth)[A-Z][A-Za-z0-9]{0,40}/;
 my $KEYNAME = qr/(?:user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|outlet_?name|address|device_?id|imei|ip|remote_?addr|client_?ip)/i;
+my $UNIT = qr/(?!\s*(?:ms|s|sec|secs|seconds|bytes|kb|mb|gb|%|rows|items|attempts|times|retries)\b)/i;
 my @keep;
 sub hold { push @keep, $_[0]; return "\x{E000}" . $#keep . "\x{E001}"; }
 sub scrub {
@@ -41,30 +51,35 @@ sub scrub {
   $l =~ tr/\x{09E6}-\x{09EF}/0-9/; $l =~ tr/\x{0660}-\x{0669}/0-9/; $l =~ tr/\x{06F0}-\x{06F9}/0-9/;
   @keep = ();
   # what the operator needs to follow a request or a release stays readable
-  $l =~ s/\b((?:build|commit|sha|rev(?:ision)?|git|image)\w*[^0-9a-fA-F\n]{0,20})([0-9a-f]{40})(?![0-9a-f])/$1 . hold($2)/gie;
+  die "selftest" if defined $DIE_ON && length $DIE_ON && index($l, $DIE_ON) >= 0;
+  $l =~ s/\b((?:build|commit|sha|rev(?:ision)?|git|image)\w{0,20}[^0-9a-fA-F\n]{0,20})([0-9a-f]{40})(?![0-9a-f])/$1 . hold($2)/gie;
+  $l =~ s/((?:[A-Za-z0-9.\-]{1,100}\/){1,4}[A-Za-z0-9._\-]{1,100}[:@](?:sha256:)?)([0-9a-f]{40}|[0-9a-f]{64})(?![0-9a-f])/$1 . hold($2)/ge;
   $l =~ s/(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])/hold($1)/ge if $l =~ /health/i;
-  $l =~ s/\b((?:version|ver|build|release|tag|contract|image)\w*[\s"'=:v]{0,4})(\d+\.\d+\.\d+\.\d+)(?![0-9.])/$1 . hold($2)/gie;
-  $l =~ s/\b((?:epoch|ts|time(?:stamp)?|exp(?:ires)?|iat|nbf|unix)\w*["'\s]*[=:]\s*)(1[0-9]{9}|1[0-9]{12})(?![0-9])/$1 . hold($2)/gie;
+  $l =~ s/\b((?:version|ver|build|release|tag|contract|image)\w{0,20}[\s"'=:v]{0,4})(\d+\.\d+\.\d+\.\d+)(?![0-9.])/$1 . hold($2)/gie;
+  $l =~ s/\b((?:epoch|ts|time(?:stamp)?|exp(?:ires)?|iat|nbf|unix)\w{0,20}["'\s]{0,4}[=:]\s*)(1[0-9]{9}|1[0-9]{12})(?![0-9])/$1 . hold($2)/gie;
   # secrets
   $l =~ s/\b((?:set-)?cookie2?)\s*[:=].*$/$1: [redacted]/gi;
   $l =~ s/eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]+)*/[jwt]/g;
   $l =~ s/\b(Bearer|Basic)[ =:]+[A-Za-z0-9._~+\/=-]+/$1 [redacted]/gi;
   $l =~ s/(jdbc:|postgres(?:ql)?:\/\/|AccountKey=|SharedAccessSignature=|Endpoint=sb:|Server=|Host=|User ?Id=|Uid=)[^\s",;]+/${1}[redacted]/gi;
-  $l =~ s/($KEYLONG["']?\s*[=:]\s*)$VAL/${1}[redacted]/g;
-  $l =~ s/($KEYSHORT["']?\s*[=:]\s*)$VAL/${1}[redacted]/g;
-  $l =~ s/\b($KEYCAMEL["']?\s*[=:]\s*)$VAL/${1}[redacted]/g;
-  $l =~ s/\b($KEYNAME["']?\s*[=:]\s*)$VAL/${1}[redacted]/g;
+  # password-like keys also take up to 3 following plain words when the value was unquoted (a password may hold a space); over-redaction, on purpose
+  $l =~ s/((?:[A-Za-z0-9_.\-]{0,64})(?:password|passwd|passcode|secret|pwd)[A-Za-z0-9_.\-]{0,64}${QE}\s{0,3}[=:]\s{0,3})([^"'\\\s{\[][^"\s}]*(?:[ \t]+(?![A-Za-z_][\w.\-]*\s{0,3}[=:])[^\s"]+){0,3})/${1}[redacted]/gi;
+  $l =~ s/($KEYLONG${QE}\s{0,3}[=:]\s{0,3})$VAL/${1}[redacted]/g;
+  $l =~ s/($KEYSHORT${QE}\s{0,3}[=:]\s{0,3})$VAL/${1}[redacted]/g;
+  $l =~ s/\b($KEYCAMEL${QE}\s{0,3}[=:]\s{0,3})$VAL/${1}[redacted]/g;
+  $l =~ s/\b($KEYNAME${QE}\s{0,3}[=:]\s{0,3})$VAL/${1}[redacted]/g;
   $l =~ s/\b(password|passwd|passcode|pin|otp|secret|token|key)\s+(?:is|was|=|:)\s+(?:"[^"]*"|'[^']*'|<[^>]*>|&lt;.*?&gt;|\S+)/$1 [redacted]/gi;
-  $l =~ s/\b(otp|one[- ]time (?:code|password)|verification code|passcode)\b[^0-9\n]{0,20}[0-9]{3,8}\b/$1 [redacted]/gi;
+  $l =~ s/\b(otp|one[- ]time (?:code|password)|verification code|passcode)\b[^0-9\n]{0,20}[0-9]{4,8}\b$UNIT/$1 [redacted]/gi;
   # personal data and identifiers
-  $l =~ s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[email]/g;
-  $l =~ s/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/"[uuid:" . substr(sha256_hex(lc($1 =~ tr|-||dr)), 0, 8) . "]"/gie;
-  $l =~ s/(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])/"[uuid:" . substr(sha256_hex(lc $1), 0, 8) . "]"/gie;
+  $l =~ s/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/[email]/g;
+  $l =~ s/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/"[uuid:" . substr(sha256_hex($SALT . lc($1 =~ tr|-||dr)), 0, 8) . "]"/gie;
+  $l =~ s/(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])/"[uuid:" . substr(sha256_hex($SALT . lc $1), 0, 8) . "]"/gie;
   $l =~ s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![0-9a-f:])/[ip]/gi;
   $l =~ s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?(?![0-9a-f:])/[ip]/gi;
-  $l =~ s/(?<![0-9.])[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?![0-9.])/[ip]/g;
-  $l =~ s/(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])/[code]/g if $l =~ /\b(?:otp|pin|passcode|one[- ]time|verification|sms)\b/i;
-  $l =~ s/(?<![0-9])(?:\+\s*)?(?:[(\[]?88[)\]]?${SEP}*)?(?:[(\[]?0[)\]]?${SEP}*)?1${SEP}*[3-9](?:${SEP}*[0-9]){8}(?![0-9])/[phone]/g;
+  $l =~ s/(?<![0-9.])([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?![0-9.])/do { my $m = $1; ($m eq "0.0.0.0" || $m =~ m|^127\.|) ? $m : "[ip]" }/ge;
+  $l =~ s/\b((?:otp|pin|passcode|one[- ]time|verification|sms)(?: code| password)?\b[^0-9\n]{0,20})(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT/$1\[code]/gi;
+  $l =~ s/(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT([^0-9\n]{0,20}\b(?:otp|pin|passcode|one[- ]time|verification|sms)\b)/[code]$1/gi;
+  $l =~ s/((?<![0-9])(?:\+\s{0,3})?(?:[(\[]?88[)\]]?${SEP}{0,3})?(?:[(\[]?0[)\]]?${SEP}{0,3})?1${SEP}{0,3}[3-9](?:${SEP}{0,3}[0-9]){8}(?![0-9]))/do { my $m = $1; ($m =~ m{(?:19|20)[0-9]{2}[\-\/.][0-9]{2}[\-\/.][0-9]{2}}) ? $m : "[phone]" }/ge;
   $l =~ s/[A-Za-z0-9+\/_-]{40,}={0,2}/[long-token]/g;
   $l =~ s/\x{E000}(\d+)\x{E001}/$keep[$1]/g;
   return $l;
@@ -78,13 +93,15 @@ while (my $raw = <STDIN>) {
   print encode('UTF-8', $o), $nl;
 }
 PERL
+# One random salt per run for the UUID tag: the same id matches across lines of THIS run, but cannot be followed across runs in public logs.
+REDACT_SALT="${REDACT_SALT:-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')}"; export REDACT_SALT
 redact() { perl -e "$REDACT_PL"; }
 # show <width>: redact the whole text first, then cut to the width in characters (inside the same perl program).
 show() { REDACT_WIDTH="$1" perl -e "$REDACT_PL"; }
 # held_note: stdin = the two numbers (held, shown) of the count query; prints the line that says how many lines the secret-word exclusion held back.
 held_note() {
   local nums a b; nums="$(tr -s '[:space:],' ' ' | sed 's/^ //')"; a="${nums%% *}"; b="${nums#* }"; b="${b%% *}"
-  if [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ ]]; then echo "($a line(s) held back by the secret-word exclusion, $b shown)"; else echo "(held-back count unavailable)"; fi
+  if [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ ]]; then echo "($a line(s) held back by the secret-word exclusion, $b not held; the list below is capped at the newest 150)"; else echo "(held-back count unavailable)"; fi
 }
 
 # Test seams (infra/tests/check_infra.py): diagnose.sh --redact [width] and --held-note filter stdin, no Azure, no arguments.
