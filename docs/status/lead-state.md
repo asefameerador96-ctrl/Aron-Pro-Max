@@ -223,3 +223,12 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 ### 2026-11-18 07:10 update
 - A-GATE7 retired (context). After train 118 lands: start A-GATE8 on a NEW branch lane/android-gates-2 from the integration branch with the ten follow-up items of the final pass; A-GATE7's notes: item 5 design approved (failed-close counter in SyncMeta, plain screen after 3 failures with error code and Try again); item 1 pressedAt at the button and closedBy passed by the caller, RecordMapping reads the stored value not closedByPhone(); item 3 committer.existing(memoUuid) before s.committed; item 4 wrap SrApp resumeDay sites 281/291/302/318; item 9 mutation proofs list. TSO rule 1 would need about one lane day (TsoDay, attendance screen, gate inside TsoOutbox, owner decides which TSO writes are operational, server accepts TSO attendance).
 - P-SR1b: QC two-step rebuild approved as its own slice; printer bar fix demanded first (interrupt sent 07:08).
+
+
+### 2026-11-18 07:30 update
+- Train 118 pushed: integration 29e8d86f3; ci on the pushed head still running at 07:25; dev still on 39db6c734. Integrator's report awaited.
+- Train 119 = Loyalty: ccd4f156 landing check PASS; one tiny push asked (V0204 header comment, history entry, KDoc, stamp log line, merge 29e8d86f3) then pin and build.
+- SV6 follow-ups 9e6765d0 PASS; lands after integrity as V0209 (SV6 idle until told).
+- A-PROG1 d0636a12: both blocking points fixed, slice 5 (gift selection) pushed; batch check after it merges train 118 and gates its writes.
+- T-KPI1 out of context at 09fa05c8 (N-2, N-5, N-8, N-3 server data built; V0230..V0233, contract 1.22.0, dw view contract 1.10, all provisional). Successor T-KPI2 session_014mnioPDzJpf5trPvkVf9y2: read ci of newest head, build the admin web tab /admin/kpi-targets, then report. Opus pass on the whole branch owed before landing.
+- A-GATE8 to start after train 118 is live (ten follow-ups).
