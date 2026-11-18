@@ -57,6 +57,12 @@ data class AttendanceState(
 /** What is still open at check-out: the rep must close it first (D-AGATE-06). Checked at the press, from stored state, never from a flag. */
 enum class OpenWork { OPEN_CALL, OPEN_EDIT }
 
+/**
+ * D-AGATE-22 (item 6): thrown INSIDE the check-out's transaction when work opened in the gap between the press check and the commit (a call committed while the location read ran).
+ * Nothing is written; [AttendanceFlow] turns it into [AttendanceResult.Refused] with the same words as the press check.
+ */
+class OpenWorkAtCheckOutException(val open: OpenWork) : IllegalStateException("check-out refused: $open is open")
+
 /** Result of a check-in or check-out press. */
 sealed interface AttendanceResult {
     data class Done(val event: AttendanceEventEntity, val fix: FixReading) : AttendanceResult
@@ -194,6 +200,10 @@ class AttendanceFlow(
                 committer.commit(event, fixEntity)
             } catch (t: kotlinx.coroutines.CancellationException) {
                 throw t
+            } catch (t: OpenWorkAtCheckOutException) {
+                // D-AGATE-22 (item 6): a call opened while the fix was being read; the transaction found it and wrote nothing
+                ui.value = ui.value.copy(checkOutBlockedBy = t.open)
+                return AttendanceResult.Refused(t.open)
             } catch (t: Throwable) {
                 return AttendanceResult.Failed
             }

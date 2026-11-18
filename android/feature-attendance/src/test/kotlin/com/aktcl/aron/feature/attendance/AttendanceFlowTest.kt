@@ -169,4 +169,19 @@ class AttendanceFlowTest {
         assertEquals("the stamp is the press", "2026-10-07T17:59:45.000Z", out.meta.capturedAt)
         assertEquals("2026-10-07", out.meta.businessDate)
     }
+
+    /** D-AGATE-22 (item 6): the transaction found work opened in the gap: the press is refused with the open-work answer, nothing is shown as checked out, and the buttons stay. */
+    @Test fun aCheckOutRefusedInsideItsTransactionIsAnOpenWorkRefusalAndLeavesTheDayOpen() = runTest {
+        minutes = 9 * 60
+        var gap = false
+        val f = AttendanceFlow(fixes, meta, { e, fx -> if (e.kind == "check_out" && gap) throw OpenWorkAtCheckOutException(OpenWork.OPEN_CALL); committed += e to fx }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        f.checkIn(); minutes = 17 * 60 + 5; gap = true
+        val r = f.checkOut()
+        assertTrue(r is AttendanceResult.Refused && r.open == OpenWork.OPEN_CALL)
+        assertEquals(OpenWork.OPEN_CALL, f.state.value.checkOutBlockedBy)
+        assertNull("not checked out", f.state.value.checkedOutAt)
+        assertEquals("only the check-in was written", 1, committed.size)
+        gap = false // the call was closed: the same press goes through
+        assertTrue(f.checkOut() is AttendanceResult.Done)
+    }
 }

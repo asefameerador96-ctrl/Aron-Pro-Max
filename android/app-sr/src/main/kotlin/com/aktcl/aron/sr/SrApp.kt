@@ -366,6 +366,7 @@ fun SrApp(
     // D-AGATE-15 (T1): an unsaved memo edit dropped at midnight leaves the edit screen for Home, where the notice says so (never a dead screen)
     LaunchedEffect(rollover.editDropped, screen) { if (rollover.editDropped && screen == SrScreen.EDIT) screen = SrScreen.HOME }
     var checkInNotice by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
     AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
         // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content
         val closed = dayGate
@@ -659,6 +660,15 @@ fun SrApp(
         }
         }
     }
+    // D-AGATE-22 (item 5): the lock-out fallback. A forgotten day or an earlier call that kept failing to close (3 attempts) is a plain full-screen message with a short code and Try again;
+    // check-in is never silently off. It goes the moment a close succeeds.
+    val closeLockout by day.closeLockout.collectAsState()
+    var tryingAgain by remember { mutableStateOf(false) }
+    closeLockout?.let { f ->
+        com.aktcl.aron.feature.attendance.DayCloseFailedScreen(f.code, tryingAgain, onTryAgain = { scope.launch { tryingAgain = true; try { day.resumeDaySafely(); day.reload() } finally { tryingAgain = false }; resumeTick++ } })
+    }
+    }
+
     if (syncSheet) {
         SrSyncSheet(
             snapshot = syncSnap, chip = sync, sunlight = sunlight, onSunlight = onSunlight,

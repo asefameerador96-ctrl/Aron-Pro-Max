@@ -429,10 +429,13 @@ class CaptureRepository(
     suspend fun recordCheckOut(
         event: AttendanceEventEntity, fix: GeoFixEntity,
         phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+        /** D-AGATE-22 (item 6): runs FIRST inside the transaction; the rep's check-out passes a read of the open work (it throws to refuse, nothing is written), the phone's own close none. */
+        guard: (suspend () -> Unit)? = null,
         buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
     ) = db.withTransaction {
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         require(event.kind == "check_out") { "recordCheckOut writes a check_out" }
+        guard?.invoke()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
         val date = event.meta.businessDate

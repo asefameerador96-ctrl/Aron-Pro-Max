@@ -1,6 +1,7 @@
 package com.aktcl.aron.amo
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
@@ -31,12 +32,23 @@ class AmoRecordWriter(
      * clock's date). Production: the open call's date; a test without midnight passes none.
      */
     private val callDate: (visitUuid: String) -> String? = { null },
+    /**
+     * D-AGATE-22 (item 7): the SAME lock every close of a call takes (`AmoDay.closeLock`). The audit records of a call (joint-call assessment, SR assessment, price check, survey) are
+     * written under it, so a close that reads "no memo, no audit record" and ends the call as abandoned can never run in between an audit Save and its own commit: the Save lands first
+     * and the close sees it (zero-sale call), or the close lands first and the write is refused by the closed-call guards. Null in a test that has no close to race.
+     */
+    private val callLock: kotlinx.coroutines.sync.Mutex? = null,
 ) {
+    private suspend fun <T> underCallLock(block: suspend () -> T): T = if (callLock == null) block() else callLock.withLock { block() }
+
     /** The meta of a record of the call [visitUuid]: the route of the open call and the VISIT's date (never later than the clock's, so a record is never future-dated). */
     private fun callMeta(visitUuid: String) = meta.meta(routeOfCall()).let { m -> callDate(visitUuid)?.takeIf { it < m.businessDate }?.let { m.copy(businessDate = it) } ?: m }
 
     /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
-    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) {
+    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) =
+        underCallLock { saveJointCallLocked(visitUuid, rubric, state, assessedUserId, defaultStar) }
+
+    private suspend fun saveJointCallLocked(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int?) {
         // the writer enforces what the screen enables: with no default star every scored item must be rated (no 0 -> 1 star through coerceIn)
         require(state.canSave(rubric, defaultStar)) { "every scored item must be rated" }
         val planned = com.aktcl.aron.feature.amo.JointCall.records(visitUuid, rubric, state, assessedUserId, defaultStar, newUuid)
@@ -140,7 +152,10 @@ class AmoRecordWriter(
     }
 
     /** Writes the confirmed answers all or nothing (one per question per visit; a kill mid-way keeps none) and claims the photos for them. */
-    suspend fun saveSurvey(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) {
+    suspend fun saveSurvey(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) =
+        underCallLock { saveSurveyLocked(visitUuid, survey, rows) }
+
+    private suspend fun saveSurveyLocked(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) {
         if (rows.isEmpty()) return
         val stored = db.captureDao().surveyResponsesOf(visitUuid)
         if (stored.isNotEmpty()) {
@@ -165,7 +180,10 @@ class AmoRecordWriter(
     }
 
     /** One `price_compliance_check` per typed SKU, all or nothing. A SKU already recorded for the visit is skipped, so a later Save adds only new SKUs and a double tap writes nothing twice. */
-    suspend fun savePriceCompliance(visitUuid: String, rows: List<com.aktcl.aron.feature.amo.PriceRow>, typed: Map<Long, String>, toleranceBp: Int) {
+    suspend fun savePriceCompliance(visitUuid: String, rows: List<com.aktcl.aron.feature.amo.PriceRow>, typed: Map<Long, String>, toleranceBp: Int) =
+        underCallLock { savePriceComplianceLocked(visitUuid, rows, typed, toleranceBp) }
+
+    private suspend fun savePriceComplianceLocked(visitUuid: String, rows: List<com.aktcl.aron.feature.amo.PriceRow>, typed: Map<Long, String>, toleranceBp: Int) {
         db.withTransaction {
             val done = db.captureDao().amoRecordsOfFamily(visitUuid).filter { it.recordType == "price_compliance_check" }
                 .mapNotNull { runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["sku_id"].toString().toLong() }.getOrNull() }.toSet()
@@ -178,7 +196,10 @@ class AmoRecordWriter(
     }
 
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
-    suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
+    suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) =
+        underCallLock { saveAssessmentLocked(visitUuid, brands, state) }
+
+    private suspend fun saveAssessmentLocked(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
         // POSM is the one required answer (R9): the writer refuses a Save without it, whatever the host did, and writes nothing
         require(state.posm != null) { "POSM answer is required" }
         val planned = com.aktcl.aron.feature.amo.PerfAssessment.records(visitUuid, brands, state, newUuid)

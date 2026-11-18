@@ -27,6 +27,7 @@ import com.aktcl.aron.feature.outlet.OutletRequestKind
 import com.aktcl.aron.feature.outlet.SurveyAnswer
 import com.aktcl.aron.feature.outlet.SurveyQuestion
 import com.aktcl.aron.feature.outlet.SurveyResponseRow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -234,6 +235,24 @@ class AmoRecordWriterReplayTest {
 
     // ---------- SR performance assessment ----------
     private val brands = listOf(AmoBrand(1, "A", null), AmoBrand(2, "B", null))
+
+    /**
+     * D-AGATE-22 (item 7): an audit record of a call is written under the lock every close of the call takes. While a close holds it, the Save waits (nothing is written); when the close is
+     * done the Save goes on. So a close that read "no audit record" cannot end the call as abandoned with a record saved a moment before.
+     */
+    @Test fun anAuditSaveWaitsForTheCloseLockAndLandsAfterIt() = runBlocking {
+        val v = visit(); val lock = kotlinx.coroutines.sync.Mutex()
+        val locked = AmoRecordWriter(db, capture, metaProvider, { route }, { ClientIds.newUuid() }, { syncs++ }, { ok }, { _, _, _, _, _ -> }, { _, _ -> stamped }, callLock = lock)
+        val base = outbox("distribution_check").size
+        lock.lock() // a close of the call holds the lock
+        val save = launch(kotlinx.coroutines.Dispatchers.Default) { locked.saveAssessment(v, brands, PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true)) }
+        kotlinx.coroutines.delay(300)
+        assertFalse("the Save is waiting", save.isCompleted)
+        assertEquals("nothing is written while the close holds the lock", base, outbox("distribution_check").size)
+        lock.unlock()
+        save.join()
+        assertEquals("the Save went on after the close", base + 1, outbox("distribution_check").size)
+    }
 
     @Test fun assessmentSurvivesRelaunchAndReplayWritesNothingMore() = runBlocking {
         val v = visit(); val base = outbox().size

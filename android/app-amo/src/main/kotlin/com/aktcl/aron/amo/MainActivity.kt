@@ -374,6 +374,14 @@ class MainActivity : ComponentActivity() {
                                 banners = amoDayLockBanners(day) + amoRolloverBanners(day),
                             ) }
                             }
+                            // D-AGATE-22 (item 5): the lock-out fallback (see SrApp): a forgotten day or an earlier call that kept failing to close is a plain full-screen message with a short code and Try again
+                            val closeLockout by (day?.closeLockout ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.attendance.DayCloseFailure?>(null) }).collectAsStateWithLifecycle()
+                            var tryingAgain by remember { mutableStateOf(false) }
+                            closeLockout?.let { f ->
+                                com.aktcl.aron.feature.attendance.DayCloseFailedScreen(f.code, tryingAgain, onTryAgain = {
+                                    dayScope.launch { tryingAgain = true; try { day?.resumeDaySafely() } finally { tryingAgain = false } }
+                                })
+                            }
                         }
                     }
                 }
