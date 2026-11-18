@@ -1,16 +1,12 @@
-# Contract 1.20.0: SR check-out round (lane sr-server, SV6, 2026-11-17)
+# Contract 1.19.0: SR check-out round (lane sr-server, SV6, train 117, 2026-11-18)
 
-Version 1.20.0 is **provisional**: the lead confirms the number and the migration numbers before the last push, because landing order decides (trains before this one: Loyalty C
-V0192..V0194 / 1.17.0, master data V0195..V0200 / 1.18.1, integrity V0201..V0202 / 1.19.0). This round sits on 1.16.0 (INT 9bb7f5cf1) and uses V0203..V0206.
-Approval REQUESTED from the lead (not approved until the lead says so). Everything is **additive or looser**. Source: ruling 6 of D-LEAD-PREREQ-03, section 4 (second "## 4",
-"Check-out: who closed it") and section 5 of `docs/requests/android-gates.md` on `lane/android-gates`; records D-SV2-14 to D-SV2-16 (DECISIONS.md).
+Contract 1.19.0 and migrations V0201..V0203 are FINAL (lead, 2026-11-18, by landing order: 115 Loyalty C V0192..V0194 / 1.17.0, 116 master data V0195..V0200 / 1.18.1, 117 this round). Sits on INT 951292a48. Everything is **additive**. Source: ruling 6 of D-LEAD-PREREQ-03 and sections 4 and 5 of `docs/requests/android-gates.md`; records D-SV2-14 to D-SV2-20 (DECISIONS.md).
 
 ## What changes
 
 | change | where | rows |
 |---|---|---|
 | `AttendanceEventPayload.closed_by` (new schema `AttendanceClosedBy`: `rep` or `phone`), optional | `POST /v1/sync/batch`, record `attendance_event` | A |
-| `MemoNo.pattern` and the memo-producing `Username` text: `{3,31}` becomes `{2,31}` after the first letter (a 3-character username) | schemas `MemoNo`, `Username` (description) | C |
 | (no schema change) `CHECKOUT_WITHOUT_SUBMIT` is not raised for a user-day with no route captures and is withdrawn when an accepted Sales Submit arrives later | `RiskSignal` rows, worker rule | B |
 
 ## Behaviour (A): `closed_by`
@@ -19,8 +15,8 @@ Approval REQUESTED from the lead (not approved until the lead says so). Everythi
 * `phone` = the phone closed a forgotten day at a later start (no location read). The record is stored and acknowledged `accepted` (idempotent by `client_uuid` like any record), but it is read
   everywhere as "no check-out": no check-out time and no hours (`dw.fact_attendance.check_out_*` stay empty, so `dw.v_attendance.check_out_at`/`hours_in_field` and the attendance report `gigo` show none),
   AMO `supervisor_day.checked_out_at` is not set, it is never judged by `cfg.day.checkout_earliest_time` (no `checkout_too_early`), and `CHECKOUT_WITHOUT_SUBMIT` is not judged for it.
-* Uniqueness (V0205, its own migration): at most one REP row per user, day and kind and at most one phone close per user and day, so a real check-out of the same day outranks a phone close whatever the arrival order (both are stored; every reader looks at the rep rows). `closed_by = rep` on a check-in is accepted; `phone` on a check-in is refused `schema_invalid`. A phone close's fix is never a geo_fix (not the newest location, no geo risk rule).
-* **Order of deployment:** `PayloadShapes` is strict, so an older server refuses the member `schema_invalid`. The server ships (migration V0203 first, then the API) before any phone sends it.
+* Uniqueness (V0202, its own migration): at most one REP row per user, day and kind and at most one phone close per user and day, so a real check-out of the same day outranks a phone close whatever the arrival order (both are stored; every reader looks at the rep rows). `closed_by = rep` on a check-in is accepted; `phone` on a check-in is refused `schema_invalid`. A phone close's fix is never a geo_fix (not the newest location, no geo risk rule).
+* **Order of deployment:** `PayloadShapes` is strict, so an older server refuses the member `schema_invalid`. The server ships (migration V0201 first, then the API) before any phone sends it.
 
 ## Behaviour (B): `CHECKOUT_WITHOUT_SUBMIT`
 
@@ -35,10 +31,9 @@ Approval REQUESTED from the lead (not approved until the lead says so). Everythi
 * Delay: up to about 15 minutes after the submit is stored. A submit voided or superseded AFTER the withdrawal does not re-raise the signal (the ingest raises only when a check-out is stored; the dismissed row keeps the unique key), the day stays withdrawn.
 * The attendance report `gigo` gains the string column `check_out_note` (the LAST column): `no check-out (closed by the phone)` for a user-day whose only check-out is a phone close (lead ruling 2).
 
-## Behaviour (C): three-character memo usernames
+## Three-character memo usernames (C): the master-data train's, not this round's
 
-`app_user_memo_username` and the `memo_no` CHECK of `memo`, `memo_void` and `sale_abort` accept `^[a-z][a-z0-9]{2,31}` (V0204, NOT VALID, validated by V0206); the server's memo-number
-parser (`MemoNumbers`), the Sales Submit digest, `MemoApi`, the paper backfill and the admin user form follow. A value that was valid stays valid. `docs/24` s7.5 says 3 to 32.
+V0197 and V0198 (train 116) already widen `app_user_memo_username` and the `memo_no` CHECK of `memo` (and its partitions), `memo_void` and `sale_abort` to `{2,31}`, with the contract patterns, `MasterRules.MEMO_USERNAME`, the admin guard `needs_app_release` and the server parsers. This round's own widening migration and its validate were removed after the merge (identical constraint names and definitions, compared on a migrated database); the server regexes, contract patterns and web copies all say `{2,31}` like the database.
 
 ## Tests (fail before this round, pass after)
 

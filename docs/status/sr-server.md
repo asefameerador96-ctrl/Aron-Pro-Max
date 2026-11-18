@@ -1,3 +1,7 @@
+# SV6 STATE (2026-11-18, train 117: merged INT 951292a48, FINAL numbers contract 1.19.0, migrations V0201..V0203)
+
+V0201 closed_by column + CHECK NOT VALID, V0202 index swap (rep/phone partial unique indexes), V0203 validate. The memo-username widening was REMOVED after the merge: V0197/V0198 (master data) already do it with the same constraints (D-SV2-20). Includes D-SV2-14..19 work: bouncycastle pin, closed_by readers, the CHECKOUT_WITHOUT_SUBMIT rules (no captures, withdrawal, late raise with grace and bound), phone close never a location, AuthzAuditTest probe hardening, TeamPhoneCloseTest. Request file: `docs/requests/contract-1.19-sr-server-checkout.md`.
+
 # SV6 STATE (2026-11-17, round contract 1.20.0, migrations V0203..V0205; BOTH NUMBERS PROVISIONAL until the lead confirms the landing order)
 
 Done on `lane/sr-server`: (D) bouncycastle pinned (D-SV2-14, pushed 21550148); (A) `attendance_event.closed_by` rep|phone (V0203, validated V0205), contract `AttendanceClosedBy`, every reader (ingest too-early and signal, `DayStates.supervisorDay`, `Aggregator.rebuildAttendance`, attendance report `gigo`); (B) `CHECKOUT_WITHOUT_SUBMIT` not raised without route captures (`IngestService.routeCapturesExist`) and withdrawn by the worker rule `RiskSignalEvaluator.withdrawCheckoutWithoutSubmit` (status `dismissed` + `evidence.withdrawn_by`); (C) memo username 3 characters (V0204 NOT VALID, V0205 VALIDATE; server regexes, contract, docs/24 s7.5). D-SV2-15 and D-SV2-16 in DECISIONS, request file `docs/requests/contract-1.20-sr-server-checkout.md`.
