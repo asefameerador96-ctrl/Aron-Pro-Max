@@ -317,6 +317,16 @@ class CaptureRepository(
     }
 
     /**
+     * The write gates of a programme record (check-in, open route-day) WITHOUT writing anything, for a caller that must do a side effect first (claiming a photo): throws the same
+     * exceptions [recordProgramme] would. Inside one transaction so it sees one state.
+     */
+    suspend fun requireProgrammeWriteOpen(meta: CaptureMeta, recordType: String) = db.withTransaction {
+        requireRoute(meta)
+        requireCheckedIn(meta.businessDate)
+        requireOpenRouteDay(meta, recordType)
+    }
+
+    /**
      * The SR programme records (lane android-sr-programmes): `redemption` with its `redemption_line` rows, or one `gift_choice`, in ONE
      * transaction, all or nothing. They share the generic `amo_record` store and the outbox (no schema change; a dedicated table is a Room 12
      * item). Idempotent by client UUID: a replay of the same parent writes nothing and returns false, so a double tap, a retry after a kill

@@ -58,11 +58,11 @@ abstract class OutboxDao {
      * failures). The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
      */
     @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND attempts > 0))")
-    suspend fun sentUnanswered(): List<String>
+    abstract suspend fun sentUnanswered(): List<String>
 
     /** How many of [uuids] still wait for an answer (pending or in flight). */
     @Query("SELECT COUNT(*) FROM outbox WHERE client_uuid IN (:uuids) AND state IN ('pending', 'in_flight')")
-    suspend fun stillOpen(uuids: List<String>): Int
+    abstract suspend fun stillOpen(uuids: List<String>): Int
 
     @Query("UPDATE outbox SET attempts = attempts + 1 WHERE client_uuid = :clientUuid")
     abstract suspend fun countFailure(clientUuid: String): Int

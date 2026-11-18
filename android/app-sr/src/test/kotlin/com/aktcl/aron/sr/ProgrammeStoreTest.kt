@@ -96,10 +96,7 @@ class ProgrammeStoreTest {
         if (claimFails) throw IllegalStateException("gone")
         claims += photo to db.captureDao().amoRecordsOfFamily(rec).size.toLong()
     }) { syncs++ }
-    private val fixEntity = com.aktcl.aron.core.database.entity.GeoFixEntity(
-        clientUuid = ClientIds.newUuid(), ownerClientUuid = "x", purpose = "gift_photo", fixStatus = "ok", lat = 23.79, lng = 90.40, accuracyM = 10.0, provider = "fused", fixTime = "2026-11-18T05:00:00.000Z",
-        fixElapsedRealtimeMs = 1L, fixAgeMs = 0L, timeToFixMs = 100L, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0,
-    )
+    private val fixEntity = com.aktcl.aron.feature.outlet.FixReading("ok", 23.79, 90.40, 10.0, false).toEntity(ClientIds.newUuid(), "x", "gift_photo", 0)
     private fun photoPlan(uuid: String, photo: String, assignment: Long = 71) =
         com.aktcl.aron.feature.programmes.GiftPhotoModel.planAstha(10, 4, assignment, photo, kotlinx.serialization.json.buildJsonObject { put("lat", kotlinx.serialization.json.JsonPrimitive(23.79)) }, uuid)
 
