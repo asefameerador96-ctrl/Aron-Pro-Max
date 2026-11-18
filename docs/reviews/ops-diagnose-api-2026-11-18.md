@@ -257,3 +257,103 @@ LOWS:
 - Strict whole-line replacement over-redacts ordinary rows, and since it runs on the whole TSV row, those rows lose their time, level and kind columns too in message mode. Affected: any HTTP line whose path has a digit (`GET /api/v1/routes/today 200 OK in 45ms`, `POST /sync/upload 409 ...`, `Unhandled: POST /v1/sync/upload`); `job bundle2 ran in 120ms`; `revision ca-aron-dev-api--r7x9k2 ready`; an `image ghcr.io/...:sha-abc1234` line; trace_id/span_id lines; and the real Flyway line `Migrating schema "public" to version "0186 - sr server train2 flags"` (`train2` after `server`). Other real descriptions such as `scd2` and `v0192` survive. Default mode is not affected.
 - Survivors that are only secret-shaped, not proven secrets: `sk-ant-api03-abcdefgh1234` (a short key below the 40-character long-token threshold) and the AWS key id `AKIAIOSFODNN7EXAMPLE`.
 - Minor leftovers: a double-encoded `sig%3DAbc123%252B` keeps the `%252B` tail, and `jwt eyJhbGc.eyJzdWIi.sig1234` keeps the first segment `eyJhbGc.` (only a header fragment).
+
+
+## Re-check 6 (round 6, 5f0df7f0) and V0209 merge 9b69fba3, 2026-11-18
+
+### ops-public-output verdict=fail
+Print-path lens on lane/ops-diagnose-api 5f0df7f0. I fetched the branches and copied diagnose.sh, the workflow and check_infra.py from 5f0df7f0 into /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r6-print/. I ran a fake az (bin/az, made-up rows only) and replayed the KQL kind/sqlstate/ms/script logic in Python (replay.py).
+
+Message mode cannot be reached from the workflow. The workflow has no include_messages input. Its five positional args are checked against ^[0-9]{4}-..Z$ or ^[a-z0-9][a-z0-9-]{0,62}$, so no argument can be '--include-messages' or '--redact'. The script sets INCLUDE_MESSAGES=false itself, so an env value has no effect. With GITHUB_ACTIONS=true the flag in any position exits 2 (tested with the flag first and last); with INCLUDE_MESSAGES=true in the env the run still prints include_messages=false. The script checks every input again before it goes into KQL or az. No KQL or shell injection was found through since, until, job_prefix, worker_app, api_app or the resource group. The other env variables the filter reads (REDACT_STRICT, REDACT_WIDTH, REDACT_SELFTEST_DIE) are not set by the workflow.
+
+Print paths checked:
+- az version / -h, server show, parameter values, metrics, activity log and revision list: fixed fields only.
+- Diagnostic settings: now category and enabled only.
+- Log Analytics console (worker, API): time, lvl, lg, exc, cause, sqlstate, ms, kind. Job console: time, exec, lvl, kind, sqlstate, script. System logs: who, typ, reason, exitcode (digits). Log Analytics PostgreSQL: sev plus a fixed phrase, letters before a colon, or [text]. Pre-flight: kind.
+- try/az stderr shows our own query text only. The step summary is a copy of the redacted output.
+- Downloaded server-log files: free text, see blocking.
+
+Flyway labels on the verbatim Flyway 10 lines from the task:
+- Current version 0204 gives 'flyway current version 0204'.
+- Migrating ... "0205 - geo fix signals" gives 'flyway migrating to 0205'.
+- Applied 4 ... v0208 gives 'flyway applied 4 now at 0208'.
+- Validated 186 gives 'flyway validated 186'.
+- 'up to date' gives 'flyway up to date'.
+- 'migrate: 4 migration(s) applied' gives 'migrate: 4 applied'.
+All labels are correct and lossless. No description or schema name and no "execution time" text is carried, and labelled INFO rows are kept by kind != '-'.
+
+Migration failure: it is visible by default, partly. The 'Migration of schema "public" to version "0209 - x" failed!' line becomes only 'error line' with no version, so the version is known only from the preceding 'flyway migrating to 0209' row. The aron.main 'migrate failed' row shows exc=FlywayMigrateException and sqlstate=42P01 taken from the throwable JSON. Its script column is empty because script is read from msg only. Statement text is never printed.
+
+Test changes: the round-6 edits remove assertNotIn(", msg\n", queries), the include-messages validator assertion and 'exc = extract('. Each one is replaced by an equal or stronger check: the project-msg/txt/line assertNotRegex, the new no-input and refusal tests, and the coalesce(j.throwable.className) assertions. The gates in the workflow are all still there: timeout 20, pipefail, the final-line grep, and validation before the Azure login. The new URL user-info and code rules ran linearly: 100 KB adversarial lines took 0.15 to 0.34 s.
+
+Not verified:
+- KQL was not run against a real Log Analytics workspace. I assumed RE2 behaves like Python re for these patterns.
+- The logback JsonEncoder throwable shape (className, message, cause) is from memory.
+- The Flyway 10 failure wording was taken from the task text.
+- check_infra.py was not run.
+- I did not check whether backend log calls ever put an OTP or phone next to text starting with 'ms'.
+- No Azure access.
+
+BLOCKING:
+- (upheld 3/3) Default mode still prints raw PostgreSQL message text through the downloaded server-log path (diagnose.sh line 234). logfiles.download_enable is set to 'on' in infra/modules/postgres.bicep, so this path is live in the workflow. The sed keeps up to 80 characters of free text after LOG/ERROR/FATAL/PANIC, up to the first quote, colon or parenthesis: `([^"':(]{0,80})`. Round 6 changed only the Log Analytics path to a fixed phrase, letters before a colon, or [text]. Reproduced with the fake az: the made-up file line `2026-11-18 09:30:01.123 UTC-abc-ERROR:  could not deliver to outlet Rahim Uddin at House 12 Road 5 Gulshan` prints in the public output as `... UTC ERROR could not deliver to outlet Rahim Uddin at House 12 Road 5 Gulshan` (a name and an address). This goes against the workflow header ('never message or exception text') and the default-deny ruling. Fix: give the sed path the same head logic as the KQL `head`, a fixed phrase list or `[A-Za-z][A-Za-z ]{2,60}` followed by a colon, else [text]. Then add a test that feeds a made-up server-log file through the stub.
+
+LOWS:
+- The Flyway failure line 'Migration of schema "public" to version "0209 - x" failed! ...' gets kind 'error line' with no version. The `script` column is read from msg only, so the aron.main 'migrate failed' ERROR row shows no V0209__x even though the throwable JSON holds 'Migration V0209__x.sql failed'. SQLSTATE 42P01 does show on that row (it is read from msg + st). Suggest a label 'flyway FAILED at ' + extract(@'^Migration of schema .*? to version [\x22]?v?([0-9][0-9.]*)') and reading script from strcat(msg,' ',st). If the error comes out as plain non-JSON lines, the 'SQL State  : 42P01' line on its own is dropped by the row filter, because it matches neither a kind nor error|failed|exception.
+- The `ms` column `extract(@'([0-9]{1,9}) ?ms', 1, msg)` has no word boundary. Digits just before any word starting with 'ms' (msg, msisdn, mssql) print as a bare digit column, which the redactor cannot judge. Made-up example: 'otp 482913 msg queued for 01712345678 msisdn' gives ms=482913. A phone followed by ' msisdn' gives its last 9 digits. Fix: @'\b([0-9]{1,9}) ?ms\b'.
+- The 'flyway migrating to' extract uses a greedy `.*`, so it picks the LAST 'to version' in the line. A description such as '0205.1 - x to version 9' prints 'migrating to 9'. Use `^Migrating schema [^ ]+ to version` or `.*?`.
+- lg, lvl and exc/cause (when taken from j.throwable.className or j.exception.className) are printed exactly as they appear in any JSON-object line, with no identifier-shape check. A JSON line from another process with free text in those fields would print it. It is unlikely, given that the backend uses logback JsonEncoder only.
+- sqlstate uses (?i) over `[0-9A-Z]{5}`, so lowercase letters also match (for example 'sql state: hunte'). Five characters at most, so cosmetic.
+- The step summary wraps the output in a ``` fence. A ``` inside the redacted output would end the fence early. Cosmetic.
+- The new test_diagnose_flyway_labels test replays the KQL with Python re instead of RE2. That is fine for these patterns, but the test does not cover the failure line or the `ms`/`script` columns.
+
+### ops-tests-removed verdict=pass
+Lens: test assertions, the PostgreSQL server-log path and redaction on every section, at lane/ops-diagnose-api 5f0df7f0 (fetched; head confirmed 5f0df7f05fc7). I compared infra/tests/check_infra.py at ce6792f67 and 5f0df7f0. On the integration branch, two tests touch diagnose: test_ops_diagnose_is_read_only_and_integration_branch_only and test_diagnose_reads_the_worker_console_log_and_keeps_statements_out. The first is unchanged: the read-only verb list, grep -v -E 'DETAIL|parameters:', set -uo pipefail, the branch guard and the pinned actions are all still asserted. The second is the only one rewritten, which matches DECISIONS D-OPS-DIAGNOSE-API-07. Here is each changed or removed assertion and my judgment of its replacement:
+(1) ContainerAppConsoleLogs_CL, parse_json(line) and bundle|lapsed: still asserted, now on the shared KQL_CONSOLE block that the worker uses through console_section. Equal.
+(2) where app == '$WORKER_APP': now asserted as console_section "$WORKER_APP" "$WORKER_APP" plus where app == '$app' inside console_section. Equal.
+(3) substring(text, 0, 200): now assertNotIn('substring(') over the KQL block and over all non-comment code, plus the existing assertions that every log-analytics query pipes through show/showm (redact first, then cut by characters) and that there is no cut -c or awk substr. The cut moved to after redaction. Equal or stronger; the exact width is no longer asserted (low).
+(4) The raw-line exclusion not(line matches regex statement|parameters|bind|password|secret|token...): replaced by default-deny. The default console query projects only time, lvl, lg, exc, cause, sqlstate, ms, kind (no msg, line or st; asserted statically and in the stub-az run with assertNotRegex 'project ... msg|txt|line'). Message mode keeps the held filter on the printed message with its count. Stronger for the public path, because the integration branch printed 200 characters of message text.
+(5) The anchored PostgreSQL statement exclusion: unchanged; only its slice end moved.
+Round-6 only removed assertNotIn(', msg\n', queries) together with the no-op line. The regex assertions that remain are stronger. The include-messages valid() assertions went away together with the input.
+I ran the 10 diagnose tests from a scratch tree with python3 -m unittest: all pass in 12 s (the module guard needs compiled templates, so I ran the tests through unittest directly).
+I also ran the whole script against a fake az with GITHUB_ACTIONS=true and made-up data (scratchpad r6-tests/). Every section passes exec > >(redact), and so do error paths. Failed az commands echo their arguments and error text through try 2>&1 or captured 2>&1. Subscription and object ids in resource ids became [uuid:x] tags. token=, password=, Server=, SharedAccessSignature, AccountKey, Bearer JWTs, e-mail addresses and phone numbers in the error text were all redacted. stderr stayed empty.
+The downloaded server-log path in default mode drops DETAIL/parameters lines (grep -v). The sed step keeps only timestamped LOG/ERROR/FATAL/PANIC records, so STATEMENT and CONTEXT records and continuation lines are gone. A 'duration: ... statement: SELECT ...' line or a 'LOG: statement: ...' line prints only the word 'duration' or 'statement'. The Log Analytics PostgreSQL query keeps every exclusion and projects only sev and head (a fixed phrase, the letters before a colon, or [text]).
+Message mode is refused under GITHUB_ACTIONS (exit 2, no query sent), even when the flag is smuggled in as a positional argument. The workflow has no message input.
+The Flyway labels survive the redactor in default mode. I tested current version, migrating to, 'applied N now at V', 'validated N', 'up to date' and 'migrate: N applied'. A Python replay of the KQL regexes also handles 0176.1, [non-transactional] and an empty schema (gives '?').
+The new redactor rules (URL user-info, code plus digits, Bangla words) timed linear on 100 KB and 200 KB adversarial lines (0.12 to 0.54 s). The workflow gates are unchanged: timeout-minutes 20, set -o pipefail, and the final-line grep.
+Not verified: real az, Log Analytics or PostgreSQL output formats; KQL RE2 semantics (only replayed in Python, and Python startswith is case-sensitive where KQL's is not); the real logback JSON throwable shape; a real GitHub Actions run; and the rest of check_infra.py (needs compiled Bicep).
+
+BLOCKING:
+
+
+LOWS:
+- Downloaded server-log path (diagnose.sh line 234, default mode): the sed step still prints up to 80 characters of free text before the first quote, colon or parenthesis. The Log Analytics 'head' column got the fixed-phrase form, but this path did not. With a made-up line '...-LOG:  could not receive data from client Rahim Uddin customer', 'Rahim Uddin' printed. A custom RAISE message with an unquoted name would pass the same way. Standard PostgreSQL templates quote their values, so this is low. Suggest using the same fixed-phrase/[text] rule on this path. D-OPS-DIAGNOSE-API-07's wording ('the PostgreSQL head column is a fixed phrase') covers only the Log Analytics query.
+- Downloaded server-log path: the slow-statement lines selected by 'duration: [0-9]{5,}' now print only the word 'duration', so the duration figure that justified selecting them is lost. Suggest extracting the digits as a column.
+- Downloaded server-log path in message mode (private terminal only): grep -v drops only DETAIL|parameters:, so 'LOG: duration: N ms statement: <SQL>' and 'execute <unnamed>: <SQL>' lines print their SQL text behind the redactor. Not reachable from the workflow.
+- No test exercises the downloaded server-log path end to end (the stub az returns no server). Nothing asserts that the default sed keeps only LOG/ERROR/FATAL/PANIC records and cuts at the first quote, colon or parenthesis, or that STATEMENT and continuation lines are dropped. Only grep -v 'DETAIL|parameters:' is asserted.
+- The old 200-character cap assertion became assertNotIn('substring('). The new width (show 300) is not asserted for the worker/API console sections. With structured columns only, this hardly matters.
+- The structured columns lg, lvl and exc/cause (when taken from j.throwable.className) are printed as tostring() of JSON fields with no shape check. Only the stack-trace fallback is identifier-shaped. A JSON line that put free text in logger, level or className would print it. Unlikely with logback; suggest the same identifier extract on these fields.
+- The Python replay in test_diagnose_flyway_labels_are_lossless_fixed_words_and_digits uses case-sensitive str.startswith, but KQL startswith is case-insensitive. It is equivalent for the tested lines, but it is not a faithful model of KQL.
+
+### v0209 verdict=pass
+Checked lane/sr-server head 9b69fba3, a merge with parents 9e6765d0 and ce6792f67, from git only. Nothing blocking found.
+
+Migration: ce6792f67..9b69fba3 adds exactly one file under db/migrations, V0209__attendance_closed_by_comment.sql. The tree now runs V0200..V0209 with no V0240. No file from V0001 to V0208 changed. Compared with V0240 in 9e6765d0, the content differs on line 1 only: the header comment says V0209 instead of V0240. The SET lock_timeout and COMMENT ON COLUMN statements are byte-identical.
+
+Contract: openapi.yaml is still version 1.21.0. The only change is the description of AttendanceClosedBy; enum and type are unchanged. The slice, INDEX.md (452 to 521 B, which matches the real file size), openapi.d.ts and the data dictionary carry the same description text. On scratch copies, tools/slice-contract.py --check says up to date. gen_wire_dtos.py --check is clean on the merge. It fails on INT ce6792f67, which confirms the lane's note that INT's WireDtos.kt was stale. WireDtos.kt keeps INT's GeoFix.signals and DeviceStatusReport.integrity_events docs.
+
+DECISIONS.md: compared line by line against both parents, no line was lost or changed. The only additions are D-SV2-21, carried from the lane, and the new D-SV2-22.
+
+Base work: ce6792f67..9b69fba3 touches 33 files. Nine of them also changed on the base (a4691a061..ce6792f67). In each of those nine the hunks are lane-only edits: comment and wording, the manual_entry exclusion, the closedByProblem move and the description updates. RiskSignals.kt keeps INT's `isolated` helper (5 occurrences on both sides). IngestService.kt keeps INT's PhoneEvidenceShape check. No base file outside those 33 differs, so the device lab exemption and geo fix signal code (V0205..V0208, the web and backend code) are exactly as on INT.
+
+The remaining V0240 mentions are in history docs only (docs/reviews, docs/status, earlier DECISIONS entries).
+
+Not verified: no build, no tests, no Flyway run on a database. openapi.d.ts and the data dictionary were not regenerated, only compared by text. I did not judge the new merge-time code changes beyond seeing what they are (see lows).
+
+BLOCKING:
+
+
+LOWS:
+- The merge commit is more than a renumbering, and the lead has not reviewed the new parts (D-SV2-22). (a) IngestService.kt: the closedByProblem check moved from just after memoAlias, before the registry, to a new step 3a after the registry and the business-date window. This changes outcome precedence: payload_conflict and business_date_out_of_window now win over schema_invalid. (b) New tests: CheckoutClosedByTest.theClosedByCheckComesAfterTheRegistryAndTheWindowSoTheirOutcomesStay and a positive control in TeamPhoneCloseTest/TeamPhoneCloseBase. (c) MEMBER_DOCS in gen_wire_dtos.py gained GeoFix.signals, DeviceStatusReport.integrity_events and others, and WireDtos.kt gained a ResolvedConfigValue class KDoc. These need a short lead or Opus check, since rule 10 puts sync work at Opus/Sonnet level. I checked placement only, not correctness: for example, how finalReject at 3a interacts with the registry row the record just took, and how a resend behaves.
+- Inside V0209 the line-1 header comment changed from V0240 to V0209. This is comment-only; the SQL statements are identical to the reviewed V0240.
+- In IngestService.kt the isPhoneClose KDoc (D-SV2-15) now sits above the closedByProblem KDoc, so two KDoc blocks are stacked and the first no longer documents the function under it. This was already so in 9e6765d0 and is cosmetic.
+- Not run: Gradle build and tests (db test CheckoutClosedByV0203Test with the V0209 assert, backend tests), Flyway migrate or validate on a database, openapi-typescript regeneration of openapi.d.ts, and data-dictionary regeneration. These were compared by text only.
