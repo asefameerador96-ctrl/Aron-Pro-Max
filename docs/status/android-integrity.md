@@ -1,3 +1,5 @@
+**PENDING RENUMBER (lead, 2026-11-18): my V0201 -> V0204, V0202 -> V0205, contract 1.19.0 -> 1.20.0. Do it ONCE, in the push after the lead says "sr-server check-out round landed" (merge the gates round then too, Room 10 -> 11). Until then keep the current numbers.**
+
 # HANDOVER (A-INT2, 2026-11-17, written near 400 k tokens: continue in a fresh session)
 
 **Branch** `lane/android-integrity`. Pushed: item 1 (8046c41d, slice 2 review lows), item 2 (c30f8b0e, slice 3C: contract 1.19.0, V0201). Local at hand-over, pushed together with this note once CI of c30f8b0e is read: item 3 first part (V0202 `app.device_lab_exemption`, `LabGrantSigner`/`LabExemptionService`, Android `LabGrantVerifier`/`VerifiedLabExemption` + gate hook, `tools/make-lab-grant-key.sh`, `docs/runbooks/lab-exemption.md`, D-AINT-09). Decisions D-AINT-06..09.

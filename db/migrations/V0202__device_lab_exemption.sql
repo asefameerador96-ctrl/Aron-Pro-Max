@@ -20,3 +20,6 @@ COMMENT ON COLUMN app.device_lab_exemption.granted_by IS 'The portal user (Super
 COMMENT ON COLUMN app.device_lab_exemption.granted_at IS 'UTC time the exemption was granted.';
 COMMENT ON COLUMN app.device_lab_exemption.expires_at IS 'UTC time the exemption ends; at most 14 days after granted_at. The signed grant carries the same time, and the phone also caps it.';
 COMMENT ON COLUMN app.device_lab_exemption.note IS 'Why the phone needs it (for example the walk it is for); free text, at most 300 characters.';
+
+-- A new app table is covered by the role grant map only after this call (DbRolesTest: every app table is in the least-privilege map).
+SELECT app.apply_db_role_grants();
