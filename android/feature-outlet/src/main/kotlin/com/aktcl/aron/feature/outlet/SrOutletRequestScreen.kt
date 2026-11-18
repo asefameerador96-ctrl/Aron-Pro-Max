@@ -1,5 +1,14 @@
 package com.aktcl.aron.feature.outlet
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -177,13 +186,35 @@ private fun errorText(e: RequestError): String = stringResource(
 private fun DetailFields(form: OutletRequestForm, errors: Set<RequestError>, onChange: (OutletRequestForm) -> Unit) {
     FormCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            FormField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), fieldModifier = Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors)
-            FormField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), fieldModifier = Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors)
-            FormField(
-                form.mobile.orEmpty(), { onChange(form.copy(mobile = it)) }, stringResource(R.string.out_req_mobile), fieldModifier = Modifier.testTag(RequestTags.MOBILE),
+            OutlinedFormField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors)
+            OutlinedFormField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors)
+            OutlinedFormField(
+                form.mobile.orEmpty(), { onChange(form.copy(mobile = it)) }, stringResource(R.string.out_req_mobile), Modifier.testTag(RequestTags.MOBILE),
                 isError = RequestError.MOBILE_INVALID in errors, keyboardType = KeyboardType.Phone,
             )
         }
+    }
+}
+
+/** The old SR's text field (manual 42): the label above and a purple-outlined box (red on error); same value, keyboard and tags as the kit field. */
+@Composable
+private fun OutlinedFormField(value: String, onValueChange: (String) -> Unit, label: String, fieldModifier: Modifier, isError: Boolean, keyboardType: KeyboardType = KeyboardType.Text) {
+    val look = LocalAronLook.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink)
+        androidx.compose.foundation.text.BasicTextField(
+            value = value, onValueChange = onValueChange, singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = look.ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(look.purple),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+            modifier = fieldModifier.fillMaxWidth().semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).border(1.5.dp, if (isError) look.red else look.purple, RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.L),
+                    contentAlignment = Alignment.CenterStart,
+                ) { inner() }
+            },
+        )
     }
 }
 

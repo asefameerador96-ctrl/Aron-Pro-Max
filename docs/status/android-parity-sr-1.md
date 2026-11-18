@@ -30,7 +30,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 35 | KV and POSM survey | NOT YET | CallContentHost |
 | 36, 37, 38 | Find memo, edit sale, collect due | excluded (P-SR2b) | |
 | 39, 40, 41 | Sales summary, sync and submit, submitted | excluded (P-SR2b) | |
-| 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | NOT YET | outlet menu, request forms; own_requests_bn_empty only |
+| 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | COMPARED, KEPT (GEO info line); the opened cluster search dialog NOT recorded (test clock hangs on a field in a dialog) | srp1b_outlet_menu*, srp1b_req_*, srp1b_clusters* (D-PAR-SR1-17) |
 | 46 | Tutorial | GOLDEN-ONLY | sr_tutorial_* |
 | 47 | Tasks from the AMO | COMPARED, KEPT (Resolve link, my-requests link) | srp1b_tasks, _sunlight, _font20, _empty, _resolve_ask (tasks_bn_* are the stale frame) |
 | 48, 49 | Astha menu, year and quarter | NOT YET | programme |
