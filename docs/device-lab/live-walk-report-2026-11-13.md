@@ -78,6 +78,19 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 | 38 | OFFLINE DAY (hard case) | **partly pass, reconcile FAIL** | Owner approved airplane mode. `adb shell cmd connectivity airplane-mode enable` (network unreachable, status bar "Airplane", Offline chip on the sale screen); Bluetooth was turned back on with `cmd bluetooth_manager enable` so the printer could be used. Offline: outlet, call, 1 packet MaxR-10S (92.00 BDT), "Mark this sale as due", amount collected 40 gives **Due: 52.00** (correct), Print, "The sale will be saved", saved as Memo 1002 (due 52.00). Memo list shows 1001 and 1002; Sales Submit says "1 retailers still owe 52.00. You can still submit." and "3 records are not synced yet". Printing was skipped by the owner (printer off), so "everything prints offline" is **not** shown. Airplane mode off (network validated again), Sync data twice: nothing changed (Sale device 2 / server 1, Sale line device 2 / server 1, Visit ends device 1 / server 0, 3 not synced, 7 rejected). **Server count does not equal device count** | |
 | 39 | Zero sale offline | **not done** | Needs another outlet call (force sale and photo) | |
 
+| 40 | Font size | **pass** | Original value 0.85. At 1.3 and at 2.0 (the largest) the SR home reflows (at 2.0 the tiles become two columns and the header wraps onto four lines), no cut-off or overlapping text seen. Restored to 0.85 | |
+| 41 | Display size | **pass** | Density 480 (original 320): SR home opens and fits; restored with `wm density reset` | |
+| 42 | Dark mode | **pass** (by ignoring it) | `cmd uimode night yes`: SR stays in its light theme and stays legible (no dark theme exists in SR). Restored to off | |
+| 43 | Rotation | **pass with a note** | Landscape (orientation normally locked to portrait on this phone, restored afterwards): home opens, but tiles stretch tall and only one row fits, so the rep must scroll | |
+| 44 | Battery saver | **pass** | `low_power` on: SR starts in 98 ms and Sales Submit opens; restored to off | |
+| 45 | Data saver | **pass** | `restrict-background` on: SR works and the Sync data button runs without a crash (the counts stayed as in D1); restored to off | |
+| 46 | Low memory | **pass** | `am send-trim-memory` MODERATE and COMPLETE with SR in the background (RUNNING_CRITICAL is refused while it is in the foreground): no crash, no OutOfMemory line, relaunch 115 ms, same screen | |
+| 47 | Permissions denied then granted | **blocked by the device-owner policy** | `pm revoke` of location (fine and coarse) succeeded, but both were `granted=true` again as soon as SR was opened: the device-owner policy re-grants them. So "location denied" cannot be tested on this phone while SR is device owner; camera, Bluetooth and notification denial were not tried for the same reason. The distance shown afterwards (1,665 m, was 556 m the same day) probably means the phone was moved; not verified | |
+| 48 | Date and time (a day, an hour) | **not done** | The shell cannot set the clock without root and auto time is on; needs the owner to change it in Settings (ask first) | |
+| 49 | Sunlight mode | **not done** | In-app toggle in Settings, not exercised | |
+
+Settings changed in this section were put back: font scale 0.85, density 320, night mode off, rotation locked to portrait, battery saver off, data saver off, airplane mode off, Bluetooth on, Wi-Fi on, location permissions granted. A system "Use USB to" dialog appeared once and needed the owner's tap; the USB mode was left as it was.
+
 Radio settings were restored afterwards: airplane mode off, Bluetooth on, Wi-Fi on (same as the start of this section).
 
 **O6. Offline, Friends Store showed "You are within the outlet's range" with no force sale and no location fix, after earlier force sales for the same outlet that day.** Either a force sale is remembered for the outlet for the day, or a stale fix was used. Cause not determined; worth checking that such a sale is flagged force-sale (not geo-valid) on the server.
@@ -149,7 +162,7 @@ Not touched: Tickets, My Feedback, Log Out, the bell (notifications), device cod
 
 - Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
 - Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
-- Section 4 cases that change phone settings: airplane mode was done with the owner's yes (row 38) and mock location (row 20). Still not done: date and time (a day and an hour), battery saver, data saver, permissions denied then granted, rotation, largest font and display size, dark mode, Sunlight mode, low memory.
+- Section 4 cases that change phone settings: airplane mode was done with the owner's yes (row 38) and mock location (row 20). Done in rows 40 to 47. Still not done: date and time (a day and an hour) and Sunlight mode; permission denial is blocked by the device-owner policy.
 - AMO and TSO: only viewing was done (no call, verification, task, plan, leave or Final Submit); the TSO items listed as not touched in section 3b are untested.
 - Comparison of each screen with `docs/ui-reference/`, Bangla pass, rotation, font size and dark mode, Sunlight mode.
 - Section 6 budgets beyond the cold start above.
