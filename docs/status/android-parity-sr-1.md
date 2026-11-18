@@ -36,6 +36,9 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 | Attendance: visit-day list missing | NO CHANGE: the manual 11 shows it inside the route name ("Savar Bazar(Sat, Mon, Wed)"), which is bundle data already shown in the second line | - | srp1_att_before_font20 |
 | Attendance: check-in sheet and the other states not recorded | RECORD (D-PAR-SR1-09): before, check-in sheet, checked in waiting (amber), checked in with check-out active, check-out sheet, done, failed fix, font 2.0; compared with manual 11 to 13: text, boxes, colours, half-dome hold button all match. Differences kept: a "বাতিল" link under the dome (needed to cancel), the dome gradient is darker (7:1 rule) | this push | srp1_att_* (8) |
 
+| Outlet picker: empty state, white bar, pastel page | FIXED by the shell slice (picker_bn_empty re-recorded) | 102753eb | picker_bn_empty |
+| Outlet picker: opened list (dots) not recorded | RECORD (D-PAR-SR1-10): picker_bn_open and _sunlight, drawn as SrApp draws it (manualRows = true): amber dot per row, one string per row, the due chip, the A-Z bar above. Kept on purpose: the search field "খুঁজুন" under the bar and the due chip (the vendor list is a plain overlay), medium-weight row text that wraps to 3 lines for long Bangla names | this push | picker_bn_open(_sunlight) |
+
 (Rows for the remaining screens are added slice by slice.)
 
 ## Not run
