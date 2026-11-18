@@ -8,8 +8,12 @@ subscription ids, tenant ids, e-mail addresses, phone numbers or names appear he
 
 - **Scope held.** No Azure access, none attempted. No Azure resource created, changed or deleted. No deploy, promote
   or reset workflow dispatched. No pull request.
-- **Order of work and where it stands.** (1) this audit: pushed. (2) `stage` wired end to end: see "Progress" at the
-  bottom of this file. (3) runbook and quota document rewrite. (4) Apsis dump landing place.
+- **Order of work and where it stands.** All four deliverables are pushed; see "Progress log" at the bottom. What a successor
+  does next: wait for the lead's reaction to the owner questions D1 to D8; compare the lab grant key format with
+  `tools/make-lab-grant-key.sh` after train 121; decide with the lead and the apsis-migration lane the loader's network path
+  (`docs/requests/apsis-dump-landing.md` s5.2); re-read the live required checks of `main`.
+- **Section 2 wording correction.** Rows of the audit table describe the state BEFORE this lane's pushes ("missing"/"stale" =
+  at INT `a4691a06`); the code, runbook, quota document and landing template that fix them are in the progress log.
 - **Facts about INT that the task text is ahead of.** INT at `a4691a06` has migrations up to **V0204** and contract
   **1.20.0**. V0208 and 1.21.0 arrive only when train 121 lands; this file says "V0204 today, V0208 after train 121".
   `ARON_LAB_GRANT_KEY` and `lab_grant.xml` also arrive with train 121 (today only `docs/reviews/android-integrity-*`
@@ -212,4 +216,4 @@ the buffer the recommended 9,000 needs the owner's yes (step 16).
 | 1. This audit | pushed (this commit) |
 | 2. `stage` wired end to end | pushed (D-FINAL-INFRA-02 to -05); `infra/validate.sh` green locally (bicep build and lint, `check_infra.py` incl. the new `FinalAccountStage` tests, actionlint, shellcheck) |
 | 3. Runbook and quota document | pushed (docs-only: ci's path filter starts no run) |
-| 4. Apsis dump landing place | pending |
+| 4. Apsis dump landing place | pushed (head 2f95a5687): `infra/apsis-landing.bicep`, `ApsisLanding` tests, `docs/requests/apsis-dump-landing.md` (layout proposal for the apsis-migration lane, owner's azcopy commands); D-FINAL-INFRA-06. Open: the loader's network path (private endpoint recommended). |
