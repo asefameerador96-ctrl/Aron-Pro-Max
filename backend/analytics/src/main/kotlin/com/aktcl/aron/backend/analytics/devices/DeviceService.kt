@@ -454,7 +454,7 @@ class DeviceService(
      * row; the phone receives it with its next day bundle. 409 when the signing secret is not set (nothing is recorded), 404 outside the caller's reach or for a revoked phone.
      */
     fun grantLabExemption(p: AronPrincipal, reach: Reach, id: Long, req: LabExemptionRequest, requestId: String?): DeviceDto {
-        val svc = lab?.takeIf { it.canGrant } ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "lab exemptions are not available: the server has no signing key")
+        val svc = lab?.takeIf { it.canGrant } ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "lab exemptions are not available: " + (lab?.unavailableReason ?: "not configured"))
         if (req.days !in 1..LabExemptionService.MAX_DAYS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "days must be 1..${LabExemptionService.MAX_DAYS}", errors = listOf(FieldError("/days", "out_of_range")))
         val note = req.note?.trim()?.takeIf { it.isNotEmpty() }
         if (note != null && note.length > 300) throw ApiProblem(ProblemCode.ERR_VALIDATION, "note must be at most 300 characters", errors = listOf(FieldError("/note", "out_of_range")))
@@ -465,7 +465,7 @@ class DeviceService(
             svc.grantRow(id, p.userId, req.days, note) { h, row ->
                 audit(h, p, "device_lab_exemption", id.toString(), "grant", null, buildJsonObject { put("days", req.days); put("expires_at", row.expiresAt.wire()) }, note, requestId)
             }
-        } catch (e: IllegalArgumentException) { throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device") }
+        } catch (e: NoUsableDevice) { throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device") }   // any other failure is a server error, not a 404
         return getDevice(reach, id)
     }
 
@@ -474,7 +474,9 @@ class DeviceService(
         val svc = lab ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "lab exemptions are not available")
         val dev = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT coalesce(zone_id, 0) FROM app.device WHERE id = :i").bind("i", id).mapTo(Long::class.java).findOne().orElse(null) }
         if (dev == null || !inReach(reach, dev.takeIf { it != 0L })) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
-        svc.revoke(id) { h -> audit(h, p, "device_lab_exemption", id.toString(), "revoke", null, null, null, requestId) }
+        svc.revoke(id) { h, before ->
+            audit(h, p, "device_lab_exemption", id.toString(), "revoke", before?.let { buildJsonObject { put("granted_by", it.grantedBy); put("expires_at", it.expiresAt.wire()) } }, null, null, requestId)
+        }
         return getDevice(reach, id)
     }
 

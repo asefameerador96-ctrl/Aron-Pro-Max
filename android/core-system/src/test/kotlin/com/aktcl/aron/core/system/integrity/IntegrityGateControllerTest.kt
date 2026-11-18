@@ -10,12 +10,12 @@ import org.junit.Test
 class IntegrityGateControllerTest {
     private val day = 24 * 3600_000L
 
-    private class Env(var flags: DevFlags = DevFlags(false, false), val build: Exemption? = null, val honoured: Boolean = true) {
+    private class Env(var flags: DevFlags = DevFlags(false, false), val build: Exemption? = null) {
         val dir: File = Files.createTempDirectory("gate").toFile()
         val clock = LabExemptionStoreTest.Clock()
         val store = LabExemptionStore(dir, clock)
         val log = IntegrityEventLog(dir)
-        fun controller() = IntegrityGateController({ flags }, store, log, dir, build, "1.2.3", clock::wallMs, labExemptionHonoured = honoured)
+        fun controller() = IntegrityGateController({ flags }, store, log, dir, build, "1.2.3", clock::wallMs)
     }
 
     @Test fun nothingOnMeansOpen() {
@@ -35,15 +35,6 @@ class IntegrityGateControllerTest {
         val e = Env(DevFlags(true, true), build = Exemption.DEBUG_BUILD); val c = e.controller()
         val s = c.check(); assertFalse(s.blocked); assertEquals(Exemption.DEBUG_BUILD, s.exempt)
         assertTrue(c.noteOnset(s)); assertEquals("debug_build", e.log.pending().single().exempt)
-    }
-
-    @Test fun aReleaseBuildIsOnlyExemptWithALiveLabGrant() {
-        val e = Env(DevFlags(true, false)); val c = e.controller()
-        assertTrue(c.check().blocked)
-        e.store.grant(e.clock.wall + day)
-        assertFalse(c.check().blocked); assertEquals(Exemption.LAB, c.check().exempt)
-        e.clock.advance(2 * day)
-        assertTrue(c.check().blocked) // expired: fail closed
     }
 
     @Test fun oneEventPerOnsetNotPerCheckOrRestart() {
@@ -95,7 +86,7 @@ class IntegrityGateControllerTest {
 
     @Test fun aReleaseBuildIgnoresAStoredLabFileUntilTheServerPieceLands() {
         // Today the file is unauthenticated: honouring it would let anyone with a file editor skip the gate.
-        val e = Env(DevFlags(true, false), honoured = false); val c = e.controller()
+        val e = Env(DevFlags(true, false)); val c = e.controller()
         e.store.grant(e.clock.wall + day)
         assertTrue(c.check().blocked)
         assertEquals(Exemption.NONE, c.check().exempt)

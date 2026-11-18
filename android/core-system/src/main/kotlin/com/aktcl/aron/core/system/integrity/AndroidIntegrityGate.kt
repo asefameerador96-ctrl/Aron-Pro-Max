@@ -58,7 +58,7 @@ object IntegrityGates {
     /** The server withdrew the grant. */
     fun revokeLabGrant(context: Context) { get(context); verifiedLab?.revoke() }
 
-    /** The device-scoped config value of a full day bundle that carries this phone's signed lab grant (contract 1.19.0). */
+    /** The device-scoped config value of a full day bundle that carries this phone's signed lab grant (this contract's `ResolvedConfigValue`). */
     const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
 
     @Volatile private var appContext: Context? = null
@@ -104,7 +104,7 @@ object IntegrityGates {
     /** The store the bundle/config layer writes a server grant into (`grant(untilUtcMs)`); null until [get] ran. */
     fun exemptionStore(context: Context): LabExemptionStore { get(context); return exemptionStore!! }
 
-    /** The pending events the device status reporter sends as `integrity_events` (contract 1.19.0): the same instance the gate writes to. */
+    /** The pending events the device status reporter sends as `integrity_events` (this contract's `ResolvedConfigValue`): the same instance the gate writes to. */
     fun eventLog(context: Context): IntegrityEventLog { get(context); return sharedLog!! }
 
     private fun dir(context: Context) = File(context.applicationContext.noBackupFilesDir, "aron/integrity-gate")

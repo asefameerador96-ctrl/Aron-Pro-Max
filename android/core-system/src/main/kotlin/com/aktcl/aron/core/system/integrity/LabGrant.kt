@@ -95,13 +95,16 @@ class VerifiedLabExemption(
         val now = clock.wallMs()
         val marks = readMarks()
         if (serverTimeMs == null || kotlin.math.abs(now - serverTimeMs) > FRESH_MS) return false
-        if (marks != null && now < marks.wall - ROLLBACK_TOLERANCE_MS) return false
         val claims = verifier.verify(token, deviceUuid(), audience(), serverTimeMs) ?: return false
         if (marks != null && claims.iatMs < marks.iat) return false
+        // The clock is behind the highest reading seen (a rollback, or a tester who moved it FORWARD and back). Only a grant NEWER than any this phone has accepted may recover
+        // from that: a fresh grant cannot be a replay (its iat is above every mark), and the response is already known fresh (server time within 15 minutes of this clock).
+        val behind = marks != null && now < marks.wall - ROLLBACK_TOLERANCE_MS
+        if (behind && claims.iatMs <= marks!!.iat) return false
         return runCatching {
             store.grant(claims.expMs)
             com.aktcl.aron.core.common.AtomicText.write(tokenFile, token.trim())
-            writeMarks(Marks(maxOf(claims.iatMs, marks?.iat ?: 0L), maxOf(now, marks?.wall ?: 0L)))
+            writeMarks(Marks(maxOf(claims.iatMs, marks?.iat ?: 0L), if (behind) now else maxOf(now, marks?.wall ?: 0L)))
             true
         }.getOrDefault(false)
     }

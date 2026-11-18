@@ -11,6 +11,11 @@ class SpoofCodesTieTest {
         assertEquals(SpoofCode.values().map { it.wire }.toSet(), RecordMapping.SPOOF_CODES)
     }
 
+    /** The server refuses a fix with more than 16 codes (schema_invalid hits the whole visit or memo): the enum must never outgrow that. */
+    @Test fun theCodeListCanNeverOutgrowTheIngestCapOf16() {
+        org.junit.Assert.assertTrue("SpoofCode has " + SpoofCode.values().size + " codes; the server cap is 16 (GeoFix.signals maxItems, PhoneEvidenceShape.MAX_SIGNALS)", SpoofCode.values().size <= 16)
+    }
+
     @Test fun everyCodeIsAtMost32CharactersAndUnique() {
         val wires = SpoofCode.values().map { it.wire }
         assertEquals(wires.size, wires.toSet().size)

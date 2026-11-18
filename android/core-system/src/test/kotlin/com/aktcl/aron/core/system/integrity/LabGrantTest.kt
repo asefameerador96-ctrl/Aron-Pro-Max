@@ -148,6 +148,14 @@ class LabGrantTest {
         assertFalse(l.isActive())
     }
 
+    @Test fun aClockMovedForwardAndBackDoesNotTrapALabPhoneOnceTheAdminGrantsAgain() {
+        val (l, _) = lab(); assertTrue(l.take(token())); val t0 = clock.wall
+        clock.advance(10 * day); l.isActive() // the tester moved the clock forward: the mark follows it
+        clock.wall = t0 + 60_000L // ... and back
+        assertFalse("the standing token is not enough", l.take(token(iat = t0)))
+        assertTrue("a fresh grant is", l.take(token(iat = clock.wall)))
+    }
+
     @Test fun aRolledBackClockCannotReviveAnExpiredGrantEvenWithAReplayedBundle() {
         val (l, _) = lab(); val t = token(exp = clock.wall + day)
         assertTrue(l.take(t)); clock.advance(2 * day); assertFalse(l.isActive())

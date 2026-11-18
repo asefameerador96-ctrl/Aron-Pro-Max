@@ -13,19 +13,14 @@ import java.io.File
  */
 class IntegrityGateController(
     private val flagsReader: () -> DevFlags,
-    private val exemption: LabExemptionStore,
+    /** The local record behind the verified grant; the unauthenticated file alone is never an exemption (D-OWNER-MDM-02 iii). */
+    @Suppress("unused") private val exemption: LabExemptionStore,
     private val log: IntegrityEventLog,
     private val dir: File,
     /** [Exemption.DEBUG_BUILD] or [Exemption.BENCHMARK_BUILD] for those variants; null for release. */
     private val buildExemption: Exemption?,
     private val appVersion: String,
     private val nowUtcMs: () -> Long,
-    /**
-     * Whether a stored lab exemption is honoured in this build. FALSE until the server piece lands: today the file is not
-     * authenticated, so a release build ignores it (D-OWNER-MDM-02 iii). With slice 3 the grant is bound to the device by a
-     * server signature over device id and expiry, and this becomes true.
-     */
-    private val labExemptionHonoured: Boolean = false,
     /** The authenticated lab exemption ([VerifiedLabExemption.isActive]): the only way a release build is ever exempt. Null: none. */
     private val verifiedLab: (() -> Boolean)? = null,
 ) {
@@ -35,7 +30,7 @@ class IntegrityGateController(
     fun check(): GateState {
         val flags = runCatching(flagsReader).getOrDefault(DevFlags(devOptions = false, adb = false))
         val lab = flags.any && buildExemption == null &&
-            ((labExemptionHonoured && runCatching { exemption.isActive() }.getOrDefault(false)) || runCatching { verifiedLab?.invoke() == true }.getOrDefault(false))
+            runCatching { verifiedLab?.invoke() == true }.getOrDefault(false)
         return DevOptionsPolicy.decide(flags, buildExemption, lab)
     }
 

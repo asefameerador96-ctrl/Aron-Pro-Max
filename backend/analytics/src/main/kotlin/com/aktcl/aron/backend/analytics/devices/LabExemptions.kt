@@ -22,6 +22,9 @@ class LabGrantSigner(privateKeyPkcs8Base64: String?) {
     }?.takeIf { isP256(it) }
     val configured: Boolean get() = key != null
 
+    /** True when something was supplied as the key (set, even if unreadable): lets the start-up and the 409 tell "no key" from "unreadable key". */
+    val supplied: Boolean = !privateKeyPkcs8Base64.isNullOrBlank()
+
     fun sign(deviceUuid: String, audience: String, iat: Instant, exp: Instant): String {
         val k = key ?: error("lab grant signing key is not configured")
         require(audience.isNotBlank() && audience.none { it == '"' || it == '\\' || it.code < 0x20 }) { "audience must be a plain host name" }
@@ -42,6 +45,9 @@ class LabGrantSigner(privateKeyPkcs8Base64: String?) {
     }
 }
 
+/** The phone is unknown or no longer usable (revoked or replaced). */
+class NoUsableDevice : IllegalArgumentException("no usable device")
+
 /** One lab exemption as the portal sees it (never the signed token). */
 data class LabExemptionRow(val deviceId: Long, val grantedBy: Long, val grantedAt: Instant, val expiresAt: Instant, val note: String?)
 
@@ -56,6 +62,14 @@ class LabExemptionService(private val db: Database, private val signer: LabGrant
     /** True when the server can sign (the environment secret is set): the portal shows the action only then. */
     val canGrant: Boolean get() = signer.configured && audience.isNotBlank()
 
+    /** Why [canGrant] is false (the operator's next step), or null. Never mentions a key value. */
+    val unavailableReason: String? get() = when {
+        !signer.supplied -> "the server has no lab-grant signing key (secret ARON_LAB_GRANT_KEY)"
+        !signer.configured -> "the lab-grant signing key is set but is not a readable EC P-256 PKCS#8 base64 key"
+        audience.isBlank() -> "the public API URL (ARON_PUBLIC_API_URL) is missing or has no host, so a grant has no audience"
+        else -> null
+    }
+
     /** Records the exemption and returns its expiry. Needs a configured signer: a grant nobody can sign would only mislead the portal. */
     fun grant(deviceId: Long, grantedBy: Long, days: Int, note: String?): Instant = grantRow(deviceId, grantedBy, days, note).expiresAt
 
@@ -69,7 +83,7 @@ class LabExemptionService(private val db: Database, private val signer: LabGrant
         val row = LabExemptionRow(deviceId, grantedBy, now, exp, note)
         db.jdbi.useTransaction<Exception> { h ->
             val uuid = h.createQuery("SELECT device_uuid::text FROM app.device WHERE id = :d AND status NOT IN ('revoked','replaced')").bind("d", deviceId).mapTo(String::class.java).findOne().orElse(null)
-                ?: throw IllegalArgumentException("no usable device")
+                ?: throw NoUsableDevice()
             val token = signer.sign(uuid, audience, now, exp)
             h.createUpdate(
                 "INSERT INTO app.device_lab_exemption (device_id, granted_by, granted_at, expires_at, note, grant_token) VALUES (:d, :u, :g, :e, :n, :t) " +
@@ -80,9 +94,11 @@ class LabExemptionService(private val db: Database, private val signer: LabGrant
         return row
     }
 
-    fun revoke(deviceId: Long, alsoInTx: (org.jdbi.v3.core.Handle) -> Unit = {}): Boolean = db.jdbi.inTransaction<Boolean, Exception> { h ->
+    fun revoke(deviceId: Long, alsoInTx: (org.jdbi.v3.core.Handle, LabExemptionRow?) -> Unit = { _, _ -> }): Boolean = db.jdbi.inTransaction<Boolean, Exception> { h ->
+        val before = h.createQuery("SELECT device_id, granted_by, granted_at, expires_at, note FROM app.device_lab_exemption WHERE device_id = :d").bind("d", deviceId)
+            .map { rs, _ -> LabExemptionRow(rs.getLong(1), rs.getLong(2), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), rs.getString(5)) }.findOne().orElse(null)
         val gone = h.createUpdate("DELETE FROM app.device_lab_exemption WHERE device_id = :d").bind("d", deviceId).execute() > 0
-        if (gone) alsoInTx(h)
+        if (gone) alsoInTx(h, before)
         gone
     }
 

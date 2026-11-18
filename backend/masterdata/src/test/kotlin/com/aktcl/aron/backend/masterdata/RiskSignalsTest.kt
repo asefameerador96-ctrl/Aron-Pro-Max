@@ -276,4 +276,35 @@ class RiskSignalsTest {
         val out = PhoneSignalRules.disambiguate(listOf(hit("A", "p", 1), hit("A", "p", 2), hit("B", "p", 1), hit("A", "q", 1), RiskHit("A", 3, "user", "p", 5, null, kotlinx.serialization.json.JsonObject(emptyMap()))))
         assertEquals(listOf("p#1", "p#2", "p", "q", "p"), out.map { it.subjectId })
     }
+
+    @Test
+    fun aRepWhoAppearsLaterOnASharedPhoneDoesNotLeaveAnEarlierPlainRowBesideTheNewOne() {
+        val db = env.fresh.db; val cfg = DbServerConfig(db, RegistryDefaults())
+        val a = env.ids.getValue("sr1001"); val b = env.ids.values.first { it != a }; val dev = insertDevice(); val day = LocalDate.parse("2027-05-14")
+        fun fix(uid: Long, sig: String) = db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, device_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present, signals) " +
+                    "VALUES (:d, 'visit', :u, :uid, :dev, CAST('2027-05-14T04:00:00Z' AS timestamptz), 'visit_open', 'ok', 23.8, 90.36, 12, 'fused', false, false, false, false, false, true, false, CAST(:sig AS text[]))",
+            ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", uid).bind("dev", dev).bind("sig", sig).execute()
+        }
+        val ev = RiskSignalEvaluator(db, cfg)
+        fix(a, "{hook_framework}"); ev.evaluateDay(day) // 10:00: rep A alone, plain device uuid
+        val plain = deviceUuid(dev)
+        assertEquals(1, env.scalar("SELECT count(*) FROM app.risk_signal WHERE subject_id = '$plain' AND business_date = '$day'")!!.toInt())
+        db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.risk_signal SET status = 'confirmed' WHERE subject_id = '$plain' AND business_date = '$day'") } // a reviewer acts
+        fix(b, "{emulator}"); ev.evaluateDay(day); ev.evaluateDay(day) // 14:00: rep B appears
+        val rows = db.jdbi.withHandle<List<Pair<String, String>>, Exception> { h -> h.createQuery("SELECT subject_id, status FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND business_date = :d ORDER BY subject_id").bind("d", day).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list() }
+        assertEquals(2, rows.size); assertEquals(setOf("$plain#$a" to "confirmed", "$plain#$b" to "open"), rows.toSet(), "one row per rep and date, the reviewer status carried")
+    }
+
+    @Test
+    fun eventsAreIdentifiedByInstantAndPerUserNotByTimestampString() {
+        val same = listOf(
+            IntegrityEventRow("p", 1, "2027-01-03T04:00:00Z", listOf("adb"), "none"), IntegrityEventRow("p", 1, "2027-01-03T04:00:00.000Z", listOf("adb"), "none"),
+            IntegrityEventRow("p", 2, "2027-01-03T04:00:00Z", listOf("adb"), "none"),
+        )
+        val hits = PhoneSignalRules.fromIntegrityEvents(same)
+        assertEquals(2, hits.size, "two reps with the identical instant on one phone are both counted")
+        assertEquals("1", hits.first { it.userId == 1L }.evidence["blocked_events"].toString(), "the same instant written two ways counts once")
+    }
 }

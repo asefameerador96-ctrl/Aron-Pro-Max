@@ -127,6 +127,27 @@ class LabExemptionServiceTest : ReportFixture() {
         assertFailsWith<IllegalStateException> { LabGrantSigner(b64(p384)).sign("u", AUD, now, now.plusSeconds(60)) }
     }
 
+    @Test fun theUnavailableReasonSeparatesNoKeyFromAnUnreadableKeyFromAMissingUrl() {
+        val none = LabExemptionService(fresh.db, LabGrantSigner(null), AUD, clock)
+        val bad = LabExemptionService(fresh.db, LabGrantSigner("not a key"), AUD, clock)
+        val noUrl = LabExemptionService(fresh.db, signer, "", clock)
+        assertTrue(none.unavailableReason!!.contains("no lab-grant signing key")); assertTrue(bad.unavailableReason!!.contains("not a readable EC P-256"))
+        assertTrue(noUrl.unavailableReason!!.contains("ARON_PUBLIC_API_URL")); assertNull(LabExemptionService(fresh.db, signer, AUD, clock).unavailableReason)
+        assertFalse(bad.unavailableReason!!.contains("not a key"), "never the key value")
+    }
+
+    @Test fun theRuntimeApiRoleMayDeleteTheRowSoAWithdrawalWorksOnceRuntimeRolesAreOn() {
+        assertEquals(1, count("SELECT count(*) FROM app.db_role_grant WHERE role = 'api_rw' AND object = 'device_lab_exemption' AND privileges = 'DELETE'"))
+        assertEquals(1, count("SELECT CASE WHEN has_table_privilege('api_rw', 'app.device_lab_exemption', 'DELETE') THEN 1 ELSE 0 END"))
+    }
+
+    @Test fun theRevokeAuditRowSaysWhatWasWithdrawn() = app {
+        val (id, _) = device(); put(id, 13, Role.ADMIN, """{"days":2}""")
+        assertEquals(HttpStatusCode.OK, del(id, 13, Role.ADMIN).status)
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'device_lab_exemption' AND entity_id = '$id' AND action = 'revoke' AND before ->> 'granted_by' = '13' AND before ->> 'expires_at' IS NOT NULL"))
+        del(id, 13, Role.ADMIN); assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'device_lab_exemption' AND entity_id = '$id' AND action = 'revoke'"), "withdrawing nothing writes nothing")
+    }
+
     @Test fun withoutASigningKeyNothingIsGranted() {
         val off = LabExemptionService(fresh.db, LabGrantSigner(null), AUD, clock); val (id, _) = device()
         assertFalse(off.canGrant)
@@ -204,6 +225,7 @@ class LabExemptionServiceTest : ReportFixture() {
             assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText())
             assertEquals(0, count("SELECT count(*) FROM app.device_lab_exemption"))
             assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'device_lab_exemption'"))
+            assertTrue(r.bodyAsText().contains("no lab-grant signing key"), r.bodyAsText())
             assertEquals("false", json(client.get("/v1/admin/devices/$id") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText())["lab_exemption_available"]!!.jsonPrimitive.content)
         }
     }

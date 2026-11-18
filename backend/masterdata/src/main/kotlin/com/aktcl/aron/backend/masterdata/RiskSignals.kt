@@ -192,7 +192,7 @@ object PhoneSignalRules {
     }
 
     /** DEVICE_DEBUG_ENABLED when the gate blocked the app (exempt `none`) at least once; a repeated event counts once (identity: at + flags). Exempt events are only counted in the evidence. */
-    fun fromIntegrityEvents(events: List<IntegrityEventRow>): List<RiskHit> = events.distinctBy { Triple(it.phone, it.atUtc, it.flags) }.groupBy { it.phone to it.userId }.mapNotNull { (key, list) ->
+    fun fromIntegrityEvents(events: List<IntegrityEventRow>): List<RiskHit> = events.distinctBy { listOf(it.phone, it.userId, runCatching { Instant.parse(it.atUtc).toEpochMilli() }.getOrDefault(it.atUtc), it.flags) }.groupBy { it.phone to it.userId }.mapNotNull { (key, list) ->
         val (phone, userId) = key
         val blocked = list.filter { it.exempt == "none" }
         if (blocked.isEmpty()) return@mapNotNull null
@@ -264,7 +264,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
             isolated(h, "integrity_events", date, emptyList()) { PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date)) }
         hits += PhoneSignalRules.disambiguate(phoneHits)
         var stored = 0
-        for (hit in hits) stored += isolated(h, "store", date, 0) { store(h, hit, date, weights[hit.code] ?: 0.0, version); 1 }
+        for (hit in hits) stored += isolated(h, "store", date, 0) { renameEarlierPlainRow(h, hit, date); store(h, hit, date, weights[hit.code] ?: 0.0, version); 1 }
         return stored
     }
 
@@ -303,6 +303,18 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
             put("device_distance_m", rs.getObject("distance_m") as Double?); put("server_distance_m", rs.getObject("server_distance_m") as Double?)
         })
     }.list()
+
+    /**
+     * A second rep appeared on the same phone later the same date: this rep's earlier row (evaluated alone, plain phone id) becomes `<phone>#<user>` instead of staying beside the
+     * new row, so there is one row per rep and date and a reviewer's status carries over. No-op when the new key already exists or there was no earlier row.
+     */
+    private fun renameEarlierPlainRow(h: Handle, hit: RiskHit, date: LocalDate) {
+        if (hit.subjectType != "device" || !hit.subjectId.contains('#')) return
+        h.createUpdate(
+            "UPDATE app.risk_signal SET subject_id = :new WHERE code = :c AND subject_type = 'device' AND subject_id = :plain AND business_date = :d AND user_id = :u " +
+                "AND NOT EXISTS (SELECT 1 FROM app.risk_signal x WHERE x.code = :c AND x.subject_type = 'device' AND x.subject_id = :new AND x.business_date = :d)",
+        ).bind("new", hit.subjectId).bind("c", hit.code).bind("plain", hit.subjectId.substringBefore('#')).bind("d", date).bind("u", hit.userId).execute()
+    }
 
     private fun store(h: Handle, hit: RiskHit, date: LocalDate, score: Double, version: Long) {
         h.createUpdate(
