@@ -18,16 +18,16 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 15, 16, 17 | Bluetooth, pairing, connect | COMPARED (green bar; OS dialogs are not ours) | srp1b_stock_printer_connected (D-PAR-SR1-16) |
 | 18 | Select the outlet | COMPARED, KEPT (search field, due chip) | picker_bn_open(_sunlight) |
 | 19 | Start the call | COMPARED | srp1b_call_question_* |
-| 20 | Outlet photo | NOT YET | CallPhotoStep, camera |
-| 21 | Outlet target (today's target) | NOT YET | OutletTargetPopup |
+| 20 | Outlet photo | COMPARED, KEPT (the camera is the OS view; our explained step before it stays) | srp1b_call_photo_step (D-PAR-SR1-21) |
+| 21 | Outlet target (today's target) popup | COMPARED (lavender box, purple Okay); the full target screen (right half) is a programme screen, NOT BUILT | srp1b_outlet_target* (D-PAR-SR1-21) |
 | 22 | Enter quantity | COMPARED, KEPT (ADS N/A) | srp1b_qty_* |
 | 23 | Sale history (সেল ডাটা) | COMPARED, KEPT (offline card, Latin vs Bangla ISO digits, no packshots in rows) | srp1b_sale_data*, D-PAR-SR1-20 (history_bn_* are the Memo menu) |
 | 24 | Review | COMPARED, KEPT (no discount table, field units) | srp1b_review_* |
 | 25, 26 | Product QC and QC entry | GOLDEN-ONLY | qc_bn_* (old frame) |
 | 27, 28, 29 | Partial payment, confirm and print, saved | COMPARED | srp1b_credit_dialog*, srp1b_dialog_* |
 | 30, 31, 32 | Out of range, force reason, zero sale | COMPARED, KEPT (force gate) | srp1b_out_of_range*, srp1b_force_reason*, srp1b_zero_* |
-| 33, 34 | DRP slide collection, enter slides | GOLDEN-ONLY (offers deferred) | slide_bn_offer |
-| 35 | KV and POSM survey | NOT YET | CallContentHost |
+| 33, 34 | DRP slide collection, enter slides | DEFERRED (docs/27 offers; the Slide step only exists while a SKU carries an offer; layout differs from the manual and is left until the owner lifts the deferral) | slide_bn_offer (old frame) |
+| 35 | KV and POSM survey | NOT YET (CallContentHost reads content items, files and survey rows from Room; needs seeded fixtures to record) | CallContentHost, PosmSurvey |
 | 36, 37, 38 | Find memo, edit sale, collect due | excluded (P-SR2b) | |
 | 39, 40, 41 | Sales summary, sync and submit, submitted | excluded (P-SR2b) | |
 | 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | COMPARED, KEPT (GEO info line); the opened cluster search dialog NOT recorded (test clock hangs on a field in a dialog) | srp1b_outlet_menu*, srp1b_req_*, srp1b_clusters* (D-PAR-SR1-17) |
