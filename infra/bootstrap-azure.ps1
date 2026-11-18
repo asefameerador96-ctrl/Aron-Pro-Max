@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  One-time Azure + GitHub setup for Aron (dev). Run it ONCE on your laptop.
+  One-time Azure + GitHub setup for ONE Aron environment (dev, stage or prod). Run it once per environment on your laptop.
 
 .DESCRIPTION
   Creates an isolated resource group and a GitHub-only identity that can deploy
@@ -10,21 +10,36 @@
   No password or secret is created: GitHub signs in with a short-lived token
   (OIDC federation).
 
+  Secrets and variables are written into the GitHub ENVIRONMENT of this run (azure-dev, azure-stage or azure-prod), never
+  repository-wide, so the test account and the final account coexist: a job that names an environment reads its values
+  first. Repository-wide values of the same names (written by older runs) are left alone and are overridden.
+
   Before running, in this same PowerShell window:
       az login
       gh auth login
 
-  Run:
-      .\infra\bootstrap-azure.ps1
+  Run (test account, the original behaviour):
+      .\infra\bootstrap-azure.ps1 -SubscriptionId <test-subscription-id>
+  Run (final account; run tools/github-governance.ps1 FIRST: it creates azure-stage and azure-prod with their reviewer):
+      .\infra\bootstrap-azure.ps1 -SubscriptionId <final-subscription-id> -ResourceGroup rg-aron-stage `
+        -Environment azure-stage -AppName sp-aron-github-stage -AlertEmails "<monitored-address>"
+      .\infra\bootstrap-azure.ps1 -SubscriptionId <final-subscription-id> -ResourceGroup rg-aron-prod `
+        -Environment azure-prod -AppName sp-aron-github-prod -AlertEmails "<monitored-address>"
 #>
 [CmdletBinding()]
 param(
-  [string]$SubscriptionId = 'fdd05880-48dd-46bd-be4c-36f7039e71d7',
+  # No default: the repository is public and a subscription id does not belong in it (D-FINAL-INFRA-04).
+  [Parameter(Mandatory = $true)]
+  [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
+  [string]$SubscriptionId,
   [string]$Location       = 'southeastasia',
   [string]$ResourceGroup  = 'rg-aron-dev',
   [string]$Repo           = 'asefameerador96-ctrl/Aron-Pro-Max',
+  # azure-dev (test account), azure-stage or azure-prod (final account). The OIDC subjects below name this environment.
+  [ValidateSet('azure-dev', 'azure-stage', 'azure-prod')]
   [string]$Environment    = 'azure-dev',
-  # The only branch the environment (and so the Azure identity) accepts deployments from.
+  # azure-dev only: the only branch the environment (and so the Azure identity) accepts deployments from. azure-stage
+  # (main) and azure-prod (server-v* and app-v* tags) get their policies from tools/github-governance.ps1.
   [string]$Branch         = 'claude/wonderful-thompson-k6ejnf',
   [string]$AppName        = 'sp-aron-github-dev',
   # Who receives the budget and platform alerts (comma-separated). Stored as the GitHub variable ARON_ALERT_EMAILS.
@@ -57,7 +72,7 @@ foreach ($p in $providers) { az provider register --namespace $p --only-show-err
 #    the scope by attempting a test deployment into it and expecting AuthorizationFailed (infra/scripts/scope-check.sh).
 Step "Creating resource group $ResourceGroup in $Location"
 az group create --name $ResourceGroup --location $Location `
-  --tags project=aron environment=dev owner=aktcl --only-show-errors | Out-Null
+  --tags project=aron "environment=$($Environment -replace '^azure-', '')" owner=aktcl --only-show-errors | Out-Null
 Check 'az group create'
 az group create --name 'rg-aron-scope-probe' --location $Location `
   --tags project=aron purpose=scope-probe --only-show-errors | Out-Null
@@ -153,27 +168,42 @@ foreach ($c in $creds) {
   }
 }
 
-# 6. Tell GitHub (these three values are identifiers, not passwords).
-Step "Writing settings into GitHub repo $Repo"
-$envBody = Join-Path $env:TEMP 'gh-environment.json'
-'{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
-  Set-Content -Path $envBody -Encoding ascii
-gh api --method PUT "repos/$Repo/environments/$Environment" --input $envBody | Out-Null; Check 'create environment'
-Remove-Item $envBody -Force
-$policies = gh api "repos/$Repo/environments/$Environment/deployment-branch-policies" --jq '.branch_policies[].name'
-if ($policies -notcontains $Branch) {
-  gh api --method POST "repos/$Repo/environments/$Environment/deployment-branch-policies" -f "name=$Branch" -f type=branch | Out-Null
-  Check "environment branch policy $Branch"
-}
-gh secret set AZURE_CLIENT_ID       --body $appId          --repo $Repo; Check 'secret AZURE_CLIENT_ID'
-gh secret set AZURE_TENANT_ID       --body $tenantId       --repo $Repo; Check 'secret AZURE_TENANT_ID'
-gh secret set AZURE_SUBSCRIPTION_ID --body $SubscriptionId --repo $Repo; Check 'secret AZURE_SUBSCRIPTION_ID'
-gh variable set AZURE_RESOURCE_GROUP --body $ResourceGroup --repo $Repo; Check 'variable AZURE_RESOURCE_GROUP'
-gh variable set AZURE_LOCATION       --body $Location      --repo $Repo; Check 'variable AZURE_LOCATION'
-if ($AlertEmails) {
-  gh variable set ARON_ALERT_EMAILS  --body $AlertEmails   --repo $Repo; Check 'variable ARON_ALERT_EMAILS'
+# 6. Tell GitHub (these three values are identifiers, not passwords). Everything goes into the GitHub ENVIRONMENT of this
+#    run, so a second bootstrap (the final account) never overwrites the first (the test account).
+Step "Writing settings into GitHub environment $Environment of $Repo"
+if ($Environment -eq 'azure-dev') {
+  # The test account's environment: created here exactly as before (integration branch only).
+  $envBody = Join-Path $env:TEMP 'gh-environment.json'
+  '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+    Set-Content -Path $envBody -Encoding ascii
+  gh api --method PUT "repos/$Repo/environments/$Environment" --input $envBody | Out-Null; Check 'create environment'
+  Remove-Item $envBody -Force
+  $policies = gh api "repos/$Repo/environments/$Environment/deployment-branch-policies" --jq '.branch_policies[].name'
+  if ($policies -notcontains $Branch) {
+    gh api --method POST "repos/$Repo/environments/$Environment/deployment-branch-policies" -f "name=$Branch" -f type=branch | Out-Null
+    Check "environment branch policy $Branch"
+  }
 } else {
-  Write-Host 'No -AlertEmails given: set the GitHub variable ARON_ALERT_EMAILS before the first deploy.' -ForegroundColor Yellow
+  # The final account's environments are created ONLY by tools/github-governance.ps1, with the owner as required reviewer
+  # and the branch or tag policy. Creating one here would replace that protection (a PUT resets it) or leave it open.
+  $reviewers = gh api "repos/$Repo/environments/$Environment" --jq '[.protection_rules[] | select(.type == "required_reviewers")] | length' 2>$null
+  if ($LASTEXITCODE -ne 0 -or [int]$reviewers -lt 1) {
+    throw "GitHub environment $Environment is missing or has no required reviewer: run tools/github-governance.ps1 first, then this script again."
+  }
+}
+gh secret set AZURE_CLIENT_ID       --env $Environment --body $appId          --repo $Repo; Check 'secret AZURE_CLIENT_ID'
+gh secret set AZURE_TENANT_ID       --env $Environment --body $tenantId       --repo $Repo; Check 'secret AZURE_TENANT_ID'
+gh secret set AZURE_SUBSCRIPTION_ID --env $Environment --body $SubscriptionId --repo $Repo; Check 'secret AZURE_SUBSCRIPTION_ID'
+gh variable set AZURE_RESOURCE_GROUP --env $Environment --body $ResourceGroup --repo $Repo; Check 'variable AZURE_RESOURCE_GROUP'
+gh variable set AZURE_LOCATION       --env $Environment --body $Location      --repo $Repo; Check 'variable AZURE_LOCATION'
+if ($AlertEmails) {
+  gh variable set ARON_ALERT_EMAILS  --env $Environment --body $AlertEmails   --repo $Repo; Check 'variable ARON_ALERT_EMAILS'
+} else {
+  Write-Host "No -AlertEmails given: set the GitHub variable ARON_ALERT_EMAILS in environment $Environment before the first deploy." -ForegroundColor Yellow
+}
+$repoWide = gh variable list --repo $Repo --json name --jq '.[].name' 2>$null
+if ($repoWide -contains 'AZURE_RESOURCE_GROUP') {
+  Write-Host 'Note: repository-wide AZURE_* variables from an older run still exist; the environment values above win for jobs that name an environment.' -ForegroundColor Yellow
 }
 
 # 7. A snapshot of regional compute quota, so heavy load tests cannot starve live services.
@@ -192,8 +222,8 @@ Created:
   resource group   $ResourceGroup ($Location)
   GitHub identity  $AppName  (client id $appId)
   rights           Contributor + RBAC Administrator (data-plane roles only) on $ResourceGroup ONLY
-  deploys from     branch $Branch only (environment '$Environment')
-  GitHub           environment '$Environment', 3 secrets, 2 variables in $Repo
+  deploys from     the rules of GitHub environment '$Environment'
+  GitHub           environment '$Environment': 3 secrets and 2 to 3 variables, scoped to it, in $Repo
 
 Nothing outside $ResourceGroup was changed. Tell me when this finished.
 "@

@@ -10,6 +10,10 @@
 #   aron-web-session-secret    48 random characters sealing the web BFF session cookies (ARON_SESSION_SECRET)
 #   aron-mfa-key               32 random bytes, base64, sealing web admins' TOTP secrets (ARON_MFA_KEY, api only);
 #                              created once and never replaced by a deploy (rotation: docs/runbooks/rotate-mfa-key.md)
+#   aron-lab-grant-key         stage and prod only (D-OWNER-MDM-02): the per-environment P-256 key (PKCS#8, DER, base64 on one
+#                              line) the api signs device lab grants with (ARON_LAB_GRANT_KEY); created once, never rotated by
+#                              a deploy, never printed. aron-lab-grant-public is its public half (X.509 SubjectPublicKeyInfo,
+#                              DER, base64): not a secret, read by the laptop operator and built into that environment's APK
 # Idempotent: an existing value is kept, except the FCM and Play Integrity accounts, which follow their GitHub secrets
 # when given.
 # Usage: infra/scripts/seed-secrets.sh <key-vault-name>
@@ -88,6 +92,23 @@ else
   openssl rand -base64 32 | tr -d '\n' > "$tmp/mfa"
   put_file aron-mfa-key "$tmp/mfa" text/plain
   note "aron-mfa-key created"
+fi
+
+# Lab grant key pair, final-account environments only (dev keeps the key made by tools/make-lab-grant-key.sh). Only a
+# definite "not found" creates it; any other read error stops the deploy instead of replacing a key phones may trust.
+if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then
+  if lab_err="$(az keyvault secret show --vault-name "$kv" --name aron-lab-grant-key --query id -o tsv 2>&1 >/dev/null)"; then
+    note "aron-lab-grant-key present (kept)"
+  elif ! grep -q "SecretNotFound" <<<"$lab_err"; then
+    die "could not read aron-lab-grant-key (not creating a new one): ${lab_err:0:300}"
+  else
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -outform DER -out "$tmp/lab.der"
+    base64 -w0 < "$tmp/lab.der" > "$tmp/lab.b64"
+    openssl pkey -inform DER -in "$tmp/lab.der" -pubout -outform DER | base64 -w0 > "$tmp/lab-pub.b64"
+    put_file aron-lab-grant-key "$tmp/lab.b64" text/plain
+    put_file aron-lab-grant-public "$tmp/lab-pub.b64" text/plain
+    note "aron-lab-grant-key and aron-lab-grant-public created"
+  fi
 fi
 
 # Dev seed accounts (db/seed: sr1001 and the other pilot test accounts) for the SR slice smoke: only when the dev

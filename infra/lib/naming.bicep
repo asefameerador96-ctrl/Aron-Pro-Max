@@ -53,6 +53,8 @@ var secretNames = {
   webSessionSecret: 'aron-web-session-secret'
   // MFA key (F-WEB-043): seals web admins' TOTP secrets; independent of the JWT key so a key rotation locks nobody out.
   mfaKey: 'aron-mfa-key'
+  // Lab grant private key (D-OWNER-MDM-02; final account only): P-256 PKCS#8 in base64, one per environment; the public half is aron-lab-grant-public.
+  labGrantKey: 'aron-lab-grant-key'
   // Per-app logins (infra/scripts/db-login-secrets.sh writes these; infra/sql/runtime-logins.sql creates the logins).
   dbPwAppApi: 'aron-db-pw-app-api'
   dbPwAppWorker: 'aron-db-pw-app-worker'

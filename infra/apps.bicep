@@ -15,6 +15,8 @@ param namePrefix string = 'aron'
 @description('dev = test account; stage and prod = final account (docs/30 s1).')
 @allowed(['dev', 'stage', 'prod'])
 param environmentName string
+@description('Per-environment lab grant key pair (D-OWNER-MDM-02): the api reads the private half as ARON_LAB_GRANT_KEY from Key Vault. Off in dev (its key is made by tools/make-lab-grant-key.sh); on in stage and prod, where infra/scripts/seed-secrets.sh creates the vault secret once.')
+param labGrantEnabled bool = false
 param location string = resourceGroup().location
 param nameSuffix string = ''
 param tags object = {}
@@ -120,8 +122,13 @@ func kvSecret(name string, secret string, baseUrl string, identityId string) obj
 // back from ARON_BUILD for its ordering guard.
 var build = empty(buildId) ? last(split(backendImage, ':')) : buildId
 
+// The backend knows only two server environments, dev and prod (Settings.kt; any other value stops every replica at
+// start-up, and MigrationPreflight treats everything but the raw value `dev` as a final environment). Stage is
+// prod-shaped by design (docs/30 s1), so it runs with prod semantics; resource names keep the real environment name.
+var serverEnv = environmentName == 'dev' ? 'dev' : 'prod'
+
 var commonEnv = [
-  { name: 'ARON_ENV', value: environmentName }
+  { name: 'ARON_ENV', value: serverEnv }
   { name: 'ARON_BUILD', value: build }
   { name: 'ARON_BLOB_ACCOUNT', value: st.name }
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
@@ -144,11 +151,14 @@ var jwtSecretRefs = [
 ]
 // API only (N-027, docs/requests/backend-core-play-integrity-secret.md): Play Integrity decode account. The seeded
 // placeholder is one space, which the API reads as absent and then decodes with the FCM account (same Google project).
-var apiOnlySecretRefs = [
+var apiOnlySecretRefs = concat([
   { name: 'ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON', secretRef: 'play-integrity-service-account' }
   // ARON_MFA_KEY_PREVIOUS is wired only during a real rotation (docs/runbooks/rotate-mfa-key.md): the API refuses a blank value.
   { name: 'ARON_MFA_KEY', secretRef: 'mfa-key' }
-]
+], labGrantEnabled ? [{ name: 'ARON_LAB_GRANT_KEY', secretRef: 'lab-grant-key' }] : [])
+// Final account only: the api signs per-device lab grants with this key; one key per environment, so a test server can
+// never sign a grant a production phone honours (docs/reviews/android-integrity-slice3-2026-11-18.md).
+var labGrantSecrets = labGrantEnabled ? [kvSecret('lab-grant-key', secretNames.labGrantKey, kvSecretUrl, idApi.id)] : []
 var appSecretRefs = [
   { name: 'ARON_FCM_SERVICE_ACCOUNT_JSON', secretRef: 'fcm-service-account' }
   { name: 'ARON_DB_READ_URL', secretRef: 'db-read-url' }
@@ -179,7 +189,7 @@ resource migrate 'Microsoft.App/jobs@2025-07-01' = {
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
             { name: 'ARON_ROLE', value: 'migrate' }
-            { name: 'ARON_ENV', value: environmentName }
+            { name: 'ARON_ENV', value: serverEnv }
             { name: 'ARON_BUILD', value: build }
             // Flyway takes a session-level advisory lock, so it connects directly (5432), not through PgBouncer.
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
@@ -287,7 +297,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
         traffic: [{ latestRevision: true, weight: 100 }]
       }
       registries: [{ server: acr.properties.loginServer, identity: idApi.id }]
-      secrets: [
+      secrets: concat([
         kvSecret('db-url', apiDbUrlSecret, kvSecretUrl, idApi.id)
         kvSecret('db-read-url', apiDbReadUrlSecret, kvSecretUrl, idApi.id)
         kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idApi.id)
@@ -295,7 +305,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idApi.id)
         kvSecret('play-integrity-service-account', secretNames.playIntegrityServiceAccount, kvSecretUrl, idApi.id)
         kvSecret('mfa-key', secretNames.mfaKey, kvSecretUrl, idApi.id)
-      ]
+      ], labGrantSecrets)
     }
     template: {
       containers: [
@@ -438,7 +448,7 @@ resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
             { name: 'NODE_ENV', value: 'production' }
             { name: 'PORT', value: '3000' }
             { name: 'HOSTNAME', value: '0.0.0.0' }
-            { name: 'ARON_ENV', value: environmentName }
+            { name: 'ARON_ENV', value: serverEnv }
             // The BFF calls the API on the same public address as every other client (Front Door when there is one).
             { name: 'ARON_API_BASE_URL', value: 'https://${apiHost}' }
             // Seals the BFF session cookies; the web server refuses to start in production without it.

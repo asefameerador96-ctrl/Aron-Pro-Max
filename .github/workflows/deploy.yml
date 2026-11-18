@@ -4,17 +4,22 @@
 #   - workflow_run: after a SUCCESSFUL ci run of a push to the integration branch, deploying exactly the commit that
 #     run tested (nothing untested is deployed; pull requests never deploy);
 #   - workflow_call from promote-prod (prod, final account only);
-#   - manual dispatch, from the integration branch only.
-# The GitHub environment azure-dev additionally allows deployments from the integration branch only
-# (infra/bootstrap-azure.ps1), so editing this file on another branch does not reach Azure.
+#   - manual dispatch: dev and dev-lite from the integration branch only; stage from main only (final account only).
+# The GitHub environments additionally restrict where a deployment may come from (azure-dev: the integration branch,
+# azure-stage: main, azure-prod: server-v* tags; infra/bootstrap-azure.ps1, tools/github-governance.ps1), so editing
+# this file on another branch does not reach Azure. stage and prod also need ARON_FINAL_ACCOUNT=true AND an existing
+# GitHub environment with a required reviewer (checked in the first step, fail closed; D-FINAL-INFRA-03).
 #
 # All deploy logic lives in infra/deploy.sh (the same one command a person runs); this file signs in, proves the
 # identity's scope, and calls it. Its concurrency group only queues deploys (ci runs are never touched). deploy.sh waits for
 # a running deployment instead and never replaces a deployed commit by one of its ancestors.
 #
-# Needs (created by infra/bootstrap-azure.ps1): secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID;
-# variables AZURE_RESOURCE_GROUP, AZURE_LOCATION, ARON_ALERT_EMAILS. Optional: variables ARON_BUDGET_AMOUNT,
-# ARON_NAME_SUFFIX; secrets FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON (optional), MAPS_WEB_KEY.
+# Needs (created by infra/bootstrap-azure.ps1, scoped to the GitHub ENVIRONMENT of the profile, so the test account
+# and the final account coexist; an environment value wins over a repository value of the same name): secrets
+# AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID; variables AZURE_RESOURCE_GROUP, AZURE_LOCATION,
+# ARON_ALERT_EMAILS. Optional: variables ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX; secrets FCM_SERVICE_ACCOUNT_JSON,
+# PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON (optional), MAPS_WEB_KEY. Repository variables (read by every workflow, no
+# environment): ARON_FINAL_ACCOUNT, ARON_PROD_API_BASE_URL.
 # Actions are pinned by commit SHA (tag in the comment), resolved with `git ls-remote` on 2026-10-05.
 
 name: deploy
@@ -39,9 +44,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile. prod is not offered until the final account exists (it deploys only through promote-prod.yml).
+        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile, stage = staging in the FINAL account (run from main; needs ARON_FINAL_ACCOUNT=true and the azure-stage environment with its reviewer). prod is never offered here (it deploys only through promote-prod.yml).
         type: choice
-        options: [dev, dev-lite]
+        options: [dev, dev-lite, stage]
         default: dev
       run_migrations:
         description: Run the database migrations job before the apps (untick only to redeploy apps without a migration)
@@ -59,6 +64,8 @@ on:
 permissions:
   contents: read
   id-token: write
+  # Read the protection rules of the GitHub environment (the first step refuses an unprotected stage or prod environment).
+  actions: read
 
 env:
   INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
@@ -77,7 +84,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || 'azure-dev' }}
+    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || ((inputs.environment || 'dev') == 'stage' && 'azure-stage' || 'azure-dev') }}
     env:
       ENV_NAME: ${{ inputs.environment || 'dev' }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -93,14 +100,33 @@ jobs:
       ROLLBACK_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_sha || '' }}
       # "HH:MM-HH:MM" Asia/Dhaka: no deploy while reps sell; unset until real users exist (rollbacks always allowed).
       ARON_DEPLOY_FREEZE_DHAKA: ${{ vars.ARON_DEPLOY_FREEZE_DHAKA }}
+      # The final-account switch and the phones' API host (deploy.sh refuses stage and prod without the switch, and
+      # compares the host it serves with the one the release APKs were built for).
+      ARON_FINAL_ACCOUNT: ${{ vars.ARON_FINAL_ACCOUNT }}
+      ARON_PROD_API_BASE_URL: ${{ vars.ARON_PROD_API_BASE_URL }}
     steps:
-      - name: Deploy only from the integration branch (prod only from a server-v* release tag)
+      - name: Deploy only from the integration branch (stage only from main, prod only from a server-v* release tag)
         env:
           REF: ${{ github.ref }}
           FINAL: ${{ vars.ARON_FINAL_ACCOUNT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # docs/30 s2: dev and dev-lite come from the integration branch; prod only from a release tag on main, through
-          # promote-prod.yml (the azure-prod environment adds the required approver).
+          # docs/30 s2: dev and dev-lite come from the integration branch; stage only from main; prod only from a release
+          # tag on main, through promote-prod.yml (the azure-prod environment adds the required approver).
+          if [ "${ENV_NAME}" = stage ] || [ "${ENV_NAME}" = prod ]; then
+            # The final account only, and only into a GitHub environment that exists WITH a required reviewer: GitHub
+            # creates a missing environment unprotected on first use, which would deploy without the owner's approval.
+            # Fails closed: an unreadable answer is a refusal. Runs before any Azure sign-in.
+            [ "${FINAL}" = "true" ] || { echo "::error::no ${ENV_NAME} before the final account exists (ARON_FINAL_ACCOUNT, docs/28)"; exit 1; }
+            gh_env="azure-${ENV_NAME}"
+            reviewers="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${gh_env}" \
+              --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null)" \
+              || { echo "::error::cannot read the GitHub environment ${gh_env} (does it exist? does this token have actions: read?); refusing to deploy ${ENV_NAME}"; exit 1; }
+            if ! [[ "${reviewers}" =~ ^[0-9]+$ ]] || [ "${reviewers}" -lt 1 ]; then
+              echo "::error::the GitHub environment ${gh_env} has no required reviewer; run tools/github-governance.ps1 first (docs/setup/move-to-final-account.md)"
+              exit 1
+            fi
+          fi
           if [ "${ENV_NAME}" = prod ]; then
             # prod only in the final account and only through promote-prod (its checks: tag on main, CI green, staging
             # soak). In a called workflow GITHUB_WORKFLOW is the caller's name.
@@ -110,6 +136,9 @@ jobs:
               refs/tags/server-v[0-9]*) echo "prod release ${REF#refs/tags/}" ;;
               *) echo "::error::prod deploys only from a server-vX.Y.Z release tag through promote-prod.yml; this run is on ${REF}."; exit 1 ;;
             esac
+          elif [ "${ENV_NAME}" = stage ]; then
+            # staging deploys what the daily gate merged into main (docs/30 s2 step 4), never an integration-branch commit
+            [ "${REF}" = "refs/heads/main" ] || { echo "::error::stage deploys only from main (the daily gate), not ${REF}"; exit 1; }
           elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
             echo "::error::Deploys run only from ${INTEGRATION_BRANCH}; this run is on ${REF}."
             exit 1

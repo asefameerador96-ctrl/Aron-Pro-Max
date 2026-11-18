@@ -16,7 +16,9 @@
 # the image already in the registry for that commit, by digest: no build, no migrations, no infra stage, and the
 # ordering guard is bypassed on purpose.
 #
-# Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
+# Environment: ARON_PROD_API_BASE_URL (prod: the host the release APKs were built for; checked against the served host),
+# AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), ARON_FINAL_ACCOUNT (must be
+# true for the profiles stage and prod), AZURE_LOCATION,
 # ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
 # RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep), ROLLBACK_SHA (see above),
 # ARON_DEPLOY_FREEZE_DHAKA ("HH:MM-HH:MM" Asia/Dhaka; refuses a deploy inside that window, rollbacks excepted; unset
@@ -28,8 +30,14 @@ cd "$(dirname "$0")/.." || exit 1
 # PROFILE picks the parameter files (infra/params/<profile>*.bicepparam); ENV_NAME is the environment in resource
 # names. dev-lite is the cheap TEST profile of the same dev environment (docs/28), so both deploy the dev names.
 PROFILE="${1:-dev}"
-case "$PROFILE" in dev|dev-lite|prod) ;; *) die "profile must be dev, dev-lite or prod, was $PROFILE" ;; esac
+case "$PROFILE" in dev|dev-lite|stage|prod) ;; *) die "profile must be dev, dev-lite, stage or prod, was $PROFILE" ;; esac
 ENV_NAME="${PROFILE%-lite}"
+# stage and prod exist only in the FINAL account (docs/28, docs/30 s1): nothing deploys them while the owner has not
+# switched the final account on (repository variable ARON_FINAL_ACCOUNT=true; deploy.yml passes it, a person exports it).
+# deploy.yml and promote-prod.yml check the same switch, so this is the third and last line.
+case "$PROFILE" in
+  stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die "profile $PROFILE is deployed only in the final Azure account: ARON_FINAL_ACCOUNT is not true (docs/28)" ;;
+esac
 need AZURE_RESOURCE_GROUP "the resource group to deploy into"
 need ARON_ALERT_EMAILS "who receives the budget and platform alerts"
 RG="$AZURE_RESOURCE_GROUP"
@@ -315,6 +323,31 @@ if [ -n "$pg_live" ]; then
   fi
 fi
 # <<< pg-live-zones
+# Read replica gate (stage and prod only; docs/33 B13.2 row 37). Premium SSD v2 must finish its first automatic backup
+# before an in-region replica can be created (Learn: "Premium SSD v2 storage option in Azure Database for PostgreSQL
+# flexible server"), so the replica is asked for only when it already exists or the primary has a completed backup;
+# otherwise this deploy runs without it and a later one adds it. Exported BEFORE the parameter comparison, so the
+# change re-runs the infra stage. dev and dev-lite take no part: their parameter files have no replica.
+# >>> pg-replica-gate (run in isolation by infra/tests/check_infra.py)
+unset ARON_PG_READ_REPLICA
+if [ -z "$ROLLBACK_SHA" ] && [[ "$ENV_NAME" == stage || "$ENV_NAME" == prod ]]; then
+  pg_primary="$(printf '%s\n' "${pg_live:-}" | tr -d '\r' | awk -F'\t' 'NF { print $1; exit }')"
+  if [ -z "$pg_primary" ]; then
+    export ARON_PG_READ_REPLICA=false
+    note "read replica: not requested (the primary server does not exist yet)"
+  elif printf '%s\n' "${pg_all:-}" | tr -d '\r' | awk -F'\t' -v n="${pg_primary}-r1" '$1 == n { f = 1 } END { exit !f }'; then
+    export ARON_PG_READ_REPLICA=true
+    note "read replica: ${pg_primary}-r1 exists (kept)"
+  elif pg_backups="$(az postgres flexible-server backup list -g "$RG" -n "$pg_primary" --query 'length(@)' -o tsv 2>/dev/null)" \
+       && [[ "$pg_backups" =~ ^[0-9]+$ ]] && [ "$pg_backups" -ge 1 ]; then
+    export ARON_PG_READ_REPLICA=true
+    note "read replica: requested (the primary has ${pg_backups} completed backup(s))"
+  else
+    export ARON_PG_READ_REPLICA=false
+    echo "::warning::read replica not requested yet: ${pg_primary} has no completed backup (or the list could not be read); a later deploy adds it"
+  fi
+fi
+# <<< pg-replica-gate
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
 # The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
 # changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
@@ -824,6 +857,18 @@ summary "|---|---|"
 summary "| Resource group | ${RG} |"
 summary "| Commit | ${SHA}$([ -n "$ROLLBACK_SHA" ] && echo ' (ROLLBACK)') |"
 summary "| API | https://${API_HOST}/v1/health |"
+# The phones' API host (the APK is built against ARON_PROD_API_BASE_URL) must be the host the server itself publishes as
+# ARON_PUBLIC_API_URL, which is this one. Said in the summary; a prod deploy that finds the two different warns loudly.
+if [ "$ENV_NAME" = prod ]; then
+  if [ -z "${ARON_PROD_API_BASE_URL:-}" ]; then
+    summary "| Phone API origin | https://${API_HOST} (set the repository variable ARON_PROD_API_BASE_URL to exactly this before tagging an app release) |"
+  elif [ "${ARON_PROD_API_BASE_URL%/}" = "https://${API_HOST}" ]; then
+    summary "| Phone API origin | https://${API_HOST} (matches ARON_PROD_API_BASE_URL) |"
+  else
+    summary "| Phone API origin | MISMATCH: server host https://${API_HOST}, release APK host ${ARON_PROD_API_BASE_URL} |"
+    echo "::warning::ARON_PROD_API_BASE_URL (${ARON_PROD_API_BASE_URL}) is not the API host this deploy serves (https://${API_HOST}); phones built for the other host cannot reach this server"
+  fi
+fi
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"

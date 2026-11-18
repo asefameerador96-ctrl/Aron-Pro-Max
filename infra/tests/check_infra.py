@@ -538,11 +538,12 @@ class SizingParameters(unittest.TestCase):
             self.assertEqual(st[k], pr[k], f"stage must be prod-shaped in {k}")
         self.assertNotEqual(st["vnetAddressPrefix"], pr["vnetAddressPrefix"])
         self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
+        # D-FINAL-INFRA-03: stage is deployable (final account only); prod is still never offered by hand.
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
+        self.assertIn('case "$PROFILE" in dev|dev-lite|stage|prod) ;;', d)
         options = self.wf("deploy.yml").split("options:")[1].split("\n")[0]
-        self.assertNotIn("stage", options)
-        self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy before the final account (promote-prod only)")
+        self.assertEqual(options.strip(), "[dev, dev-lite, stage]")
+        self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy (promote-prod only)")
 
     def test_promotion_workflows_are_inert_until_the_final_account(self):
         pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")
@@ -652,7 +653,8 @@ class Workflows(unittest.TestCase):
         self.assertNotRegex(d, r"client-secret|creds:", "OIDC only, no client secret")
         for sname in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"):
             self.assertIn(f"secrets.{sname}", d)
-        self.assertIn("|| 'azure-dev' }}", d)
+        self.assertIn("environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || ((inputs.environment || 'dev') == 'stage' && 'azure-stage' || 'azure-dev') }}", d,
+                      "dev and dev-lite keep azure-dev; stage and prod have their own environments")
         self.assertIn(f"INTEGRATION_BRANCH: {INTEGRATION_BRANCH}", d)
         # The exact guard (an inverted comparison would let every other branch deploy).
         self.assertIn('elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
@@ -1269,12 +1271,12 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
-        # On in dev since the grants gap closed (V0029) and in dev-lite, the TEST profile (D-INFRA-LOGINS-LITE-01);
-        # off in stage and prod until the final account.
-        for f in ("dev", "dev-lite"):
+        # On in dev since the grants gap closed (V0029), in dev-lite, the TEST profile (D-INFRA-LOGINS-LITE-01), and in
+        # stage (D-FINAL-INFRA-02: staging is where the least-privilege logins meet the fleet-shaped drills); off in prod
+        # until the stage failover and restore drills have passed on them.
+        for f in ("dev", "dev-lite", "stage"):
             self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], True, f)
-        for f in ("stage", "prod"):
-            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
+        self.assertIs(params("prod.apps.parameters.json")["dbPerAppLogins"], False, "prod follows after the stage drills")
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
     def test_dblogins_job_runs_the_checked_in_sql(self):
@@ -2430,6 +2432,180 @@ class DirectUrlConsumers(unittest.TestCase):
             self.assertIn("#jdbc:", (ROOT / script).read_text(encoding="utf-8"), f"{script} strips jdbc: for psql")
         # The pooled URL keeps prepareThreshold=0 (PgBouncer transaction mode) and is never handed to psql.
         self.assertIn("prepareThreshold", self._params("pooledParams"))
+
+
+class FinalAccountStage(unittest.TestCase):
+    """D-FINAL-INFRA-02..05: `stage` wired end to end, nothing deploys to stage or prod outside the final account, dev unchanged."""
+
+    def deploy_sh(self):
+        return (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+
+    def wf(self, name):
+        return (WORKFLOWS / name).read_text(encoding="utf-8")
+
+    def test_deploy_script_refuses_stage_and_prod_without_the_final_account_switch(self):
+        d = self.deploy_sh()
+        self.assertIn('stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die', d)
+        # before anything touches Azure (the first `az` call is the freeze check's group lookup)
+        self.assertLess(d.index('stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ]'), d.index("az group show"))
+        import subprocess
+        for prof, final, want in (("stage", "", 1), ("prod", "false", 1), ("stage", "true", None), ("bogus", "true", 1)):
+            r = subprocess.run(["bash", str(ROOT / "infra" / "deploy.sh"), prof],
+                               env={k: v for k, v in dict(os.environ, ARON_FINAL_ACCOUNT=final).items() if k not in ("AZURE_RESOURCE_GROUP",)},
+                               capture_output=True, text=True, cwd=ROOT, timeout=60)
+            out = r.stdout + r.stderr
+            if want == 1:
+                self.assertEqual(r.returncode, 1, f"{prof} final={final!r}: {out}")
+                self.assertTrue("final Azure account" in out or "profile must be" in out, out)
+            else:  # past the switch it stops at the next requirement (the resource group), proving the switch let it by
+                self.assertIn("AZURE_RESOURCE_GROUP", out, out)
+
+    def test_stage_names_follow_the_environment_not_the_profile_suffix(self):
+        d = self.deploy_sh()
+        self.assertIn('ENV_NAME="${PROFILE%-lite}"', d)
+        self.assertIn('ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]]', d, "the dev seed never reaches stage or prod")
+        for f in ("stage", "prod"):
+            self.assertNotIn("param devSeed = true", (ROOT / "infra" / "params" / f"{f}.apps.bicepparam").read_text(encoding="utf-8"))
+
+    def test_the_backend_sees_only_dev_or_prod_as_its_environment(self):
+        # Settings.kt allows dev and prod only; stage is prod-shaped, so it runs with prod semantics (B13.2 row 35).
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("var serverEnv = environmentName == 'dev' ? 'dev' : 'prod'", apps)
+        self.assertEqual(apps.count("{ name: 'ARON_ENV', value: serverEnv }"), 3, "api and worker (common), migrate, web")
+        self.assertNotIn("{ name: 'ARON_ENV', value: environmentName }", apps)
+        text = json.dumps(load("apps.json"))
+        self.assertIn("variables('serverEnv')", text)
+        self.assertEqual(load("apps.json")["variables"]["serverEnv"], "[if(equals(parameters('environmentName'), 'dev'), 'dev', 'prod')]")
+        for f in ("dev", "dev-lite", "stage", "prod"):
+            self.assertEqual(params(f"{f}.apps.parameters.json")["environmentName"], "dev" if f.startswith("dev") else f)
+
+    def test_deploy_workflow_guards_stage_and_prod_before_any_azure_sign_in(self):
+        d = self.wf("deploy.yml")
+        step = d[d.index("- name: Deploy only from the integration branch"):d.index("- name: Check the Azure secrets")]
+        self.assertIn('if [ "${ENV_NAME}" = stage ] || [ "${ENV_NAME}" = prod ]; then', step)
+        self.assertIn('[ "${FINAL}" = "true" ] ||', step.split('if [ "${ENV_NAME}" = prod ]; then')[0], "final account first")
+        self.assertIn('gh_env="azure-${ENV_NAME}"', step)
+        self.assertIn('select(.type == "required_reviewers")', step, "an environment without a required reviewer is refused")
+        self.assertIn("refusing to deploy", step, "an unreadable environment is a refusal (fail closed)")
+        self.assertIn('[ "${REF}" = "refs/heads/main" ]', step, "stage deploys what the daily gate merged into main")
+        self.assertLess(d.index("- name: Deploy only from the integration branch"), d.index("azure/login@"))
+        self.assertIn("  actions: read\n", d.split("\njobs:")[0], "the token may read the environment's protection rules")
+        pp = self.wf("promote-prod.yml")
+        self.assertIn("      actions: read\n", pp[pp.index("  deploy:"):], "a called workflow cannot exceed the caller's permissions")
+        self.assertIn("ARON_FINAL_ACCOUNT: ${{ vars.ARON_FINAL_ACCOUNT }}", d, "deploy.sh refuses stage and prod itself")
+        # the integration-branch trigger of dev is untouched: no workflow_run on main, so nothing deploys stage on a push
+        trig = d[d.index("  workflow_run:"):d.index("  workflow_call:")]
+        self.assertIn(f"branches: [{INTEGRATION_BRANCH}]", trig)
+        self.assertNotIn("main", trig)
+
+    def test_ops_workflows_stay_dev_only(self):
+        for name in ("drill.yml", "reset.yml", "acr-purge.yml", "cost-report.yml", "ops-diagnose.yml"):
+            self.assertIn("environment: azure-dev", self.wf(name), f"{name} must never reach the final account")
+
+    def test_release_app_uses_the_prod_environment_for_the_final_keys(self):
+        ra = self.wf("release-app.yml")
+        rel = ra[ra.index("  release:"):]
+        self.assertIn("    environment: azure-prod\n", rel)
+        self.assertIn("secrets.MAPS_ANDROID_KEY", rel)
+        gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
+        self.assertIn("name = 'app-v*'; type = 'tag'", gov, "the prod environment admits the app release tags")
+        self.assertIn("name = 'server-v*'; type = 'tag'", gov)
+        stage_body = gov[gov.index("$stageBody"):gov.index("Api PUT \"repos/$Repo/environments/azure-stage\"")]
+        self.assertIn("reviewers = @(@{ type = 'User'; id = $OwnerId })", stage_body, "stage has a required reviewer too")
+
+    def test_bootstrap_scopes_everything_to_the_github_environment(self):
+        b = (ROOT / "infra" / "bootstrap-azure.ps1").read_text(encoding="utf-8")
+        self.assertNotRegex(b, r"gh (secret|variable) set \w+\s+--body", "no repository-wide secret or variable")
+        for name in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"):
+            self.assertIn(f"gh secret set {name}", b)
+        self.assertEqual(len(re.findall(r"gh (?:secret|variable) set \w+\s+--env \$Environment", b)), 6)
+        self.assertIn("[ValidateSet('azure-dev', 'azure-stage', 'azure-prod')]", b)
+        self.assertRegex(b, r"\[Parameter\(Mandatory = \$true\)\]\s*\n\s*\[ValidatePattern\([^\n]*\n\s*\[string\]\$SubscriptionId,")
+        # Only the built-in Azure role definition ids (the commented list of the conditional RBAC grant) may appear.
+        roles = {"7f951dda-4ed3-4680-a7ca-43fe172d538d", "8311e382-0749-4cb8-b61a-304f252e45ec", "4633458b-17de-408a-b874-0445c86b69e6",
+                 "b86a8fe4-44ce-4948-aee5-eccb2c155cd7", "ba92f5b4-2d11-453d-a403-e96b0029c9fe", "db58b8e5-c6ad-4a2a-8342-4190687cbf4a",
+                 "8a0f0c08-91a1-4084-bc3d-661d67233fed", "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a", "f58310d9-a9f6-439a-9e8d-f62e7b41a168"}
+        guids = set(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", b, re.I))
+        self.assertEqual(guids - roles, set(), "no subscription or tenant id in a public repository")
+        # the final account's environments are made by the governance script (with their reviewer), never by the bootstrap
+        self.assertIn("run tools/github-governance.ps1 first", b)
+        self.assertIn("if ($Environment -eq 'azure-dev') {", b)
+
+    def test_read_replica_is_asked_for_only_after_the_first_backup(self):
+        d = self.deploy_sh()
+        start, end = d.index("# >>> pg-replica-gate"), d.index("# <<< pg-replica-gate")
+        self.assertLess(end, d.index("params_unchanged() {"), "exported before the parameter comparison")
+        self.assertLess(end, d.index("az deployment group what-if"))
+        self.assertGreater(start, d.index("# <<< pg-live-zones"))
+        block = d[start:end]
+        import subprocess
+        harness = ("set -euo pipefail\n"
+                   "die() { echo \"DIE: $*\"; exit 1; }\nnote() { echo \"NOTE: $*\"; }\n"
+                   "az() { [ \"$FAKE_BACKUP_FAIL\" = 1 ] && return 1; printf '%s' \"$FAKE_BACKUPS\"; }\n"
+                   "RG=rg; pg_all=\"$(printf '%b' \"$FAKE_ALL\")\"; pg_live=\"$(printf '%b' \"$FAKE_LIVE\")\"\n" + block +
+                   "echo \"R=${ARON_PG_READ_REPLICA:-unset}\"\n")
+        srv = "psql-aron-prod-abc123"
+        row = f"{srv}\\t1\\tZoneRedundant\\t2\\n"
+        cases = [
+            # (name, env, all, live, backups, backup az fails, rollback, expected)
+            ("first deploy: no server yet", "prod", "", "", "", "0", "", "R=false"),
+            ("server without a completed backup", "prod", row, row, "0", "0", "", "R=false"),
+            ("backup list unreadable", "prod", row, row, "", "1", "", "R=false"),
+            ("garbage answer", "prod", row, row, "None", "0", "", "R=false"),
+            ("one completed backup", "stage", row, row, "1", "0", "", "R=true"),
+            ("replica already exists: kept without asking", "prod", row + f"{srv}-r1\\t3\\tDisabled\\t-\\n", row, "", "1", "", "R=true"),
+            ("a drill server is not the replica", "prod", row + f"{srv}-drill-1\\t1\\tDisabled\\t-\\n", row, "0", "0", "", "R=false"),
+            ("dev takes no part", "dev", row, row, "1", "0", "", "R=unset"),
+            ("dev-lite takes no part", "dev", "", "", "", "0", "", "R=unset"),
+            ("rollback takes no part", "prod", row, row, "1", "0", "a" * 40, "R=unset"),
+        ]
+        for name, env_name, all_, live, backups, fail, rollback, want in cases:
+            env = dict(os.environ, FAKE_ALL=all_, FAKE_LIVE=live, FAKE_BACKUPS=backups, FAKE_BACKUP_FAIL=fail,
+                       ROLLBACK_SHA=rollback, ENV_NAME=env_name)
+            r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
+            self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
+        for f in ("stage", "prod"):
+            src = (ROOT / "infra" / "params" / f"{f}.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("param postgresReadReplica = empty(envReplica) ? true : bool(envReplica)", src, f)
+
+    def test_what_if_guard_allows_only_the_declared_replica_next_to_the_primary(self):
+        import subprocess, tempfile
+        base = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/"
+        primary = base + "psql-aron-prod-abc123"
+
+        def run(rid, kind, existing):
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+                json.dump({"changes": [{"resourceId": rid, "changeType": kind}]}, f)
+            r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "whatif-guard.py"), f.name],
+                               env={**os.environ, "EXISTING_POSTGRES_IDS": existing}, capture_output=True, text=True)
+            os.unlink(f.name)
+            return r.returncode
+        self.assertEqual(run(primary + "-r1", "Create", primary), 0, "the declared replica may be created")
+        self.assertEqual(run(primary + "-r1", "Create", primary.upper()), 0, "case-insensitive ids")
+        self.assertEqual(run(base + "psql-aron-prod-abc123-r2", "Create", primary), 1, "only -r1")
+        self.assertEqual(run(base + "psql-aron-prod-other-r1", "Create", primary), 1, "only the replica OF the existing server")
+        self.assertEqual(run(base + "psql-aron-prod-xyz789", "Create", primary), 1, "a stray second server is still refused")
+        self.assertEqual(run(primary + "-r1", "Delete", primary + " " + primary + "-r1"), 1, "a replica is never deleted by a deploy")
+        self.assertEqual(run(primary, "Delete", primary), 1)
+
+    def test_lab_grant_key_is_per_environment_final_account_only_and_never_printed(self):
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'ARON_LAB_GRANT_KEY', secretRef: 'lab-grant-key' }", apps)
+        self.assertEqual(apps.count("kvSecret('lab-grant-key', secretNames.labGrantKey, kvSecretUrl, idApi.id)"), 1, "api only")
+        self.assertIn("labGrantKey: 'aron-lab-grant-key'", (ROOT / "infra" / "lib" / "naming.bicep").read_text(encoding="utf-8"))
+        self.assertIs(param_default("apps.json", "labGrantEnabled"), False, "off unless a profile turns it on")
+        for f, want in (("dev", None), ("dev-lite", None), ("stage", True), ("prod", True)):
+            self.assertEqual(params(f"{f}.apps.parameters.json").get("labGrantEnabled"), want, f)
+        text = json.dumps(load("apps.json"))
+        self.assertIn("ARON_LAB_GRANT_KEY", text)
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
+        self.assertIn('note "aron-lab-grant-key present (kept)"', block, "generated once")
+        self.assertIn('grep -q "SecretNotFound"', block, "only a definite not-found creates a new key")
+        self.assertIn("die ", block)
+        self.assertNotRegex(block, r"echo[^\n]*\$tmp/lab|cat \"\$tmp/lab|--value", "the key is never printed or put on a command line")
+        self.assertIn("ec_paramgen_curve:P-256", block)
+
 
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():

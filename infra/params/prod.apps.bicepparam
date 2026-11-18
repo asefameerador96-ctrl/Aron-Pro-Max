@@ -21,10 +21,13 @@ param buildId = readEnvironmentVariable('ARON_BUILD_ID', '')
 param migrateImage = readEnvironmentVariable('ARON_MIGRATE_IMAGE', '')
 // Per-app database logins (docs/requests/db-runtime-roles.md); deploy.sh imports the psql image and sets it.
 param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
-// OFF until api_rw has the DELETE grants the admin flows need (docs/requests/db-runtime-roles-gaps.md); the logins are still created.
+// OFF in prod until the stage failover and restore drills have passed on the per-app logins (docs/status/infra-final.md D8); the
+// logins are still created. Flipping it is one reviewed line: params/stage.apps.bicepparam is already true.
 param dbPerAppLogins = false
 // docs/30 s3: the previous api revision stays active at 0 % so a failed health gate puts traffic back on it.
 param apiRevisionsMode = 'Multiple'
+// Final account: one lab grant key pair per environment (D-OWNER-MDM-02); seed-secrets.sh creates the vault secret once.
+param labGrantEnabled = true
 param deployServices = empty(envServices) ? true : bool(envServices)
 param frontDoorPrivateLink = true
 

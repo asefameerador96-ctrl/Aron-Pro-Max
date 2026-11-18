@@ -5,7 +5,8 @@ Reads the JSON of `az deployment group what-if --no-pretty-print -o json` and
   - prints one line per resource change (type, name, changeType, changed property paths);
   - FAILS (exit 1) when a PostgreSQL flexible server would be deleted, when one of its protected properties would
     change (sku, storage, high availability, backup, network, version, zones, administrator login), or when a new
-    server would be created while another one already exists (EXISTING_POSTGRES_IDS, space-separated, from deploy.sh).
+    server would be created while another one already exists (EXISTING_POSTGRES_IDS, space-separated, from deploy.sh),
+    except the declared read replica `<existing server>-r1` (docs/33 B13.2 row 36).
 The administrator password is re-sent unchanged on every deploy (read back from Key Vault) and is not compared.
 """
 import json
@@ -45,7 +46,10 @@ def main(path):
             continue
         if kind == "Delete":
             problems.append(f"{rid}: would be deleted")
-        if kind == "Create" and existing - {rid.lower()}:
+        # The declared in-region read replica is the ONE second server a deploy may create: its id is exactly
+        # "<an existing server's id>-r1" (postgres.bicep replicaName), so a stray or renamed server is still refused.
+        is_replica = rid.lower() in {e + "-r1" for e in existing}
+        if kind == "Create" and existing - {rid.lower()} and not is_replica:
             problems.append(f"{rid}: a new server would be created next to {sorted(existing)}")
         if kind == "Modify":
             for p, t, before, after in paths(c.get("delta")):

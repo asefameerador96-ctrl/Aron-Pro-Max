@@ -96,17 +96,21 @@ $intProtection = @{
 Api PUT "repos/$Repo/branches/$Int/protection" $intProtection | Out-Null
 Write-Host "${Int}: force-push and deletion blocked"
 
-Step 'Environments for the final account: azure-stage (from main) and azure-prod (owner approves, release tags server-v* only). azure-dev is left alone.'
-# Names match deploy.yml, promote-prod.yml and the OIDC federated subjects (infra lane). A job that the changes filter skips
-# reports success, so no required check stays pending.
-$stageBody = @{ deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
+Step 'Environments for the final account: azure-stage (from main, owner approves) and azure-prod (owner approves; tags server-v* and app-v*). azure-dev is left alone.'
+# Names match deploy.yml, promote-prod.yml, release-app.yml and the OIDC federated subjects (infra lane). deploy.yml refuses
+# a stage or prod run whose environment has no required reviewer (D-FINAL-INFRA-03), so BOTH carry the owner as reviewer.
+# Run this BEFORE the first workflow run that names them: GitHub creates a missing environment unprotected.
+$stageBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
 Api PUT "repos/$Repo/environments/azure-stage" $stageBody | Out-Null
 Api POST "repos/$Repo/environments/azure-stage/deployment-branch-policies" (@{ name = 'main'; type = 'branch' } | ConvertTo-Json) | Out-Null
-Write-Host 'environment azure-stage ready (branch main only)'
+Write-Host 'environment azure-stage ready (owner is the required reviewer; branch main only)'
 $prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
 Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
 Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
-Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* only)'
+# release-app.yml runs its release job in azure-prod so the final Maps and Firebase values stay environment-scoped; deploy.yml
+# itself still refuses prod from anything but a server-v* tag.
+Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'app-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
+Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* and app-v*)'
 # AUD-DG-08: one set of names (azure-dev, azure-stage, azure-prod). This script only creates and updates; it never
 # deletes. An unexpected environment is reported to the lead, not removed here.
 }
