@@ -30,7 +30,7 @@ Additive and optional for existing phones; lands in contract 1.24.0 (the members
 | `PUT /v1/admin/route-kpi-targets` (`putRouteKpiTargets`) | New admin operation | Validate (dry_run) or commit `brand_rows` (route_code, brand_code, month, memo_target, kpi_alloc_mtk) and `month_rows` (route_code, month, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk); all or none; idempotent by `batch_uuid` (shared record with `putRouteTargets`); audited `route_kpi_target`. |
 | `GET /v1/admin/route-kpi-targets` (`listRouteKpiTargets`) | New admin operation | One route's rows of a month (`route_code` required). |
 
-Same no-double-count rule as N-2: figures are through `through_date` (the bundle date minus one day); the phone adds today's memos by UUID.
+Same figures rule as N-2 (the `RouteSnapshot` description): the KPI figures are the SERVER's, complete through `through_date` (the last CLOSED day: the bundle date minus one day, or yesterday for a bundle built ahead); the phone shows them with that date and never adds into or subtracts from them; "today on this phone" is a separate, labelled local figure.
 
 ## Slice N-8 (built): Match Box Lifting Star (screen 62)
 
@@ -48,4 +48,4 @@ Phone recomputation: the same ratios are `shared/rules` `StarProgress` (PADS = S
 | `RouteSnapshot.campaigns[]` (`RouteCampaign`, optional, absent when none) | New | One per outlet of the route that has a campaign target for the month in an active `campaign` programme (max 150 per route, lowest outlet id first; `campaigns_truncated` on the route says when more existed): `outlet_id`, `programme_id`, `label_en`, `label_bn`, `month`, `through_date`, `as_of`, `std` and `memo` (`CampaignFigure`: `target`, `achieved`, `remaining`, integers; STD in base units, the STD target rounded half up) and `skus[]` (`CampaignSku`: `sku_id`, `target_qty_base`, `sold_qty_base`, max 20 per outlet, same flag). The phone builds the category totals (cigarette, lighter, match) and the percent from the SKU rows with the SKU category it already has; percent = basis points of the sums, never a mean of row percents. Memo achieved is the distinct memos of the outlet with a campaign-SKU line. |
 | `PUT /v1/admin/route-kpi-targets` | New optional `campaign_rows` (outlet_code, programme_code, month, std_target Decimal3, memo_target) and `campaign_sku_rows` (outlet_code, programme_code, month, sku_code, qty_base) | Active `campaign` programmes only; outlets by code; all or none; same idempotency record. |
 
-Same no-double-count rule: server figures are through `through_date`; the phone adds its own memos of the outlet by UUID.
+Same figures rule: the campaign figures are the SERVER's, complete through `through_date` (every route's memos at the outlet); the phone shows them with that date and never adds into or subtracts from them; its own memos of the outlet are shown only as the separate, labelled "today on this phone" figure.

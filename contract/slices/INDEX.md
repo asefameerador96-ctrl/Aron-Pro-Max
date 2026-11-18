@@ -244,7 +244,7 @@ Source: contract/openapi.yaml, version 1.24.0.
 - `schemas/OpenMemo.yaml` (620 B)
 - `schemas/TargetRow.yaml` (826 B)
 - `schemas/AchievementRow.yaml` (1521 B)
-- `schemas/RouteCalendar.yaml` (1360 B)
+- `schemas/RouteCalendar.yaml` (2785 B)
 - `schemas/KpiBrandTargetWriteRow.yaml` (560 B)
 - `schemas/KpiMonthTargetWriteRow.yaml` (606 B)
 - `schemas/KpiProgrammeTargetWriteRow.yaml` (433 B)

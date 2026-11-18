@@ -108,6 +108,12 @@ class SrBundleFiguresIngestTest {
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test rl' FROM app.cfg_version")
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: no MFA' FROM app.cfg_version")
         }
+        // A standing memo of TODAY (Monday 2027-01-04, still open) on the route, the outlet and the first SKU: it must be in NO figure of any bundle in this class, so every assertBundle after every
+        // ingest, quarantine, void and data-entry step also proves that today's memos are cut (the truth through Sunday excludes it).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val srId = h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr1001'").mapTo(Long::class.java).one()
+            SrMemoFixture({ q -> h.execute(q) }, srId, 900).memo("00000000-0000-4000-8000-0000000c0001", routeId, outletId, "2027-01-04", listOf(SrMemoFixture.L(skus[0].first, 1000), SrMemoFixture.L(skus[1].first, 500)))
+        }
         keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private

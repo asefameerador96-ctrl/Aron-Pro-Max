@@ -71,10 +71,12 @@ class SrBundleThroughAndSnapshotTest {
 
     @AfterEach fun tearDown() { BundleService.betweenReads = null; fresh.close() }
 
-    /** The through_date every family of the route reports, and the first SKU's achieved quantity. */
-    private class Seen(val through: Set<String>, val achieved: Long)
+    /** The through_date every family of the route reports, the first SKU's achieved quantity and the day counts. */
+    private class Seen(val through: Set<String>, val achieved: Long, val elapsed: Int, val today: Boolean, val remaining: Int, val workingDays: Int)
     private fun seen(date: String): Seen {
         val r = service.bundle(principal, LocalDate.parse(date), "1.0.0+1").full.routes.single { it.route_id == route }
+        // every family must be PRESENT before the through_date sets are compared: an absent family would make the comparison vacuous
+        assertTrue(r.calendar != null && r.kpi != null && r.star != null && r.campaigns.orEmpty().isNotEmpty(), "calendar, kpi, star and campaigns are all present: ${listOf(r.calendar != null, r.kpi != null, r.star != null, r.campaigns.orEmpty().isNotEmpty())}")
         val t = HashSet<String>()
         r.calendar?.let { t += it.through_date }
         r.achievement_mtd.forEach { t += it.jsonObject["through_date"]!!.jsonPrimitive.content }
@@ -82,8 +84,11 @@ class SrBundleThroughAndSnapshotTest {
         r.star?.jsonObject?.get("through_date")?.let { t += it.jsonPrimitive.content }
         r.campaigns.orEmpty().forEach { t += it.jsonObject["through_date"]!!.jsonPrimitive.content }
         val a = r.achievement_mtd.map { it.jsonObject }.singleOrNull { it["product_id"]!!.jsonPrimitive.content == skuC.toString() }?.get("achieved_qty_base")?.jsonPrimitive?.content?.toLong() ?: 0L
-        return Seen(t, a)
+        val c = r.calendar!!
+        return Seen(t, a, c.elapsed_working_days_before_today, c.today_is_working, c.remaining_working_days_after_today, c.working_days)
     }
+
+    private fun assertCounts(s: Seen, what: String) = assertEquals(s.workingDays, s.elapsed + (if (s.today) 1 else 0) + s.remaining, "before + today + after = the month's working days: $what")
 
     @Test
     fun aBundleBuiltAheadOnTheSameDayCutsAtTheLastClosedDayAndEveryFamilyReportsIt() {
@@ -92,11 +97,13 @@ class SrBundleThroughAndSnapshotTest {
         val ahead = seen("2027-01-04")   // today is Sunday 2027-01-03 08:00: the bundle for Monday is built AHEAD
         assertEquals(setOf("2027-01-02"), ahead.through, "built ahead on Sunday: complete through Saturday (the last CLOSED day), not through Sunday which is still open; every family says so")
         assertEquals(5L, ahead.achieved, "today's memo is in no figure")
+        assertCounts(ahead, "Sunday 2027-01-03 is the anchor (the day still open)")
         assertEquals(setOf("2027-01-02"), seen("2027-01-03").through)
         nowAt = Instant.parse("2027-01-04T02:00:00Z")   // Monday 08:00: Sunday has ended
         val next = seen("2027-01-04")
         assertEquals(setOf("2027-01-03"), next.through, "built on Monday for Monday: complete through Sunday")
         assertEquals(12L, next.achieved, "the memo of Sunday is in the figure once Sunday has closed")
+        assertCounts(next, "Monday 2027-01-04 is the anchor")
     }
 
     @Test
@@ -107,6 +114,7 @@ class SrBundleThroughAndSnapshotTest {
         val s = seen("2027-01-09")
         assertEquals(setOf("2027-01-06"), s.through, "Thursday is still open: the figure is complete through Wednesday, not through Friday")
         assertEquals(5L, s.achieved)
+        assertCounts(s, "Thursday 2027-01-07 is the anchor (through is Wednesday)")
     }
 
     @Test
@@ -118,6 +126,13 @@ class SrBundleThroughAndSnapshotTest {
         assertEquals("2027-02", r.calendar?.month, "the bundle's month is February")
         assertEquals("2027-01-30", r.calendar?.through_date, "complete through the last closed day, which is in January: the window of February is empty")
         assertTrue(r.achievement_mtd.none { it.jsonObject["achieved_qty_base"]!!.jsonPrimitive.content.toLong() > 0 }, "no January memo is in a February figure")
+        val c = r.calendar!!
+        assertEquals(0, c.elapsed_working_days_before_today, "the anchor is Monday 1 February, the first day of the month: nothing has elapsed in February")
+        assertEquals(c.working_days, c.elapsed_working_days_before_today + (if (c.today_is_working) 1 else 0) + c.remaining_working_days_after_today, "before + today + after = the working days of February")
+        // the same bundle date built ON the day gives the same counts (the prefetch and the day-of build agree)
+        nowAt = Instant.parse("2027-02-01T02:00:00Z")
+        val onTheDay = service.bundle(principal, LocalDate.parse("2027-02-01"), "1.0.0+1").full.routes.single { it.route_id == route }.calendar!!
+        assertEquals(listOf(c.elapsed_working_days_before_today, c.today_is_working, c.remaining_working_days_after_today), listOf(onTheDay.elapsed_working_days_before_today, onTheDay.today_is_working, onTheDay.remaining_working_days_after_today), "same bundle date, same counts, prefetched or built on the day")
     }
 
     @Test
@@ -150,5 +165,26 @@ class SrBundleThroughAndSnapshotTest {
         assertEquals(12L, secondFigure, "a later build sees the memo in the figure"); assertEquals(12L, secondStats, "and in the stats")
         assertEquals(firstFigure, firstStats, "figure and stats of the same build agree: one snapshot, not two")
         assertEquals(5L, firstFigure, "the build that started before the commit shows neither the 7 sticks in the figure nor in the stats")
+    }
+
+    /** C3: nothing that reads through a PROCESS-WIDE CACHE (the reach resolver, the server config) may run while the bundle's snapshot is open. */
+    @Test
+    fun noCacheLoaderRunsWhileTheBundleSnapshotIsOpen() {
+        val violations = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val realConfig = DbServerConfig(fresh.db, RegistryDefaults(), clock)
+        val config = object : com.aktcl.aron.backend.platform.ServerConfig {
+            override fun value(key: String): kotlinx.serialization.json.JsonElement { if (BundleService.inSnapshot.get()) violations += "config.value($key)"; return realConfig.value(key) }
+            override fun configVersion(): Long { if (BundleService.inSnapshot.get()) violations += "config.configVersion()"; return realConfig.configVersion() }
+        }
+        val geo = GeoRepository(fresh.db, clock)
+        val realReach = SqlReachResolver(fresh.db, geo, clock)
+        val reach = com.aktcl.aron.backend.platform.ReachResolver { u, r, v, d -> if (BundleService.inSnapshot.get()) violations += "reach.reach($u)"; realReach.reach(u, r, v, d) }
+        val realPlanner = SqlRoutePlanner(fresh.db, geo, realConfig)
+        val planner = com.aktcl.aron.backend.platform.RoutePlanner { u, d -> if (BundleService.inSnapshot.get()) violations += "planner.routesFor($u)"; realPlanner.routesFor(u, d) }
+        val guarded = BundleService(fresh.db, config, planner, clock, reach = reach)
+        guarded.bundle(principal, LocalDate.parse("2027-01-03"), "1.0.0+1")
+        guarded.bundle(principal, LocalDate.parse("2027-01-04"), "1.0.0+1")   // a bundle built ahead too
+        assertTrue(violations.isEmpty(), "no cache-backed loader ran inside the snapshot: $violations")
+        assertTrue(!BundleService.inSnapshot.get(), "the flag is cleared after a build")
     }
 }

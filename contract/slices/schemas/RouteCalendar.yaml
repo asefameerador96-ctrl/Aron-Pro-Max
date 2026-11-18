@@ -25,15 +25,28 @@ RouteCalendar:
       type: integer
       minimum: 0
       maximum: 31
-      description: Working days from the 1st up to the day before the bundle date.
+      description: 'Working days of the bundle month from the 1st up to the day before the ANCHOR day: the day after
+        `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date;
+        for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date`
+        Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date`
+        30 January and the anchor is 1 February).'
     remaining_working_days_after_today:
       type: integer
       minimum: 0
       maximum: 31
-      description: Working days after the bundle date to the end of the month.
+      description: 'Working days of the bundle month after the ANCHOR day: the day after `through_date`, but never
+        before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead
+        it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and
+        the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30
+        January and the anchor is 1 February), to the end of the month. Elapsed + today (1 when working) + remaining
+        = `working_days`.'
     today_is_working:
       type: boolean
-      description: Whether the bundle date itself is a working day.
+      description: 'Whether the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle
+        month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g.
+        a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle
+        for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February)
+        is a working day (read from the bundle month''s own calendar).'
     last_month_working_days:
       type: integer
       minimum: 0

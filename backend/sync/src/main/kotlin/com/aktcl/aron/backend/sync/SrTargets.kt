@@ -41,7 +41,9 @@ object SrTargets {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date)
         val first = month.atDay(1)
-        val anchor = through.plusDays(1) // the day after the last closed day: 'today' of the day counts
+        // 'today' of the day counts: the day after the last closed day, but never before the 1st of the bundle month (a bundle for Monday 1 Feb built on Sunday 31 Jan has through = 30 Jan and anchor
+        // 1 Feb, so before + today + after = the month's working days and `today_is_working` is read from the bundle month's own calendar, never asked of a January date).
+        val anchor = maxOf(through.plusDays(1), first)
         val routeIds = routes.keys.toList()
 
         val targets = h.createQuery(

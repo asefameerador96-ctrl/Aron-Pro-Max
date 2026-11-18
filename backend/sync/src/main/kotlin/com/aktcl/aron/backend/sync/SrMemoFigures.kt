@@ -8,7 +8,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * The own-route figures the phone merges with its local memos (achievement, KPI volumes and `by_pack`, Star STD, campaign STD and memo), read straight from the
+ * The own-route figures the phone shows as the server's (achievement, KPI volumes and `by_pack`, Star STD, campaign STD and memo), read straight from the
  * accepted memo tables (`app.memo`, `app.memo_line`) for ONE route and window, never from the lagging `dw.agg_*` aggregates (rule A of the no-clock design,
  * D-TKPI-12; the phone rule is `docs/requests/sr-programmes-phone-rule-b.md`).
  *

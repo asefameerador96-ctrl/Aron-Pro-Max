@@ -19,7 +19,7 @@ import java.time.YearMonth
  * - brand volume target = the sum of `app.route_monthly_target` over the brand's SKUs (one source with screen 10); brand memo target and
  *   allocated KPI from `app.route_brand_kpi_target`; month allocation and the CPR block from `app.route_kpi_month`;
  * - achievement = the route's accepted memos read straight from `app.memo` / `app.memo_line` ([SrMemoFigures]; sold quantity of sale lines, and memos with a sale line of the
- *   brand, once per memo) of the business dates from the 1st up to and including `through_date` (the bundle date minus one day); today is never in a server figure (same rule
+ *   brand, once per memo) of the business dates from the 1st up to and including `through_date` (the last CLOSED day at build time: the bundle date minus one day, or yesterday for a bundle built ahead); today is never in a server figure (same rule
  *   as [SrTargets]). BRAND RULE: one hierarchy, the CURRENT product tree (sku -> variant -> brand) for the target AND the achievement; the dashboards use the as-was brand
  *   (`dw.v_dim_product_history`), so the two differ only for a SKU whose brand changed inside the month. A SKU with no brand has no brand row (its volume is still in `by_pack`
  *   of a BLM category, and in `achievement_mtd`);

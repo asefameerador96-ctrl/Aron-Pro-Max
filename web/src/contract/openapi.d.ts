@@ -6885,11 +6885,11 @@ export interface components {
             month: components["schemas"]["Month"];
             /** @description Working days of the month. */
             working_days: number;
-            /** @description Working days from the 1st up to the day before the bundle date. */
+            /** @description Working days of the bundle month from the 1st up to the day before the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February). */
             elapsed_working_days_before_today: number;
-            /** @description Working days after the bundle date to the end of the month. */
+            /** @description Working days of the bundle month after the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February), to the end of the month. Elapsed + today (1 when working) + remaining = `working_days`. */
             remaining_working_days_after_today: number;
-            /** @description Whether the bundle date itself is a working day. */
+            /** @description Whether the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February) is a working day (read from the bundle month's own calendar). */
             today_is_working: boolean;
             last_month_working_days: number;
             through_date: components["schemas"]["BusinessDate"];
