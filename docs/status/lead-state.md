@@ -330,3 +330,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - apsis-migration df219237: FAIL (8 distinct blocking), fix round 2 sent; hist_ro reader role ruled.
 - Owner asked for a full catch-up; given at ~12:40 (scanner exception first, two push approvals, final-account decisions, dump questions, programme rules, app decisions, device walks).
 - Open rule question (old, not from this merge): a corrected resend after a final schema_invalid is quarantined as payload_conflict (reviewable, not dropped). Decide for all final rejects later; logged, not blocking.
+
+## 2026-11-18 13:15
+- New lanes: T-KPI3 session_014mnioQ69orMsmNhwJntrJC (lane/sr-targets-server, no-clock redesign; T-KPI2 retired). A-PROG3 session_014mnioMCDLry9MUsj6oF3Ka (lane/android-sr-programmes: quarter chips, phone rule B; A-PROG2 retired at bb52f926d).
+- Reviews running: final pass android-sr-programmes bb52f926d (wf_858699d5-bb8); loyalty adjustment c4113eed (wf_15d70f25-e57); ops-diagnose-api c1fe8c02 round 7 (wf_30b67639-f1e).
+- Ready for the next server train (scanner step aside): sr-server c62664944 (V0209, tests-only delta on the reviewed 9b69fba3).
+- L-A12 started S-1/S-2/S-3 (additive) on top of c4113eed.
