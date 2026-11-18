@@ -95,7 +95,7 @@ def profile(dump_dir, mapping, max_key_check_rows=5_000_000, expected=None):
                             bad += 1
                 ch = staging.chunk_of(r[cd_idx]) if cd_idx is not None else "all"
                 per_chunk[ch] = per_chunk.get(ch, 0) + 1
-                if cd_idx is not None and r[cd_idx] and len(r[cd_idx]) >= 19 and r[cd_idx][10] in " T" and r[cd_idx][11:13].isdigit():
+                if cd_idx is not None and r[cd_idx] and not r[cd_idx].startswith("0000") and len(r[cd_idx]) >= 19 and r[cd_idx][10] in " T" and r[cd_idx][11:13].isdigit():
                     hours[int(r[cd_idx][11:13]) % 24] += 1
                 if key_idx is not None and rows <= max_key_check_rows:
                     k = hash(tuple(r[i] for i in key_idx))
@@ -154,7 +154,7 @@ def build_views(db, mapping, stage=STAGE):
             dexp = f"{safety.quote(cd)}::text" if cd else "NULL::text"
             src = (f"SELECT {dexp} AS d, to_jsonb(s) - '_row_uuid' - '_chunk' - '_stmt' AS j, _row_uuid, _chunk FROM {stage}.{safety.quote(table)} s" if table in have
                    else "SELECT NULL::text AS d, NULL::jsonb AS j, NULL::uuid AS _row_uuid, NULL::text AS _chunk WHERE false")
-            db.run(f"CREATE OR REPLACE VIEW {stage}.c_{canon} AS {src}")
+            db.run(f"DROP VIEW IF EXISTS {stage}.c_{canon}; CREATE VIEW {stage}.c_{canon} AS {src}")
             continue
         sel, joins, miss, aliases = [], [], [], []
         for n, (c, spec) in enumerate(cfg.get("columns", {}).items()):
@@ -182,7 +182,7 @@ def build_views(db, mapping, stage=STAGE):
             src = f"SELECT {', '.join(sel)}, f._row_uuid, f._chunk FROM {stage}.{safety.quote(table)} f {' '.join(joins)}"
         else:
             src = f"SELECT {', '.join('NULL::text AS ' + a for a in aliases)}{', ' if aliases else ''}NULL::uuid AS _row_uuid, NULL::text AS _chunk WHERE false"
-        db.run(f"CREATE OR REPLACE VIEW {stage}.c_{canon} AS {src}")
+        db.run(f"DROP VIEW IF EXISTS {stage}.c_{canon}; CREATE VIEW {stage}.c_{canon} AS {src}")
         if miss and table in have:
             missing[table] = miss
     return missing

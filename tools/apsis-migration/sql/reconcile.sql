@@ -44,8 +44,8 @@ SELECT jsonb_build_object('applicable', count(*) > 0, 'memo_numbers', count(*), 
 WITH v AS (SELECT route_code, business_date, visited FROM apsis_hist.route_day_vendor WHERE visited IS NOT NULL),
 o AS (SELECT route_code, business_date, count(DISTINCT outlet_code) AS n FROM apsis_hist.visit_geo WHERE route_code IS NOT NULL GROUP BY 1, 2)
 SELECT jsonb_build_object('vendor_route_days', count(v.route_code),
-  'route_days_compared', count(*) FILTER (WHERE v.route_code IS NOT NULL AND o.route_code IS NOT NULL),
-  'route_days_equal', count(*) FILTER (WHERE v.route_code IS NOT NULL AND o.route_code IS NOT NULL AND v.visited = o.n))
+  'route_days_compared', count(v.route_code),
+  'route_days_equal', count(*) FILTER (WHERE v.route_code IS NOT NULL AND v.visited = COALESCE(o.n, 0)))
 FROM v FULL JOIN o USING (route_code, business_date);
 -- name: control
 SELECT jsonb_build_object(

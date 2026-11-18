@@ -77,5 +77,5 @@ UPDATE app.db_role_grant SET except_tables = except_tables ||
  WHERE schema_name = 'dw' AND object = '*' AND role IN ('api_rw','worker_rw');
 UPDATE app.db_role_grant SET except_tables = except_tables ||
   ARRAY(SELECT x FROM unnest(ARRAY['v_hist_visit_geo','v_hist_attendance']) x WHERE x <> ALL (except_tables))
- WHERE schema_name = 'dw' AND object = '*' AND role IN ('web_ro','bi_reader');
+ WHERE schema_name = 'dw' AND object IN ('*', 'v_*') AND role IN ('web_ro','bi_reader');     -- the real map grants these two roles 'v_*' (all views)
 SELECT app.apply_db_role_grants();

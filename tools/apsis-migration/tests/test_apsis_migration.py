@@ -469,7 +469,7 @@ class Normalisation(Base):
         self.assertEqual(self.db.scalar("SELECT outlet_code FROM apsis_hist.sales_line WHERE gross_mtk = 10000"), "syn-o-0001")   # the archive keeps the vendor's own text (trimmed)
 
     def test_live_codes_that_collide_after_normalisation_are_not_matched_and_are_counted(self):
-        self.owner.run("INSERT INTO app.outlet(code,name,owner_name,zone_id,route_id,cluster_id,channel) SELECT 'syn-o-0001','dup','Syn Owner',zone_id,route_id,cluster_id,'GT' FROM app.outlet WHERE code='SYN-O-0001'")
+        self.owner.run("INSERT INTO app.outlet(code,name,owner_name,zone_id,route_id,cluster_id,channel) SELECT c,'dup','Syn Owner',zone_id,route_id,cluster_id,'GT' FROM app.outlet, (VALUES ('syn-o-0001'),('42')) v(c) WHERE code='SYN-O-0001'")
         self.full_run()
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_map.code_ambiguous WHERE kind = 'outlet'"), "1")
         self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code = 'syn-o-0001' AND outlet_id IS NOT NULL"), "0")

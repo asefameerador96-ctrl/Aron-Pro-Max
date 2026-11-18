@@ -164,6 +164,8 @@ class TableStager:
             parsed += len(rows)
             if stmt_done and checkpoint:
                 checkpoint(ordinal, parsed)
+        if ts is None:
+            raise safety.Refused("refused: the file holds no CREATE TABLE statement for its table (or the statement is not a plain one)")
         return {"table": table, "rows_parsed": parsed, "dropped_columns": dropped, "kept_columns": cols or [],
                 "has_pk": getattr(self, "has_pk", False), "key_cols": getattr(self, "key_cols", []), "undecodable_rows": bad_chars}
 
