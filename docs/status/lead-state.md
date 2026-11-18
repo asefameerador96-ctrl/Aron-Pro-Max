@@ -280,3 +280,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - ops-diagnose-api a254a71f: re-check FAIL (held-back filter never fires: 'True' vs 'true'; byte cut mid-Bangla character kills the filter and the step stays green) -> SV6 fix round. The workflow on the integration branch is unchanged (older sections unredacted): owner told twice.
 - A-PROG2 96470d9e (B1c: uncertain rows, refetch; slice 6 lows; merged a4691a06): review owed. P-SR1b on the crash-fix lows + merge. P-TSO re-recording. L-A12 on push B hygiene + adjustment.
 - Stray .whl files appeared untracked in scratchpad/wt-verify (a reviewer agent's pip download); removed; none committed.
+
+
+### 2026-11-18 10:45 update: OWNER MESSAGE: final Azure ready; Apsis dump on the organisation's FTP
+- Recorded as D-OWNER-FINAL-AZURE-01. Nothing is created in the final subscription until the owner has run the bootstrap and said yes to size and budget.
+- New lanes: F-INFRA1 session_014mnioNmy9D9X5nhakg15UC (branch lane/infra-final: readiness audit docs/status/infra-final.md first, with the ordered owner steps, quotas, cost by stage; then stage wiring, runbook update, private landing container for the dump). M-APSIS1 session_014mnioLieefh81L6kmm7Nhd (branch lane/apsis-migration: design docs/status/apsis-migration.md first with owner questions about the dump; tooling tested on synthetic data only; provisional migrations from V0260).
+- The owner's laptop folders are listed but not offered to cloud sessions (not_available), so laptop steps go through the laptop operator session as before.
+- Asked the owner: Owner-role login and bootstrap on the laptop; yes to size and budget (staging first; prod core about USD 5,490 a month, with DR about 6,702, budget 9,000); region; approval of the release flow (main, gate pull request, tags), which production needs; dump format and size; final Google/Firebase project.
