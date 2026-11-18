@@ -182,11 +182,13 @@ fun SrFrame(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    // the printer-connected bar (manual 17): PrinterBarHost provides the flag the toast sets and draws the bar over the whole frame (no touch taken)
+    com.aktcl.aron.core.printing.ui.PrinterBarHost(modifier) {
     if (printer != null) HoldPrinter(printer, assist = printerAssist)
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
     ParityScaffold(
-        modifier = modifier,
+        modifier = Modifier,
         topBar = {
             ParityTopBar(
                 title = title, icon = icon?.let { painterResource(it) }, onBack = onBack, backLabel = back,
@@ -205,6 +207,7 @@ fun SrFrame(
             Box(Modifier.weight(1f).fillMaxWidth()) { content() }
             bottomBar()
         }
+    }
     }
 }
 
@@ -579,6 +582,8 @@ fun SrApp(
                             { context.startActivity(OutletMapActivity.intent(context, d.outlet.name, d.outlet.lat!!, d.outlet.lng!!, d.outlet.radiusM, d.phoneLat, d.phoneLng)) }
                         },
                         mapSlot = rememberOutletMapSlot(day.isOnline()), geoPanel = true,
+                        // the page's way out when nothing can be forced or refreshed (the visit is not open: back only leaves the screen)
+                        onBack = if (st is VisitUiState.NeedsDecision) goBack else null,
                     )
                 }
             }
@@ -626,7 +631,7 @@ fun SrApp(
                 ForceSaleContent(
                     selected = reason, capture = cap, missing = missing,
                     noOutletLocation = decision.result.verdict == com.aktcl.aron.rules.GeoVerdict.NO_OUTLET_LOCATION,
-                    onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } },
+                    onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } }, manual = true,
                     onConfirm = {
                         scope.launch {
                             when (val r = controller.confirm(reason, decision.outlet)) {

@@ -94,16 +94,16 @@ private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
 
 /**
  * The white pill "select a retailer" field with its caret (PARITY-SPEC s2.9, sr/sale-select.png). Shows [value] or the grey
- * [placeholder]; [onClick] opens the caller's list (use this form for long retailer lists with search). [readOnly] draws the chosen retailer as a plain pill: no caret, no tap, no dropdown role (the call-start and sale screens, where the outlet is already fixed).
+ * [placeholder]; [onClick] opens the caller's list (use this form for long retailer lists with search). [softCorners] caps the corner at 26 dp so a wrapped name is not clipped by a half-height arc; [readOnly] draws the chosen retailer as a plain pill: no caret, no tap, no dropdown role (the call-start and sale screens, where the outlet is already fixed).
  */
 @Composable
-fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, readOnly: Boolean = false) {
+fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, readOnly: Boolean = false, softCorners: Boolean = false) {
     val look = LocalAronLook.current
     Row(
         modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(50))
+            .clip(if (softCorners) RoundedCornerShape(26.dp) else RoundedCornerShape(50)) // softCorners (the SR): a pill on one line, and a long Bangla name that wraps keeps its text inside the corners (font 2.0)
             .background(look.card)
             .then(if (readOnly) Modifier else Modifier.clickable(role = Role.DropdownList, onClick = onClick))
             .padding(start = 20.dp, end = if (readOnly) 20.dp else 12.dp, top = 8.dp, bottom = 8.dp),
