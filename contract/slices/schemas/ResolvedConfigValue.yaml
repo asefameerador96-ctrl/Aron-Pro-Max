@@ -2,7 +2,7 @@ ResolvedConfigValue:
   description: 'A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix
     cfg.; scope `device`, a string) is the phone''s server-signed lab grant
 
-    (D-OWNER-MDM-02 iii, 1.20.0): present only while an exemption is unexpired and only in a full day bundle, never
+    (D-OWNER-MDM-02 iii, 1.21.0): present only while an exemption is unexpired and only in a full day bundle, never
     in a config delta; a full bundle
 
     without it withdraws the grant.

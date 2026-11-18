@@ -49,7 +49,7 @@ data class GeoFixEntity(
     @ColumnInfo(name = "integrity_ref") val integrityRef: String? = null,
     /**
      * Anti-spoofing signal codes of this fix as a JSON array of strings (D-OWNER-MDM-02), null or `[]` on a clean fix. Sent as
-     * `GeoFix.signals` (contract 1.20.0) in the record payload built at enqueue; the stored column never changes a queued payload.
+     * `GeoFix.signals` (contract 1.21.0) in the record payload built at enqueue; the stored column never changes a queued payload.
      */
     @ColumnInfo(name = "signals_json") val signalsJson: String? = null,
 )

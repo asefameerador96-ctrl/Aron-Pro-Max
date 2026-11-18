@@ -793,7 +793,7 @@ class BundleService(
     }.list()
 
     companion object {
-        /** The device-scoped config value that carries the phone's lab grant (contract 1.20.0); see [labGrant]. */
+        /** The device-scoped config value that carries the phone's lab grant (contract 1.21.0); see [labGrant]. */
         const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
 
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")

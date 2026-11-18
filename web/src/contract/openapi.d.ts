@@ -5193,7 +5193,7 @@ export interface components {
             play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
             /** @description Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). Missing (an older app) means unknown, not clean and not a failure: the server stores NULL (never an empty array) and scoring treats it as no evidence (docs/24 s14a R18). */
             root_hints?: ("su_binary" | "test_keys" | "ro_debuggable" | "ro_secure_off" | "root_app" | "hook_framework" | "root_mount" | "clone_app_installed" | "secondary_user" | "foreign_data_dir")[];
-            /** @description Developer-options gate onsets since the last acknowledged report (contract 1.20.0, D-OWNER-MDM-02): the app did not run while one of these was on. Oldest first. A phone can send the same event again after a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of an event. Optional; absent from an older app. */
+            /** @description Developer-options gate onsets since the last acknowledged report (contract 1.21.0, D-OWNER-MDM-02): the app did not run while one of these was on. Oldest first. A phone can send the same event again after a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of an event. Optional; absent from an older app. */
             integrity_events?: {
                 at: components["schemas"]["Timestamp"];
                 flags: ("dev_options" | "adb" | "adb_wifi")[];
@@ -5296,7 +5296,7 @@ export interface components {
             radio?: components["schemas"]["RadioEnvironment"] | null;
             device: components["schemas"]["FixDeviceState"];
             /**
-             * @description Anti-spoofing codes the phone found for this fix (contract 1.20.0, D-OWNER-MDM-02), evidence for the server's risk rules. Optional: a phone built against an older contract sends none, and absent means unknown, not clean.
+             * @description Anti-spoofing codes the phone found for this fix (contract 1.21.0, D-OWNER-MDM-02), evidence for the server's risk rules. Optional: a phone built against an older contract sends none, and absent means unknown, not clean.
              *     `mock_flag`, `mock_app_selected` and `test_provider` are HARD (the phone refused the geo-validated action; `is_mock` is true for all three, so `is_mock` is the platform flag OR an inferred hard code, and these codes tell them apart). The rest are SOFT and never block alone. Extensible: the server stores a code it does not know.
              */
             signals?: ("mock_flag" | "mock_app_selected" | "test_provider" | "test_provider_props" | "fake_gps_app_installed" | "gnss_no_sats" | "gnss_none" | "fix_stale" | "fix_clock_mismatch" | "jump" | "speed" | "provider_disagree" | "root_hint" | "emulator" | "hook_framework")[];
@@ -6658,7 +6658,7 @@ export interface components {
         };
         /**
          * @description A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant
-         *     (D-OWNER-MDM-02 iii, 1.20.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
+         *     (D-OWNER-MDM-02 iii, 1.21.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
          *     without it withdraws the grant.
          */
         ResolvedConfigValue: {

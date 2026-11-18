@@ -115,9 +115,9 @@ data class DeviceDto(
     val hardware_backed_key: Boolean, val integrity_verdict: String, val integrity_checked_at: String? = null, val enrolled_at: String, val enrolment_token_id: Long? = null,
     val device_info: DeviceInfoDto? = null, val app_version: String? = null, val policy_version_applied: Long? = null, val config_version_applied: Long? = null,
     val last_contact_at: String? = null, val pending_rows_reported: Int? = null, val bound_users: List<BoundUser> = emptyList(), val last_status: JsonElement? = null,
-    /** The unexpired lab exemption (D-OWNER-MDM-02), absent when there is none. Contract 1.20.0, additive. */
+    /** The unexpired lab exemption (D-OWNER-MDM-02), absent when there is none. Contract 1.21.0, additive. */
     val lab_exemption: LabExemptionDto? = null,
-    /** True when the server can sign a lab grant (the signing secret is set); the portal offers the action only then. Contract 1.20.0, additive. */
+    /** True when the server can sign a lab grant (the signing secret is set); the portal offers the action only then. Contract 1.21.0, additive. */
     val lab_exemption_available: Boolean? = null,
 )
 

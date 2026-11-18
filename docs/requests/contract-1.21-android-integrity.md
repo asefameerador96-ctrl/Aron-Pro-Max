@@ -1,6 +1,6 @@
-# Contract 1.20.0: phone anti-spoofing signals and gate events (lane android-integrity, D-OWNER-MDM-02)
+# Contract 1.21.0: phone anti-spoofing signals and gate events (lane android-integrity, D-OWNER-MDM-02)
 
-Number settled by the lead 2026-11-18: 1.20.0 on top of train 117's 1.19.0; migrations V0204..V0207.
+Number settled by the lead 2026-11-18: 1.21.0 (the Loyalty sweep takes 1.20.0); migrations V0205..V0208.
 
 Additive only. Phones built against an older contract keep working unchanged, and a queued record's payload and signature never change after capture.
 
