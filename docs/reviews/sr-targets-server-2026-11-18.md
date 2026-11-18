@@ -604,3 +604,168 @@ LOWS:
 - DECISIONS.md: D-TKPI-12, the text the lead reviewed at c30c52c63, was edited in place instead of being corrected only by an appended entry. Against the base the file is still append-only (0 removed lines), but against c30c52c63 one existing line changed. The new D-TKPI-12 phrase 'each seen to fail when its flag is not set' cannot be verified from the repository.
 - SrTargetsBundleTest.targetsTruncated... inserts 499 `TR-*` SKUs and deletes only their target rows; the SKUs stay in the class's database. This is harmless unless a later test in the class counts SKUs or products.
 - Prior lows still open by choice (stated in D-TKPI-13): N+1 last-month Star read, SKU dimension read on every build, and morning-burst measurement owed at final-account sizing.
+
+
+## Full review of the identity design at b24178100, 2026-11-18
+
+Read from code only; nothing built or run.
+
+### identity-exactness verdict=fail
+SUMMARY: Read-only review of lane/sr-targets-server at b24178100 (identity-rule lens). I read the code and tests with git show only. Nothing was built, run or checked out.
+
+WHAT HOLDS
+(1) One snapshot. BundleService.figures loads every figure section of the response and calls SrFigureProbe.answer on ONE handle, inside one REPEATABLE READ transaction with SET TRANSACTION READ ONLY, on db.jdbi:
+- the section loaders are loadFigureSet (SrMemoFigures.forRoutes, SrTargets, SrKpi, SrCampaigns, SrStar including the last-month LMS read);
+- the optional Astha section runs in the same transaction;
+- only the user, config and route plan are read before the transaction, and those are not figure data.
+The bundle path also answers the probe inside routeSnapshots' transaction.
+
+(2) One answer per uuid is enough for every family. Every family uses the same memo predicate (status active, line_count > 0, not voided, line not voided) and the same window (the 1st of the month to through_date):
+- achievement (per SKU, free lines in memo_count);
+- KPI brand and category (sale lines, current tree);
+- Star STD;
+- campaign (outlet plus shown SKU pairs, sale lines, every route).
+The family-specific filters (route, outlet and SKU pair, line kind, category) apply to line attributes. The phone applies them to its local lines, and for removed_locally probes to the stored lines it gets back. So an IN or NOT IN answer for a memo is correct for every family. Star LMS (last month) is the only other window, and the phone does not merge it. A last-month memo is outside the phone's month filter, and on the 1st the window is empty.
+
+(3) Edits and voids that are accepted, or held and then released, are exact:
+- the old memo is IN (subtracted) until it is superseded, then VOIDED;
+- the new memo is NOT IN (added) until stored, then IN;
+- a cross-date edit (new memo dated today) is added under rule 1.
+
+(5) The paper twin is own-only. Paper backfill refuses acting_for_user_id and the (memo_no, business_date) index is unique, so another SR's memo can never be matched and twin_ambiguous cannot occur. After the phone uploads its copy, the copy is held as memo_no_duplicate or matched (registry only, no memo row), so the twin lookup still answers. That path is untested.
+
+(6) Dates. A memo dated after through_date is never IN. Prefetch and month rollover are consistent as long as the phone uses the through_date in the response.
+
+(7) Size limits:
+- more than 300 probes gives 400 too_many;
+- a body over 64 KiB gives 413;
+- a foreign uuid answers NOT IN.
+Paging across requests is exact only for collecting IN confirmations. A stored memo leaves the figure only by void or supersede (guard_transition active>voided/superseded), and the phone then adds nothing. NOT IN answers from different snapshots must never be combined into one total.
+
+BLOCKING
+1. A memo the server has finally refused, discarded or tombstoned is NOT IN forever, so the rule adds it forever. A refused or discarded void or edit leaves the old memo IN, so the rule subtracts it forever.
+2. A stored, active memo with zero stored lines is answered VOIDED ("gone for good"). For today's memo the phone then drops a sale whose lines are still held.
+3. The request doc claims SrFiguresEndToEndTest cases that the test does not contain.
+
+(8) Tests
+- SrPhoneWouldShowTest asserts all eight merged components and can fail. But it uses SQL fixtures and the test-only service.bundle(probe=...) path, not /figures or the ingest.
+- SrFiguresEndToEndTest asserts only the achievement quantity and memo count of one SKU. KPI, Star and campaign through /figures are covered only by a one-memo section-equality test.
+- These cases are SQL-fixture only: held void released, held edit released, identical edit, void then re-sale, cross-date edit, free-only memo, the 1st of the month, prefetch, two routes, another route's memo at a campaign outlet, commit during the read, office void of the paper twin, office void of a confirmed memo.
+
+NOT VERIFIED
+- any test run or CI;
+- whether a phone batch can split a memo family across batches;
+- a rate limiter on /v1/sync/figures (the contract lists 429);
+- the phone lane;
+- the renumbering of V0230..V0233 to V0210..V0213 (the files are still V0230..V0233 at this head; no shipped migration is touched).
+
+#### BLOCKING upheld=3/3: Final refusals and discards are NOT IN forever: the rule adds a refused or discarded memo for ever and subtracts a memo whose void or edit was refused or discarded
+WHERE: backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrFigureProbe.kt (answer reads only app.memo, never app.ingest_registry or app.sync_quarantine); docs/requests/sr-programmes-phone-rule-b.md (the probe list includes 'held for review, refused'; NOT IN means 'refused'; rule 2 'NOT IN -> ADD'; rule 3 'IN -> SUBTRACT'); contract RouteSnapshot description and FigureProbeEntry ('refused'); DataVoidBarrierHandler (voided_by_admin, final); IngestService DAY_LOCKED_TYPES includes memo_void (after_final_submit hold, discardable)
+WHY: The answer is computed from app.memo alone. A memo that will never be stored is indistinguishable from one not yet uploaded. Examples: a late row refused voided_by_admin after a data void; a schema or other final reject; a held memo the reviewer discards. The request doc tells the phone to probe exactly these ('refused') and to ADD on NOT IN. Removals have the same problem in reverse. A memo_void or an edit held as after_final_submit (or for scope or device gate) and then discarded leaves the old memo active and IN. Rule 3 subtracts its stored lines, and nothing in the rule ever stops that. For a discarded edit the phone shows the new memo instead of the old one until month end. The proof's invariant claims to count 'every memo live in S' once, but case (a) counts a phone-removed IN memo zero times, so the proof hides this. Both tests' truth() drops a removed memo unconditionally, so neither test can fail on it.
+SCENARIO: 1. On 2027-01-02 the SR is offline and sells memo M (300 sticks) on route R.
+2. An ADMIN data-voids R's 2027-01-02 app memos (POST /v1/admin/data-void).
+3. The phone uploads M. It is refused voided_by_admin, which is final.
+4. Per the request doc M is 'refused' and still probed. /figures answers NOT IN, and rule 2 adds 300.
+5. The phone shows +300 the server will never count, until month end.
+
+Variant with a void:
+1. After Final Submit the SR voids memo X (IN, 80 sticks).
+2. The memo_void is held as after_final_submit and the reviewer discards it.
+3. X stays active, and every /figures call answers IN with its stored lines. The phone subtracts 80 until month end, while the server, dashboard and incentives count it.
+
+Fix: answer a fourth state such as REFUSED from the caller's own registry or quarantine rows (final reject or discarded) so the phone drops the memo. For removed probes, let the phone send the void or edit record's uuid and answer whether the removal was refused or discarded (then the phone stops subtracting). Or state in the contract and the request doc that a final refusal or discard changes the memo's local state, and test it through the real ingest.
+
+#### BLOCKING upheld=3/3: VOIDED is returned for a stored active memo with no stored lines yet: the phone drops today's sale for good while its lines are still held
+WHERE: SrFigureProbe.answer: `m.voided || m.status != "active" || lines.isEmpty() -> voided += p.uuid` is evaluated before the date check; IngestService.releaseHeld / settleChild ChildEnd.STAYS (a held memo header is accepted while a child line stays open for its own review); contract FigureProbeAnswer and RouteSnapshot ('VOIDED (gone for good)'); request doc rule 1 ('a VOIDED answer ... drops it')
+WHY: A memo stored with status active and line_count > 0 whose lines are not (yet) stored is reported as gone for good. ChildEnd.STAYS makes this reachable: a reviewer accepts the held memo while its lines stay held for a reason of their own. For a memo dated after through_date, rule 1 drops it on VOIDED, and the test model marks it droppedByServer and never probes it again. When the lines are released later that day, the server has a live sale. Today is never in the figure, and the phone no longer adds it, so the total is below the truth for the rest of the day. For an earlier date the phone happens to converge, because the figure picks the memo up once the lines land. Even so, the 'gone for good' claim in the contract and DECISIONS is false for this case. Both tests define truth() as excluding memos the server answered VOIDED, so a wrong VOIDED for a live memo of today cannot fail them.
+SCENARIO: 1. At 10:00 on 2027-01-03 the SR sells T (50 sticks, dated today). The family is held, for example by the device gate.
+2. The reviewer accepts the memo header. One line is held for its own reason and stays open (ChildEnd.STAYS), so the memo is stored without lines.
+3. The phone calls /figures for 2027-01-03. T is dated after through_date and has no stored lines, so the answer is VOIDED. The phone drops T and stops probing it.
+4. At 12:00 the reviewer releases the line. T is now a real 50-stick sale.
+5. The phone shows 50 less than the truth until the day ends.
+
+Fix: answer NOT IN (not VOIDED) when status is active, not voided and no non-voided line is stored, keeping VOIDED for status voided or superseded, voided_at set, or every stored line voided. Add a test where header and lines commit separately.
+
+#### BLOCKING upheld=3/3: The request doc claims SrFiguresEndToEndTest cases that the test does not contain; the test name over-claims
+WHERE: docs/requests/sr-programmes-phone-rule-b.md, section Tests ('SrFiguresEndToEndTest (the real ingest and the real endpoint: held memo released, held void and held edit released, zero-price line, admin data void, paper twin before and after upload, lost response, commit during the read)'); backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrFiguresEndToEndTest.kt aPaperTwinOfAMemoThePhoneHasNotUploadedIsNotCountedTwiceBeforeOrAfterItsUpload
+WHY: SrFiguresEndToEndTest has 10 tests:
+- lost response;
+- held memo released;
+- accepted (not held) edit and void;
+- zero-price line;
+- the limits test (probe cap, body cap, role);
+- foreign uuid and read-only;
+- sections equal the bundle's;
+- the 409 quantity fix;
+- admin data void;
+- paper twin.
+Three claimed cases are missing:
+- No HELD void or HELD edit is released through the reviewer. Those exist only as SQL commits in SrPhoneWouldShowTest.
+- The paper-twin test never uploads the phone's copy, despite 'BeforeOrAfterItsUpload' in its name, so the alias and memo_no_duplicate path is untested.
+- No commit during the read happens through the endpoint (only SrPhoneWouldShowTest, by fixture).
+D-TKPI-14 and the status file correctly list these as NOT built through the real ingest, so the request doc, which the phone lane implements from, contradicts them. The end-to-end test also asserts only achievement_mtd of one SKU, so no KPI, Star or campaign total is asserted through the real ingest and /figures.
+SCENARIO: 1. The phone lane reads the request doc and treats 'held void and held edit released' and 'paper twin after upload' as proven end to end.
+2. A change to matchBackfill or memoAlias makes the phone's uploaded copy of a paper memo answer NOT IN, for example by giving the copy its own memo row.
+3. The phone then adds 300 on top of the paper memo's 300.
+4. Every test stays green, because no test uploads the copy and then probes it.
+
+Fix: add the end-to-end tests (a void and an edit held via the device gate or after_final_submit and then released; the phone copy uploaded, held as memo_no_duplicate and matched, then probed), or correct the request doc line and rename the test.
+
+LOWS:
+- SrPhoneWouldShowTest (the 21 identity tests) drives the probe through service.bundle(probe = ...) -> routeSnapshots, a path production never calls (GET /sync/bundle passes no probe). BundleService.figures derives date, first and through itself and calls outlets(...) separately; only SrFiguresEndToEndTest exercises it, and only for one SKU's achievement plus a one-memo section-equality check.
+- Removed memos are probed on every request in both test models, even after a VOIDED answer, and the request doc never says to stop. An SR who edits or voids often grows the probe set toward the 300 cap. Because more than 300 is refused whole with 400, the phone must page to collect IN confirmations. The doc should say that (a) confirmations and VOIDED for status voided or superseded may be cached across pages, and (b) NOT IN answers from different snapshots must never be combined into one total.
+- The IN predicate does not depend on route or outlet, while each family is per route (or per outlet for campaigns). Exactness relies on the phone filtering its own memos by the stored route and outlet. The test model does this (`mine`), but the contract does not say it. A prior low repeated, including the unspecified case of an outlet that moves between routes in the middle of the month for the campaign add.
+- The own filter includes acting_for_user_id: the primary SR of a covered route gets IN with stored lines for the cover SR's memo if it knows the uuid. A uuid is not guessable and paper backfill refuses acting_for, so twin enumeration across users is not reachable. Strictly, though, this is another user's record.
+- twin_ambiguous is unreachable because memo_no_unique is over all memos. It is harmless dead code and the doc says so.
+- The probe cap counts entries before distinctBy(uuid). With duplicate uuids the first entry wins even when removed_locally differs. Trivial, but not stated.
+- The plans.isEmpty() branch of BundleService.figures opens a REPEATABLE READ transaction without SET TRANSACTION READ ONLY. It only reads, so this is cosmetic.
+- The SrTargets KDoc still says the phone merges 'by the ordering rule B' (the deleted inference rule).
+- docs/04 has no line for /figures. It returns every figure section on each call (measured 11,160 B gzip and 141,746 B raw for 3 routes) after every sync cycle and screen open, with no ETag or 304. That is within 2 GB a day, but the budget is not written down. Each call also costs about 141 ms of database time; I did not verify a per-endpoint rate limiter (the contract lists 429).
+- A mistyped paper memo number double counts until a reviewer matches the memos. This is a stated limit, and MEMO_DUPLICATE_SUSPECT only flags it.
+- The contract test was renamed from versionIs1210 to versionIs1190 but asserts 1.22.0. The name is misleading; nothing is weakened.
+- In the end-to-end and identity models, truth() is derived from the server's own VOIDED answer (dropped or droppedByServer). Any wrong VOIDED for a memo dated after through_date is therefore invisible to the tests.
+
+### endpoint-security-contract verdict=fail
+SUMMARY: Read-only review of POST /v1/sync/figures at b24178100 (lane/sr-targets-server). I read the diff against ffbe8d6fd and the delta from c6c799b69. Nothing was built, run or checked out. The fetch reported a ref-lock warning, but the local origin ref was already at b24178100.
+
+Verified in code:
+- Authorization: the endpoint accepts a phone token with role SR only (`p.isPhone && p.role == SR`, otherwise 403). AMO, TSO, admin and portal tokens are refused.
+- Scope: the routes come from the token user (planner.routesFor over primary and cover assignments). The body has only `for`, `probe` and `include_astha`. `for` must be from today up to the next working day, so a caller cannot ask for another user or a past day. FiguresRequest has additionalProperties false.
+- Ownership: each probe is matched with `user_id = :u OR acting_for_user_id = :u`. A foreign uuid takes exactly the same queries as an unknown uuid, and the answer is empty either way: no line count, no stored lines, no twin flag. The twin lookup is limited to the caller's own `entry_source = 'manual'` memos matched on the exact (memo_no, business_date) pair, and the answer carries the phone's uuid, never the twin's.
+- Caps: the 64 KiB limit is checked on Content-Length and again on the streamed body (gzip capped). The 300-probe check and the uuid and date parsing happen before any database work, and malformed input gets 400. Duplicate uuids are removed with distinctBy.
+- Transactions: the figures and the probe answer are read in one REPEATABLE READ, READ ONLY transaction through the same loadFigureSet the bundle uses. The routesFor planner only reads.
+- Memo statuses are active, voided and superseded only; held memos never reach app.memo, so they answer NOT IN.
+- The indexes the probe relies on exist in shipped V0007: UNIQUE (client_uuid, business_date), memo_no_unique (memo_no, business_date) and memo_line_no.
+- Migrations: only V0230..V0233 are added. Nothing at V0209 or below is touched. The renumbering to V0210..V0213 has not been done at this head.
+- Contract: the change is additive. The only removed yaml lines are the version (1.21.0 to 1.22.0), the AchievementRow and RouteSnapshot descriptions, and `memo_count`, which gained a description. Added: the postSyncFigures path; the schemas FiguresRequest, FigureProbeEntry, FiguresResponse, FigureProbeAnswer, FigureInMemo, FigureStoredLine, FigureRoute and the RouteCalendar, RouteKpi, RouteStar and RouteCampaign family; optional AchievementRow `as_of` and `through_date`; optional RouteSnapshot `calendar`, `kpi`, `star`, `campaigns` and the `*_truncated` flags. The required lists are unchanged, and the merge rule text appears once, in RouteSnapshot.
+- DECISIONS.md has 0 removed lines against the base.
+- Tests: the SrPhoneWouldShowTest rewrite maps each old assertion to an identity assertion, and I found none weakened. SrPhoneWouldShowIngestTest, which was lane-only and never in the base, was deleted. The measure test is opt-in through `assumeTrue(ARON_SCALE_MEASURE == "1")`.
+- The Astha hook returns the bundle's own programmes section built in the same transaction, or null. It is scoped by the user's reach and leaks nothing, but it still comes with no identity answer (see the lows).
+
+Two blocking findings:
+1. The request doc says SrFiguresEndToEndTest covers cases it does not.
+2. A today-dated memo whose line the server refused for good is counted with that line on the phone for the rest of the day, while the server never counts it. The endpoint gives no line state for stored memos dated after `through_date`.
+
+Not verified: any test run or CI; the phone lane's code; whether `reach.reach` in the Astha path writes anything; concurrent `/figures` load; whether a cover SR's memos can be enumerated through `open_memos`; cold-cache cost.
+
+#### BLOCKING upheld=3/3: The request doc says SrFiguresEndToEndTest covers held void and held edit releases, a paper twin after upload and a commit during the read; it does not, and a test name says the same
+WHERE: docs/requests/sr-programmes-phone-rule-b.md section 'Tests' ("SrFiguresEndToEndTest (the real ingest and the real endpoint: held memo released, held void and held edit released, zero-price line, admin data void, paper twin before and after upload, lost response, commit during the read)"); backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrFiguresEndToEndTest.kt aPaperTwinOfAMemoThePhoneHasNotUploadedIsNotCountedTwiceBeforeOrAfterItsUpload (line ~429)
+WHY: SrFiguresEndToEndTest has 10 tests: lost response, held memo released, accepted edit and void (not held), zero-price line, the cap, foreign uuid and read-only, sections equal the bundle's, the 409 money fix, admin data void, and a paper twin before upload only. It has no held void or held edit release: those run only at service level with SQL commits (SrPhoneWouldShowTest.idHeldVoid* and idHeldEdit*). It has no commit during the read: that is SrPhoneWouldShowTest and goes through BundleService.bundle(), not figures(). It has no paper twin after the phone's upload. The status file and DECISIONS D-TKPI-14 say plainly that held void/edit through ingest and the twin after upload are NOT covered, so the request doc, the binding text for the phone lane, contradicts them. The twin test is named BeforeOrAfterItsUpload but asserts only the case before upload. By the project rule, a claim in a request doc that the tests do not support is blocking.
+SCENARIO: The phone lane reads the request doc and trusts that the server proved a reviewer-released held void and a paper twin after upload end to end. A regression in matchBackfill (the phone copy held as memo_no_duplicate and then aliased) or in releaseHeld that changes the probe answer for these cases keeps every test green, because no HTTP-level test exercises them.
+
+LOWS:
+- A memo refused or discarded for good (reviewer discard of a held memo) answers NOT IN forever, so by the rule the phone adds it for the rest of the month while the server and dashboards never count it. The approved design lists 'refused' under NOT IN, so this is by design, but the removed lane test aDiscardedQuarantineIsNeverInTheFigureAndNeverAdded asserted the opposite and nothing replaces it. The contract and request doc should say whether a discarded memo is still 'live on the phone', and the twin truth in the tests treats it as live.
+- Ownership includes `acting_for_user_id = :u`. The primary SR can probe a cover SR's memo uuid acting for them and get IN, VOIDED or stored lines. uuids are 122-bit random and the memos are on the primary's own route, so this is not a practical leak. It does widen 'own records only', and it is untested (the foreign-uuid tests use another user with no acting_for). It is worth checking whether open_memos exposes such uuids.
+- No test for an AMO, TSO or other non-SR phone token: the 403 test uses only a web admin token. The role check exists in code (`p.role != Role.SR`).
+- The foreign-uuid tests assert only `in_figure` and `voided` are empty. They do not assert that `twin_ambiguous` is absent, and they do not probe another SR's manual memo by its memo_no (a twin across users). The code is correct: the twin query is own-only.
+- The read-only test counts rows in seven tables. `app.bundle_download` does not exist in any migration, so its count is -1 both times and that part cannot fail. app.domain_event (the outbox) is not counted, and row counts cannot detect an UPDATE. DECISIONS D-TKPI-14 says 'compares row counts of seven tables'; in effect it compares six.
+- The empty-plans path of BundleService.figures answers the probe in a REPEATABLE READ transaction without `SET TRANSACTION READ ONLY`. It only reads, but it is inconsistent with the main path.
+- There is no rate limit. AdmissionControl puts POST /v1/sync/figures in LoadClass.OTHER, which is never shed, and there is no per-device limiter. The contract still lists a 429 response. The cost is about 141 ms warm per call (measured serially, no concurrency). 'Never on a timer' is client guidance only; nothing says the server does not limit. A looping or abusive phone is bounded only by the request timeout.
+- Probe business_date values are not restricted to the bundle month: up to 300 distinct arbitrary dates go into `business_date = ANY(:d)` across partitions. The cost is bounded but needless; probes outside [first of month, for] could be skipped or refused.
+- The probe IN state does not check that the memo's route is among the response's `routes`. The contract rule still says 'for each own memo of the month' with no route qualifier, which carries over the earlier low: an SR moved off route A mid-month gets IN for A's memos that no returned figure holds.
+- Duplicate uuids in one request keep the first entry, so a duplicate with `removed_locally: true` after a false one gets no stored_lines. Bad `for` errors carry the pointer `query.for` although `for` is in the body.
+- Worst-case response size: 300 removed_locally IN answers x 60 stored_lines is several hundred KB raw. The measured typical size is 141,746 B raw / 11,160 B gzip per call, but docs/04 states no per-call or per-day budget for /figures, and the call frequency (after every sync cycle and on every screen open) is not bounded.
+- Astha hook: `include_astha` returns the bundle's programmes section (null when there is no programme; the test asserts it equals the bundle's), built in the same snapshot but with no identity answer. The phone must still merge Astha with the old acknowledgement-inference rule that the SR figures dropped. figures-astha-identity.md says so honestly; until the loyalty lane builds the astha probe, a phone mixing the two rules can misstate Astha.
+- The concurrency proof ('a commit during the read is answered IN exactly when the figure holds it') runs through BundleService.bundle(probe=...), a path no HTTP endpoint uses. /figures uses figures(), which has the same structure but its own code, and no concurrent-commit test covers it.
+- Migrations are still numbered V0230..V0233 at this head; the renumbering to V0210..V0213 is pending. The contract version says 1.22.0 while the descriptions say 'number provisional'.
+- (refuted 2/3) A today-dated memo stored with a line refused for good is counted with the refused line all day: the endpoint gives no line state for stored memos dated after through_date: For a memo dated after through_date the phone adds its own local contribution. The only answers are VOIDED or NOT IN, and IN with `lines` exists only for memos dated up to through_date. When the server stored the memo but refused one line for good (D-SALE-ZERO-PRICE-01 price_invalid, a final refusal), the phone keeps adding the refused line for the rest of the day. The rule forbids using the ack, so the phone cannot correct it. The contract calls refused lines server-authoritative and the request doc says the zero-price hole is closed by construction, but that is true only from the next day. Proof case (d) counts the phone's local contribution, not the stored one, so T(S) itself drifts from the stored truth for today. The same applies to any partial server-side change of a stored today memo.
