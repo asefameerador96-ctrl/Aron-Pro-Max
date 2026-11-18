@@ -43,9 +43,9 @@ class SrParity1ScreenshotTests {
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
     private val release = ReleaseInfo("1.0.25", 25, "arm64-v8a", "a".repeat(64), 25_000_000, "https://x/y.apk", "c".repeat(64), "New promotion modality., Login time 2FA verification., Sync file update without deleting.", "নতুন প্রচার পদ্ধতি। লগইনের সময় ২এফএ যাচাই। ফাইল আপডেট, কিছু মুছে না।")
 
-    private fun shot(name: String, language: AppLanguage = AppLanguage.BN, sunlight: Boolean = false, fontScale: Float = 1.0f, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage = AppLanguage.BN, sunlight: Boolean = false, fontScale: Float = 1.0f, amo: Boolean = false, tso: Boolean = false, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        rule.setContent { CompositionLocalProvider(LocalContext provides ctx, androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(androidx.compose.ui.platform.LocalDensity.current.density, fontScale = fontScale)) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx, androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(androidx.compose.ui.platform.LocalDensity.current.density, fontScale = fontScale)) { AronTheme(language, dark = tso, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, amo = amo, tso = tso) { content() } } }
         rule.waitForIdle()
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
@@ -62,5 +62,14 @@ class SrParity1ScreenshotTests {
     // D-PAR-SR1-04: the gradient bar keeps a long Bangla title to two lines then an ellipsis, at font scale 2.0, with back chevron and a trailing slot
     @Test fun bar_bn_long_title_font20() = shot("srp1_bar_bn_long_title_font20", fontScale = 2.0f) {
         com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar("আজকের বিক্রয় ও সংগ্রহের বিস্তারিত সারাংশ প্রতিবেদন এবং পূর্ববর্তী দিনের তুলনা", onBack = {}) }) {}
+    }
+
+    // D-PAR-SR1-07 / the lead's low 7: the legacy bar under the AMO and the TSO look with the same long Bangla title at font scale 2.0 (two lines, ellipsis, nothing clipped)
+    private val longTitle = "আজকের বিক্রয় ও সংগ্রহের বিস্তারিত সারাংশ প্রতিবেদন এবং পূর্ববর্তী দিনের তুলনা"
+    @Test fun bar_amo_long_title_font20() = shot("srp1_bar_amo_long_title_font20", fontScale = 2.0f, amo = true) {
+        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(longTitle, onBack = {}) }) {}
+    }
+    @Test fun bar_tso_long_title_font20() = shot("srp1_bar_tso_long_title_font20", fontScale = 2.0f, tso = true) {
+        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(longTitle, onBack = {}) }) {}
     }
 }

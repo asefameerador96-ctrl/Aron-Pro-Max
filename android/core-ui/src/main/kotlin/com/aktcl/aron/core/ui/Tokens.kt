@@ -451,6 +451,8 @@ object AronLook {
         targetTop = hex(0x0B4EA2), targetBottom = hex(0x0B4EA2),
         primaryStart = hex(0x00642F), primaryEnd = hex(0x00642F), stopFill = hex(0xB0001C), choiceFill = hex(0x0B4EA2),
         roundBack = true, targetCard = hex(0x0B5A8C), panelTop = hex(0x0B4EA2), panelBottom = hex(0x3A1E99),
+        // R-PAR-AMO-06 (D-PAR-SR1-08): the small column words on the blue end of the ramp hold 7:1 (was 0xE6DDF7 at 6.1:1; 0xF5F0FD measures 7.15:1 on the blue end, the 0xF1EBFB the request suggested only 6.86:1)
+        onPanelMuted = hex(0xF5F0FD),
     )
 
     /** The AMO look in Sunlight: [Sunlight] (solid white bars, black ink) with the deep green, red and navy fills and the round back arrow. */

@@ -11,8 +11,8 @@ class PreflightFailed(message: String) : RuntimeException(message)
  * migration whose guard raises on existing data stops the deploy while the schema is still at the old version, not half way through a train.
  * Every raising data guard of a pending migration has a mirror here (the SQL lives in `db/preflight`, packaged at `classpath:db/preflight`).
  *
- * Outcome by environment, decided from the environment the deploy itself declares ([ServerEnv], the job's `ARON_ENV`, set by the Bicep parameter,
- * never by a caller): everything but dev FAILS with what to do; dev ONLY repairs its test data (see [ClusterNames.repair]), re-checks, and fails if anything is left.
+ * Outcome by environment, decided from the RAW `ARON_ENV` the deploy itself declares (the job's value, set by the Bicep parameter, never by a caller; [DEV] exactly):
+ * everything else, an unset value included, FAILS with what to do; dev ONLY repairs its test data (see [ClusterNames.repair]), re-checks, and fails if anything is left.
  * A check that does not apply (its migration already applied, or the schema is too old / empty) is skipped without a trace.
  * The report lines carry zone codes, counts and ids, never a name.
  */
@@ -24,6 +24,8 @@ object MigrationPreflight {
         val id: String
         /** True when the migration is still pending and the tables it reads exist. */
         fun applies(c: Connection): Boolean
+        /** Dev repair only: takes the lock the repair needs, BEFORE the findings are read inside the repair's transaction. */
+        fun lock(c: Connection)
         /** Read-only. */
         fun findings(c: Connection): List<Finding>
         /** Dev only, inside the caller's transaction: makes the findings go away without deleting anything; returns the ids it changed. */
@@ -34,27 +36,38 @@ object MigrationPreflight {
 
     val CHECKS: List<Check> = listOf(ClusterNames)
 
-    fun run(ds: DataSource, env: ServerEnv, report: (String) -> Unit = {}, checks: List<Check> = CHECKS) {
+    /** The only value of the raw `ARON_ENV` that may repair: an unset value is NOT dev here (Settings' own default stays as it is elsewhere), nor is anything else (staging, prod, a typo). */
+    const val DEV = "dev"
+
+    fun run(ds: DataSource, declaredEnv: String?, report: (String) -> Unit = {}, checks: List<Check> = CHECKS) {
         for (check in checks) {
             val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
             if (found.isEmpty()) continue
             val summary = describe(check, found)
-            if (env != ServerEnv.DEV) {
+            if (declaredEnv != DEV) {
                 report("preflight ${check.id}: $summary")
                 throw PreflightFailed("pre-flight ${check.id} failed, nothing was changed: $summary. ${check.advice}")
             }
             report("preflight ${check.id} (dev): $summary; repairing the test data (lowest id kept, the others get an id suffix)")
-            val changed = ds.connection.use { c ->
-                c.autoCommit = false
-                try {
-                    c.createStatement().use { it.execute("SET LOCAL lock_timeout = '10s'") }
-                    val again = check.findings(c)   // read again under the repair's own transaction
-                    val ids = if (again.isEmpty()) emptyList() else check.repair(c, again)
-                    c.commit()
-                    ids
-                } catch (e: Exception) {
-                    c.rollback(); throw e
+            val changed = try {
+                ds.connection.use { c ->
+                    c.autoCommit = false
+                    try {
+                        c.createStatement().use { it.execute("SET LOCAL lock_timeout = '10s'") }
+                        check.lock(c)                          // the lock first, then the findings: nothing can change between the read and the repair
+                        val again = check.findings(c)
+                        val ids = if (again.isEmpty()) emptyList() else check.repair(c, again)
+                        c.commit()
+                        ids
+                    } catch (e: Exception) {
+                        runCatching { c.rollback() }; throw e
+                    }
                 }
+            } catch (e: Exception) {
+                // Only the SQLState, never the detail or the cause: a unique-violation detail carries a name.
+                val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<java.sql.SQLException>().firstOrNull()?.sqlState
+                report("preflight ${check.id} (dev): the repair failed (SQLState ${state ?: "none"}); nothing was changed")
+                throw PreflightFailed("pre-flight ${check.id}: the dev repair failed (SQLState ${state ?: "none"}); nothing was changed")
             }
             report("preflight ${check.id} (dev): renamed cluster ids $changed")
             val left = readOnly(ds) { c -> check.findings(c) }
@@ -87,9 +100,15 @@ object MigrationPreflight {
         }
 
         override fun applies(c: Connection): Boolean = c.createStatement().use { st ->
-            // V0191 pending = the clusters table exists and V0191's own function does not (it is the first thing V0191 creates).
-            st.executeQuery("SELECT to_regclass('app.cluster') IS NOT NULL AND to_regclass('app.zone') IS NOT NULL AND to_regprocedure('app.norm_cluster_name(text)') IS NULL").use { it.next() && it.getBoolean(1) }
+            // V0191 pending = the clusters and zones tables exist and Flyway's own history has no successful V0191 row (not the function's existence: the history is the record of what ran).
+            val tables = st.executeQuery("SELECT to_regclass('app.cluster') IS NOT NULL AND to_regclass('app.zone') IS NOT NULL").use { it.next() && it.getBoolean(1) }
+            if (!tables) return@use false
+            val hasHistory = st.executeQuery("SELECT to_regclass('flyway_schema_history') IS NOT NULL").use { it.next() && it.getBoolean(1) }
+            if (!hasHistory) return@use true
+            !st.executeQuery("SELECT EXISTS (SELECT 1 FROM flyway_schema_history WHERE success AND version ~ '^0*191$')").use { it.next() && it.getBoolean(1) }
         }
+
+        override fun lock(c: Connection) { c.createStatement().use { it.execute("LOCK TABLE app.cluster IN SHARE ROW EXCLUSIVE MODE") } }
 
         override fun findings(c: Connection): List<Finding> = c.createStatement().use { st ->
             st.executeQuery(sql).use { rs ->
@@ -99,22 +118,37 @@ object MigrationPreflight {
             }
         }
 
+        /** The character class of V0191's normalisation, read from the packaged check itself (one copy). */
+        private val classLiteral: String by lazy { Regex("normalize\\(c\\.name, NFC\\), ('\\[\\\\s[^']*\\]\\+'), ' ', 'g'\\)").find(sql)!!.groupValues[1] }
+
+        /** True when another cluster of the zone already has the candidate as its exact name or its normalised name. */
+        private fun taken(c: Connection, zoneCode: String, self: Long, candidate: String): Boolean {
+            fun norm(x: String) = "lower(btrim(regexp_replace(normalize($x, NFC), $classLiteral, ' ', 'g')))"
+            return c.prepareStatement(
+                "SELECT 1 FROM app.cluster k JOIN app.zone z ON z.id = k.zone_id WHERE z.code = ? AND k.id <> ? AND (k.name = ? OR ${norm("k.name")} = ${norm("CAST(? AS text)")}) LIMIT 1",
+            ).use { ps -> ps.setString(1, zoneCode); ps.setLong(2, self); ps.setString(3, candidate); ps.setString(4, candidate); ps.executeQuery().use { it.next() } }
+        }
+
         /**
          * Dev only. For each group keep the lowest id unchanged and rename the others by appending " #<id>" (the base cut so that the whole name stays within
          * [NAME_MAX] characters): unique under the normalisation (the id differs) and under the exact unique index. One transaction (the caller's), one audit
          * row per renamed cluster (through AuditLog.write, no actor, via `job`; the old and the new name are in the audit row, in the database, never in a log).
          */
         override fun repair(c: Connection, findings: List<Finding>): List<Long> {
-            c.createStatement().use { it.execute("LOCK TABLE app.cluster IN SHARE ROW EXCLUSIVE MODE") }
             val renamed = ArrayList<Long>()
             for (group in findings) for (id in group.ids.drop(1)) {
-                val suffix = " #$id"
                 val old = c.prepareStatement("SELECT name FROM app.cluster WHERE id = ? FOR UPDATE").use { ps ->
                     ps.setLong(1, id); ps.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
                 } ?: continue
-                val keep = old.codePointCount(0, old.length).coerceAtMost(NAME_MAX - suffix.length)
-                val base = old.substring(0, old.offsetByCodePoints(0, keep)).trimEnd()
-                val renamedTo = base + suffix
+                // The candidate is " #<id>" (then " #<id>-2", "-3", ...): checked against the exact AND the normalised names of the zone, so it never collides with a row that already carries that name.
+                var renamedTo = ""
+                for (attempt in 1..50) {
+                    val suffix = if (attempt == 1) " #$id" else " #$id-$attempt"
+                    val keep = old.codePointCount(0, old.length).coerceAtMost(NAME_MAX - suffix.length)
+                    val candidate = old.substring(0, old.offsetByCodePoints(0, keep)).trimEnd() + suffix
+                    if (!taken(c, group.where, id, candidate)) { renamedTo = candidate; break }
+                }
+                if (renamedTo.isEmpty()) error("no free name for cluster $id")
                 c.prepareStatement("UPDATE app.cluster SET name = ? WHERE id = ?").use { ps -> ps.setString(1, renamedTo); ps.setLong(2, id); ps.executeUpdate() }
                 // Through the platform's one audit writer (it redacts, and the hash chain is the trigger's): the caller's own connection and transaction, no actor (via `job`).
                 org.jdbi.v3.core.Jdbi.create(c).open().use { h ->

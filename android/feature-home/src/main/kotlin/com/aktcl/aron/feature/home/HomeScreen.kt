@@ -375,11 +375,14 @@ private fun KpiTile(label: String, value: String, modifier: Modifier) {
         modifier.heightIn(min = 84.dp).clip(shape).background(look.card).border(1.dp, if (look.sunlight) look.purple else KpiOutline, shape).padding(horizontal = 4.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        // one line that shrinks from 26 sp down to 12 sp before it would clip (a 5-digit stick count must stay whole)
-        Text(
-            value, color = look.ink, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
-            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 26.sp, stepSize = 1.sp),
-        )
+        // one line that shrinks from 26 sp down to 12 sp before it would clip (a 5-digit stick count must stay whole); centred in the room
+        // above the label, so a box stretched to the height of the taller stock boxes in its row keeps the figure balanced (D-PAR-SR1-07)
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                value, color = look.ink, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 26.sp, stepSize = 1.sp),
+            )
+        }
         Text(label, color = look.tileLabel, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
     }
 }
@@ -433,11 +436,15 @@ private fun PanelRow(label: String, value: String, color: Color, sp: Int, bold: 
  * The second panel (sr/home-2-kpis.webp): total discount, DRP discount and total QC in three columns, a rule, `সর্ব মোট` (the
  * gross) very large and `মোট টাকা` (the net payable) large, each with a glued ৳. Discount cells show 0.00 while docs/27 defers.
  */
+/** The second money panel's ramp (D-PAR-SR1-07): both ends hold 7:1 against the white key figures (the net `মোট টাকা` sits at the end). */
+internal val DiscountPanelStart = Color(0xFF5C3060)
+internal val DiscountPanelEnd = Color(0xFF764678)
+
 @Composable
 private fun DiscountPanel(m: HomeMoneyLines) {
     val look = LocalAronLook.current
     val white = look.onBar
-    val brush = if (look.sunlight) SolidColor(look.purple) else Brush.verticalGradient(listOf(Color(0xFF6A3F6E), Color(0xFFA06FA1)))
+    val brush = if (look.sunlight) SolidColor(look.purple) else Brush.verticalGradient(listOf(DiscountPanelStart, DiscountPanelEnd))
     Column(
         Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).clip(RoundedCornerShape(16.dp)).background(brush).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
