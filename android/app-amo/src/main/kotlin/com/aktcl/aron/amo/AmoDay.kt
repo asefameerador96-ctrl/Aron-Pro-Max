@@ -109,7 +109,7 @@ class AmoDay(
         dayGate.value = runCatching {
             val today = capture.attendanceRefusal(businessDate())
             if (today == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN && openWorkNow() != null &&
-                capture.openAttendanceDates().any { it < businessDate() }) null else today
+                capture.openAttendanceDates().any { it < businessDate() }) com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN else today
         }.getOrDefault(dayGate.value)
     }
     val reference = ReferenceRepository(db)
@@ -260,16 +260,48 @@ class AmoDay(
         if (openWorkNow() != null) return emptyList()
         val today = businessDate()
         val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
+        if (stale.isEmpty()) return emptyList()
+        // D-LEAD-PREREQ-04 ruling 2: ONE on-demand location attempt with the normal limit; the reading is stored when obtained, otherwise the fix says why not
+        val reading = runCatching { fixSource.readFix("attendance_out") }.getOrElse { com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false) }
+        val closed = ArrayList<String>()
         for (d in stale) {
             val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
-            val fix = com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false).toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val fix = reading.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val coords = if (reading.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", reading.lat, reading.lng) else null
             val event = com.aktcl.aron.core.database.entity.AttendanceEventEntity(
-                eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, null,
+                eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, coords,
             )
-            runCatching { commitAttendance(event, fix) }
+            if (runCatching { commitAttendance(event, fix) }.isSuccess) closed += d
         }
-        if (stale.isNotEmpty()) { attendance.restore(attendanceForScreen()); refreshDayGate() }
-        return stale
+        if (closed.isNotEmpty()) {
+            rolloverNotice.value = rolloverNotice.value.copy(closedDates = (rolloverNotice.value.closedDates + closed).distinct())
+            attendance.restore(attendanceForScreen()); refreshDayGate()
+        }
+        return closed
+    }
+
+    /** What the phone did for the rep after Dhaka midnight (see SrDay.rolloverNotice). */
+    val rolloverNotice = kotlinx.coroutines.flow.MutableStateFlow(com.aktcl.aron.feature.attendance.RolloverNotice())
+    fun dismissRolloverNotice() { rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice() }
+
+    /** D-LEAD-PREREQ-04 ruling 3 (see SrDay.abandonStaleCall): an earlier day's open call past 04:00 Dhaka of the next day is ended as abandoned by the phone, its unsaved draft dropped. */
+    suspend fun abandonStaleCall(): Boolean {
+        val v = visitSession.current.value ?: return false
+        val vd = visitDate(v)
+        if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
+        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
+        closeAbandoned(v)
+        if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
+        rolloverNotice.value = rolloverNotice.value.copy(abandonedOutletId = v.outletId, abandonedDate = vd, draftDropped = dropped)
+        return true
+    }
+
+    /** The ONE sequence of a start, a resume, the midnight timer and the end of an open call (see SrDay.resumeDay): restore, limit, close, re-read. */
+    suspend fun resumeDay() {
+        restoreOpenVisit()
+        abandonStaleCall()
+        closeForgottenDays()
+        attendance.restore(attendanceForScreen()); refreshDayGate()
     }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
@@ -497,7 +529,8 @@ class AmoDay(
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         // tso-manual A3: a call on a route closed by Final Submit is not restored (it cannot go on; D-A3-22)
-        val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
+        // D-LEAD-PREREQ-04 ruling 1: from the day of the OPEN CHECK-IN too (a call opened on D is found after a kill and a relaunch on D+1)
+        val last = FinalSubmitLock.callToRestoreAcross(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
         // tso-manual X4a follow-up (R-W-23): nor a call whose close the supervisor day's Sales Submit would refuse
         if (runCatching { capture.dayRefusal(last.meta, "visit_close") }.getOrNull() != null) return
         visitSession.restore(

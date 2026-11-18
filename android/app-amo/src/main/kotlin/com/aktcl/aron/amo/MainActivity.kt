@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                     s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                     runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
                                 )
-                                runCatching { d.reload(); d.closeForgottenDays(); d.attendance.restore(d.attendanceForScreen()); d.refreshDayGate() }
+                                runCatching { d.reload(); d.resumeDay() }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
@@ -205,7 +205,7 @@ class MainActivity : ComponentActivity() {
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
                                 // a session left open across Dhaka midnight: yesterday's check-in must not read as today's (rule 1); the AMO had no boundary handling at all
-                                day?.let { d -> dayScopeForResume.launch { runCatching { d.closeForgottenDays(); d.attendance.restore(d.attendanceForScreen()); d.refreshDayGate() } } }
+                                day?.let { d -> dayScopeForResume.launch { runCatching { d.resumeDay() } } }
                                 if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
                             }
                             // ONE timer for the next Dhaka midnight (no one-minute tick): the day state refreshes then, as the SR boundary effect does; the resume above covers the rest
@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(day, boundaryTick) {
                                 val d = day ?: return@LaunchedEffect
                                 kotlinx.coroutines.delay(d.millisToNextMidnight())
-                                runCatching { d.closeForgottenDays(); d.attendance.restore(d.attendanceForScreen()); d.refreshDayGate() }
+                                runCatching { d.resumeDay() }
                                 boundaryTick++
                             }
                             // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
@@ -223,7 +223,7 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(day, amoCallOpen, amoEditOpen) {
                                 val d = day ?: return@LaunchedEffect
                                 if (amoCallOpen || amoEditOpen) { amoWasOpen = true; runCatching { d.refreshDayGate() } }
-                                else if (amoWasOpen) { amoWasOpen = false; runCatching { d.closeForgottenDays(); d.attendance.restore(d.attendanceForScreen()); d.refreshDayGate() } }
+                                else if (amoWasOpen) { amoWasOpen = false; runCatching { d.resumeDay() } }
                             }
                             LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
                                 val d = day ?: return@LaunchedEffect
