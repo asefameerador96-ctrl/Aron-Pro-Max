@@ -2,10 +2,6 @@ package com.aktcl.aron.backend.masterdata
 
 import com.aktcl.aron.backend.platform.DbServerConfig
 import com.aktcl.aron.backend.platform.RegistryDefaults
-import com.aktcl.aron.contract.Role
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpMethod
-import io.ktor.http.HttpStatusCode
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -19,7 +15,7 @@ import kotlin.test.assertTrue
 /**
  * Round 1.20.0 (D-SV2-15, D-SV2-16), the two pieces that live in the master-data module: the worker rule that withdraws a
  * CHECKOUT_WITHOUT_SUBMIT signal when an effective Sales Submit of the user-date is stored (run as `worker_rw`: the API role may not
- * update `risk_signal`), and the admin's username rule for memo-producing roles (3 to 32 characters).
+ * update `risk_signal`). (The admin's 3-character username rule is the master-data train's, with its own tests in AdminUsersRoutesTest.)
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SrCheckoutRoundTest {
@@ -97,19 +93,5 @@ class SrCheckoutRoundTest {
         env.exec("ALTER TABLE app.route_day_event ENABLE TRIGGER route_day_event_immutable")
         assertEquals(0, ev.withdrawCheckoutWithoutSubmit(today))
         assertEquals("dismissed", status(c, withdrawn))
-    }
-
-    @Test
-    fun theAdminAcceptsAThreeCharacterMemoUsernameAndRefusesTwoOrAnInvalidOne() = env.app {
-        val admin = env.token("admin1001", Role.ADMIN)
-        val z = env.sql("SELECT id FROM app.zone WHERE code = 'Z-MIR'")!!.toLong()
-        suspend fun mk(u: String, role: String) = sendA1(HttpMethod.Post, "/admin/users", admin, """{"username":"$u","full_name":"Short $u","role":"$role","locale":"en","home_zone_id":$z}""")
-        val ok = mk("abc", "SR")
-        assertEquals(HttpStatusCode.Created, ok.status, ok.bodyAsText())
-        assertEquals(HttpStatusCode.Created, mk("amo", "AMO").status)
-        for (bad in listOf("ab", "1ab", "a-b", "a".repeat(33))) {
-            val r = mk(bad, "SR")
-            assertEquals(HttpStatusCode.BadRequest, r.status, "$bad -> ${r.bodyAsText()}")
-        }
     }
 }
