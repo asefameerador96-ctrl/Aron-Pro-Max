@@ -7159,7 +7159,9 @@ export interface components {
              * @description Projection over target.
              */
             achievement_bp: number | null;
+            /** @description Last month's sold quantity in the programme unit, over the CLOSED days of last month: FINAL only once last month has closed (all of it once `through_date` is past its end); a bundle built ahead on the last day of a month holds the days up to `through_date` only (the same days as `lmwd`). */
             lms: components["schemas"]["Decimal3"];
+            /** @description Last month's average daily sold quantity, `lms` divided by `lmwd`: FINAL only once last month has closed. Null when `lmwd` is 0 (no closed working day of last month at the cut, e.g. a bundle built ahead on the first day of a month whose first days are all non-working), never zero by default; a Decimal3 `0.000` means a real zero (no sale over the closed working days). */
             lmads: components["schemas"]["Decimal3"] | null;
             pads: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */

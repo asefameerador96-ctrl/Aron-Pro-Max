@@ -262,7 +262,7 @@ Source: contract/openapi.yaml, version 1.24.0.
 - `schemas/RouteCampaign.yaml` (1243 B)
 - `schemas/CampaignFigure.yaml` (496 B)
 - `schemas/CampaignSku.yaml` (337 B)
-- `schemas/RouteStar.yaml` (3434 B)
+- `schemas/RouteStar.yaml` (4177 B)
 - `schemas/RouteSnapshot.yaml` (8039 B)
 - `schemas/PrintTemplate.yaml` (736 B)
 - `schemas/SupervisorSection.yaml` (1006 B)
