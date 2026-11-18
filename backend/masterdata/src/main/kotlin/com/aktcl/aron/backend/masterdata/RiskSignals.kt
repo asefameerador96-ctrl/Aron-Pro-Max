@@ -214,7 +214,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
     private val log = LoggerFactory.getLogger("aron.risk")
 
     private companion object {
-        const val LATE_REPORT_DAYS = 7
+        const val LATE_REPORT_DAYS = 1
         val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")
     }
 
@@ -364,7 +364,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
 
     /**
      * The gate onsets whose OWN time falls on [date] (Dhaka business date), whichever report carried them: a report sent days later, or the same event re-sent across Dhaka
-     * midnight after a kill, counts on the date the event happened and once (the identity is phone, user, time and flags). Reports of [date] up to [LATE_REPORT_DAYS] days later are read.
+     * midnight after a kill, counts on the date the event happened and once (the identity is phone, user, time and flags). Reports of [date] up to [LATE_REPORT_DAYS] day later are read: the job evaluates today and yesterday only, so a read window longer than that would never be used (an onset reported two or more days late stays in its status report and makes no risk row).
      */
     private fun integrityEvents(h: Handle, date: LocalDate): List<IntegrityEventRow> {
         var skipped = 0
@@ -401,10 +401,15 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
     }
 
     private fun store(h: Handle, hit: RiskHit, date: LocalDate, score: Double, version: Long) {
+        // A phone-signal row (DEVICE_INTEGRITY_FAIL, DEVICE_MOCK_APP_PRESENT, ...) can share its key with another writer's row of the same code and device (the Play Integrity
+        // verdict row of DeviceService uses the same device UUID): the evidence is MERGED (the phone's members refresh, the other writer's stay) and the score is the higher of the two.
+        val phone = (hit.evidence["source"] as? JsonPrimitive)?.content in setOf("phone_signals", "integrity_events")
+        val evidenceOnConflict = if (phone) "risk_signal.evidence || EXCLUDED.evidence" else "EXCLUDED.evidence"
+        val scoreOnConflict = if (phone) "GREATEST(risk_signal.score, EXCLUDED.score)" else "EXCLUDED.score"
         h.createUpdate(
             "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version) " +
                 "VALUES (:c, :sev, :d, :st, :sid, :u, :r, :score, CAST(:ev AS jsonb), :cv) " +
-                "ON CONFLICT (code, subject_type, subject_id, business_date) DO UPDATE SET score = EXCLUDED.score, evidence = EXCLUDED.evidence, config_version = EXCLUDED.config_version, updated_at = now()",
+                "ON CONFLICT (code, subject_type, subject_id, business_date) DO UPDATE SET score = $scoreOnConflict, evidence = $evidenceOnConflict, config_version = EXCLUDED.config_version, updated_at = now()",
         ).bind("c", hit.code).bind("sev", hit.severity).bind("d", date).bind("st", hit.subjectType).bind("sid", hit.subjectId).bind("u", hit.userId).bind("r", hit.routeId)
             .bind("score", score).bind("ev", hit.evidence.toString()).bind("cv", version).execute()
     }

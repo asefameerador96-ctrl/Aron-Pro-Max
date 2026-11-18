@@ -65,4 +65,4 @@ backend-core item 2 (suites as `api_rw`) remains theirs and is the guard for the
 
 ## Update 2026-11-18 (android-integrity lane, A-INT3)
 
-`app.device_lab_exemption` (V0202, number provisional) is deleted by `DELETE /v1/admin/devices/{id}/lab-exemption` (`LabExemptionService.revoke`). The forward migration V0204 (provisional, renumbered at landing) adds the `api_rw` DELETE row to `app.db_role_grant` for it. Tell infra: the switch still waits for the other rows above; this one is covered by V0204.
+`app.device_lab_exemption` (V0206) is deleted by `DELETE /v1/admin/devices/{id}/lab-exemption` (`LabExemptionService.revoke`). The forward migration V0208 adds the `api_rw` DELETE row to `app.db_role_grant` for it. Tell infra: the switch still waits for the other rows above; this one is covered by V0208.

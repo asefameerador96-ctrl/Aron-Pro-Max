@@ -307,4 +307,23 @@ class RiskSignalsTest {
         assertEquals(2, hits.size, "two reps with the identical instant on one phone are both counted")
         assertEquals("1", hits.first { it.userId == 1L }.evidence["blocked_events"].toString(), "the same instant written two ways counts once")
     }
+
+    /** Review: the phone-signal DEVICE_INTEGRITY_FAIL row used to overwrite the Play Integrity row's evidence (same code, device UUID, date). Both writers' members stay, the higher score wins. */
+    @Test
+    fun aPhoneSignalRowMergesWithThePlayIntegrityRowInsteadOfOverwritingIt() {
+        val db = env.fresh.db; val cfg = DbServerConfig(db, RegistryDefaults())
+        val a = env.ids.getValue("sr1001"); val dev = insertDevice(); val day = LocalDate.parse("2027-05-16"); val uuid = deviceUuid(dev)
+        db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, evidence, config_version) VALUES ('DEVICE_INTEGRITY_FAIL', 4, '$day', 'device', '$uuid', $a, 90, '{\"verdict\":\"fail\",\"play_integrity\":true}', 1)")
+            h.createUpdate(
+                "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, device_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present, signals) " +
+                    "VALUES (:d, 'visit', :u, :uid, :dev, CAST('2027-05-16T04:00:00Z' AS timestamptz), 'visit_open', 'ok', 23.8, 90.36, 12, 'fused', false, false, false, false, false, true, false, CAST('{root_hint}' AS text[]))",
+            ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", a).bind("dev", dev).execute()
+        }
+        RiskSignalEvaluator(db, cfg).evaluateDay(day); RiskSignalEvaluator(db, cfg).evaluateDay(day)
+        assertEquals(1, env.scalar("SELECT count(*) FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND subject_id = '$uuid' AND business_date = '$day'")!!.toInt())
+        val ev = env.scalar("SELECT evidence::text FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND subject_id = '$uuid' AND business_date = '$day'")!!
+        assertTrue(ev.contains("\"verdict\"") && ev.contains("\"phone_signals\""), ev)
+        assertEquals("90.00", env.scalar("SELECT score FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND subject_id = '$uuid' AND business_date = '$day'"))
+    }
 }

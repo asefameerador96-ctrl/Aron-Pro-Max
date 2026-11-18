@@ -429,6 +429,7 @@ class AmoDay(
         committer = { v, f ->
             // tso-manual A3 (D-TSO-MAN-31): no control, joint or sale call on a route closed by its zone's Final Submit
             // ([routeLocked]); the visit flow shows the refusal as a failed commit and nothing is stored
+            com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate first: a refused visit must not leave a claimed photo behind (D-OWNER-MDM-02)
             FinalSubmitLock.requireCallOpen(db, v.meta)
             v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
             capture.recordVisitOpen(v, f); runCatching { requestSync() }

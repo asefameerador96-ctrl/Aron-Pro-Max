@@ -33,7 +33,10 @@ internal object PhoneEvidenceShape {
         return null
     }
 
-    private fun isCode(e: kotlinx.serialization.json.JsonElement) = e is JsonPrimitive && e.isString && e.content.length in 1..MAX_CODE_LEN
+    private val CODE = Regex("^[a-z0-9_]{1,$MAX_CODE_LEN}$")
+
+    /** A code: lower-case letters, digits and underscore only, 1..32 characters (it is stored, shown in the portal and put into evidence). */
+    private fun isCode(e: kotlinx.serialization.json.JsonElement) = e is JsonPrimitive && e.isString && CODE.matches(e.content)
 
     private fun events(v: kotlinx.serialization.json.JsonElement?): String? {
         if (v == null || v is JsonNull) return null

@@ -2016,7 +2016,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
-| `signals` | text[] | null |  | Anti-spoofing codes the phone found for this fix (contract 1.19.0 GeoFix.signals): hard mock_flag, mock_app_selected, test_provider; soft test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework. NULL = an older phone sent none (unknown, not clean); an empty array = the phone checked and found nothing. |
+| `signals` | text[] | null |  | Anti-spoofing codes the phone found for this fix (contract 1.21.0 GeoFix.signals): hard mock_flag, mock_app_selected, test_provider; soft test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework. NULL = an older phone sent none (unknown, not clean); an empty array = the phone checked and found nothing. |
 
 Keys: `UNIQUE (source_client_uuid, slot, business_date)`; `PRIMARY KEY (id, business_date)`
 

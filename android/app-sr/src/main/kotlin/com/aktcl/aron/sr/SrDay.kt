@@ -119,7 +119,7 @@ class SrDay(
         }
     }
 
-    /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
+    /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the trusted-clock calendar) from this user's bundle. */
     fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
 
     internal val database: AronDatabase get() = db
@@ -592,6 +592,7 @@ class SrDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { v, f ->
             // tso-manual A3 (D-TSO-MAN-31): no new call on a route-day closed by its zone's Final Submit; the flow shows a failed commit
+            com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate first: a refused visit must not leave a claimed photo behind (D-OWNER-MDM-02)
             FinalSubmitLock.requireCallOpen(db, v.meta)
             v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
             capture.recordVisitOpen(v, f); runCatching { requestSync() }

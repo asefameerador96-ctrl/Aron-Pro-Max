@@ -52,7 +52,7 @@ class PhoneEvidenceShapeTest {
     @Test fun fixSignalsMustBeABoundedListOfCodes() {
         assertNull(sig("[]")); assertNull(sig("null")); assertNull(sig("""["jump","speed"]"""))
         assertNull(PhoneEvidenceShape.error("visit", visit, Json.parseToJsonElement("""{"fix":{}}""").jsonObject), "absent means unknown, and is fine")
-        for (bad in listOf("{}", "\"jump\"", "7", "[1]", "[{\"a\":1}]", "[[\"jump\"]]", "[null]", "[\"\"]", "[\"${"x".repeat(33)}\"]", "[" + List(17) { "\"c$it\"" }.joinToString(",") + "]"))
+        for (bad in listOf("[\"Jump\"]", "[\"a-b\"]", "[\"<b>x</b>\"]", "[\"a b\"]", "[\"\\u00e9\"]", "{}", "\"jump\"", "7", "[1]", "[{\"a\":1}]", "[[\"jump\"]]", "[null]", "[\"\"]", "[\"${"x".repeat(33)}\"]", "[" + List(17) { "\"c$it\"" }.joinToString(",") + "]"))
             assertNotNull(sig(bad), "must be refused: $bad")
         assertNull(sig("[" + List(16) { "\"c$it\"" }.joinToString(",") + "]"))
     }
