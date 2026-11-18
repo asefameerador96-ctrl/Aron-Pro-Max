@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.database.repo.AttendanceRefusal
-import com.aktcl.aron.core.database.repo.closedByPhone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -42,6 +41,11 @@ class AmoMidnightRestoreTest {
 
     private fun at(date: String, h: Int, m: Int) = LocalDate.parse(date).atTime(h, m).toInstant(ZoneOffset.ofHours(6)).toEpochMilli()
     private fun next() = LocalDate.parse(d0).plusDays(1).toString()
+    /** The `closed_by` member of the QUEUED payload of an attendance record (null when absent): what really goes on the wire. */
+    private fun closedByOnTheWire(uuid: String): String? = runBlocking {
+        val row = f.db.outboxDao().byClientUuid(uuid)!!
+        kotlinx.serialization.json.Json.parseToJsonElement(row.payloadJson).let { it as kotlinx.serialization.json.JsonObject }["payload"]!!.let { it as kotlinx.serialization.json.JsonObject }["closed_by"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+    }
     private fun checkOuts(date: String) = runBlocking { f.db.captureDao().attendanceOn(date).filter { it.kind == "check_out" } }
 
     @Test fun aControlCallOpenedOnDIsRestoredAtStartAfterMidnightAndTheDayIsNotClosedUnderIt() = runBlocking {
@@ -73,7 +77,8 @@ class AmoMidnightRestoreTest {
         f.day.resumeDay()
         val out = checkOuts(d0).single()
         assertEquals(reads + 1, f.fixReads)
-        assertTrue(out.closedByPhone())
+        assertEquals("phone", closedByOnTheWire(out.clientUuid))
+        assertTrue("the local mark agrees", f.day.capture.phoneMarks().any { it.kind == "day_closed" && it.businessDate == d0 })
         assertEquals("ok", f.db.captureDao().fix(out.fixClientUuid)!!.fixStatus)
         assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
     }

@@ -592,6 +592,12 @@ class SrDay(
         }
     }
 
+    /**
+     * D-AGATE-22 (item 4): what the app's composition effects call. A Room read failure inside [resumeDay] (restoring an open call, reading the attendance) must never crash the
+     * app: it is caught here (cancellation is rethrown, never swallowed) and the next start, resume or boundary tries again, exactly as the AMO does.
+     */
+    suspend fun resumeDaySafely() { com.aktcl.aron.feature.attendance.catching { resumeDay() } }
+
     @Volatile private var nextSequence = 1
     suspend fun nextSequenceFromStore() { nextSequence = db.captureDao().visitsOn(businessDate()).size + 1 }
 
@@ -681,7 +687,10 @@ class SrDay(
     }
 
     /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
-    suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
+    suspend fun slipNotPrinted(): Boolean = slipNotPrintedOn(businessDate())
+
+    /** D-AGATE-22 (item 2): the same for ONE date: the automatic Sales Submit of a forgotten day reads the slip of the day it closes, not today's. */
+    suspend fun slipNotPrintedOn(date: String): Boolean = db.captureDao().stockOn(date).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
     private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)

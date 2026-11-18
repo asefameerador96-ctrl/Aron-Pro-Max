@@ -145,6 +145,13 @@ class SaleFlow(
         val s = ui.value
         s.committed?.let { return it }
         val draft = checkNotNull(s.draft) { "no sale in progress" }
+        // D-AGATE-22 (item 3): a Save that landed in Room but whose coroutine was cancelled before the screen state was set is still a saved memo: look it up by the draft's own memo UUID
+        // (as `start` does) BEFORE the closed-call refusal, so a retry after the call was closed in between answers with the stored memo, never "nothing was saved"
+        committer.existing(draft.memoUuid)?.let { landed ->
+            store.clear(draft.visitUuid)
+            ui.value = s.copy(committed = landed)
+            return landed
+        }
         if (draft.edit == null && isCallClosed(draft)) {
             // D-AGATE-19: the call was closed while this sale was open: nothing is written; the rep is told so (never the generic "save failed")
             val problems = listOf<ReviewProblem>(ReviewProblem.CallClosed)

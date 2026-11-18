@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.database.repo.AttendanceRefusal
-import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.rules.QtyUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,6 +42,11 @@ class SrMidnightRestoreTest {
     private fun at(date: String, h: Int, m: Int) = LocalDate.parse(date).atTime(h, m).toInstant(ZoneOffset.ofHours(6)).toEpochMilli()
     private lateinit var d0: String
     private fun next() = LocalDate.parse(d0).plusDays(1).toString()
+    /** The `closed_by` member of the QUEUED payload of an attendance record (null when absent): what really goes on the wire. */
+    private fun closedByOnTheWire(uuid: String): String? = runBlocking {
+        val row = f.db.outboxDao().byClientUuid(uuid)!!
+        kotlinx.serialization.json.Json.parseToJsonElement(row.payloadJson).let { it as kotlinx.serialization.json.JsonObject }["payload"]!!.let { it as kotlinx.serialization.json.JsonObject }["closed_by"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+    }
     private fun checkOuts(date: String) = runBlocking { f.db.captureDao().attendanceOn(date).filter { it.kind == "check_out" } }
 
     /** Kill at 23:50, relaunch at 00:30: the call is restored from the day of the open check-in and the day is NOT closed under it (the review's scenario). */
@@ -100,13 +104,13 @@ class SrMidnightRestoreTest {
         f.day.resumeDay()
         val out = checkOuts(d0).single()
         assertEquals("one on-demand attempt", reads + 1, f.fixReads)
-        assertTrue("always marked as closed by the phone", out.closedByPhone())
+        assertEquals("closed_by = phone on the wire, from the DAY_CLOSED mark of the same transaction", "phone", closedByOnTheWire(out.clientUuid))
+        assertTrue("and the local mark is there, agreeing with it", f.day.capture.phoneMarks().any { it.kind == "day_closed" && it.businessDate == d0 })
         val fix = f.db.captureDao().fix(out.fixClientUuid)!!
         assertEquals("the reading is stored when obtained", "ok", fix.fixStatus); assertNotNull(fix.lat)
         assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
         f.day.resumeDay()
         assertEquals("idempotent: not closed twice", 1, checkOuts(d0).size)
-        assertFalse("a check-out captured on its own date is the rep's, not marked", out.copy(meta = out.meta.copy(capturedAt = d0 + "T10:00:00.000Z")).closedByPhone())
     }
 
     /**
@@ -305,6 +309,16 @@ class SrMidnightRestoreTest {
             g.day.resumeDay()
             assertFalse("the screen opens with the first result", g.day.attendance.state.value.settling)
         }
+    }
+
+    /** D-AGATE-22 (item 4): a Room failure inside the day's resume is caught by the function the app calls (it must not crash the app); the plain resumeDay still throws it. */
+    @Test fun aRoomFailureInTheResumeIsCaughtByTheFunctionTheAppCalls() = runBlocking {
+        f.trustAt(at(next(), 10, 0))
+        f.db.openHelper.writableDatabase.execSQL("DROP TABLE visit") // the restore of an open call now throws a database error (not a cancellation)
+        var threw = false
+        try { f.day.resumeDay() } catch (t: Throwable) { threw = true }
+        assertTrue("the plain resume surfaces the failure (so the test is meaningful)", threw)
+        f.day.resumeDaySafely() // must return normally
     }
 
     private fun day() = f.day

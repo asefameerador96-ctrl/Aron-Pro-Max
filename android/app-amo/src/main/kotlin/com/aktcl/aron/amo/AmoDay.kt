@@ -656,7 +656,10 @@ class AmoDay(
     }
 
     /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
-    suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
+    suspend fun slipNotPrinted(): Boolean = slipNotPrintedOn(businessDate())
+
+    /** D-AGATE-22 (item 2): the same for ONE date: the automatic Sales Submit of a forgotten day reads the slip of the day it closes, not today's. */
+    suspend fun slipNotPrintedOn(date: String): Boolean = db.captureDao().stockOn(date).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
     private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)

@@ -278,7 +278,7 @@ fun SrApp(
         // the open call is restored from the day of the open check-in, an earlier call past its 04:00 limit is ended, and a day the rep never checked out of is closed by
         // the phone BEFORE anything else (D-AGATE-06, D-LEAD-PREREQ-04): one function, the same for start, resume, the midnight timer and the end of a call
         // D-AGATE-15: not awaited (the close of a forgotten day makes one location attempt of up to ~30 s; the shell, the permission redirect and the bundle never wait for it)
-        launch { day.resumeDay(); day.taskBoard.load() }
+        launch { day.resumeDaySafely(); day.taskBoard.load() }
         day.attendance.refreshSubmit()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
@@ -288,7 +288,7 @@ fun SrApp(
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
         // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
-        day.resumeDay(); day.reload(); day.taskBoard.load()
+        day.resumeDaySafely(); day.reload(); day.taskBoard.load()
         boundary++; resumeTick++
     }
     // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
@@ -299,7 +299,7 @@ fun SrApp(
         if (srCallOpen || srEditOpen) { srWasOpen = true; day.refreshDayGate() }
         else if (srWasOpen) {
             srWasOpen = false
-            day.resumeDay(); day.reload(); resumeTick++
+            day.resumeDaySafely(); day.reload(); resumeTick++
         }
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
@@ -315,7 +315,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.resumeDay(); day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.resumeDaySafely(); day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }

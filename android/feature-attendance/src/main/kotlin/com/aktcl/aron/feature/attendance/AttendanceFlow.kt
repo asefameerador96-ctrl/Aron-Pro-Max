@@ -179,10 +179,13 @@ class AttendanceFlow(
     private suspend fun capture(kind: String, purpose: String): AttendanceResult {
         ui.value = ui.value.copy(busy = true)
         try {
+            // D-AGATE-22 (item 1): a check-out is stamped when the rep PRESSED the button, before the location read (up to about 30 s), so a press at
+            // 23:59:45 whose fix returns at 00:00:10 is still a rep's check-out of that day, never a time on the next date.
+            val pressedMeta: CaptureMeta? = if (kind == "check_out") metaProvider.meta(routeIdOf() ?: 0L) else null
             val fix = fixes.readFix(purpose)
             val eventUuid = newUuid()
             val fixEntity = fix.toEntity(newUuid(), eventUuid, purpose, 0)
-            val meta: CaptureMeta = metaProvider.meta(routeIdOf() ?: 0L).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
+            val meta: CaptureMeta = (pressedMeta ?: metaProvider.meta(routeIdOf() ?: 0L)).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
                 // a check-out closes the day of the OPEN CHECK-IN, also after Dhaka midnight (its business date is explicit, not "today")
                 .let { m -> if (kind == "check_out") openDate?.let { d -> m.copy(businessDate = d) } ?: m else m }
             val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null

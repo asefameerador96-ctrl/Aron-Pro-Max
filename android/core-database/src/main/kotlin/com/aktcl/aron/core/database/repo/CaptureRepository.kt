@@ -445,7 +445,9 @@ class CaptureRepository(
         submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
         capture.insertFix(fix)
         capture.insertAttendance(event)
-        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+        // D-AGATE-22 (item 1): closed_by says WHO closed, read from the phone's own DAY_CLOSED mark written in this same transaction (never from comparing times)
+        val byPhone = phoneMarks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED && it.businessDate == date }
+        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso(), closedByPhone = byPhone)))
         phoneMarks.forEach { capture.insertPhoneMark(it) } // D-AGATE-18: the phone closed this day: marker and check-out commit together
         rows
     }
