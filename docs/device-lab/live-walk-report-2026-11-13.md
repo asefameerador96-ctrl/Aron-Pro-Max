@@ -74,6 +74,27 @@ Also seen on the second visit to Friends Store: the outlet screen said "You are 
 Units: every quantity seen on SR (home cards, Stock, Sales Submit, KPI) uses field units (packets, boxes, dozen), as the owner's rule requires.
 Language was English during this pass; Bangla was not checked.
 
+## 3. AMO app (already logged in as `amo1001` when the walk reached it; 2026-11-18; version 0.3.116)
+
+"Opens" means the screen opens, Back returns, and there is no crash or ERROR/FATAL line in the log slice. Reference match: not done yet.
+
+| # | Step | Result | Notes |
+|---|---|---|---|
+| 01 | Home | opens | 17 tiles (Attendance, Joint Call, Control Call, Team Location, Team Performance, Task Delegation, Live Dashboard, SR Stock, Outlet with badge 14, Stock, Sale, Memo, Summary, Sales Submit, Report, Sales Journey, Settings); solid purple header; cold start 518 ms |
+| 02 | Attendance | opens | "You have not checked in yet. Please check in before you start work."; Check in / Check out; "No location yet" |
+| 03-04 | Joint Call, Control Call | opens | "Select a route", "Select retailer" (not exercised: needs an SR route and a call) |
+| 05 | Team Location | opens, **see O4** | Lists the SR; "The map is not available on this phone. The list shows the last known positions." |
+| 06 | Team Performance | opens | Targets and achievements in field units (packets, boxes, dozen) |
+| 07 | Task Delegation | opens | "No tasks assigned yet" (not exercised) |
+| 08 | Live Dashboard | opens | Geo Fencing Status, Login and Sales Submit Status, Live Strike Rate, "All routes" filter |
+| 09 | SR Stock | opens | Three routes, "TEST SR (MIRPUR)", total outlets |
+| 10 | Outlet | opens | New outlet, outlet closure and outlet correction verification, My requests, Change cluster, Change information, Permanently closed, Shop operations |
+| 11-14 | Stock, Sale, Memo, Summary | open | "Connecting to the printer..." shows on Stock, Memo and Summary (the printer was off); Summary: "Nothing found" |
+| 15 | Sales Submit | opens | Per-category device and server counts, all 0 and "-" ; "Sync again" |
+| 16 | Report | opens | "STD Memo Report" and "Sales Summary Up To Now" |
+| 17-19 | Sales Journey, Settings | open | Settings: App update, PDA to Support, Printer diagnostics, Sunlight mode, Log out, version 0.3.116 (2116) |
+| 20 | Outlet verification queues (new, closure, correction) | opens, **see O5** | Each says "Nothing to verify" |
+
 ## Defects and observations, in the order a field user would notice them
 
 - **D1. Sales Submit: "6 records were rejected by the server", no reason given.** The device holds 1 outlet, a sale (Cigarette 3 packets,
@@ -84,6 +105,9 @@ Language was English during this pass; Bangla was not checked.
   line "Only 0 packets in stock for MaxR-10S.", but the quantity stayed at 1, the cart total counted it (92.00) and Proceed opened the
   memo with the item. A second tap on + did not raise it. Whether a soft warning is the intended rule needs a ruling (the stock card on Home
   says issue 31 / stock 28 packets, yet most SKUs show stock 0 or 1 on this list: please compare with the server's issue for this SR).
+- **O3. Settings and Sales Submit disagree on SR.** Settings says "0 waiting to upload, Last sync 3 min ago" while Sales Submit shows 1 packet waiting and 7 rejected records.
+- **O4. AMO Team Location shows no map** ("The map is not available on this phone"), while SR draws its map fine on the same phone; the cause is not determined (maps key or a missing map component in the AMO build).
+- **O5. AMO Outlet tile shows a badge of 14** but the three verification queues all say "Nothing to verify"; where the 14 come from is not shown. The SR force-sale photos (outlet location correction requests) were not found in the queue either.
 - **O1. Attendance says "No location yet"** although check-in is done and location is on. Possibly by design (location is sampled on demand), worth a ruling.
 - **O2. Check Out is gated until 5 PM and until Sales Submit** (by design per the screen text); not exercised.
 
@@ -92,6 +116,6 @@ Language was English during this pass; Bangla was not checked.
 - Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
 - Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
 - Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
-- AMO and TSO walks: the apps are installed but not logged in; the owner logs in once, then they can be driven.
+- AMO: only viewing was done (no call, no verification, no task); the TSO walk is not started and TSO is not logged in.
 - Comparison of each screen with `docs/ui-reference/`, Bangla pass, rotation, font size and dark mode, Sunlight mode.
 - Section 6 budgets beyond the cold start above.
