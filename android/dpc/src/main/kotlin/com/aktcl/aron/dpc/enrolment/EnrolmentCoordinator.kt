@@ -62,11 +62,11 @@ sealed interface EnrolmentState {
 }
 
 /**
- * Enrolment after QR provisioning (docs/24 s10.4 steps 3-4; N-030). The provisioning activity stores the validated extras
+ * Device registration (docs/24 s10.4 steps 3-4; N-030). The registration screen stores the validated extras
  * ([accept]); [run] then creates the device key once (challenge SHA-256(token)), sends `POST /v1/devices/enrol` and, on
  * success, applies the policy before login, records the device UUID and the key alias, deletes any other device key and
  * forgets the token. A retry after a lost response sends the same UUID and key, so the server can recognise it. A refused
- * token is final: the pending key is deleted and the portal must issue a new QR.
+ * token is final: the pending key is deleted and the portal must issue a new token.
  */
 class EnrolmentCoordinator(
     private val store: EnrolmentStore,
@@ -78,7 +78,7 @@ class EnrolmentCoordinator(
 ) {
     private val mutex = Mutex()
 
-    /** Stores the provisioning extras; the same token scanned again keeps the UUID and key of the first attempt. */
+    /** Stores the validated extras; the same token entered again keeps the UUID and key of the first attempt. */
     fun accept(extras: EnrolmentExtras) {
         store.acceptPending(extras, newUuid)?.let { stale -> keys.delete(stale) }
     }
@@ -88,7 +88,7 @@ class EnrolmentCoordinator(
 
     private suspend fun runLocked(): EnrolmentState {
         store.enrolled()?.let { done ->
-            // A post-enrolment step that failed earlier (policy apply, UUID record) is completed before anything else.
+            // A post-enrolment step that failed earlier (the UUID record) is completed before anything else.
             if (store.postEnrolPending()) store.enrolledResponse()?.let { finish(it, done.keyAlias) }
             return done
         }
@@ -102,7 +102,7 @@ class EnrolmentCoordinator(
             }
             // Base64 with line wraps would make a retry differ from the first send; store the canonical form.
             val updated = p.copy(keyAlias = alias, publicKey = jwk, chain = chain.map { c -> c.filterNot { it.isWhitespace() } })
-            // Saved only if no new QR replaced the pending enrolment meanwhile.
+            // Saved only if no new token replaced the pending enrolment meanwhile.
             if (!store.replacePending(p, updated)) { keys.delete(alias); return EnrolmentState.Waiting("superseded") }
             p = updated
         }
@@ -148,7 +148,7 @@ class EnrolmentCoordinator(
             onEnrolled(response, alias)
             store.clearPostEnrolPending()
         } catch (e: Exception) {
-            // Kept pending: the next run() retries the policy apply; the enrolment itself is not lost.
+            // Kept pending: the next run() retries the post-enrolment step; the enrolment itself is not lost.
         }
     }
 
@@ -160,7 +160,7 @@ class EnrolmentCoordinator(
 }
 
 /**
- * Pending, refused and enrolled state in no-backup storage. The token lives here only between provisioning and a
+ * Pending, refused and enrolled state in no-backup storage. The token lives here only between entry and a
  * successful or refused enrolment, then it is deleted (it is a one-time credential, never logged).
  */
 class EnrolmentStore(private val dir: File) {

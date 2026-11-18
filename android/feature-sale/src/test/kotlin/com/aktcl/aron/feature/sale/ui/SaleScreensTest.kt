@@ -325,6 +325,13 @@ class CallPromptsTest {
         compose.onNodeWithText("You can edit a sale only at the shop, inside the geofence.").assertExists()
         compose.onNodeWithText("Wrong SKU").assertDoesNotExist()
     }
+
+    @Test fun editDeniedForAFakeLocationSaysSoAndWhatToDo() {
+        compose.setContent { AronTheme(AppLanguage.EN) { EditReasonScreen(com.aktcl.aron.feature.sale.domain.EditDenied.MockLocation, {}) } }
+        compose.onNodeWithText("fake location was detected", substring = true).assertExists()
+        compose.onNodeWithText("uninstall any fake-GPS app", substring = true).assertExists()
+        compose.onNodeWithText("Wrong SKU").assertDoesNotExist()
+    }
 }
 
 @RunWith(AndroidJUnit4::class)

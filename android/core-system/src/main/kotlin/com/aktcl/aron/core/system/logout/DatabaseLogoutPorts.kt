@@ -18,6 +18,7 @@ class DatabaseLogoutPorts(
     private val unsentPhotosCount: suspend () -> Int,
     private val closeDatabaseAction: suspend () -> Unit,
     private val forgetCredentialsAction: suspend () -> Unit = {},
+    private val clearDeviceTracesAction: suspend () -> Unit = {},
 ) : LogoutPorts {
     override suspend fun unsentRecords(): Int {
         val outbox = db().outboxDao()
@@ -28,6 +29,7 @@ class DatabaseLogoutPorts(
     override fun requestSync() = requestSyncAction()
     override suspend fun closeUserDatabase() = closeDatabaseAction()
     override suspend fun forgetCredentials() = forgetCredentialsAction()
+    override suspend fun clearDeviceTraces() = clearDeviceTracesAction()
     override fun userFiles(): List<File> =
         LogoutFlow.databaseFiles(context.getDatabasePath("x").parentFile!!, userId) +
             LogoutFlow.mediaDir(context.filesDir, userId) +

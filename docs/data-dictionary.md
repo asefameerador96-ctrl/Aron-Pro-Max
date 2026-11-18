@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 183 | 3039 |
+| `app` | 184 | 3053 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -62,6 +62,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
 | [`app.device_command`](#appdevice_command) | table | backend:mdm | ONLINE | audit | personal | MDM command to one device (lock, unlock, message, locate, reboot, factory reset, apply policy): idempotent by command_id, pushed by FCM and pulled by the DPC; a factory reset needs a second person (D-MDM-01). |
 | [`app.device_directive`](#appdevice_directive) | table | backend:config | ONLINE | ops | none | A signed remote directive sent to a phone, with delivery and acknowledgement times. |
+| [`app.device_lab_exemption`](#appdevice_lab_exemption) | table | backend:analytics | ONLINE | audit | none | The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days. |
 | [`app.device_nonce`](#appdevice_nonce) | table | backend:auth | SERVER | session | none | Single-use server nonce for a Play Integrity request or key attestation. |
 | [`app.device_otp`](#appdevice_otp) | table | backend:auth | ONLINE | session | secret | One-time code a TSO issues to bind a phone to a user, stored as hash and encrypted for display. |
 | [`app.device_policy`](#appdevice_policy) | table | backend:config | SERVER | ops | none | The device policy rendered for a phone at a given policy version, with its hash. |
@@ -1331,6 +1332,25 @@ Keys: `PRIMARY KEY (directive_id)`
 
 References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`
 
+## app.device_lab_exemption
+
+The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days.
+
+`owner: backend:analytics | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `device_id` | bigint | not null |  | The enrolled phone the exemption is for; one row per device (a new grant replaces the row). |
+| `granted_by` | bigint | not null |  | The portal user (Super Admin or an Admin with the mdm module write grant) who granted it. |
+| `granted_at` | timestamp with time zone | not null |  | UTC time the exemption was granted. |
+| `expires_at` | timestamp with time zone | not null |  | UTC time the exemption ends; at most 14 days after granted_at. The signed grant carries the same time, and the phone also caps it. |
+| `note` | text | null |  | Why the phone needs it (for example the walk it is for); free text, at most 300 characters. |
+| `grant_token` | text | null |  | The server-signed grant (ECDSA P-256 over the device uuid, the API host, granted_at and expires_at), signed ONCE when the exemption is granted and stored so the bundle that carries it is the same bytes on every fetch. NULL delivers nothing. Not a secret: it only works on the one phone and environment it names and the phone verifies it with a public key. |
+
+Keys: `PRIMARY KEY (device_id)`
+
+References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`
+
 ## app.device_nonce
 
 Single-use server nonce for a Play Integrity request or key attestation.
@@ -1976,7 +1996,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `fix_age_ms` | bigint | null |  | Age of the fix in milliseconds when the phone used it. |
 | `time_to_fix_ms` | integer | null |  | Milliseconds the phone took to obtain the fix. |
 | `request_priority` | text | null |  | Location request priority the phone used: high_accuracy or balanced. |
-| `is_mock` | boolean | not null |  | True when the location came from a mock location provider (never geo-valid). |
+| `is_mock` | boolean | not null |  | True when the phone treated the fix as mocked: the platform mock flag OR an inferred hard code (a selected mock-location app, a test provider; D-AINT-06). The codes in signals tell the two apart; a fix from a phone older than contract 1.19.0 carries only this flag. A mocked fix is never geo-valid. |
 | `reused` | boolean | not null |  | True when the phone reused a recent fix instead of requesting a new one. |
 | `refresh_count` | smallint | null |  | Number of times the fix was refreshed before it was used. |
 | `gnss` | jsonb | null |  | JSON GNSS summary as received from the phone. |
@@ -1996,6 +2016,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `signals` | text[] | null |  | Anti-spoofing codes the phone found for this fix (contract 1.21.0 GeoFix.signals): hard mock_flag, mock_app_selected, test_provider; soft test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework. NULL = an older phone sent none (unknown, not clean); an empty array = the phone checked and found nothing. |
 
 Keys: `UNIQUE (source_client_uuid, slot, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -4892,6 +4913,13 @@ Records held for a human decision with their payload and resolution.
 | `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
 | `reopened_at` | timestamp with time zone | null |  | When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never. |
 | `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
+| `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. The whole marker (this column, awaited_uuid, awaited_field, accepted_parent_uuid, waiting_release_code, awaited_refused, waiting_checked_at) is cleared automatically by a trigger when the item is closed, re-opened or changes its code, and a CHECK refuses a marker on a non-open row (D-LOY-API-31); a re-hold with the same status and code keeps it by design. |
+| `awaited_uuid` | uuid | null |  | The parent a waiting item waits for (D-LOY-API-30). |
+| `awaited_field` | text | null |  | The field of the parent a waiting item waits for, e.g. visit_client_uuid (D-LOY-API-31). |
+| `accepted_parent_uuid` | uuid | null |  | The parent whose accept released this child into waiting (D-LOY-API-30). |
+| `waiting_release_code` | text | null |  | The override the reviewer's accept carried for this child at that time: the code of a same-uploader, same-device child; null otherwise (D-LOY-API-30). The automatic release carries exactly this. |
+| `awaited_refused` | boolean | not null |  | The awaited parent is refused or discarded; refreshed at every sweep pass (D-LOY-API-30). |
+| `waiting_checked_at` | timestamp with time zone | null |  | When the sweep last examined this waiting item; the least recently examined go first (D-LOY-API-30). |
 
 Keys: `UNIQUE (client_uuid, payload_sha256)`; `UNIQUE (resolution_uuid)`; `PRIMARY KEY (id)`
 

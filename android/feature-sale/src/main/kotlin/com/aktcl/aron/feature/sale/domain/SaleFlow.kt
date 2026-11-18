@@ -111,11 +111,12 @@ class SaleFlow(
         set
     }
     suspend fun setSlide(skuId: Long, emptyPackets: Long) = edit { SaleDraftOps.setSlide(it, skuId, emptyPackets) }
-    suspend fun setQc(entry: QcEntry) = edit { SaleDraftOps.setQc(it, entry) }
+    /** A QC write on a draft whose QC is already submitted is ignored (the page is read-only then); the draft ops still refuse it, so nothing can throw into a coroutine of the screen. */
+    suspend fun setQc(entry: QcEntry) = edit { if (it.qcCompleted) it else SaleDraftOps.setQc(it, entry) }
     suspend fun setPaid(paidMtk: Long?) = edit { SaleDraftOps.setPaid(it, paidMtk) }
     suspend fun confirmZeroSale(reasonCode: String? = null) = edit { SaleDraftOps.confirmZeroSale(it, reasonCode) }
     suspend fun startQcOnly() = edit { SaleDraftOps.startQcOnly(it) }
-    suspend fun cancelQcOnly() = edit { SaleDraftOps.cancelQcOnly(it) }
+    suspend fun cancelQcOnly() = edit { if (it.qcCompleted) it else SaleDraftOps.cancelQcOnly(it) }
     suspend fun withEdit(edit: EditContext) = lock.withLock {
         if (givenBackFor != edit.supersedesMemoUuid) {
             val catalog = withGiveBack(edit.supersedesMemoUuid)
@@ -140,7 +141,7 @@ class SaleFlow(
         if (r.problems.any { it is ReviewProblem.QcAboveCap || it is ReviewProblem.NetNegative || it is ReviewProblem.TooManyQcRows }) return@withLock
         editLocked { SaleDraftOps.completeQc(it) }
     }
-    suspend fun restoreQc(entries: List<QcEntry>) = edit { SaleDraftOps.replaceQc(it, entries) }
+    suspend fun restoreQc(entries: List<QcEntry>) = edit { if (it.qcCompleted) it else SaleDraftOps.replaceQc(it, entries) }
 
     /** Commits the sale; [editFix] is required (and only allowed) for an edit. Returns the same result on a repeat call. */
     suspend fun commit(editFix: GeoFixEntity? = null): CommittedSale = lock.withLock {

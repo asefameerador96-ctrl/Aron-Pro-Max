@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,18 +70,27 @@ fun SearchPickerField(
     val look = LocalAronLook.current
     var open by rememberSaveable(tag) { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
-    Row(
-        modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(shape).background(look.card)
-            .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
-            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
-        verticalAlignment = Alignment.CenterVertically,
+    // the old SR's form field (manual 42, 43): a white card, the label above, and the choice in a purple-outlined box with the caret
+    val edge = if (isError) look.red else look.purple
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(look.card).padding(AronTokens.Space.L),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
-        Text(
-            selected?.label ?: title, Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else if (isError) look.red else look.inkMuted,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
-        Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.inkMuted)
+        // with nothing chosen the box repeats the label as its grey hint, so the label above is for the eye only (one spoken text, as before)
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = if (selected == null) Modifier.clearAndSetSemantics { } else Modifier)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(RoundedCornerShape(8.dp)).border(1.5.dp, edge, RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
+                .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selected?.label ?: title, Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else look.inkMuted,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.ink)
+        }
     }
     if (open) PickerDialog(title, searchHint, items, emptyText, onDismiss = { open = false }, onPick = { open = false; onPick(it) })
 }

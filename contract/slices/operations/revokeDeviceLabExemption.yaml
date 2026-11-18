@@ -1,0 +1,26 @@
+path: /v1/admin/devices/{device_id}/lab-exemption
+method: delete
+operation:
+  tags:
+  - admin-devices
+  operationId: revokeDeviceLabExemption
+  summary: Withdraw a phone's lab exemption (idempotent).
+  description: The phone drops the grant with its next full day bundle (a bundle without the value); until then
+    it keeps it up to its expiry. Audited.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  responses:
+    '200':
+      description: The device without a lab exemption.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Device'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -70,6 +70,8 @@ fun AronTile(
     menu: Boolean = false,
     labelColor: Color? = null,
     enabled: Boolean = true,
+    /** With no [icon]: a round gradient disc with this glyph in white (the Settings language and Log out tiles, manual 63); null keeps the plain gradient square. */
+    glyph: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(TileRadius)
@@ -91,6 +93,9 @@ fun AronTile(
             // menu tiles (sr/outlet-menu.png, three per row) carry a picture of about 78 % of the tile width; Home a fixed 56 dp
             val iconModifier = if (menu) Modifier.fillMaxWidth(MenuIconFraction).sizeIn(maxWidth = MenuIconMax).aspectRatio(1f) else Modifier.size(AronLook.TileIcon)
             if (icon != null) Image(icon, contentDescription = null, modifier = iconModifier)
+            else if (glyph != null) Box(iconModifier.clip(CircleShape).background(look.verticalBrush()), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.Icon(glyph, contentDescription = null, tint = Color.White, modifier = Modifier.fillMaxSize(0.55f))
+            }
             else Box(iconModifier.clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
             Spacer(Modifier.weight(1f).heightIn(min = 8.dp))
             TileLabel(label, labelColor ?: look.tileLabel)

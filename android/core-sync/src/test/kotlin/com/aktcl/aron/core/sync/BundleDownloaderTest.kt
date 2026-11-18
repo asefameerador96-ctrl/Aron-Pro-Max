@@ -122,10 +122,10 @@ class BundleDownloaderTest {
         runCatching { server.close() }
     }
 
-    private fun downloader(origin: String = server.url("/").toString().trimEnd('/')): BundleDownloader {
+    private fun downloader(origin: String = server.url("/").toString().trimEnd('/'), labGrant: (String?, Long?) -> Unit = { _, _ -> }): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(origin, allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
-        return BundleDownloader(db, SyncApi(client), staging, Clock)
+        return BundleDownloader(db, SyncApi(client), staging, Clock, labGrant)
     }
 
     private suspend fun assertDayIsInRoom() {
@@ -268,6 +268,52 @@ class BundleDownloaderTest {
 
     private companion object {
         const val USER = 1001L
+    }
+
+    // ---- D-OWNER-MDM-02 iii: the lab grant in a full day bundle (device-scoped `cfg.integrity.lab_exemption`)
+
+    private fun withLabGrant(token: String?, scope: String = "device"): String {
+        val b = Json.parseToJsonElement(fullBundle()).jsonObject
+        val cfg = b["config"]!!.jsonObject
+        val values = JsonArray(cfg["values"]!!.jsonArray + (if (token == null) emptyList() else listOf(Json.parseToJsonElement(
+            """{"key":"cfg.integrity.lab_exemption","value":"$token","scope_type":"$scope","scope_id":7,"effective_from":null,"requires_ack":false}"""))))
+        return JsonObject(b + ("config" to JsonObject(cfg + ("values" to values)))).toString()
+    }
+
+    @Test fun aDayBundleThatCarriesTheGrantHandsItToTheGateAndOneWithoutItWithdraws() = runBlocking {
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
+        bundleBody = { withLabGrant("tok.sig") }
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals(listOf<String?>("tok.sig"), seen)
+        assertEquals("the response's own server time travels with the grant (it is what the phone judges freshness and expiry against)", listOf<Long?>(java.time.Instant.parse("2026-10-05T02:12:44.120Z").toEpochMilli()), times)
+        bundleBody = { withLabGrant(null).replace("2026-10-05:3", "2026-10-05:4") }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals("a full bundle without the value is the server withdrawing it", listOf<String?>("tok.sig", null), seen)
+    }
+
+    @Test fun onlyTheDeviceScopedValueCountsAndOnlyAnAppliedDayBundleSpeaks() = runBlocking {
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
+        bundleBody = { withLabGrant("tok.sig", scope = "global") }
+        downloader(labGrant = { t, st -> seen += t; times += st }).download()
+        assertEquals("a value of another scope is not a grant", listOf<String?>(null), seen)
+        seen.clear()
+        // offline, an older snapshot, a failed or unreadable bundle and a prefetch never grant and never revoke
+        bundleBody = { withLabGrant("tok.sig").replace("2026-10-05:3", "2026-10-05:2") }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.OLDER_IGNORED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        bundleBody = { """{"meta": {"bundle_version": "2026-10-05:9"}}""" }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.FAILED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        bundleBody = {
+            val b = Json.parseToJsonElement(withLabGrant("tok.sig")).jsonObject
+            val meta = JsonObject(b["meta"]!!.jsonObject + mapOf("bundle_version" to JsonPrimitive("2026-10-06:1"), "valid_for_business_date" to JsonPrimitive("2026-10-06"), "is_prefetch" to JsonPrimitive(true)))
+            JsonObject(b + ("meta" to meta) + ("routes" to JsonArray(b["routes"]!!.jsonArray.take(1)))).toString()
+        }
+        assertEquals(BundleOutcome.PREFETCH_STORED, downloader(labGrant = { t, st -> seen += t; times += st }).download("2026-10-06").outcome)
+        server.close()
+        assertEquals(BundleOutcome.OFFLINE, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals(emptyList<String?>(), seen)
     }
 
     // ---- F-SYS-007: bundle delta refresh

@@ -106,6 +106,7 @@
     <string name="edit_reason_wrong_sku">Wrong SKU</string>
     <string name="edit_reason_wrong_quantity">Wrong quantity</string>
     <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_denied_mock">This sale cannot be edited: a fake location was detected. Turn off and uninstall any fake-GPS app, then go back and try again.</string>
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
@@ -160,7 +161,16 @@
     <string name="sale_amo_discount">Discount</string>
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">Quantity</string>
+    <string name="qc_col_fault">Fault type</string>
+    <string name="qc_col_type">Type</string>
+    <string name="qc_col_qty">Quantity</string>
+    <string name="qc_fault_mfc">MFC Fault</string>
+    <string name="qc_fault_mkt">MKT Fault</string>
+    <string name="qc_col_qctype">QC type</string>
     <string name="review_problem_call_closed">This call has already ended, so the sale was not saved. Nothing was recorded for it.</string>
     <string name="review_later_title">Saved memo shown</string>
     <string name="review_later_body">The memo had already been saved before your last changes. The saved memo is shown; the changes you made after it were not saved. Edit the memo if they are needed.</string>
+    <string name="qc_discard_message">Discard everything entered in QC?</string>
+    <string name="qc_summary_none">No product has QC yet</string>
+    <string name="qc_entry_title">QC entry</string>
 </resources>

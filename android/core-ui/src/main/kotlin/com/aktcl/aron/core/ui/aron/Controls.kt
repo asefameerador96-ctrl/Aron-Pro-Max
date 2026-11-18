@@ -145,6 +145,23 @@ fun AronSolidButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
     ) { Text(text, style = lookStyle(18.sp, bold = true, color = Color.White, align = TextAlign.Center), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 }
 
+/**
+ * The charcoal button of the old SR (the "না" under হ্যাঁ, রিফ্রেশ under ফোর্স সেল; manual 19, 30): a dark grey fill with a bold white label,
+ * 52 dp, 8 dp radius. [AronLook.DarkButtonFill] against white is above 10:1, so the label meets the 7:1 rule in every look; disabled uses the look's
+ * disabled fill with its disabled text.
+ */
+@Composable
+fun AronDarkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val look = LocalAronLook.current
+    val fill = if (enabled) AronLook.DarkButtonFill else look.disabledFill
+    val ink = if (enabled) Color.White else look.secondaryDisabledText
+    Box(
+        modifier.heightIn(min = AronLook.ButtonHeight).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(fill)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = lookStyle(18.sp, bold = enabled, color = ink, align = TextAlign.Center), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+}
+
 /** The outlined button for the grey page (the grey [AronSecondaryButton] vanishes on `#E8E8E8`): white fill, purple hairline and label. */
 @Composable
 fun AronOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {

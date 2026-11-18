@@ -16,7 +16,10 @@ class FixManagerSource(private val manager: FixManager, private val cycle: (purp
 }
 
 internal fun TakenFix.toReading() = FixReading(
-    status = fixStatus.wire, lat = lat, lng = lng, accuracyM = accuracyM, isMock = isMock, provider = provider.wire,
+    status = fixStatus.wire, lat = lat, lng = lng, accuracyM = accuracyM,
+    // A HARD spoof signal (selected mock app, test provider) counts as a mocked fix everywhere a fix is refused (D-OWNER-MDM-02);
+    // the exact codes, including the plain mock flag, are in `signals`.
+    isMock = isMock || hardSpoof, signals = signals, provider = provider.wire,
     fixTime = fixTime, fixElapsedRealtimeMs = fixElapsedRealtimeMs, fixAgeMs = fixAgeMs, timeToFixMs = timeToFixMs,
     requestPriority = requestPriority.wire, reused = reused, gnssJson = gnssJson,
     deviceOwner = device.deviceOwner, devOptionsEnabled = device.devOptionsEnabled, adbEnabled = device.adbEnabled,
