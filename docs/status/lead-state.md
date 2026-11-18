@@ -322,3 +322,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - ops-diagnose-api c0ec3a56: FAIL -> ruling: remove include_messages from the workflow; restore Flyway proof labels.
 - gates-2 662a4e74 ready (scanner aside). A-PROG2 173b369f: ActionGate first, no Room 12 needed; final pass owed after its last display items.
 - P-SR1b local 442fdccf not pushed (owner approval in that session).
+
+## 2026-11-18 13:00
+- sr-server 9b69fba3 (V0209 + D-SV2-22): PASS both parts. Ready for the next server train once the scanner step is green.
+- ops-diagnose-api 5f0df7f0: one blocking left (downloaded PG server-log path prints free text); round 7 sent.
+- sr-targets-server: clock-based rule withdrawn after 3 failed rounds; no-clock design approved (figures from memo tables in one repeatable-read tx; phone rule by own sync order). Successor lane T-KPI3 = session_014mnioQ69orMsmNhwJntrJC on lane/sr-targets-server (c4babda99).
+- apsis-migration df219237: FAIL (8 distinct blocking), fix round 2 sent; hist_ro reader role ruled.
+- Owner asked for a full catch-up; given at ~12:40 (scanner exception first, two push approvals, final-account decisions, dump questions, programme rules, app decisions, device walks).
+- Open rule question (old, not from this merge): a corrected resend after a final schema_invalid is quarantined as payload_conflict (reviewable, not dropped). Decide for all final rejects later; logged, not blocking.
