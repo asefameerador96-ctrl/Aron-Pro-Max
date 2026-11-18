@@ -8,6 +8,8 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   workers: 1,
+  // A committed test.only must fail the CI run, not shrink it: the shards would run fewer tests and still add up to the shortened list (D-CI-E2E-04).
+  forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   // AUD-TP-6: on CI a test that passed only on its retry is flaky; the github reporter annotates it and the JSON report
   // feeds the "flaky e2e tests" step in ci.yml, so a flake never passes silently.
