@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.aktcl.aron.feature.sale.R
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
@@ -113,4 +115,12 @@ fun SaleRoute(
     // a save the transaction refused is worded with the SAME problem texts the review uses (SKU, held figure, unit; or "already edited")
     val refusalText = ui.refusal.takeIf { it.isNotEmpty() }?.map { problemText(it) }?.joinToString("\n\n")
     SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, refusalText, manual = quantityPopup)
+    // D-AGATE-25: the Save had already been stored; changes made after it are not in the memo
+    var laterShown by remember(ui.committed?.memoUuid) { mutableStateOf(true) }
+    if (ui.laterChangesNotSaved && laterShown) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(R.string.review_later_title), stringResource(R.string.review_later_body), stringResource(R.string.sale_yes_ok),
+            onConfirm = { laterShown = false }, onDismiss = { laterShown = false },
+        )
+    }
 }

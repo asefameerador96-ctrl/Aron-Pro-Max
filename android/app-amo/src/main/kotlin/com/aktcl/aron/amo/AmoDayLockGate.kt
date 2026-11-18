@@ -157,22 +157,24 @@ fun AmoDayLockDialog(day: AmoDay, onOk: () -> Unit) {
 
 /**
  * tso-manual X4a follow-up (R-W-23): the words of a capture refused because the day's sales are already submitted (the AMO's
- * supervisor-day Sales Submit stands): the Sales Submit title and feature-dayclose's `submit_blocked_done`, bn and en.
+ * supervisor-day Sales Submit stands): the Sales Submit title and feature-dayclose's `submit_blocked_done`, bn and en; when a call is ended ([ofCallsDay]) `amo_gate_day_submitted` (D-AGATE-22).
  */
 @Composable
-fun AmoDaySubmittedDialog(onOk: () -> Unit) {
+fun AmoDaySubmittedDialog(onOk: () -> Unit, ofCallsDay: Boolean = false) {
     com.aktcl.aron.core.ui.aron.AronDialog(
-        stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title), stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
+        // D-AGATE-22 (item 8): when a CALL is ended (the gate's Close, leaving a control call) the call may be of an EARLIER day, so the words say "the day of this call", never "today's sales"
+        stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title),
+        stringResource(if (ofCallsDay) AmoR.string.amo_gate_day_submitted else com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
         stringResource(AmoR.string.amo_ok), onConfirm = onOk, onDismiss = onOk,
     )
 }
 
 /** tso-manual X4a follow-up (R-W-23): the words of [why]: the lock text, or the submit text. */
 @Composable
-fun AmoRefusalDialog(day: AmoDay, why: DayRefusal, onOk: () -> Unit) {
+fun AmoRefusalDialog(day: AmoDay, why: DayRefusal, onOk: () -> Unit, ofCallsDay: Boolean = false) {
     when (why) {
         DayRefusal.FINAL_SUBMIT -> AmoDayLockDialog(day, onOk)
-        DayRefusal.SALES_SUBMIT -> AmoDaySubmittedDialog(onOk)
+        DayRefusal.SALES_SUBMIT -> AmoDaySubmittedDialog(onOk, ofCallsDay)
     }
 }
 

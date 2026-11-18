@@ -57,6 +57,12 @@ data class AttendanceState(
 /** What is still open at check-out: the rep must close it first (D-AGATE-06). Checked at the press, from stored state, never from a flag. */
 enum class OpenWork { OPEN_CALL, OPEN_EDIT }
 
+/**
+ * D-AGATE-22 (item 6): thrown INSIDE the check-out's transaction when work opened in the gap between the press check and the commit (a call committed while the location read ran).
+ * Nothing is written; [AttendanceFlow] turns it into [AttendanceResult.Refused] with the same words as the press check.
+ */
+class OpenWorkAtCheckOutException(val open: OpenWork) : IllegalStateException("check-out refused: $open is open")
+
 /** Result of a check-in or check-out press. */
 sealed interface AttendanceResult {
     data class Done(val event: AttendanceEventEntity, val fix: FixReading) : AttendanceResult
@@ -179,10 +185,13 @@ class AttendanceFlow(
     private suspend fun capture(kind: String, purpose: String): AttendanceResult {
         ui.value = ui.value.copy(busy = true)
         try {
+            // D-AGATE-22 (item 1): a check-out is stamped when the rep PRESSED the button, before the location read (up to about 30 s), so a press at
+            // 23:59:45 whose fix returns at 00:00:10 is still a rep's check-out of that day, never a time on the next date.
+            val pressedMeta: CaptureMeta? = if (kind == "check_out") metaProvider.meta(routeIdOf() ?: 0L) else null
             val fix = fixes.readFix(purpose)
             val eventUuid = newUuid()
             val fixEntity = fix.toEntity(newUuid(), eventUuid, purpose, 0)
-            val meta: CaptureMeta = metaProvider.meta(routeIdOf() ?: 0L).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
+            val meta: CaptureMeta = (pressedMeta ?: metaProvider.meta(routeIdOf() ?: 0L)).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
                 // a check-out closes the day of the OPEN CHECK-IN, also after Dhaka midnight (its business date is explicit, not "today")
                 .let { m -> if (kind == "check_out") openDate?.let { d -> m.copy(businessDate = d) } ?: m else m }
             val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
@@ -191,11 +200,16 @@ class AttendanceFlow(
                 committer.commit(event, fixEntity)
             } catch (t: kotlinx.coroutines.CancellationException) {
                 throw t
+            } catch (t: OpenWorkAtCheckOutException) {
+                // D-AGATE-22 (item 6): a call opened while the fix was being read; the transaction found it and wrote nothing
+                ui.value = ui.value.copy(checkOutBlockedBy = t.open)
+                return AttendanceResult.Refused(t.open)
             } catch (t: Throwable) {
                 return AttendanceResult.Failed
             }
             if (kind == "check_in") openDate = event.meta.businessDate
-            val at = nowIso()
+            // a check-out shows the STORED press time (what a restore shows and what is uploaded), not the time the fix came back
+            val at = if (kind == "check_out") event.meta.capturedAt else nowIso()
             val cur = ui.value
             ui.value = recompute(
                 if (kind == "check_in") at else cur.checkedInAt,

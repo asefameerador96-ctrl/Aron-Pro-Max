@@ -331,7 +331,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      * scope as [submitWriter]). Loads the SKU categories first so the money totals match the manual Sales Submit.
      */
     internal fun autoDaySubmits() = com.aktcl.aron.feature.dayclose.AutoDaySubmits(
-        db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day",
+        db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { date -> !day.slipNotPrintedOn(date) }, scope = "supervisor_day",
     )
 
     internal fun submitWriter() =
