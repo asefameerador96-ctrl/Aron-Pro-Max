@@ -138,4 +138,14 @@ class AmoMidnightRestoreTest {
         f.trustAt(at(next(), 3, 0))
         assertTrue(f.day.millisToNextMidnight() in (3_600_000L - 5_000)..(3_600_000L + 5_000))
     }
+
+    /** D-AGATE-15 lows: after midnight, the call's end-check and an in-call stock movement use the CALL's date (D), never the clock's (D+1). */
+    @Test fun endCallIfClosedAndStockMetaUseTheCallsDateAfterMidnight() = runBlocking {
+        val v = f.controlCall(); f.day.visitSession.restore(v)
+        f.supervisorDaySubmitted()                         // the supervisor day of D stands
+        f.trustAt(at(next(), 0, 30))
+        assertEquals("an in-call stock movement carries the call's date", d0, f.day.stockMeta().businessDate)
+        assertNotNull("D's submit closes the call; D+1's clock date would have found nothing", f.day.sale.endCallIfClosed())
+        assertNull(f.day.visitSession.current.value)
+    }
 }

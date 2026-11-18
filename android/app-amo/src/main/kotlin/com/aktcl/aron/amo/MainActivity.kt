@@ -326,7 +326,7 @@ class MainActivity : ComponentActivity() {
                                     val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { databases.of(s.user.userId).referenceDao().outlet(id)?.name }.getOrNull() } }
                                     if (why == null || (earlierCall && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) content(back) else {
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
-                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
                                             com.aktcl.aron.feature.attendance.CheckInFirst(
                                                 why, onCheckIn = { navigate(AmoScreen.ATTENDANCE) },
                                                 onCloseCall = if (openCallNow != null && (earlierCall || k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) { { dayScope.launch { day?.closeVisit(); back() } } } else null,

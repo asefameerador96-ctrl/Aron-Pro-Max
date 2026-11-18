@@ -695,6 +695,7 @@ class AmoDay(
      * it set with no call open.
      */
     internal fun stockMeta(): CaptureMeta = metaProvider.meta(0L).copy(routeId = visitSession.current.value?.routeId?.takeIf { it != 0L })
+        .let { m -> visitSession.current.value?.let { v -> visitDate(v).takeIf { it < m.businessDate } }?.let { m.copy(businessDate = it) } ?: m } // D-AGATE-15: in a call across midnight, the call's date
 
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
