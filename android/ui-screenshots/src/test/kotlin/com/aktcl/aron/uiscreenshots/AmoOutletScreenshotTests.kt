@@ -1,5 +1,8 @@
 package com.aktcl.aron.uiscreenshots
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -122,10 +125,16 @@ class AmoOutletScreenshotTests {
         )
     }
 
-    private fun basePick(canUpdate: Boolean) = @Composable {
+    /** The Update Base form as the host composes it: [stage] 0 = nothing chosen (screenshot 62 left), 1 = route chosen (alphabet bar), 2 = retailer chosen (button enabled). */
+    private fun basePick(canUpdate: Boolean, stage: Int = if (canUpdate) 2 else 1) = @Composable {
         AmoOutletFormBody(
-            items = listOf(routeItem(Pick(routes, 1, {}), none), AmoFormItem.Letters(listOf("A", "B", "D", "J", "S", "T"), "") {}, retailerItem(Pick(retailers, if (canUpdate) 100 else null, {}), none)),
-            onSave = {}, bottom = { com.aktcl.aron.feature.amo.AmoPrimary(stringResource(AmoR.string.amo_out_base_button), {}, androidx.compose.ui.Modifier, enabled = canUpdate) },
+            items = listOfNotNull(
+                routeItem(Pick(routes, if (stage >= 1) 1 else null, {}), none),
+                if (stage >= 1) AmoFormItem.Letters(listOf("A", "B", "D", "J", "S", "T"), "") {} else null,
+                retailerItem(Pick(retailers, if (stage >= 2) 100 else null, {}, enabled = stage >= 1), none),
+            ),
+            onSave = {}, bottomInline = true,
+            bottom = { com.aktcl.aron.feature.amo.AmoPrimary(stringResource(AmoR.string.amo_out_base_button), {}, androidx.compose.ui.Modifier.fillMaxWidth().padding(top = 16.dp), enabled = stage >= 2) },
         )
     }
 
@@ -138,6 +147,8 @@ class AmoOutletScreenshotTests {
 
     // ---- 54, 55 New shop
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_route_cluster_bn() = shot("amo_new_shop_route_cluster_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, false))
+    // the whole form in one frame (lead's low): the last fields, the capture block and Save are in view
+    @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun amo_new_shop_form_tall_bn() = shot("amo_new_shop_form_tall_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, true))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_form_bn() = shot("amo_new_shop_form_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, true))
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_new_shop_form_en() = shot("amo_new_shop_form_en", AppLanguage.EN, "New shop", content = newShop(false, true))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_form_bn_fs2() = shot("amo_new_shop_form_bn_fs2", AppLanguage.BN, "নতুন দোকান", fontScale = 2f, content = newShop(true, true, setOf(AmoFormError.NAME, AmoFormError.MOBILE)))
@@ -182,6 +193,7 @@ class AmoOutletScreenshotTests {
     }
 
     // ---- 62, 63, 64 Update Base
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_base_pick_empty_bn() = shot("amo_base_pick_empty_bn", AppLanguage.BN, "বেস রিক্যালিব্রেশন", content = basePick(false, stage = 0))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_base_pick_bn() = shot("amo_base_pick_bn", AppLanguage.BN, "বেস রিক্যালিব্রেশন", content = basePick(false))
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_base_pick_en() = shot("amo_base_pick_en", AppLanguage.EN, "Base Recalibration", content = basePick(true))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_base_pick_bn_fs2() = shot("amo_base_pick_bn_fs2", AppLanguage.BN, "বেস রিক্যালিব্রেশন", fontScale = 2f, content = basePick(true))

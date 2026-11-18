@@ -26,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
@@ -88,6 +89,15 @@ class AmoCallsScreenshotTests {
     @Test fun amo_control_call_pick_out_of_range_sunlight() = shot("amo_control_call_pick_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.Out(true, true)) }
     @Test fun amo_control_call_menu_bn() = shot("amo_cc_tiles_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { pick(CallRange.In) }
     @Test fun amo_control_call_menu_sunlight() = shot("amo_cc_tiles_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.In) }
+    // ---- Joint Call pick states (screens 29, 30): the title and the SR call assessment tile; D-PAR-AMO-17
+    private val jointTiles = listOf(MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call, com.aktcl.aron.feature.amo.R.string.amo_cp_joint_tile, "jt", {}))
+    @Composable private fun jointPick(range: CallRange, route: String? = "Gulshan-1Daily", outlet: String? = "Masba Store (2689479-01865967033-Jobbar Tower Lake Par)") =
+        AmoCallPickContent(route, outlet, outlet != null, if (outlet != null) letters else emptyList(), "", live = outlet != null, range = range, enabledOutlet = route != null, locked = false, {}, {}, {}, {}, {},
+            below = { AmoMenuTiles(jointTiles) }, idleHint = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_cp_route_placeholder))
+    @Test fun amo_joint_pick_empty_bn() = shot("amo_joint_pick_empty_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.Idle, route = null, outlet = null) }
+    @Test fun amo_joint_pick_in_range_bn() = shot("amo_joint_pick_in_range_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.In) }
+    @Test fun amo_joint_pick_out_of_range_bn() = shot("amo_joint_pick_out_of_range_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.Out(true, true)) }
+    @Test fun amo_joint_pick_empty_sunlight_bn() = shot("amo_joint_pick_empty_sunlight_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি", sunlight = true) { jointPick(CallRange.Idle, route = null, outlet = null) }
     @Test fun amo_sales_pick_empty_bn() = shot("amo_sales_pick_empty_bn", AppLanguage.BN, "বিক্রয়") {
         // D-PAR-AMO-05 (screenshot 21): the Sales tile is on the empty state
         AmoCallPickContent(null, null, false, emptyList(), "", false, CallRange.Idle, false, false, {}, {}, {}, {}, {}, belowWhenIdle = true,
@@ -143,7 +153,30 @@ class AmoCallsScreenshotTests {
     // ---- rows 45 and 66 (Summary empty state; Sales Submit due warning and success dialogs) ----
     private val emptySummary = com.aktcl.aron.feature.memo.domain.DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
     @Test fun amo_summary_empty_bn() = shot("amo_summary_empty_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
-        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true)
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true, salesBlock = true)
+    }
+    // screenshot 45 / manual p46 with sales: the SKU table, the category dock, then the "Total sales" block above Print
+    private val daySummary = com.aktcl.aron.feature.memo.domain.DaySummary(
+        listOf(
+            com.aktcl.aron.feature.memo.domain.SkuSummaryRow(100, "cigarette", 2, 300, 240_000, 0, 240_000, 100, qtyEntered = 15, returnEntered = 5, unitKey = "packet"),
+            com.aktcl.aron.feature.memo.domain.SkuSummaryRow(105, "match", 1, 3, 84_000, 0, 84_000, 37, qtyEntered = 3, returnEntered = 37, unitKey = "dozen"),
+        ),
+        listOf(
+            com.aktcl.aron.feature.memo.domain.CategorySummaryRow("cigarette", 300, 240_000, 0, 240_000, 100, qtyEntered = 15, returnEntered = 5, unitKey = "packet"),
+            com.aktcl.aron.feature.memo.domain.CategorySummaryRow("match", 3, 84_000, 0, 84_000, 37, qtyEntered = 3, returnEntered = 37, unitKey = "dozen"),
+        ),
+        324_000, 0, 324_000, 3,
+    )
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn() = shot("amo_summary_data_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
+    }
+    // a QC deduction (a return of 125.00 taka) in the day: the row is "discount and others (-)" and gross minus it is the grand total (D-PAR-AMO-16)
+    private val qcSummary = daySummary.copy(discountAndOthersMtk = 125_000, grandTotalMtk = 324_000 - 125_000)
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_qc_bn() = shot("amo_summary_qc_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(qcSummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
+    }
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn_sunlight() = shot("amo_summary_data_bn_sunlight", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ", sunlight = true) {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
     }
     // row 66's two modals are separate windows (Dialog): a root capture cannot show them, so they are proven by SalesSubmitScreenTest (vendorDialogs...)
 
@@ -154,6 +187,20 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.memo.ui.MemoDetailView(
             com.aktcl.aron.feature.memo.domain.MemoMenu.detail(dueMemo), true, 50_000, { "Aster" }, {}, {}, {},
             outletName = "Siyam (1618410-1832714554-Madrasa Road)", routeName = "Savar BazarDaily", dashedDueBox = true,
+            detailBanner = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true, gradientHeader = true,
+            headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("Savar BazarDaily", "Siyam (1618410-1832714554-Madrasa Road)", routeLabel = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_memo_hdr_section), padded = false) },
+        )
+    }
+    // screenshot 42 right: a paid memo (no due box), four lines, the table and totals
+    private val paidMemo = com.aktcl.aron.feature.memo.domain.StoredMemo("m2", "amo-261110-002", 1, "2026-11-10", "2026-11-10T05:00:00.000Z", null,
+        listOf(com.aktcl.aron.feature.memo.domain.MemoItem(100, 20, 8_000, 160_000), com.aktcl.aron.feature.memo.domain.MemoItem(101, 20, 7_000, 140_000), com.aktcl.aron.feature.memo.domain.MemoItem(103, 1, 12_500, 12_500)),
+        emptyList(), emptyList(), 312_500, 0, 0, 0, 312_500, 312_500, 0)
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_memo_detail_paid_bn() = shot("amo_memo_detail_paid_bn", AppLanguage.BN, "মেমো") {
+        com.aktcl.aron.feature.memo.ui.MemoDetailView(
+            com.aktcl.aron.feature.memo.domain.MemoMenu.detail(paidMemo), false, 0, { saleCatalog[it]?.code ?: "SKU" },
+            {}, {}, {}, outletName = "Ebraj St (Diamond)", routeName = "AgrabadDaily", dashedDueBox = true, detailBanner = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual),
+            buttonsInRow = true, gradientHeader = true,
+            headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("AgrabadDaily", "Ebraj St (Diamond)", routeLabel = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_memo_hdr_section), padded = false) },
         )
     }
 
@@ -176,18 +223,34 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.sale.ui.SaleEntryScreen(
             saleSkus, enteredReview, { id -> enteredDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {},
             recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = outletPill,
+            amoSkuCard = true, headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("Savar Bazar(Sat, Mon, Wed)", outletPill) }, // D-PAR-AMO-07 (screenshots 23, 24)
         )
     }
 
-    @Test fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
+    // lows 4 and 5 of the lead's check: a tall frame so the print-later card, the quantity line and the QC button are all in view
+    @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
         com.aktcl.aron.feature.sale.ui.ReviewScreen(
-            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {},
+            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {}, printLaterCard = true, totalsQuantity = true,
         )
     }
 
     // Audit (AMO high, "Paid-amount dialog: not recorded"): the shared paid-amount prompt (screenshot 25) as the AMO shows it, recorded for review
     @Test fun amo_paid_amount_bn() = shot("amo_paid_amount_bn", AppLanguage.BN, "নিরীক্ষণ") {
-        com.aktcl.aron.feature.sale.ui.CreditPrompt(enteredReview, onPaid = {}, onCancel = {})
+        // the dialog's card on the dimmed review (a dialog window is not in the frame): amount typed, live due inside the field (D-PAR-AMO-08)
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)).padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            com.aktcl.aron.feature.sale.ui.CreditDialogCard(enteredReview, "100", {}, 100_000L, true, false, {}, {})
+        }
+    }
+
+    // four unit kinds on a 360 dp phone (packets, box, dozen, sticks): the per-unit-kind quantity line must wrap, not overflow
+    private val looseSku = com.aktcl.aron.feature.sale.domain.SaleSku(106, "LOOSE", "cigarette", "Loose", null, "stick", 10, 800, 1, "2026-09-01", stockBase = 500, entryUnitDefault = "stick", allowLoose = true)
+    @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_review_units_bn() = shot("amo_review_units_bn", AppLanguage.BN, "নিরীক্ষণ") {
+        val catalog = saleCatalog + (106L to looseSku)
+        var d = enteredDraft
+        d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(d, 105, 2, com.aktcl.aron.rules.QtyUnit.DOZEN)
+        d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(d, 106, 30, com.aktcl.aron.rules.QtyUnit.STICK)
+        val review = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(d, catalog)
+        com.aktcl.aron.feature.sale.ui.ReviewScreen(review, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)", onCreditToggle = {}, onQc = {}, printLaterCard = true, totalsQuantity = true)
     }
 
     @Test fun amo_memo_menu_bn() = shot("amo_memo_menu_bn", AppLanguage.BN, "মেমো") {
@@ -200,6 +263,11 @@ class AmoCallsScreenshotTests {
         )
     }
 
+    private val submitLabels = mapOf(
+        "visit" to com.aktcl.aron.feature.amo.R.string.amo_rec_visit, "memo" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo, "stock_movement" to com.aktcl.aron.feature.amo.R.string.amo_rec_stock_movement, "qc_line" to com.aktcl.aron.feature.amo.R.string.amo_rec_qc_line,
+        "memo_discount" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo_discount, "distribution_check" to com.aktcl.aron.feature.amo.R.string.amo_rec_distribution_check, "call_assessment" to com.aktcl.aron.feature.amo.R.string.amo_rec_call_assessment,
+        "survey_response" to com.aktcl.aron.feature.amo.R.string.amo_rec_survey_response,
+    )
     @Test fun amo_sales_submit_bn() = shot("amo_sales_submit_bn", AppLanguage.BN, "বিক্রয় জমা") {
         // the AMO host's table: the nine manual rows (price row hidden, cfg off), the AMO record labels, the day's counts equal on phone and server
         val groups = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(null, priceCompliance = false)
@@ -211,6 +279,15 @@ class AmoCallsScreenshotTests {
         )
         val ctx = androidx.compose.ui.platform.LocalContext.current
         val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 40, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
-        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true)
+        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true, blueSubmit = true)
+    }
+
+    // the same screen before the sync (screenshot 65 left): records still waiting on the phone, so the submit button is grey; D-PAR-AMO-18
+    @Test @Config(qualifiers = "w360dp-h1300dp") fun amo_sales_submit_before_sync_bn() = shot("amo_sales_submit_before_sync_bn", AppLanguage.BN, "বিক্রয় জমা") {
+        val groups = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(null, priceCompliance = false)
+        val counts = groups.flatten().distinct().mapIndexed { i, t -> com.aktcl.aron.feature.dayclose.CountRow(t, if (i == 0) 1 else if (i == 1) 25 else 0, if (i == 0) 1 else if (i == 1) 3 else 0) }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(22, 0, 18, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
+        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> submitLabels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true, blueSubmit = true)
     }
 }

@@ -65,6 +65,6 @@ class PhoneEvidenceShapeTest {
             val o = Json.parseToJsonElement("""{"$key":{"signals":{"a":1}}}""").jsonObject
             assertNotNull(PhoneEvidenceShape.error(type, shape, o), "$type.$key.signals is checked")
         }
-        assertEquals(11, withSignals.size, "the 11 fix-bearing shapes of contract 1.19.0 (the 12th shape with new members is device_status)")
+        assertEquals(12, withSignals.size, "the 12 fix-bearing shapes (gift_choice joined with the master-data round)")
     }
 }

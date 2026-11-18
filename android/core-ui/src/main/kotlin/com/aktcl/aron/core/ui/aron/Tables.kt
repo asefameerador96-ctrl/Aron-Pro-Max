@@ -63,7 +63,9 @@ data class TotalsLine(val label: String, val values: List<String>, val caption: 
 @Composable
 fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    Column(modifier.fillMaxWidth().background(look.panel).padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+    // R-PAR-AMO-07 (D-PAR-SR1-08): a look with a panel ramp (AMO) lets the ramp of the host Column show through the totals block, one continuous
+    // ramp down to the buttons (a second ramp of its own would restart and leave a seam); every other look keeps the solid panel, so SR, TSO and Sunlight are unchanged
+    Column(modifier.fillMaxWidth().then(if (look.panelTop != null) Modifier else Modifier.background(look.panel)).padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
         TotalsRow(header, 13.sp, look.onPanelMuted)
         lines.forEach { TotalsRow(it, 22.sp, look.onPanel) }
     }

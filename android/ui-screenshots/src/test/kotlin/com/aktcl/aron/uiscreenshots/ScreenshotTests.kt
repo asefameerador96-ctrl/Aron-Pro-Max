@@ -9,6 +9,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.aktcl.aron.core.common.AppLanguage
@@ -125,7 +127,7 @@ class ScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, fontScale: Float = 1.0f, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, fontScale: Float = 1.0f, after: () -> Unit = {}, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(
@@ -134,6 +136,7 @@ class ScreenshotTests {
             ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } }
         }
         rule.waitForIdle()
+        after(); rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") {
             // a missing golden must fail the build, never pass silently or be recorded by a normal run
             assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
@@ -155,7 +158,7 @@ class ScreenshotTests {
 
     @Composable
     /** [flags]: the programme tile keys switched on; the default shots assume ALL THREE on (15 tiles), the registry defaults give 14 (Match Program off). */
-    private fun Home(language: AppLanguage, flags: Set<String> = setOf("astha", "loyalty_point", "match_program")) {
+    private fun Home(language: AppLanguage, flags: Set<String> = setOf("astha", "loyalty_point", "match_program"), std: com.aktcl.aron.feature.home.HomeStd? = null) {
         val locale = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
         val piece = stringResource(SaleR.string.sale_unit_piece)
         val dozen = stringResource(SaleR.string.sale_unit_dozen)
@@ -168,7 +171,8 @@ class ScreenshotTests {
         HomeContent(
             header, HomeTiles.resolve(flags, 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
-            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
+            std = std,
+            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 600, 490, com.aktcl.aron.core.ui.entryUnitLabel("packet"), 0, 7, stick), HomeStockLine(lighter, 16, 1, com.aktcl.aron.core.ui.entryUnitLabel("box"), 0, 10, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine(match, Formats.money(141_000, locale), bare(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale), bare(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
@@ -287,6 +291,12 @@ class ScreenshotTests {
         OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, marks = marks)
     }
 
+    /** The picker as SrApp draws it (manualRows = true, no marks): one string per row with the amber dot, as manual 18 (right). */
+    @Composable private fun PickerManual() = ParityFrame(stringResource(HomeR.string.hm_tile_sale), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        val rows = OutletPicker.rows(outlets)
+        OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, manualRows = true)
+    }
+
     @Composable private fun VisitInRange() = Frame(stringResource(HomeR.string.hm_tile_sale)) {
         VisitCheckContent(
             VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z")),
@@ -355,6 +365,8 @@ class ScreenshotTests {
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
     // D-PAR-SR1-06: the whole Home page in one tall frame (tiles, KPI boxes, issue and stock card, money cards), which the 800 dp frame cut off
+    // D-PAR-SR1-07: a target value, so the filled green progress bar and its figure are covered
+    @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun home_bn_tall_target() = shot("home_bn_tall_target", AppLanguage.BN) { Home(AppLanguage.BN, std = com.aktcl.aron.feature.home.HomeStd(32L, 100L)) }
     @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun home_bn_tall() = shot("home_bn_tall", AppLanguage.BN) { Home(AppLanguage.BN) }
     @Test fun home_en_light() = shot("home_en_light", AppLanguage.EN) { Home(AppLanguage.EN) }
     // the registry defaults (cfg.flag.astha_ui and loyalty_ui on, superstar_ui off): what an SR sees before any flag is set, 14 tiles
@@ -387,6 +399,9 @@ class ScreenshotTests {
 
     // ---- Outlet picker ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun picker_bn_light() = shot("picker_bn_light", AppLanguage.BN) { Picker() }
+    // D-PAR-SR1-10: the opened retailer list (manual 18 right): a dot per row, the due and visited marks
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun picker_bn_open() = shot("picker_bn_open", AppLanguage.BN, after = { rule.onNodeWithText("রিটেইলার নির্বাচন করুন").performClick() }) { PickerManual() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun picker_bn_open_sunlight() = shot("picker_bn_open_sunlight", AppLanguage.BN, sunlight = true, after = { rule.onNodeWithText("রিটেইলার নির্বাচন করুন").performClick() }) { PickerManual() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun picker_bn_sunlight() = shot("picker_bn_sunlight", AppLanguage.BN, sunlight = true) { Picker() }
 
     // ---- Visit check ----

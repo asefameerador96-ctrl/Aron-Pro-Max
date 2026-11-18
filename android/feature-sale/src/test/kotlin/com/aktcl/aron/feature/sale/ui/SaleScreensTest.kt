@@ -97,6 +97,91 @@ class SaleScreensTest {
         compose.onNodeWithText("Print").assertIsEnabled()
     }
 
+    /** D-PAR-AMO-07: the AMO host asks for the info card; SR keeps the plain grey line. Same words either way. */
+    @Test fun printLaterIsAnInfoCardOnlyWhenTheHostAsksForIt() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}, printLaterCard = true) } }
+        compose.onNodeWithTag(SaleTags.PRINT_LATER).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("You can print later from the Memo section.", useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun srReviewKeepsThePlainPrintLaterLine() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
+        compose.onNodeWithTag(SaleTags.PRINT_LATER).assertDoesNotExist()
+        compose.onNodeWithText("You can print later from the Memo section.").assertExists()
+    }
+
+    /**
+     * D-PAR-AMO-07 (R-PAR-AMO-02): the AMO card shows the rate, a zero discount (programme discounts are deferred: nothing invented) and the
+     * same stock figure the SR card and the stock gate use; the hard stop still holds (plus disabled at the stock). SR keeps its PackCard.
+     */
+    @Test fun amoSkuCardShowsRateZeroDiscountAndTheGateStockFigure() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 103, 25, QtyUnit.PIECE) // all 25 lighters held
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) {
+            SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, amoSkuCard = true)
+        } }
+        compose.onNodeWithTag(AmoSkuCardTags.card(103)).assertIsDisplayed()
+        compose.onNodeWithTag(AmoSkuCardTags.discount(103), useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithText("0%", useUnmergedTree = true).assertCountEquals(2) // one per card; never an invented programme figure
+        compose.onNodeWithTag(AmoSkuCardTags.stock(103)).assertExists()
+        compose.onNodeWithContentDescription("Stock 25").assertExists() // the figure of Fx.aster.stockBase = 25 pieces
+        compose.onNodeWithTag(AmoSkuCardTags.rate(103)).assertExists()
+        compose.onNodeWithContentDescription("More, Aster").assertIsNotEnabled() // at the stock: the gate stops the plus
+    }
+
+    @Test fun srEntryKeepsThePackCardWithNoRateColumn() {
+        val review = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { 0L }, { _, _ -> }, {}, {}) } }
+        compose.onAllNodes(androidx.compose.ui.test.hasTestTag(AmoSkuCardTags.card(103))).assertCountEquals(0)
+    }
+
+    /** D-PAR-AMO-08 (R-PAR-AMO-04): the dialog form keeps the validation (below the total, not empty) and makes exactly one write on Yes; No writes nothing. */
+    @Test fun creditDialogKeepsTheBoundAndWritesOnceOnYes() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK) // net 160.00 (160_000 mtk)
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        val writes = mutableListOf<Long?>(); var cancelled = 0
+        compose.setContent { AronTheme(AppLanguage.EN, amo = true) { CreditPrompt(review, { writes += it }, onCancel = { cancelled++ }, asDialog = true) } }
+        compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled() // nothing typed
+        compose.onNodeWithTag(CreditTags.PAID).performTextInput("200") // not below the 160.00 total
+        compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
+        compose.onNodeWithTag(CreditTags.PAID).performTextClearance(); compose.onNodeWithTag(CreditTags.PAID).performTextInput("100")
+        compose.onNodeWithTag(CreditTags.YES).assertIsEnabled().performClick()
+        assertEquals(listOf<Long?>(100_000L), writes) // one write, in milli-taka
+        compose.onNodeWithTag(CreditTags.NO).performClick()
+        assertEquals(1, cancelled); assertEquals(1, writes.size)
+    }
+
+    /** D-PAR-AMO-09 (R-PAR-AMO-05): quantities PER UNIT KIND on the AMO review; never one mixed number. SR has no such line. */
+    @Test fun amoReviewCountsQuantityPerUnitKind() {
+        var d = SaleDraftOps.setQuantity(Fx.draft(), 100, 2, QtyUnit.PACK)   // 2 packets
+        d = SaleDraftOps.setQuantity(d, 103, 1, QtyUnit.PIECE)               // 1 lighter piece
+        d = SaleDraftOps.setQuantity(d, 105, 2, QtyUnit.DOZEN)               // 2 dozens of matches
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN, amo = true) { ReviewScreen(review, {}, totalsQuantity = true) } }
+        compose.onAllNodesWithText("Quantity", useUnmergedTree = true).assertCountEquals(2) // the table header and the totals line
+        // three kinds, three figures: no "5" that would add packets, boxes and dozens together
+        compose.onNode(androidx.compose.ui.test.hasText("2 packets", substring = true) and androidx.compose.ui.test.hasText("1 pieces", substring = true) and androidx.compose.ui.test.hasText("2 dozen", substring = true)).assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.hasText("5 ", substring = true), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun srReviewHasNoQuantityTotalsLine() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
+        compose.onAllNodesWithText("Quantity", useUnmergedTree = true).assertCountEquals(1) // the table header only
+    }
+
+    /** D-PAR-AMO-07: a header card from the host replaces the retailer pill on the entry screen; without it the pill stays. */
+    @Test fun entryHeaderCardReplacesThePillWhenGiven() {
+        val review = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) {
+            SaleEntryScreen(skus, review, { 0L }, { _, _ -> }, {}, {}, retailerLabel = "Pill Store (1-2-3)", headerCard = { androidx.compose.material3.Text("HEADER CARD") })
+        } }
+        compose.onNodeWithText("HEADER CARD").assertIsDisplayed()
+        compose.onAllNodesWithText("Pill Store (1-2-3)").assertCountEquals(0)
+    }
+
     @Test fun reviewDisablesSaveWhenPaidIsNotBelowTheTotal() {
         val d = SaleDraftOps.setPaid(SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK), 160_000)
         compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }

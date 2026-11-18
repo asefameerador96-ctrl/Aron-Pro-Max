@@ -54,3 +54,10 @@ export function linesFromAssignees(routes: readonly Schemas["Route"][]): RouteLi
     sr: r.kind === "amo" ? null : first(r, "SR"),
   }));
 }
+
+const VISIT_KIND_KEYS = { daily: "entity.visit.daily", "3f": "entity.visit.3f", "2f": "entity.visit.2f", none: "entity.visit.none" } as const;
+
+/** The message key of a route's visit kind ('none' = no visit plan, push 1b); null for a value this build does not know (shown as text). */
+export function visitKindKey(kind: string | null): (typeof VISIT_KIND_KEYS)[keyof typeof VISIT_KIND_KEYS] | null {
+  return kind !== null && kind in VISIT_KIND_KEYS ? VISIT_KIND_KEYS[kind as keyof typeof VISIT_KIND_KEYS] : null;
+}

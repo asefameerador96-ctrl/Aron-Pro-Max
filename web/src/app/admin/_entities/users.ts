@@ -40,7 +40,7 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
     { name: "role", labelKey: "entity.field.role", kind: "enum", required: true, options: USER_ROLE_OPTIONS, optionKeys: ROLE_KEYS, column: true },
     { name: "designation", labelKey: "entity.field.designation", kind: "text", nullable: true, maxLength: 60, column: true },
     { name: "employee_code", labelKey: "entity.field.employee_code", kind: "text", nullable: true, maxLength: 40, column: true },
-    { name: "phone", labelKey: "entity.field.phone", kind: "text", nullable: true, maxLength: 11, pattern: "^01[3-9]\\d{8}$", normalizeDigits: true },
+    { name: "phone", labelKey: "entity.field.phone", kind: "text", nullable: true, maxLength: 11, pattern: "^01[3-9]\\d{8}$", normalizeDigits: true, phone: true },
     { name: "email", labelKey: "entity.field.email", kind: "text", nullable: true, maxLength: 120, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
     { name: "locale", labelKey: "entity.field.locale", kind: "enum", required: true, options: ["bn", "en"], optionKeys: { bn: "common.language.bn", en: "common.language.en" } },
     { name: "home_zone_id", labelKey: "entity.field.home_zone", kind: "ref", nullable: true, min: 1, ref: ZONE_REF },

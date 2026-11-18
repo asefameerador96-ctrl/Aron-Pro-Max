@@ -42,11 +42,21 @@ class PreviousSalesTest {
         assertEquals(SaleHistorySource.LOCAL, h.source)
     }
 
-    @Test fun theDateStepsStayInsideTheNinetyDayWindow() {
-        val today = "2026-11-06"
-        assertEquals("2026-11-05", PreviousSales.shift(today, -1, today))
-        assertEquals(today, PreviousSales.shift(today, 1, today)) // never past today
-        assertEquals("2026-08-09", PreviousSales.earliest(today)); assertEquals("2026-08-09", PreviousSales.shift("2026-08-09", -1, today))
-        assertTrue(PreviousSales.inWindow("2026-08-09", today)); assertFalse(PreviousSales.inWindow("2026-08-08", today)); assertFalse(PreviousSales.inWindow("junk", today))
+    /** The window is 90 Dhaka business dates ending today: today and the 89 days before. Checked at the edges and across the Dhaka midnight. */
+    @Test fun theNinetyDayWindowEdgesInDhakaBusinessDates() {
+        // 19:00 UTC on 6 Nov is 01:00 on 7 Nov in Dhaka: the business date is the 7th, not the 6th
+        val today = com.aktcl.aron.rules.BusinessDate.of(java.time.Instant.parse("2026-11-06T19:00:00Z").toEpochMilli()).toString()
+        assertEquals("2026-11-07", today)
+        assertEquals("2026-08-10", PreviousSales.earliest(today)) // 89 days before the 7th
+        assertTrue(PreviousSales.inWindow(today, today))
+        assertTrue(PreviousSales.inWindow("2026-08-10", today)) // the first day inside
+        assertFalse(PreviousSales.inWindow("2026-08-09", today)) // one day too old
+        assertFalse(PreviousSales.inWindow("2026-11-08", today)) // tomorrow (Dhaka)
+        assertEquals(90, java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(PreviousSales.earliest(today)), java.time.LocalDate.parse(today)) + 1)
+        // just before the Dhaka midnight (17:59 UTC = 23:59 Dhaka) the business date is still the 6th
+        val before = com.aktcl.aron.rules.BusinessDate.of(java.time.Instant.parse("2026-11-06T17:59:00Z").toEpochMilli()).toString()
+        assertEquals("2026-11-06", before)
+        assertFalse(PreviousSales.inWindow("2026-11-07", before))
+        assertFalse(PreviousSales.inWindow("junk", today))
     }
 }

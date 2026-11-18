@@ -18,11 +18,13 @@ const REASON = "Reason that is long enough";
 const plus = (n: number) => businessDate(new Date(Date.now() + n * 86_400_000)); // relative: the BFF refuses past dates (Dhaka)
 
 describe("routes", () => {
-  it("validates the day mask (1..127), kind, code and visit kind", () => {
+  it("validates the day mask (0..127; 0 only as no visit plan), kind, code and visit kind", () => {
     const s = valuesSchema(routes, "create");
     const ok = { code: "R-9", name: "Route", zone_id: "14", kind: "sr", visit_days_mask: "21" };
     expect(s.safeParse(ok)).toMatchObject({ success: true, data: { visit_days_mask: 21, zone_id: 14 } });
-    expect(s.safeParse({ ...ok, visit_days_mask: "0" }).success).toBe(false);
+    expect(s.safeParse({ ...ok, visit_days_mask: "0" }).success).toBe(true); // D-MD-03: the server refuses 0 unless visit_kind is none
+    expect(s.safeParse({ ...ok, visit_days_mask: "0", visit_kind: "none" }).success).toBe(true);
+    expect(s.safeParse({ ...ok, visit_days_mask: "-1" }).success).toBe(false);
     expect(s.safeParse({ ...ok, visit_days_mask: "128" }).success).toBe(false);
     expect(s.safeParse({ ...ok, kind: "tso" }).success).toBe(false);
     expect(s.safeParse({ ...ok, visit_kind: "5f" }).success).toBe(false);
@@ -129,5 +131,16 @@ describe("users", () => {
     expect(reset.when!({ status: "disabled" })).toBe(false);
     expect(reset.when!({ status: "active" })).toBe(true);
     expect(users.actions!.find((a) => a.key === "unlock")!.when).toBeUndefined();
+  });
+});
+
+describe("routes page visit kind label (push 1b, item 14)", () => {
+  it("shows the label of 'none', never the raw value; an unknown value stays text", async () => {
+    const { visitKindKey } = await import("@/lib/dash/routes");
+    const { t } = await import("@/lib/i18n");
+    expect(t("en", visitKindKey("none")!)).toBe("No visit plan");
+    expect(t("bn", visitKindKey("none")!)).toBe("ভিজিট প্ল্যান নেই");
+    expect(visitKindKey("daily")).toBe("entity.visit.daily");
+    expect(visitKindKey("weekly")).toBeNull();
   });
 });

@@ -241,8 +241,11 @@ class Wiring(
             val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder, lab = labExemptions), reach, guard, clock)
             // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
             var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
-            val acceptor = com.aktcl.aron.backend.analytics.QuarantineAcceptor { id, fix, resolver, why ->
-                (ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")).acceptQuarantined(id, fix, resolver, why)
+            val acceptor = object : com.aktcl.aron.backend.analytics.QuarantineAcceptor {
+                private fun ingest() = ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")
+                override fun accept(quarantineId: Long, fixedRecord: kotlinx.serialization.json.JsonObject?, resolver: Long, reason: String) = ingest().acceptQuarantined(quarantineId, fixedRecord, resolver, reason)
+                // C-R3: a gift photo held with a record a reviewer discards is stored and flagged, not left in review for ever
+                override fun discarded(quarantineId: Long, resolver: Long) = ingest().followDiscardedParent(quarantineId, resolver)
             }
             val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
@@ -324,7 +327,7 @@ class Wiring(
             // locked under quarantine unlocks with the change, and a quarantine set after the close locks it.
             val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push), clock)
             configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.GiftChoiceRecords(reach, config) + com.aktcl.aron.backend.sync.GiftPhotoRecords(reach, config) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers)), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(

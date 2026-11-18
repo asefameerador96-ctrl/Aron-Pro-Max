@@ -226,15 +226,19 @@ class AmoTeamScreenshotTests {
     @Composable private fun stdReport() = StdMatrixContent("2026-11-01", "2026-11-06", "2026-11-06", { _, _ -> }, std, false, false)
     /** What the app feeds today: no month-to-date category memo count exists (D-AMO-TEAM-18), so every Memo cell is a dash and the screen says pending. */
     private val catMemos = TeamReports.categoryMemos(emptyList())
-    private val tillCards = listOf(
-        TeamReports.tillCard("Zone: Dariapur", dariapur, true, catMemos, com.aktcl.aron.rules.UiLocale.EN),
-        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, catMemos, com.aktcl.aron.rules.UiLocale.EN),
-    )
-    @Composable private fun tillNow() = TillNowContent(tillCards, {}, false, false, memoPending = catMemos.isEmpty())
-    @Composable private fun tillRoute() = TillRouteDetailContent(
-        "79.67", "572",
-        listOf(BrandLine("Marise", "88,235.29", "67,120", "76.07%", "279"), BrandLine("Black Diamond", "12,864.71", "53,410", "415.17%", "268"), BrandLine("Existing Abul Bidi/ 42 No. Abul Bidi", "352.94", "500", "141.67%", "1")),
-    )
+    // the app builds the cards with the screen's digits language (AmoReportHub passes `l`): Bangla digits in the Bangla frames, as the old app (screenshot 72); D-PAR-AMO-15
+    @Composable private fun tillCards(): List<TillCard> = teamLocale().let { l -> listOf(
+        TeamReports.tillCard("Zone: Dariapur", dariapur, true, catMemos, l),
+        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, catMemos, l),
+    ) }
+    @Composable private fun tillNow() = TillNowContent(tillCards(), {}, false, false, memoPending = catMemos.isEmpty())
+    @Composable private fun tillRoute() = teamLocale().let { l ->
+        fun d(x: String) = com.aktcl.aron.rules.Formats.digits(x, l)
+        TillRouteDetailContent(
+            d("79.67"), d("572"),
+            listOf(BrandLine("Marise", d("88,235.29"), d("67,120"), d("76.07%"), d("279")), BrandLine("Black Diamond", d("12,864.71"), d("53,410"), d("415.17%"), d("268")), BrandLine("Existing Abul Bidi/ 42 No. Abul Bidi", d("352.94"), d("500"), d("141.67%"), d("1"))),
+        )
+    }
 
     @Composable private fun journeyCards() = SrListContent(members, false, false, {}, openVacant = false)
     private val journey = TeamJourneys.journey(
