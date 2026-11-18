@@ -135,7 +135,7 @@ class CheckOutOrderSyncTest {
         val sentUuids = wire().map { it.substringAfter(':') }.toSet()
         assertEquals(sentUuids, fake.registry.keys.toSet())
         assertEquals(sentUuids.size, fake.registry.size)
-        assertEquals("every record of the phone reached the server exactly once", db.query("SELECT COUNT(*) FROM outbox", null).use { it.moveToFirst(); it.getInt(0) }, fake.registry.size)
+        assertEquals("every record of the phone reached the server exactly once", db.outboxDao().countsByState().sumOf { it.count }, fake.registry.size)
     }
 
     private class KillAfterFirst(private val d: BatchSender) : BatchSender {
