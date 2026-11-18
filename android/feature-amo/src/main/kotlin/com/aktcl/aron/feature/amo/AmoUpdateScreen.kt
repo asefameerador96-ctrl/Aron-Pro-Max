@@ -232,7 +232,7 @@ private fun orEmptyVersion(ctx: android.content.Context): String =
  */
 @Composable
 private fun AmoUpdateRibbonAndCloud(modifier: Modifier = Modifier) {
-    val navy = androidx.compose.ui.graphics.Color(0xFF1B2A5C)
+    val navy = UpdateRibbonNavy
     Column(modifier.clearAndSetSemantics { }, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(104.dp), contentAlignment = Alignment.Center) {
             androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
@@ -254,7 +254,7 @@ private fun AmoUpdateRibbonAndCloud(modifier: Modifier = Modifier) {
             }
         }
         androidx.compose.foundation.Canvas(Modifier.size(64.dp)) {
-            val purple = androidx.compose.ui.graphics.Color(0xFF6B4FA8)
+            val purple = UpdateCloudPurple
             val w = size.width; val h = size.height
             drawCircle(purple, radius = w * 0.2f, center = androidx.compose.ui.geometry.Offset(w * 0.3f, h * 0.55f))
             drawCircle(purple, radius = w * 0.26f, center = androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.4f))
@@ -267,3 +267,7 @@ private fun AmoUpdateRibbonAndCloud(modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** The outline of the ribbon letters and the cloud of the update art (D-PAR-AMO-31): white on [UpdateRibbonNavy] 13.7:1, white arrow on [UpdateCloudPurple] and the cloud on the page both 7:1 or better (AmoDrawnArtContrastTest). */
+internal val UpdateRibbonNavy = androidx.compose.ui.graphics.Color(0xFF1B2A5C)
+internal val UpdateCloudPurple = androidx.compose.ui.graphics.Color(0xFF4F3590)

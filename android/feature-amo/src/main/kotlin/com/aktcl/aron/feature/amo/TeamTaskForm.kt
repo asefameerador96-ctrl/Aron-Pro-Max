@@ -37,6 +37,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.BannerKind
@@ -66,10 +68,10 @@ fun AlphabetBar(letters: List<String>, selected: String?, onSelect: (String?) ->
         (listOf<String?>(null) + letters).forEach { l ->
             val on = l == selected
             Box(
-                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(20.dp)).background(if (on) look.goEnd else Color.Transparent).clickable(role = androidx.compose.ui.semantics.Role.Button) { onSelect(l) }
+                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).background(if (on) look.goEnd else Color.Transparent).clickable(role = androidx.compose.ui.semantics.Role.Button) { onSelect(l) }
                     .padding(horizontal = 12.dp).testTag(TaskFormTags.LETTER + (l ?: "all")),
                 contentAlignment = Alignment.Center,
-            ) { Text(l ?: stringResource(R.string.amo_team_task_all), style = amoText(16, bold = on, color = if (on) Color.Black else Color.White)) }
+            ) { Text(l ?: stringResource(R.string.amo_team_task_all), style = amoText(16, bold = on, color = if (on) (if (look.sunlight) Color.White else Color.Black) else Color.White)) }
         }
     }
 }
@@ -144,7 +146,7 @@ fun TaskFormPageContent(
             if (AssignError.TYPE_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_task_type_required), kind = BannerKind.Error)
             AmoDateField(due, today, onDue, Modifier.testTag(TaskFormTags.DATE))
             if (AssignError.DATE_INVALID in errors) AmoBanner(stringResource(R.string.amo_task_date_invalid), kind = BannerKind.Error)
-            AmoField(description, { onDescription(it.take(TaskDelegation.MAX_FORM_DESCRIPTION)) }, stringResource(R.string.amo_team_task_description), error = AssignError.TEXT_TOO_LONG in errors || AssignError.DESCRIPTION_REQUIRED in errors, singleLine = false, modifier = Modifier.testTag(TaskFormTags.TEXT))
+            DescriptionBox(description, { onDescription(it.take(TaskDelegation.MAX_FORM_DESCRIPTION)) }, stringResource(R.string.amo_team_task_description), error = AssignError.TEXT_TOO_LONG in errors || AssignError.DESCRIPTION_REQUIRED in errors, modifier = Modifier.testTag(TaskFormTags.TEXT))
             if (AssignError.DESCRIPTION_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_team_task_description_required), kind = BannerKind.Error)
         }
         Column(Modifier.fillMaxWidth().padding(12.dp)) { AmoPrimary(stringResource(R.string.amo_team_task_assign_btn), onSave, Modifier.fillMaxWidth().testTag(TaskTags.FORM_SAVE), enabled = !busy, busy = busy) }
@@ -154,5 +156,28 @@ fun TaskFormPageContent(
 @Composable
 private fun InfoLine(label: String, value: String) {
     val look = LocalAronLook.current
-    Column { Text(label, style = amoText(14, bold = true)); if (value.isNotEmpty()) Text(value, style = amoText(14, color = look.inkMuted)) }
+    // the vendor prints "label:value" on one line, the label in ink and the value in the muted grey (screenshot 38); the line wraps at long Bangla
+    Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)); append(label); pop()
+            if (value.isNotEmpty()) { append(" "); pushStyle(androidx.compose.ui.text.SpanStyle(color = look.inkMuted)); append(value); pop() }
+        },
+        style = amoText(14),
+    )
 }
+
+/** The description box of screenshot 38: a tall white box with the purple 2 dp outline; the label shows as the hint while it is empty (red outline on an error). */
+@Composable
+private fun DescriptionBox(value: String, onValueChange: (String) -> Unit, hint: String, error: Boolean, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(8.dp)
+    androidx.compose.foundation.text.BasicTextField(
+        value = value, onValueChange = onValueChange, textStyle = amoText(16),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(look.purple),
+        modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).clip(shape).background(look.card).border(BorderStroke(2.dp, if (error) look.red else look.purple), shape)
+            .androidx_semanticsLabel(hint),
+        decorationBox = { inner -> Box(Modifier.padding(12.dp)) { if (value.isEmpty()) Text(hint, style = amoText(16, color = look.inkMuted)); inner() } },
+    )
+}
+
+private fun Modifier.androidx_semanticsLabel(label: String): Modifier = this.then(Modifier.semantics { contentDescription = label })
