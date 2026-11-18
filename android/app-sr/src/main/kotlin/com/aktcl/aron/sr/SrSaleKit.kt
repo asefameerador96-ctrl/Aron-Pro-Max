@@ -347,10 +347,12 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         return null
     }
 
-    /** Starts the edit draft: the old memo's lines and payment pre-filled, the outlet read-only, the reason recorded. */
+    /** Starts the edit draft: the old memo's lines and payment pre-filled, the outlet read-only, the reason recorded. False (nothing prefilled) when the visit's sale is QC-locked. */
     suspend fun beginEdit(memoUuid: String, reason: EditReason): Boolean {
         val old = checkNotNull(dao.memo(memoUuid)) { "memo not on this phone" }
         flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire), editing = memoUuid) // the edit gets its own memo's quantity back
+        // a QC-locked sale of this visit cannot become an edit: refused BEFORE anything is prefilled (the old memo's payment must never be written into a locked draft); the host tells the rep
+        if (flow.state.value.draft?.qcCompleted == true) return false
         val catalog = flow.state.value.catalog
         dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { sku -> EntryUnits.restore(sku.entry, sku.baseUnit, l.qtyBase).let { (q, u) -> flow.setQuantity(l.skuId, q, u) } } }
         if (old.paidMtk > 0) flow.setPaid(old.paidMtk)

@@ -149,4 +149,23 @@ class QcLockedFlowTest {
         val b = flow(store); b.start(v)
         assertEquals(null, b.state.value.notice)
     }
+
+    @Test fun aLeftoverDraftOfALandedMemoDoesNotBreakAnEditStart() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 5, QtyUnit.STICK); val saved = store.load(v.visitUuid)!!
+        a.commit(); store.save(saved) // the kill came between the commit and the drop: the file of a LANDED memo is still there
+        val b = flow(store); b.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals("not the committed sale", null, b.state.value.committed)
+        b.setQuantity(100, 6, QtyUnit.STICK) // used to throw "sale already committed"
+        assertEquals(1, b.state.value.draft!!.lines.size)
+        assertEquals(true, b.state.value.draft!!.memoUuid != saved.memoUuid)
+    }
+
+    @Test fun startingOnAQcLockedDraftGivesNothingBack() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc); a.completeQc()
+        val before = a.state.value.catalog
+        val b = flow(store); b.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals(before, b.state.value.catalog)
+    }
 }

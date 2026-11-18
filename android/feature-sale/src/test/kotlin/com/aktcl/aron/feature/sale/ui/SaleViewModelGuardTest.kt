@@ -96,4 +96,16 @@ class SaleViewModelGuardTest {
         handler.handleException(ctx, com.aktcl.aron.feature.sale.domain.DraftRefusedException("out of range"))
         assertEquals(SaleNotice.Refused, f.state.value.notice)
     }
+
+    /** Every launch of the view model that writes the draft goes through the one net; `start` has none (a start failure must crash, not become a notice). Source-level, so a new launch added without the net is caught. */
+    @Test fun everyGuardedLaunchUsesTheNetAndStartHasNone() {
+        val src = java.io.File("src/main/kotlin/com/aktcl/aron/feature/sale/ui/SaleViewModel.kt").readText()
+        assertTrue("the net is refusalGuard(flow)", src.contains("private val guard = refusalGuard(flow)"))
+        val launches = src.lines().filter { it.contains("viewModelScope.launch") && !it.trimStart().startsWith("//") && !it.trimStart().startsWith("*") && !it.contains("fun viewModelScopeForDialogs") }
+        assertTrue("there are launches", launches.size >= 8)
+        val (start, others) = launches.partition { it.contains("fun start(") }
+        assertEquals(1, start.size)
+        assertTrue("start() has no net: ${start[0]}", !start[0].contains("launch(guard)"))
+        others.forEach { assertTrue("a launch without the net: $it", it.contains("launch(guard)")) }
+    }
 }

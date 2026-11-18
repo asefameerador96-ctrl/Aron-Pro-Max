@@ -22,14 +22,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -150,10 +152,12 @@ private fun SurveyAnswerBox(r: SurveyRowUi, texts: SurveyTexts, onPick: (String,
         Box(Modifier.weight(1f)) {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).border(1.5.dp, look.purple, RoundedCornerShape(4.dp))
-                    .clickable(role = Role.DropdownList) { open = true }.padding(horizontal = AronTokens.Space.M).testTag(CallContentTags.answer(r.key)),
+                    .clickable(role = Role.DropdownList) { open = true }.padding(horizontal = AronTokens.Space.M).testTag(CallContentTags.answer(r.key))
+                    // TalkBack names the QUESTION and the answer ("Is there POSM at your outlet?, Answer: Yes"), not just "Answer: Yes"
+                    .semantics { contentDescription = r.label + ", " + texts.answerWord + " " + (r.answer ?: texts.pickHint) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(r.answer ?: texts.pickHint, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (r.answer != null) look.ink else look.inkMuted)
+                Text(r.answer ?: texts.pickHint, Modifier.weight(1f).clearAndSetSemantics { }, style = MaterialTheme.typography.bodyLarge, color = if (r.answer != null) look.ink else look.inkMuted)
                 Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.ink)
             }
             androidx.compose.material3.DropdownMenu(open, { open = false }) {

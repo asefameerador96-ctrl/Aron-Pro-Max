@@ -92,7 +92,8 @@ class SaleFlow(
     suspend fun start(visit: SaleVisit, editing: String? = null) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
         // D-AGATE-19: an EDIT starts clean when the stored draft is a leftover SALE draft of a call the phone already closed (a kill between the close and the drop leaves the file): never loaded into the edit
-        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && isCallClosed(it) }
+        // the same for a leftover SALE draft whose memo already LANDED (a kill between the commit and the drop): loading it would put the edit on a committed sale ("sale already committed")
+        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && (isCallClosed(it) || committer.existing(it.memoUuid) != null) }
         if (stored == null) store.clear(visit.visitUuid)
         val loaded = stored ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
@@ -102,7 +103,8 @@ class SaleFlow(
         // midnight and resumed after it still shows the figures the save will check
         rawCatalog = catalogSource.skus(committer.stockDate(loaded.businessDate, loaded.routeId), loaded.priceType).associateBy { it.skuId }
         val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
-        val catalog = withGiveBack(editing ?: draft.edit?.supersedesMemoUuid)
+        // a QC-locked draft cannot become an edit (beginEdit refuses it): nothing of another memo's stock is given back into its catalog
+        val catalog = withGiveBack(if (draft.qcCompleted) null else editing ?: draft.edit?.supersedesMemoUuid)
         val landed = committer.existing(draft.memoUuid)
         if (landed != null) store.clear(visit.visitUuid) // the commit landed and the kill came before the draft was cleared
         val keep = previousNotice(visit) // read before the state is replaced
