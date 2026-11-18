@@ -442,8 +442,8 @@ class QuarantineAcceptTest {
         assertEquals(1L, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "released with the waiver the reviewer's accept carried"); assertEquals("accepted", item(dueCu).second)
         assertEquals(audits + 1, count("SELECT count(*) FROM app.audit_log"), "exactly one audit row for the release")
         fresh.db.jdbi.useHandle<Exception> { h ->
-            val a = h.createQuery("SELECT actor_user_id, via, action, after->>'action' AS act, after->>'awaited' AS awaited, after->>'first_parent' AS fp, before->>'code' AS code FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = :i").bind("i", id.toString()).mapToMap().single()
-            assertEquals(null, a["actor_user_id"]); assertEquals("job", a["via"]); assertEquals("accept", a["action"]); assertEquals("sweep_release", a["act"]); assertEquals(otherVisit, a["awaited"]); assertEquals(memo, a["fp"]); assertEquals("scope_out_of_reach", a["code"])
+            val a = h.createQuery("SELECT actor_user_id, via, action, after->>'action' AS act, after->>'awaited' AS awaited, after->>'first_parent' AS fp, after->>'override' AS ov, before->>'code' AS code FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = :i").bind("i", id.toString()).mapToMap().single()
+            assertEquals("scope_out_of_reach", a["ov"], "the audit row records the override the release carried"); assertEquals(null, a["actor_user_id"]); assertEquals("job", a["via"]); assertEquals("accept", a["action"]); assertEquals("sweep_release", a["act"]); assertEquals(otherVisit, a["awaited"]); assertEquals(memo, a["fp"]); assertEquals("scope_out_of_reach", a["code"])
             assertEquals(null, h.createQuery("SELECT app.audit_verify()").mapTo(Long::class.javaObjectType).one(), "the hash chain verifies (null = intact)")
             assertEquals(1L, h.createQuery("SELECT CASE WHEN has_table_privilege('api_rw', 'app.audit_log', 'INSERT') THEN 1 ELSE 0 END").mapTo(Long::class.java).one(), "the API role holds the audit grant")
         }
