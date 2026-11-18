@@ -4756,7 +4756,7 @@ export interface components {
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /**
-         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
+         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is stored on the attendance row only; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
          * @enum {string}
          */
         AttendanceClosedBy: "rep" | "phone";

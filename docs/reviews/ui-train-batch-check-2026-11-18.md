@@ -43,3 +43,65 @@ LOWS:
 - The error line prints "Check this value" for the too-long case (TEXT_TOO_LONG) as well as the empty case. For the empty case an AmoBanner with the specific message already shows below, so the golden shows both messages. This is redundant but harmless.
 - In DescriptionBox the Boolean parameter is named `error` and the code calls `error(errorText)` inside the semantics block. Kotlin should resolve that call to the semantics extension, but this was not compiled here. The lane's CI run (44260156038) was on 0e45f76f, not on the new head ff9fb511, so a green CI on ff9fb511 is not confirmed.
 - The new golden is not diffed against a fresh render here, and the contrast values (7:1 for 0xFFA00018 on the AMO page colours) were not recomputed. I only read the test code and looked at the PNG. The PNG shows a Bangla page with a red outline, the hint "বিবরণ" and the red line "মানটি যাচাই করুন" under the box. It looks right.
+
+
+# Batch check for look train 2: SR lane a4691a061..d60e2e2f, 2026-11-18 (sale-flow lows: Opus lens; KV/POSM, picker, hygiene: Sonnet). Read from code only.
+
+## sr-sale-flow-lows verdict=pass
+SUMMARY: Pass: no blocking defect found in the last slice (d60e2e2f, diffed against the merge 0e7adcd8ba). Nothing was built or run; this is from reading the code at d60e2e2f.
+
+**1. DraftRefusedException**
+- It is raised in one place only: SaleFlow.editLocked, when the draft-change lambda throws IllegalStateException or IllegalArgumentException. Those lambdas only call SaleDraftOps (require/check), so it means a refused draft change and nothing else.
+- On a QC-locked draft an IllegalStateException from the change becomes the Locked notice and returns false, with nothing written.
+- "No sale in progress", "sale already committed", the review calculation and store.save sit outside the try and propagate unchanged.
+- refusalGuard catches only DraftRefusedException and rethrows everything else, so other failures still reach the uncaught handler. A handler that throws is reported by kotlinx as a wrapped exception to the thread's handler, so the stack is wrapped but it is still a crash.
+- start() is launched with no handler. The Save/commit path (SaveAndPrint, SaleFlow.commit) is untouched and outside the handler. CancellationException never reaches a CoroutineExceptionHandler and is not caught anywhere new.
+
+**2. Edit of a saved memo, SR and AMO (identical code)**
+- Normal case is unchanged: start(editing = memo) gives the stock back, lines and payment are prefilled, withEdit sets draft.edit and returns true, and the host shows the SaleRoute. Commit code is untouched, so the saved edit supersedes the memo as before.
+- withEdit returns false only when the loaded draft is QC-locked; `draft.edit != null` is then always true after a true result. I found no way a legitimate edit is refused wrongly:
+  - a leftover draft without QC is still loaded and marked, as before;
+  - typed but unsubmitted QC rows are dropped at start and do not lock;
+  - a re-run of the LaunchedEffect finds the give-back already done and returns true;
+  - the effect is keyed on the reason, so a double start is not possible from the host.
+- prepareEdit, editRefusal and EditGate (check-in gate, closed-call rule, QC'd memo not editable) have zero diff.
+- The false case has three lows: a possible setPaid write into the locked draft, no message to the rep, and stale give-back in the flow state until the next start.
+
+**3. setQuantity return value**
+- No production caller uses it: the view model, both kits' prefill and SaleRoute all discard it. Only QcLockedFlowTest reads it.
+
+**4. SaleCommitter, SaleReview, SaleDraftOps**
+- Zero diff for these paths in a4691a061..d60e2e2f (empty diff stat).
+
+**5. Tests**
+- QcLockedFlowTest: additions only against a4691a061, no removed or changed lines.
+- SrMidnightRestoreTest and AmoMidnightRestoreTest: no diff.
+- No AMO golden changed; the only PNGs in the range are the new srp1b_* files. The AMO code change (return value and host branch) does not alter any rendered screen.
+- The handler-level pinning and the one replaced test are in the lows.
+
+**Not verified**
+- Compilation and test runs.
+- Whether a second sale can be opened in a call that already holds a saved memo (the precondition of the setPaid low).
+- The Bangla wording beyond reading the two added strings.
+- The KV/POSM and picker slices, which are outside this lens.
+
+LOWS:
+- setPaid has no QC lock, so a refused edit can still write the old memo's payment into a locked draft. In beginEdit (SrSaleKit.kt:351-359, AmoSaleKit.kt:251-259) the prefill runs before the lock is tested: on a QC-locked draft the setQuantity calls are refused, but `if (old.paidMtk > 0) flow.setPaid(old.paidMtk)` is accepted and saved (SaleDraftOps.setPaid has no qcCompleted check), and only then does withEdit return false. So the KDoc 'false (nothing changed)' is not fully true. I could not confirm this is reachable: it needs a saved, still-editable memo and an unsaved QC-locked draft under the same visit uuid. A normal Save clears the draft and closes the call, and a leftover sale draft of a closed call is discarded at edit start. The only path I can see is a kill after the save but before the call close, then a second sale in the resumed call, QC submitted, then Edit on the first memo; I found no guard against a second sale in such a call but did not trace the resume path. Cheap fix: in beginEdit return false right after flow.start when draft.qcCompleted, before any prefill.
+- The false case tells the rep nothing on the spot. EditHost and AmoEditHost call onDone(), so after choosing the edit reason the rep is silently back on the previous screen. The Locked notice is set on the flow state and only shows if that visit's sale screen is opened again. Because of the gate, the false case should be very rare.
+- After a false beginEdit the shared flow still holds what flow.start(editing = memo) published: the catalog with the old memo's stock given back and givenBackFor set to that memo. withEdit itself adds nothing (pinned by anEditMarkerOnALockedSaleIsRefusedAndTheGiveBackIsNotLeftInTheState). It is reset when the sale host of that visit runs vm.start again, so I see no path where the inflated stock is used for a save. Nothing is added to the draft store apart from the setPaid write above.
+- No test drives kit.beginEdit: `git grep beginEdit` over the test sources at d60e2e2f finds nothing. The Boolean result, the `draft.edit != null` check and the host's onDone branch are covered only at SaleFlow.withEdit level (QcLockedFlowTest), in neither app.
+- SaleViewModelGuardTest pins 'another exception still crashes' only on the handler function: refusalGuard rethrows an IllegalStateException and sets no notice. It does not pin that every guarded launch in SaleViewModel uses that handler, nor that start() has none; a later edit to the view model could change either without a test failing. By reading, the view model does use refusalGuard(flow) for all guarded launches and start() is launched bare.
+- One pre-existing test was replaced in the range, by c48337db (already reviewed PASS by the lead), not by the last slice: SrQcRouteRestoreTest (real activity recreate through the SR sale host) was deleted and its case moved into SrSaleLockedRouteTest as anOpenQcPageIsNotRestored, which now drives SaleRoute directly with StateRestorationTester. Same assertion (6 fields, then 0 after restore), but it no longer goes through the SR host or a real recreate.
+- Pre-existing, not from this range: if an edit starts while a leftover draft of the same visit carries the memo uuid of a save that already landed (kill between commit and draft clear, call still open), flow.start publishes it as committed and the first prefill setQuantity fails with 'sale already committed' inside the LaunchedEffect, which is a crash. The start clears the draft file, so a second try works. Not verified end to end.
+
+## sr-kvposm-picker-hygiene verdict=pass
+SUMMARY: PASS for slices (2) and (3) and the hygiene of the whole range at d60e2e2f. Nothing was built or run, and I read the code only. (a) KV/POSM: CallContentViews.kt is stateless. In the CallContentHost diff only the calls into the views changed. The host still holds the logic: the numbering, the `PosmSurvey.canSubmit` check, `answers` and its copy on pick, the photo call `takePhoto(key)`, the attendance dialog, and the Save with its refusal handling. The skip link "সার্ভে ছাড়া এগিয়ে যান" is kept, and `onSkip` is still guarded by `!saving`, so a sale is never blocked. The confirm dialog calls the same save once (`onYes` sets `confirm=false`, `saving=true`, then runs the same coroutine). A tap outside or the No button gives `onNo`. The AV branch keeps its completion and error callbacks, and the close action is unchanged. No new strings were added for these views. They reuse the existing sr_* strings, which exist in values and values-bn (সাবমিট →, উত্তরঃ). The views carry no hardcoded text. Long question text wraps in a Text inside a card. The font 2.0 and Sunlight goldens exist, but I only checked the test and golden file names, not the images. (b) Picker: PickerDialog keeps the query (rememberSaveable) and wraps PickerSheet in the Dialog. The filtering call is filterPickItems on (items, query), the clear cross sets the query to empty, and the pick callback is the same. The only callers of SearchPickerField that I found are in SrOutletRequestScreen (SR). There are no AMO or TSO callers, so their look and behaviour are unchanged. (c) The stat is within scope: app-sr, app-amo (beginEdit and its host), feature-outlet, feature-sale, tests, srp1b_ goldens, strings, docs and DECISIONS. Nothing touches TSO, core-ui, the backend or the build files. (d) All 11 srp1b_content_* and srp1b_cluster_picker_* images are Added. There are 0 modified or deleted image files, so the amo_ and tso_ goldens are untouched. (e) Exactly one test file is deleted (SrQcRouteRestoreTest). Its coverage moves to SrSaleLockedRouteTest, and the decisions note says so. No @Ignore was added, and no assert was removed apart from that file. QcLockedFlowTest only gains lines. (f) DECISIONS.md is a pure append of 4 lines at the end (D-PAR-SR1-26 to 29) with no earlier line touched. The coverage table is honest. It says "not walked on a device" and states what is kept (the skip link, the photo box without a thumbnail, the dialog window not recorded).
+
+LOWS:
+- The lane has moved: after my fetch origin/lane/android-parity-sr-1 is 7c3bc2e9, not d60e2e2f. I reviewed d60e2e2f exactly as you named it, and I did not look at what 7c3bc2e9 adds. Re-check the tip before landing.
+- TalkBack on the new survey dropdown: the box has Role.DropdownList and shows only the chosen word or "নির্বাচন করুন". It has no content description tying it to its question, and the caret icon has no description. The photo box is fine (Role.Button plus its text). The old dropdown read "উত্তরঃ + answer" as one node, so this is a small step back for screen-reader users. It is not a blocker because it does not stop a sale.
+- The photo box has no thumbnail or delete cross. This is stated honestly in D-PAR-SR1-27 and the status doc.
+- The strings sr_glyph_dropdown (app-sr, both languages) and some imports and `val look` in CallContentHost.kt are now unused. I found no warnings-as-errors setting, so this is cosmetic.
+- docs/status/android-parity-sr-1.md says "head 9f55b828" in its Update line, but the branch head is d60e2e2f. It also marks row 35 COMPARED while the AV step has no golden. The text does say the AV step shares the KV layout and that a platform VideoView has no picture to record, so it is honest.
+- The old SrQcRouteRestoreTest (an activity recreate) is deleted and replaced by SrSaleLockedRouteTest (StateRestorationTester). D-PAR-SR1-26 states this openly. The old test's one case, anOpenQcPageIsNotRestoredAfterARestoration, is carried over as anOpenQcPageIsNotRestored with the same 6-then-0 box counts. It is a replacement, not a weakening, but I could not run either test.
+- I read the deleted test's case list and the new test's case list, and the new file has three cases. I did not read the bodies of the new route tests or of SaleFlow, SaleViewModel and SaleRoute in detail. Slice 4 was only checked through DECISIONS and the stat.

@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * Round 1.20.0 (D-SV2-15): a check-out the phone made for a forgotten day (`closed_by = 'phone'`) is "no check-out" in every attendance reader of this module:
+ * Train 117 (contract 1.19.0) (D-SV2-15): a check-out the phone made for a forgotten day (`closed_by = 'phone'`) is "no check-out" in every attendance reader of this module:
  * `dw.fact_attendance` (and so `dw.v_attendance` and its hours), and the attendance report (`gigo`). sr001 checks in and the phone closes the day three days
  * later (no location); sr002 checks in and out by hand (the control, eight hours).
  */

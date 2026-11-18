@@ -273,3 +273,80 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Integration a4691a061 = lane/lead-train120 4f6f688ed + train row; lane ci 44275099826 green (18 jobs); integration ci 44277348531 (#2368) green; deploy #360 skipped by design; dev stays on build 4d310d8c0, database v0204. APKs of record: aron-release-signed-dev-2368.
 - Reviews since 09:30: gates-2 follow-ups 6a86c275 PASS (lands after integrity; 8 lows in work); programmes round 4 1c88247e: one blocking (lost-ack double count; ruling: sent-but-unanswered memos are 'uncertain', not added, line shown, refetch after answer); Loyalty push B 4cdece42: code PASS, one hygiene blocking (DECISIONS entry rewritten) -> L-A12; QC-locked sale crash fix c48337db PASS (next look train); ops-diagnose-api 46c6ef49 under review (redaction).
 - Next GO: train 121 = android-integrity after A-INT3's merge of 4f6f688ed and my delta check (+ ops-diagnose-api if it passes). Then SV6 follow-ups (V0209), Loyalty B (1.22.0), gates-2, look train 2 (SR c48337db+, TSO), programmes, targets.
+
+
+### 2026-11-18 10:35 update: train 121 with the integrator
+- Train 121 = lane/lead-train121 a9d83d774 = a4691a061 + docs + android-integrity 3de83cf0 (V0205..V0208, contract 1.21.0, Room 11; 652 D-lines). Landing delta check PASS. GO given 10:33. After landing: read the migrate console (0204 -> 0208); tell SV6 ('integrity landed': renumber V0240 -> V0209, merge), L-A12 (push B final contract 1.22.0), A-GATE8 (merge, land), A-PROG2 (ActionGate first in every writer; Room 12 now free), P-SR1b/P-TSO/P-AMO3 (merge), T-KPI2.
+- ops-diagnose-api a254a71f: re-check FAIL (held-back filter never fires: 'True' vs 'true'; byte cut mid-Bangla character kills the filter and the step stays green) -> SV6 fix round. The workflow on the integration branch is unchanged (older sections unredacted): owner told twice.
+- A-PROG2 96470d9e (B1c: uncertain rows, refetch; slice 6 lows; merged a4691a06): review owed. P-SR1b on the crash-fix lows + merge. P-TSO re-recording. L-A12 on push B hygiene + adjustment.
+- Stray .whl files appeared untracked in scratchpad/wt-verify (a reviewer agent's pip download); removed; none committed.
+
+
+### 2026-11-18 10:45 update: OWNER MESSAGE: final Azure ready; Apsis dump on the organisation's FTP
+- Recorded as D-OWNER-FINAL-AZURE-01. Nothing is created in the final subscription until the owner has run the bootstrap and said yes to size and budget.
+- New lanes: F-INFRA1 session_014mnioNmy9D9X5nhakg15UC (branch lane/infra-final: readiness audit docs/status/infra-final.md first, with the ordered owner steps, quotas, cost by stage; then stage wiring, runbook update, private landing container for the dump). M-APSIS1 session_014mnioLieefh81L6kmm7Nhd (branch lane/apsis-migration: design docs/status/apsis-migration.md first with owner questions about the dump; tooling tested on synthetic data only; provisional migrations from V0260).
+- The owner's laptop folders are listed but not offered to cloud sessions (not_available), so laptop steps go through the laptop operator session as before.
+- Asked the owner: Owner-role login and bootstrap on the laptop; yes to size and budget (staging first; prod core about USD 5,490 a month, with DR about 6,702, budget 9,000); region; approval of the release flow (main, gate pull request, tags), which production needs; dump format and size; final Google/Firebase project.
+
+
+### 2026-11-18 10:50 update: P-SR1b push blocked by its permission classifier
+- Session session_014mnioQAtKKTq9KrTS98tic ('…android-parity-sr-1 P-SR1b'): `git push origin lane/android-parity-sr-1` of local commit 41ee52a1 (five lows of the look-train-2 batch check) DENIED twice by the auto mode classifier ('Destructive or Unwanted Actions', then 'Undermining Oversight'). Not worked around. The remote head d60e2e2f (batch check PASS) is unaffected; 41ee52a1 exists only in that container. Needs the owner's approval in that session (same situation as P-SR2b). Until then the SR look lane cannot push its train-121 merge either.
+- Look train 2 fallback if the owner does not answer: pin d60e2e2f and let a fresh lane do the train-121 merge and re-apply the five lows from the review text (decide at landing time; do not copy the blocked commit out of that session).
+
+
+### 2026-11-18 10:55 update: train 121 gitleaks failure explained; re-run ordered
+- The one finding (generic-api-key, infra/tests/check_infra.py:859, commit 41df7f4d) was a made-up test sample that was briefly the tip of lane/ops-diagnose-api; the train's whole-history scan covers all refs fetched and ran one second after that push. Not reachable from a9d83d774; no remote ref holds it now (SV6 force-pushed it away before being told not to). SV6's scan with the pinned gitleaks: a9d83d774 history and all current refs clean. Integrator told to re-run the failed job once and continue.
+- CI weakness to fix (give to F-INFRA1): the whole-history secret scan of a branch run includes every other branch's tip, so one lane's flagged commit can fail an unrelated train; scan the checked-out commit's own history (and keep a separate all-refs scan as its own job).
+- T-KPI2 6af9be045: admin tab built, ci green; Opus pass on the whole targets-server branch running.
+
+## 2026-11-18 11:30
+- Train 121: INT ce6792f67, ci success (run 44289497108), deploy in progress (run 44293328876). Dev health still build 4d310d8c0.
+- apsis-migration 8a637747: FAIL (12 blocking) sent to M-APSIS1 as a ten-item fix round incl. opening balances at cutover.
+- infra-final 2f13c5bc3: lead review running (wf_5a2f731f-e97).
+
+## 2026-11-18 11:50
+- TRAIN 121 LANDED: INT ce6792f67, ci 44289497108 success, deploy #361 (44293328876) success, SR slice smoke passed, health build ce6792f67. APK aron-release-signed-dev-2393 41980672 B (-285037 B vs train 120). PITR point 2026-11-18T11:24:36Z. Migrate console not in the deploy log; ops-diagnose run 44297116585 dispatched to read 0204 -> 0208.
+- Post-landing messages sent: SV6 (V0240 -> V0209), L-A12 (1.22.0 / 1.23.0), A-GATE8, A-PROG2 (ActionGate first, Room 12), T-KPI2, P-SR1b, P-TSO, P-AMO3, M-APSIS1.
+- infra-final 2f13c5bc3: FAIL, 4 blocking (governance.ps1 stray brace; runbook dead end at main; no test-account guard on apsis-landing; lab-grant public key read). Sent to F-INFRA1; lane head 84652afed (round 2) to be delta-reviewed after the fix.
+- ops-diagnose-api 9496e81d: scope PASS, leak lens FAIL (OTP joined to key name; Authorization non-Bearer). Round 5 sent: messages off by default in queries.
+- A-PROG2 head b880dfee (deterministic gift photo uuid); full final pass owed after its INT merge.
+- lane/lead-ci-gitleaks is an old branch of mine (2026-10-22), not new.
+- 11:55 migrate console read (ops-diagnose 44297116585): schema was 0204, applied 0205..0208, "Successfully applied 4 migrations ... now at version v0208", 186 validated, no ERROR in the migrate console. Worker section at 11:26:42Z shows two ERROR lines (risk signal evaluation failed; aggregation pass failed, SQLTransientConnectionException) and Hikari starvation WARN around the worker pause: asked SV6 to check whether the pause lets a pass start while connections are cut and whether the pass retries.
+- P-TSO 09e2ed1c pushed (slice 3 + INT merge), lane ci running; lane at ~300k context, hands over after "checked".
+
+## 2026-11-18 12:35
+- infra-final: reviewed through round 5, head 6f6a470b1 PASS (no blocking; lows in the review file). Lane finished; waits on owner (D1..D9, release flow, bootstrap). Not landed: cannot land before the release-flow approval; lows (diagnose error path prints the server id; whatif.yml replica line untested) go to the lane as a last one-liner round when it is next touched.
+- Secret scanner: ONE false positive at bfd0087c8 infra/validate.sh:80 (lane/infra-final history) fails the all-refs gitleaks step for EVERY lane push. Owner asked for yes/no on one fingerprint; no answer yet. No train can be built on green lane runs until then.
+- sr-targets-server 09f43d288: delta re-review running (as_of clamp).
+- apsis-migration df219237: re-review running.
+- ops-diagnose-api c0ec3a56: FAIL -> ruling: remove include_messages from the workflow; restore Flyway proof labels.
+- gates-2 662a4e74 ready (scanner aside). A-PROG2 173b369f: ActionGate first, no Room 12 needed; final pass owed after its last display items.
+- P-SR1b local 442fdccf not pushed (owner approval in that session).
+
+## 2026-11-18 13:00
+- sr-server 9b69fba3 (V0209 + D-SV2-22): PASS both parts. Ready for the next server train once the scanner step is green.
+- ops-diagnose-api 5f0df7f0: one blocking left (downloaded PG server-log path prints free text); round 7 sent.
+- sr-targets-server: clock-based rule withdrawn after 3 failed rounds; no-clock design approved (figures from memo tables in one repeatable-read tx; phone rule by own sync order). Successor lane T-KPI3 = session_014mnioQ69orMsmNhwJntrJC on lane/sr-targets-server (c4babda99).
+- apsis-migration df219237: FAIL (8 distinct blocking), fix round 2 sent; hist_ro reader role ruled.
+- Owner asked for a full catch-up; given at ~12:40 (scanner exception first, two push approvals, final-account decisions, dump questions, programme rules, app decisions, device walks).
+- Open rule question (old, not from this merge): a corrected resend after a final schema_invalid is quarantined as payload_conflict (reviewable, not dropped). Decide for all final rejects later; logged, not blocking.
+
+## 2026-11-18 13:15
+- New lanes: T-KPI3 session_014mnioQ69orMsmNhwJntrJC (lane/sr-targets-server, no-clock redesign; T-KPI2 retired). A-PROG3 session_014mnioMCDLry9MUsj6oF3Ka (lane/android-sr-programmes: quarter chips, phone rule B; A-PROG2 retired at bb52f926d).
+- Reviews running: final pass android-sr-programmes bb52f926d (wf_858699d5-bb8); loyalty adjustment c4113eed (wf_15d70f25-e57); ops-diagnose-api c1fe8c02 round 7 (wf_30b67639-f1e).
+- Ready for the next server train (scanner step aside): sr-server c62664944 (V0209, tests-only delta on the reviewed 9b69fba3).
+- L-A12 started S-1/S-2/S-3 (additive) on top of c4113eed.
+
+## 2026-11-18 13:40
+- OWNER answers (recorded D-OWNER-GITLEAKS-01, -AZURE-MOVE-01, -APSIS-FTP-01, -PORTALS-INTEL-01): scanner exception YES; pushes of P-SR1b/P-SR2b approved (relayed; lanes retry once, no workaround); move EVERYTHING in the current Azure subscription to the new one (current will be discontinued); FTP details to be shared for the dump (lead ruling: password never in chat, typed where the copy runs); programme/target portals brief comes in a few days (earning rule, zero-balance redemption, cash-back, Q-A..Q-K wait for it); app-behaviour decisions: owner answers tomorrow from the lead's list; device walks explained.
+- TRAIN 122 built: lane/lead-train122 5b379eb52 = INT ce6792f67 + docs ad5dc1be4 (allow-list line) + sr-server c62664944 (V0209). GO sent to the integrator. Expect 661 D-lines, migrate 0208 -> 0209, real deploy.
+- After train 122 lands: tell every lane to merge INT (scanner step turns green): A-GATE8, A-PROG3, T-KPI3, L-A12, SV6 (ops-diagnose-api), M-APSIS1, F-INFRA1, P-TSO, P-SR1b, P-SR2b.
+- This cloud session has NO Azure login and the laptop folders are not offered to cloud sessions: Azure inventory and the move run through a Claude Code session on the owner's laptop with a prompt from the lead (given in chat 13:40). Inventory of other products stays OUT of the public repository.
+- loyalty adjustment c4113eed: FAIL (overdraw race), fix round sent.
+
+## 2026-11-18 14:10
+- ops-diagnose-api 4d072962: PASS (both lenses, whole-lane gate). Lows sent as a last small round (strict time shape, decimal duration, KQL head test). Lands in the NEXT server train (123) after it merges INT post-122.
+- android-sr-programmes final pass bb52f926d: FAIL, 4 distinct blocking (timestamp arithmetic on the Astha page; gift photo doubled after kill/cancel; locale digits in machine keys; refused gift photo cannot be retaken). Sent to A-PROG3. Astha figures on the server already meet the no-clock rule (today included, one snapshot): A-PROG3 may switch Astha to the counter rule.
+- apsis-migration 610d46d45: third review running (wf_eb8f3954-959).
+- P-SR1b / P-SR2b: both refused the relayed approval (correct); owner must type the push line inside each session; told the owner.
+- Train 122: waiting for the integrator's report.

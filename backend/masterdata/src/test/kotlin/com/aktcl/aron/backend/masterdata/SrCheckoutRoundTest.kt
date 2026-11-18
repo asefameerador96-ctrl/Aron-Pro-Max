@@ -13,7 +13,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Round 1.20.0 (D-SV2-15, D-SV2-16), the two pieces that live in the master-data module: the worker rule that withdraws a
+ * Train 117 (contract 1.19.0) (D-SV2-15, D-SV2-16), the two pieces that live in the master-data module: the worker rule that withdraws a
  * CHECKOUT_WITHOUT_SUBMIT signal when an effective Sales Submit of the user-date is stored (run as `worker_rw`: the API role may not
  * update `risk_signal`). (The admin's 3-character username rule is the master-data train's, with its own tests in AdminUsersRoutesTest.)
  */

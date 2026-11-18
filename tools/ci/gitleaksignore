@@ -31,3 +31,7 @@ a8f914931ceead107a17f74e9c547cb8ac9f6ddd:web/src/lib/national/server.ts:generic-
 # lead ruling text in DECISIONS.md ("(lane portal-discount-api, ... portal): the lead approves") read as a key assignment;
 # reworded in D-LEAD-CONTRACT-112-01a; no secret (reviewed by the lead, 2026-11-11)
 5ce98afd2b4160bcf9337cc2142810db2f23fe7b:DECISIONS.md:generic-api-key:1848
+# 2026-11-18, lead review, approved by the owner (D-OWNER-GITLEAKS-01): infra/validate.sh on lane/infra-final listed
+# empty environment assignments (names ending in _SECRET= and _URL= with no value) for a bicep build-params loop;
+# there is no value on the line; the assignments were removed in the next commit.
+bfd0087c8899c329b64e32cb073dff8d4019d7eb:infra/validate.sh:generic-api-key:80
