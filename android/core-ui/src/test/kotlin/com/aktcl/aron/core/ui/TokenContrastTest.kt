@@ -352,7 +352,7 @@ class TokenContrastTest {
         val l = AronLook.AmoPurple
         listOf(l.panelTop!!, l.panelBottom!!).forEach {
             amo("AmoPurple", "white figure on the panel ramp", l.onPanel, it, 7.0)
-            amo("AmoPurple", "muted ink on the panel ramp", l.onPanelMuted, it, 4.5)
+            amo("AmoPurple", "muted ink on the panel ramp", l.onPanelMuted, it, 7.0)
         }
         // Sunlight and the other looks stay solid
         listOf(AronLook.Default, AronLook.Sunlight, AronLook.TsoNight, AronLook.TsoSunlight, AronLook.AmoSunlight).forEach { assertTrue(it.panelTop == null) }

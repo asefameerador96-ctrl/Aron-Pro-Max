@@ -10,7 +10,7 @@ import kotlin.math.pow
 /**
  * D-PAR-AMO-11: the AMO Stock screen (screenshot 41) follows the old colours (blue-to-indigo totals panel, purple count badge) only while every
  * key figure reaches 7:1 on its solid surface: the totals figures on both ends of the panel ramp, the badge number on its purple disc, the panel
- * column words at AA on both ends (7 requested from core-ui, R-PAR-AMO-06), in the AMO look and in its Sunlight twin.
+ * column words at 7:1 on both ends (R-PAR-AMO-06, landed), in the AMO look and in its Sunlight twin.
  */
 class AmoStockContrastTest {
     private fun lin(c: Float) = if (c <= 0.03928f) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
@@ -21,8 +21,8 @@ class AmoStockContrastTest {
         val ramp = listOf(look.panelTop ?: look.panel, look.panelBottom ?: look.panelTop ?: look.panel)
         ramp.forEach { surface ->
             assertTrue("$name: totals figures on the panel", contrast(look.onPanel, surface) >= 7.0)
-            // the small column words are not key figures: AA (4.5) is pinned here; the AMO blue end measures 6.1 and R-PAR-AMO-06 asks core-ui for 7
-            assertTrue("$name: panel column words on the panel", contrast(look.onPanelMuted, surface) >= 4.5)
+            // R-PAR-AMO-06 landed (P-SR1, train 115): the muted panel ink now holds 7:1 on both ends of the ramp too
+            assertTrue("$name: panel column words on the panel", contrast(look.onPanelMuted, surface) >= 7.0)
         }
         assertTrue("$name: badge number on its disc", contrast(Color.White, look.purple) >= 7.0)
         // Sunlight draws the panel white with black figures: the badge number is then still white on the dark purple disc

@@ -24,6 +24,8 @@ data class IngestRecord(
     val deviceId: Long?,
     val batchUuid: String,
     val receivedAt: Instant,
+    /** The check a reviewer's accept released this record from ([IngestService.acceptQuarantined]); null for a first delivery. A handler that re-judges in [RecordHandler.afterStored] must honour it. */
+    val released: RecordOutcomeCode? = null,
 )
 
 /** A handler's refusal; the outcome code's status decides quarantine, park (retryable) or final rejection (s4.5). */
@@ -52,6 +54,12 @@ interface RecordHandler {
     fun checkEarly(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
+
+    /**
+     * True when [check] applies a reviewer's accept itself (it reads [IngestRecord.released] and waives exactly one check). The ingest then does NOT skip a refusal
+     * whose code equals the released code: such a refusal is a SECOND failing check, and the accept answers 409 with it instead of letting [afterStored] fail.
+     */
+    val judgesWaiver: Boolean get() = false
 
     /**
      * A replacement payload to store instead of the one sent (contract 1.14.0: an optional reference the server cannot honour, such as a

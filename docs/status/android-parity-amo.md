@@ -49,7 +49,7 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Previous sale data: calendar date field | FIX: date field + picker (90-day window) + ISO line (D-PAR-AMO-05) | slice 2 | amo_previous_sales_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
 | Stock (41): purple count badge on every packshot | FIX: AMO stock host passes `srParity = true`; badge = packs issued on the row (D-PAR-SR1-05); red minus / purple plus kept (D-PAR-AMO-11) | ecd7c5f0 | amo_stock_* |
-| Stock (41): blue totals panel | BLOCKED in core-ui: TotalsPanel paints solid purple over the ramp; R-PAR-AMO-06/07 done by P-SR1 at 75b2a14d, arrives with the next UI train | - | amo_stock_* (re-record on merge) |
+| Stock (41): blue totals panel | DONE after train 115 (merge f5bfee39): TotalsPanel shows the host's AMO ramp, the muted words hold 7:1 (R-PAR-AMO-06/07, P-SR1 75b2a14d); goldens re-recorded on the merged code and looked at; `AmoStockContrastTest` pin raised from 4.5 to 7.0 | merge push | amo_stock_*, amo_team_live_route_* |
 | SR stock list / lifted stock (40) | RECORD: already built (SrCard, LiftedStockContent); the audit read dead code (`TeamStockScreens.kt`, kept: tests and goldens reference it) | - | amo_team_sr_list_*, amo_team_lifted_* |
 | Memo pick (42 left) | RECORD: already the old picker (MemoFindStep); the audit finding was stale (D-PAR-AMO-12) | - | amo_control_call_pick_* |
 | Memo detail (42 right): info card, shop card, ramp head, Print/Edit row | FIX behind MemoDetailView options `headerCard`, `gradientHeader` + existing `detailBanner`, `buttonsInRow` (D-PAR-AMO-12) | 1260ec28 | amo_memo_detail_due_bn, amo_memo_detail_paid_bn |
