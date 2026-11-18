@@ -1,5 +1,8 @@
 # Lane android-gates — status
 
+## A-GATE7 FOLLOW-UP (2026-11-18, after the lead's review of d9997b8a): see D-AGATE-20
+Done: lead items 1 to 7 (retry before the closed-call refusal, own sale-screen text, AMO gate Close and ControlCallHost texts with tests, AmoStockCorrectHost check-in navigation, edit-memo parent kept withheld with a test, stale draft not loaded into an edit, "day of this call" wording). Not done: no concurrent Save/close race test; mutation proofs of this push not re-run. Device walk still needed for: the new texts in Bangla on a phone, the 04:00 race. After train 117 lands: merge the integration branch, keep Room 10, put `closed_by` on the wire (contract 1.19.0) as planned.
+
 ## HANDOVER A-GATE7 (2026-11-18): STEP 5 CLOSING ROUND (lows of the lead's step-5 review), see D-AGATE-19
 
 DONE (each with a test through the production path; the key fixes were mutation-proved, each fix removed once and its test failed: commit lock, NoSale catch, cross-family SQL guard, reader parent, the 9->10 spec, and all six AMO write guards at once):
