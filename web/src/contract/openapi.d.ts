@@ -2843,6 +2843,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/devices/{device_id}/lab-exemption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Let ONE phone run with Developer options on for 1 to 14 days (the owner's ADB device walks).
+         * @description D-OWNER-MDM-02. The field apps refuse to run while Developer options, USB debugging or wireless debugging is on. This signs a grant
+         *     (ECDSA P-256 over the device uuid, the grant time and the expiry, with a server secret that is never stored in the repository) and
+         *     records it; the phone receives it in its next full day bundle as the device-scoped config value `integrity.lab_exemption` (key prefix cfg., see ResolvedConfigValue),
+         *     verifies it offline against a public key built into the app, and never widens it beyond "the gate lets this device run with
+         *     developer options on" (the mock-location refusals still apply). Super Admin and an Admin with the `mdm` write grant only. A new
+         *     grant replaces the old one. 409 when the server has no signing secret (nothing is recorded). Audited; the audit row never carries the token.
+         */
+        put: operations["grantDeviceLabExemption"];
+        post?: never;
+        /**
+         * Withdraw a phone's lab exemption (idempotent).
+         * @description The phone drops the grant with its next full day bundle (a bundle without the value); until then it keeps it up to its expiry. Audited.
+         */
+        delete: operations["revokeDeviceLabExemption"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/devices/{device_id}/directives": {
         parameters: {
             query?: never;
@@ -6608,6 +6637,11 @@ export interface components {
                 accepted_at: components["schemas"]["Timestamp"];
             }[];
         };
+        /**
+         * @description A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant
+         *     (D-OWNER-MDM-02 iii, 1.19.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
+         *     without it withdraws the grant.
+         */
         ResolvedConfigValue: {
             key: components["schemas"]["ConfigKeyName"];
             value: components["schemas"]["ConfigValueJson"];
@@ -9944,6 +9978,21 @@ export interface components {
                 status: "active" | "unbound_by_policy" | "revoked";
             }[];
             last_status?: components["schemas"]["DeviceStatusReport"] | null;
+            /** @description The unexpired lab exemption of this phone; absent when there is none. Never carries the signed token. */
+            lab_exemption?: components["schemas"]["LabExemption"] | null;
+            /** @description True when the server can sign a grant (the signing secret is set); the portal offers the action only then. */
+            lab_exemption_available?: boolean;
+        };
+        LabExemption: {
+            granted_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            granted_by: components["schemas"]["Id"];
+            note?: string | null;
+        };
+        LabExemptionRequest: {
+            days: number;
+            /** @description Why the phone needs it (for example the walk it is for). */
+            note?: string | null;
         };
         DevicePage: {
             items: components["schemas"]["Device"][];
@@ -17123,6 +17172,63 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    grantDeviceLabExemption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabExemptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The device with its lab exemption. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revokeDeviceLabExemption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device without a lab exemption. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listDeviceDirectives: {

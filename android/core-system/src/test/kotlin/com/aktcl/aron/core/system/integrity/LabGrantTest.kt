@@ -88,4 +88,30 @@ class LabGrantTest {
     }
 
     @Test fun anInvalidTokenIsNull() { assertNull(LabGrantVerifier(pub).verify("x.y", dev, clock.wall)) }
+
+    // ---- what a full day bundle says (contract 1.19.0: the device-scoped value cfg.integrity.lab_exemption) ----
+
+    @Test fun aBundleWithAValidGrantGrantsAndAnAbsentValueWithdraws() {
+        val (l, _) = lab(); assertFalse(l.isActive())
+        l.applyServer(token()); assertTrue(l.isActive())
+        l.applyServer(null); assertFalse("a bundle without the value is the server withdrawing it", l.isActive())
+        l.applyServer(token()); assertTrue(l.isActive())
+        l.applyServer(""); assertFalse(l.isActive())
+    }
+
+    @Test fun aGrantThatDoesNotVerifyChangesNothing() {
+        val (l, _) = lab(); l.applyServer(token()); assertTrue(l.isActive())
+        l.applyServer(token(device = "99999999-2222-3333-4444-555555555555")); assertTrue("a bad token never narrows a standing grant", l.isActive())
+        val (fresh, _) = lab(); fresh.applyServer(token(signer = other.private)); fresh.applyServer(token(tamper = true)); fresh.applyServer("garbage")
+        assertFalse("and never creates one", fresh.isActive())
+    }
+
+    @Test fun aGrantNeverOutlivesItsExpiryEvenIfNoBundleWithdrawsIt() {
+        val (l, _) = lab(); l.applyServer(token(exp = clock.wall + 2 * day)); assertTrue(l.isActive())
+        clock.advance(3 * day); assertFalse(l.isActive())
+    }
+
+    @Test fun withoutThePublicKeyABundleGrantIsNeverHonoured() {
+        for (k in listOf(null, "", "not a key")) { val (l, _) = lab(key = k); l.applyServer(token()); assertFalse(l.isActive()) }
+    }
 }

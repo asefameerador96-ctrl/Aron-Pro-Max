@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.19.0.
 
 
-## Schemas (648)
+## Schemas (650)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -228,7 +228,7 @@ Source: contract/openapi.yaml, version 1.19.0.
 - `schemas/ServerGeneration.yaml` (1247 B)
 - `schemas/BundleMeta.yaml` (1389 B)
 - `schemas/BundleUser.yaml` (1542 B)
-- `schemas/ResolvedConfigValue.yaml` (1112 B)
+- `schemas/ResolvedConfigValue.yaml` (1502 B)
 - `schemas/ResolvedConfig.yaml` (590 B)
 - `schemas/CodeItem.yaml` (1421 B)
 - `schemas/CodeList.yaml` (273 B)
@@ -461,7 +461,9 @@ Source: contract/openapi.yaml, version 1.19.0.
 - `schemas/ConfigVersionPage.yaml` (308 B)
 - `schemas/ConfigRollbackRequest.yaml` (276 B)
 - `schemas/ConfigReach.yaml` (1268 B)
-- `schemas/Device.yaml` (2456 B)
+- `schemas/Device.yaml` (2871 B)
+- `schemas/LabExemption.yaml` (379 B)
+- `schemas/LabExemptionRequest.yaml` (315 B)
 - `schemas/DevicePage.yaml` (294 B)
 - `schemas/DeviceStatusPage.yaml` (312 B)
 - `schemas/DeviceStateChangeRequest.yaml` (294 B)
@@ -654,7 +656,7 @@ Source: contract/openapi.yaml, version 1.19.0.
 - `schemas/DeviceCommandAck.yaml` (351 B)
 - `schemas/DeviceCommandAckResult.yaml` (238 B)
 
-## Operations (281)
+## Operations (283)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -826,6 +828,8 @@ Source: contract/openapi.yaml, version 1.19.0.
 - `operations/changeDeviceState.yaml`  POST /v1/admin/devices/{device_id}/state (918 B)
 - `operations/previewDevicePolicy.yaml`  GET /v1/admin/devices/{device_id}/policy (637 B)
 - `operations/listDeviceStatusHistory.yaml`  GET /v1/admin/devices/{device_id}/status-history (707 B)
+- `operations/grantDeviceLabExemption.yaml`  PUT /v1/admin/devices/{device_id}/lab-exemption (1822 B)
+- `operations/revokeDeviceLabExemption.yaml`  DELETE /v1/admin/devices/{device_id}/lab-exemption (837 B)
 - `operations/listDeviceDirectives.yaml`  GET /v1/admin/devices/{device_id}/directives (613 B)
 - `operations/createDeviceDirective.yaml`  POST /v1/admin/devices/{device_id}/directives (1012 B)
 - `operations/listEnrolmentTokens.yaml`  GET /v1/admin/enrolment-tokens (690 B)

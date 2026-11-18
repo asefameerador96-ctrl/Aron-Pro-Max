@@ -50,6 +50,8 @@ class DeviceService(
     private val clock: AronClock = AronClock.SYSTEM, private val random: SecureRandom = SecureRandom(),
     /** Google's Play Integrity decode (N-027); null leaves every verdict `unevaluated`. */
     private val integrity: com.aktcl.aron.backend.platform.PlayIntegrityDecoder? = null,
+    /** The lab exemption (D-OWNER-MDM-02 iii); null (or a signer without a key) means the portal action answers 409. */
+    private val lab: LabExemptionService? = null,
 ) {
     private val policy = DevicePolicyRenderer(config) { clock.now() }
     private fun sha256(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b)
@@ -390,6 +392,7 @@ class DeviceService(
             id, rs.getString("device_uuid"), rs.getString("flavour"), rs.getString("status"), rs.getBoolean("device_owner"), rs.getString("lockdown_level"), rs.getString("trust_level"), rs.getBoolean("hardware_backed_key"),
             rs.getString("integrity_verdict"), t("integrity_checked_at"), t("enrolled_at")!!, rs.getObject("enrolment_token_id") as Long?, rs.getString("device_info")?.let { JSON.decodeFromString(DeviceInfoDto.serializer(), it) },
             rs.getString("app_version"), rs.getObject("policy_version_applied") as Long?, rs.getObject("config_version_applied") as Long?, t("last_contact_at"), rs.getObject("pending_rows_reported") as Int?, users, last,
+            lab?.let { LabExemptionService.current(h, id, clock.now()) }?.let { LabExemptionDto(it.grantedAt.wire(), it.expiresAt.wire(), it.grantedBy, it.note) }, lab?.canGrant,
         )
     }
 
@@ -443,6 +446,35 @@ class DeviceService(
             h.createUpdate("UPDATE app.device SET status = :s, status_changed_at = now(), status_reason = :r WHERE id = :i").bind("s", next).bind("r", req.reason.trim().take(500)).bind("i", id).execute()
             audit(h, p, "device", id.toString(), req.action, buildJsonObject { put("status", cur.first) }, buildJsonObject { put("status", next) }, req.reason.trim(), requestId)
         }
+        return getDevice(reach, id)
+    }
+
+    /**
+     * PUT /admin/devices/{id}/lab-exemption: lets ONE phone run with Developer options on for [LabExemptionRequest.days] days (1..14). Signs the grant and records the
+     * row; the phone receives it with its next day bundle. 409 when the signing secret is not set (nothing is recorded), 404 outside the caller's reach or for a revoked phone.
+     */
+    fun grantLabExemption(p: AronPrincipal, reach: Reach, id: Long, req: LabExemptionRequest, requestId: String?): DeviceDto {
+        val svc = lab?.takeIf { it.canGrant } ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "lab exemptions are not available: the server has no signing key")
+        if (req.days !in 1..LabExemptionService.MAX_DAYS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "days must be 1..${LabExemptionService.MAX_DAYS}", errors = listOf(FieldError("/days", "out_of_range")))
+        val note = req.note?.trim()?.takeIf { it.isNotEmpty() }
+        if (note != null && note.length > 300) throw ApiProblem(ProblemCode.ERR_VALIDATION, "note must be at most 300 characters", errors = listOf(FieldError("/note", "out_of_range")))
+        val dev = db.jdbi.withHandle<Pair<String, Long?>?, Exception> { h -> h.createQuery("SELECT status, zone_id FROM app.device WHERE id = :i").bind("i", id).map { rs, _ -> rs.getString(1) to (rs.getObject(2) as Long?) }.findOne().orElse(null) }
+        if (dev == null || !inReach(reach, dev.second) || dev.first in setOf("revoked", "replaced")) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
+        // The audit row (same transaction) never carries the token: who, which phone, until when and why.
+        try {
+            svc.grantRow(id, p.userId, req.days, note) { h, row ->
+                audit(h, p, "device_lab_exemption", id.toString(), "grant", null, buildJsonObject { put("days", req.days); put("expires_at", row.expiresAt.wire()) }, note, requestId)
+            }
+        } catch (e: IllegalArgumentException) { throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device") }
+        return getDevice(reach, id)
+    }
+
+    /** DELETE /admin/devices/{id}/lab-exemption: withdraws it (the phone drops it with its next full bundle). Idempotent. */
+    fun revokeLabExemption(p: AronPrincipal, reach: Reach, id: Long, requestId: String?): DeviceDto {
+        val svc = lab ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "lab exemptions are not available")
+        val dev = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT coalesce(zone_id, 0) FROM app.device WHERE id = :i").bind("i", id).mapTo(Long::class.java).findOne().orElse(null) }
+        if (dev == null || !inReach(reach, dev.takeIf { it != 0L })) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
+        svc.revoke(id) { h -> audit(h, p, "device_lab_exemption", id.toString(), "revoke", null, null, null, requestId) }
         return getDevice(reach, id)
     }
 

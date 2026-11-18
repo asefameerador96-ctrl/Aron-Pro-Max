@@ -162,7 +162,7 @@ class BundleService(
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
                     consents = ConsentRecords.accepted(h, user.id),
                 ),
-                config = ResolvedConfig(configVersion, cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
+                config = ResolvedConfig(configVersion, cfg.deviceValues(userChain) + labGrant(h, p.deviceId, now), cfg.deviceScheduled(userChain, until)),
                 code_lists = codeLists(h, date, user.role), // tso-manual B3: a code limited by attrs.roles reaches those roles only
                 products = products(h),
                 prices = prices(h, date, date.plusDays(horizonDays.toLong())),
@@ -211,6 +211,18 @@ class BundleService(
             if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
         if (paged.isNotEmpty()) cachePages(p, result, now)
         return result
+    }
+
+    /**
+     * The lab exemption of THIS phone (D-OWNER-MDM-02 iii): the server-signed grant stored with the unexpired row, as the device-scoped value
+     * [LAB_GRANT_KEY]. Absent when there is none, which is how the phone learns the grant was withdrawn. The token is stored (signed once when
+     * granted), so equal content gives an equal bundle (ETag, snapshot, delta); it is not a secret, it only verifies on the phone it names.
+     * It rides in `config.values` but is not a registry key: the config delta never carries it, only a full bundle does.
+     */
+    private fun labGrant(h: org.jdbi.v3.core.Handle, deviceId: Long?, now: Instant): List<ResolvedConfigValue> {
+        if (deviceId == null) return emptyList()
+        val token = h.createQuery("SELECT grant_token FROM app.device_lab_exemption WHERE device_id = :d AND expires_at > :n").bind("d", deviceId).bind("n", java.sql.Timestamp.from(now)).mapTo(String::class.java).findOne().orElse(null) ?: return emptyList()
+        return listOf(ResolvedConfigValue(LAB_GRANT_KEY, kotlinx.serialization.json.JsonPrimitive(token), "device", deviceId, null, null, null, false, null))
     }
 
     private fun pageKey(p: AronPrincipal, version: String) = "${p.userId}|${p.scopeVersion}|$version"
@@ -781,6 +793,9 @@ class BundleService(
     }.list()
 
     companion object {
+        /** The device-scoped config value that carries the phone's lab grant (contract 1.20.0); see [labGrant]. */
+        const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
+
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
 
         private const val PAGE_CACHE_TTL_S = 300L

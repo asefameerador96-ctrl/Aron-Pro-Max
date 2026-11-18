@@ -55,6 +55,22 @@ object IntegrityGates {
     /** The server withdrew the grant. */
     fun revokeLabGrant(context: Context) { get(context); verifiedLab?.revoke() }
 
+    /** The device-scoped config value of a full day bundle that carries this phone's signed lab grant (contract 1.19.0). */
+    const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
+
+    @Volatile private var appContext: Context? = null
+
+    /**
+     * What a FULL day bundle says about this phone's lab exemption ([token] is the string value of [LAB_GRANT_KEY], null when the bundle has none).
+     * A present token is verified offline (device uuid, expiry, signature against the public key built into the app) and stored; a token that does not
+     * verify changes nothing (it never widens, and a transient mismatch must not trap a lab phone). An ABSENT value is the server withdrawing the grant:
+     * it is revoked. Call it only after a bundle was applied (a failed or offline load must not revoke). Never throws, needs no network.
+     */
+    fun applyServerGrant(token: String?) {
+        val c = appContext ?: return
+        runCatching { get(c); verifiedLab?.applyServer(token) }
+    }
+
     /**
      * "Sync now" from the gate screen (set once in `Application.onCreate`): lets queued records upload at once while the
      * gate is up. Null until set; the gate screen shows the button only when it is set.
@@ -66,6 +82,7 @@ object IntegrityGates {
 
     /** `Application.onCreate` of the three apps: builds the gate and ActionGate before ANY activity exists, and wires "Sync now". */
     fun install(context: Context, syncNow: (() -> Unit)? = null) {
+        appContext = context.applicationContext
         get(context)
         this.syncNow = syncNow
     }

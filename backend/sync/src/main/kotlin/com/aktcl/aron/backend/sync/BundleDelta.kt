@@ -114,7 +114,11 @@ class BundleFingerprint(
             rest = hash(
                 JsonObject(
                     ResponseJson.encodeToJsonElement(Bundle.serializer(), b).jsonObject.filterKeys { it in REST_MEMBERS } +
-                        ("products.nodes" to ResponseJson.encodeToJsonElement(BundleProducts.serializer(), b.products).jsonObject.getValue("nodes")),
+                        ("products.nodes" to ResponseJson.encodeToJsonElement(BundleProducts.serializer(), b.products).jsonObject.getValue("nodes")) +
+                        // The phone's lab grant (D-OWNER-MDM-02 iii) rides only in a full day bundle, not in a delta: a grant or a withdrawal made after the phone's
+                        // snapshot therefore answers the delta with "fetch the full bundle" (410), the same route as any other change a delta cannot carry.
+                        // Only when a grant exists, so every bundle without one keeps its hash.
+                        (b.config.values.firstOrNull { it.key == BundleService.LAB_GRANT_KEY }?.let { mapOf("lab_grant" to it.value) } ?: emptyMap()),
                 ),
             ),
             clusters = sectionHash(kotlinx.serialization.builtins.ListSerializer(BundleCluster.serializer()), b.clusters, b.clusters_truncated),

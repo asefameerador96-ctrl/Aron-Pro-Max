@@ -65,6 +65,16 @@ class VerifiedLabExemption(
         }.getOrDefault(false)
     }
 
+    /**
+     * What a FULL day bundle says (D-OWNER-MDM-02 iii): [token] is the grant it carried, null when it carried none. A token that verifies is stored; one that does not
+     * changes NOTHING (it never widens, and a transient mismatch must not trap a lab phone, whose standing grant is re-verified on every read anyway). An absent value
+     * is the server withdrawing the grant: revoked.
+     */
+    @Synchronized
+    fun applyServer(token: String?) {
+        if (token.isNullOrBlank()) revoke() else accept(token)
+    }
+
     @Synchronized
     fun isActive(): Boolean = runCatching {
         val token = com.aktcl.aron.core.common.AtomicText.read(tokenFile) ?: return false
