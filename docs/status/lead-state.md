@@ -254,3 +254,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - P-SR1b: QC two-step fa03bcab FAIL (crash on locked Cancel; stale saveable state writes old quantities) -> fix round, then merge 118 and the earlier list.
 - A-PROG2 on B1/B3/B4. T-KPI2 on the admin tab. A-GATE8 pushed 94528a88 (no report yet). P-TSO fd8625c8 awaiting ci. P-AMO3 ff9fb511 (docs) on 0e45f76f.
 - Usage: L-A11's get_session shows seven_day 'allowed_warning' (not rejected) at 08:07; L-A11 context 697k of 1M: recycle it after train 119 lands.
+
+
+### 2026-11-18 09:30 update: train 119 LANDED; train 120 with the integrator
+- Train 119: integration 4d310d8c0; lane ci 44266430529 green (19 jobs; '1 new migration(s), highest shipped version 203'; contract 0 breaking 1.19.0 -> 1.20.0; e2e 372 of 372); integration ci 44269125017 (#2357) green; deploy #359 (44271482749) success; PITR 2026-11-18T09:02:53Z; migrate job caj-aron-dev-migrate-9wx8mjo 'migrations succeeded' (console not in the deploy log; ops-diagnose 44275051321 dispatched to read 0203 -> 0204 and the API sweep lines); health build 4d310d8c0; SR smoke passed. APK of record aron-release-signed-dev-2357.
+- Train 120 (UI): lane/lead-train120 4f6f688ed = 4d310d8c0 + docs + SR look e017b2d7 + AMO ff9fb511 (Android and docs only; 637 D-lines). GO given 09:27.
+- Train 121 = android-integrity: A-INT3 told to merge the train-120 branch tip 4f6f688ed, regenerate, report; then a delta check and GO (V0205..V0208, contract 1.21.0, Room 11).
+- Then: SV6 follow-ups (V0209), Loyalty push B (contract 1.22.0), gates-2 follow-ups (A-GATE8 6a86c275, under review), programmes (A-PROG2 1c88247e, round 4 under review), targets server (T-KPI2), TSO slice 2.
