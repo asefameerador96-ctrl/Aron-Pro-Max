@@ -8,26 +8,59 @@
 #
 # Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app] [api-app]
 set -uo pipefail
+
+# --- redaction (D-OPS-DIAGNOSE-API-01). The repository is public and so are its job logs: EVERY line this script prints goes through
+# redact(), and each query result is redacted BEFORE it is cut to its width (so a cut can never leave half a number or token behind).
+# What it catches: key=value and JSON "key":"value" forms of names, phones, e-mails, user names, passwords, tokens, OTP/PIN, device ids; Bangladesh mobile
+# numbers in every spacing (dashed, spaced, +880, 10 digits without the 0, glued to letters, Bangla digits); e-mail addresses; JWTs; Bearer/Basic values;
+# cookies and Set-Cookie lines; connection strings (jdbc, postgres URL, AccountKey, SAS, Endpoint, Server/User Id/Password); UUIDs (device and request ids);
+# IPv4 and IPv6 addresses; any 40+ character token-looking run. It over-redacts on purpose (a 10-digit epoch second starting 13..19 reads as a phone).
+# What it does NOT catch: FREE-TEXT names and usernames that are not in a key=value or JSON form. The defence for those is that the API and worker log ids,
+# hashes and class names only (no payload, no person data); this net is not a licence to log such values.
+redact() {
+  perl -CSDA -pe '
+    BEGIN { $| = 1 }
+    tr/\x{09E6}-\x{09EF}/0-9/;
+    s/\b((?:set-)?cookie2?)\s*[:=].*$/$1: [redacted]/gi;
+    s/eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]+)*/[jwt]/g;
+    s/\b(Bearer|Basic)[ =:]+[A-Za-z0-9._~+\/=-]+/$1 [redacted]/gi;
+    s/(jdbc:|postgres(?:ql)?:\/\/|AccountKey=|SharedAccessSignature=|Endpoint=sb:|Server=|Host=|Password=|Pwd=|User ?Id=|Uid=)[^\s",;]*/${1}[redacted]/gi;
+    s/("(?:user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|outlet_?name|address|otp|pin|passcode|password|secret|token|cookie|ip|remote_?addr|device_?id|imei)"\s*:\s*")[^"]*/${1}[redacted]/gi;
+    s/\b((?:user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|password|passwd|pwd|secret|token|api_?key|key|sig|sas|connection_?string|authorization|otp|pin|passcode|device_?id|imei|ip|remote_?addr)"?\s*[=:]\s*"?)[^",;}\s]+/${1}[redacted]/gi;
+    s/\b(otp|one[- ]time (?:code|password)|verification code|passcode)\b[^0-9\n]{0,20}[0-9]{3,8}\b/$1 [redacted]/gi;
+    s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[email]/g;
+    s/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/[uuid]/gi;
+    s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![0-9a-f:])/[ip]/gi;
+    s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?(?![0-9a-f:])/[ip]/gi;
+    s/(?<![0-9.])[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?![0-9.])/[ip]/g;
+    s/(?<![0-9])(?:\+\s*)?(?:88[\s-]*)?(?:0[\s-]*)?1[3-9](?:[\s-]*[0-9]){8}(?![0-9])/[phone]/g;
+    s/[A-Za-z0-9+\/_-]{40,}={0,2}/[long-token]/g;
+  '
+}
+# show <width>: redact first, then cut to the width.
+show() { redact | cut -c1-"$1"; }
+
+# Test seam (infra/tests/check_infra.py): diagnose.sh --redact [width] filters stdin through the same net, no Azure, no arguments.
+if [ "${1:-}" = "--redact" ]; then if [ -n "${2:-}" ]; then show "$2"; else redact; fi; exit 0; fi
+
 RG="${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP}"
 SINCE="${1:?since (UTC, e.g. 2026-11-05T09:40:00Z)}"
 UNTIL="${2:?until (UTC)}"
 JOB_PREFIX="${3:-caj-aron-dev-migrate}"
 WORKER_APP="${4:-ca-aron-dev-worker}"
 API_APP="${5:-ca-aron-dev-api}"
-# Extra redaction for the API and pre-flight output (D-OPS-DIAGNOSE-API-01), applied after the query's own filter: Bangladesh mobile numbers
-# (01XXXXXXXXX, +880...), e-mail addresses, name/phone/username/password-like key=value or "key":"value" pairs, connection-string and
-# key markers, JWTs, bearer values and any long token-looking run. A line is never printed unredacted; this is a net under the KQL filter, not a licence to log such values.
-redact() {
-  sed -E \
-    -e 's/(\+?880|\b0)1[3-9][0-9]{8}\b/[phone]/g' \
-    -e 's/("(user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|outlet_?name|address)"[ ]*:[ ]*")[^"]*/\1[redacted]/Ig' \
-    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[email]/g' \
-    -e 's/eyJ[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]+)*/[jwt]/g' \
-    -e 's/(Bearer|Basic)[ =:]+[A-Za-z0-9._~+\/=-]+/\1 [redacted]/Ig' \
-    -e 's/((user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|password|passwd|pwd|secret|token|api_?key|key|sig|sas|connection_?string|authorization)"?[ ]*[=:][ ]*"?)[^",;} ]+/\1[redacted]/Ig' \
-    -e 's/(jdbc:|postgres(ql)?:\/\/|AccountKey=|SharedAccessSignature=|Endpoint=sb:|Server=)[^ ",;]*/\1[redacted]/Ig' \
-    -e 's/[A-Za-z0-9+\/_-]{40,}={0,2}/[long-token]/g'
-}
+# Every input is checked against a fixed pattern BEFORE it enters a query or an az argument (nothing here is ever evaluated, but a quote in a value would
+# change a KQL query). The value itself is not echoed back.
+valid() { [[ "$2" =~ $3 ]] || { echo "diagnose: invalid $1 (does not match its fixed pattern)" >&2; exit 2; }; }
+valid resource-group "$RG" '^[A-Za-z0-9._()-]{1,90}$'
+valid since "$SINCE" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+valid until "$UNTIL" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+valid job-prefix "$JOB_PREFIX" '^[a-z0-9][a-z0-9-]{0,62}$'
+valid worker-app "$WORKER_APP" '^[a-z0-9][a-z0-9-]{0,62}$'
+valid api-app "$API_APP" '^[a-z0-9][a-z0-9-]{0,62}$'
+# Everything below, including text this script prints itself, passes the net once more on the way out (the per-query redact-then-cut above is what
+# protects against a cut inside a value; this protects every section, the older ones too).
+exec > >(redact)
 section() { printf '\n== %s\n' "$*"; }
 try() { "$@" 2>&1 || echo "(command failed: $*)"; }
 
@@ -88,7 +121,7 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
      | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
               line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
      | where exec startswith '$JOB_PREFIX' | order by TimeGenerated asc | project TimeGenerated, exec, line | take 400"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, line]" -o tsv | cut -c1-400
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, line]" -o tsv | show 400
   section "Log Analytics: system log (platform reasons) for $JOB_PREFIX and $WORKER_APP in the window"
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
@@ -96,7 +129,7 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
      | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
                             coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | order by TimeGenerated asc | project TimeGenerated, line | take 200"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | show 300
   section "Log Analytics: PostgreSQL server log (AzureDiagnostics, PostgreSQLLogs) in the window, severity lines only"
   # Server-side reasons for a lost session (terminated, reset, out of memory, crash recovery): ERROR/FATAL/PANIC lines and the
   # LOG lines that name such a reason. Slow-statement (duration), STATEMENT, CONTEXT, QUERY, DETAIL and parameter records are
@@ -110,8 +143,8 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
      | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
      | where not(msg matches regex @'-LOG:\s+(execute|statement|parse|bind)')
      | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
-     | order by TimeGenerated asc | project TimeGenerated, msg = substring(msg, 0, 240) | take 300"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, msg]" -o tsv | cut -c1-300
+     | order by TimeGenerated asc | project TimeGenerated, msg = substring(msg, 0, 600) | take 300"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, msg]" -o tsv | show 300
 fi
 
 section "Log Analytics: console log of $WORKER_APP in the window (severity and job-run lines only, 200 chars each)"
@@ -131,30 +164,39 @@ if [ -n "${ws:-}" ]; then
      | extend j = parse_json(line)
      | extend text = iff(isnotempty(tostring(j.formattedMessage)), strcat(tostring(j.level), ' ', tostring(j.loggerName), ' ', tostring(j.formattedMessage)), line)
      | top 200 by TimeGenerated desc | order by TimeGenerated asc
-     | project TimeGenerated, line = substring(text, 0, 200)"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260
+     | project TimeGenerated, line = substring(text, 0, 600)"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | show 260
 else
   echo "(no Log Analytics workspace, so no worker console log)"
 fi
 
-section "Log Analytics: console log of $API_APP in the window (ERROR/WARN and start-up lines, newest first, 200 chars each)"
-# Same query shape as the worker. ERROR/WARN lines and the start-up lines (the app started, the Ktor server is up, the migration and
-# pre-flight lines, the worker/sweep switches, which configuration was loaded) are kept; request lines are not (a request log line can
-# carry a path with an id). Newest first, capped at 150 lines so a crash loop cannot flood the job log. Lines naming SQL, parameters,
-# keys or secrets are dropped in the query and the rest goes through redact() above (names, phone numbers, e-mails, tokens, connection strings).
+section "Log Analytics: console log of $API_APP in the window (ERROR/WARN and start-up lines, newest first, 240 chars each)"
+# Same query shape as the worker, with three differences that matter (review of D-OPS-DIAGNOSE-API-01):
+#  - the secret-word exclusion is applied to the PROJECTED text that is printed (level + logger + formattedMessage), never to the raw JSON line, whose stack
+#    trace names org.jdbi.v3.core.statement / PgStatement and would drop the API's most useful ERROR lines without a trace; the exclusion is narrow (password,
+#    secret, authorization, bearer, key=/sig=/token=, jdbc:, connection string, "statement:"/"parameters:"/DETAIL: SQL echo) and the COUNT of dropped lines is printed;
+#  - the include words are matched on logger + message, and the request logger (aron.request) is excluded, so request lines cannot push start-up lines and
+#    errors out of the cap;
+#  - the output is redacted and then cut in the shell (redact before cut). The newest 150 matching lines are kept.
 if [ -n "${ws:-}" ]; then
   q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
      | extend app = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', '')),
               line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | where app == '$API_APP'
-     | where line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b|\"level\":\"(WARN|ERROR)' or line matches regex @'(?i)started|starting|listening|responding|application|migrat|pre-?flight|waiting-item sweep|sweep (enabled|disabled)|config|schema|ARON_|worker'
-     | where not(line matches regex @'(?i)statement|parameters|bind|password|secret|token|authorization|bearer|key=|sig=|jdbc:|connection ?string')
      | extend j = parse_json(line)
-     | extend text = iff(isnotempty(tostring(j.formattedMessage)), strcat(tostring(j.level), ' ', tostring(j.loggerName), ' ', tostring(j.formattedMessage)), line)
+     | extend isjson = isnotempty(tostring(j.formattedMessage))
+     | extend lg = iff(isjson, tostring(j.loggerName), ''), lvl = iff(isjson, tostring(j.level), '')
+     | where not(lg startswith 'aron.request')
+     | extend text = iff(isjson, strcat(lvl, ' ', lg, ' ', tostring(j.formattedMessage)), line)
+     | where lvl in ('WARN', 'ERROR', 'FATAL') or (not(isjson) and line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b')
+         or text matches regex @'(?i)started|starting|listening|responding|migrat|pre-?flight|waiting-item sweep|ARON_|worker'
+     | extend dropped = text matches regex @'(?i)password|secret|authorization|bearer|\bkey=|sig=|token[=:]|jdbc:|connection ?string|statement:|parameters:|DETAIL:'
      | top 150 by TimeGenerated desc
-     | project TimeGenerated, line = substring(text, 0, 200)"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260 | redact
+     | project TimeGenerated, dropped, text = substring(text, 0, 600)"
+  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, dropped, text]" -o tsv 2>&1)" || echo "(query failed)"
+  printf '%s\n' "$out" | awk -F'\t' 'NF >= 3 && $2 == "true" { d++; next } NF >= 3 { print $1 "\t" $3; next } NF > 0 { print }
+    END { printf "(%d line(s) held back by the secret-word exclusion; the exclusion is on the printed text, not on stack traces)\n", d + 0 }' | show 240
   section "Log Analytics: system log of $API_APP in the window (platform reasons: probes, restarts, scaling), newest first"
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
@@ -163,20 +205,23 @@ if [ -n "${ws:-}" ]; then
      | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
                             coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | top 150 by TimeGenerated desc
-     | project TimeGenerated, line = substring(line, 0, 240)"
-  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300 | redact
+     | project TimeGenerated, line = substring(line, 0, 600)"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | show 300
   section "Log Analytics: migrate job pre-flight lines ($JOB_PREFIX*) in the window"
-  # MigrationPreflight reports one line per action and, when it has nothing to do, "pre-flight: nothing to do (checks: ...)".
+  # MigrationPreflight reports one line per action and, when it has nothing to do, "pre-flight: nothing to do (checks: ...)". The query prints the
+  # projected message (formattedMessage of a JSON line, else the plain line), never the raw JSON with a stack trace.
   # Absent here means the pre-flight did not run (an older image) or the job did not start in the window.
   q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
      | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
               line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
-     | where exec startswith '$JOB_PREFIX' and line matches regex @'(?i)pre-?flight'
-     | where not(line matches regex @'(?i)password|secret|token|authorization|bearer|key=|sig=|jdbc:')
+     | where exec startswith '$JOB_PREFIX'
+     | extend j = parse_json(line)
+     | extend msg = iff(isnotempty(tostring(j.formattedMessage)), tostring(j.formattedMessage), line)
+     | where msg matches regex @'(?i)pre-?flight'
      | top 100 by TimeGenerated desc | order by TimeGenerated asc
-     | project TimeGenerated, exec, line = substring(line, 0, 300)"
-  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, line]" -o tsv 2>&1 | cut -c1-400 | redact)"
+     | project TimeGenerated, exec, msg = substring(msg, 0, 600)"
+  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, msg]" -o tsv 2>&1 | show 400)"
   if [ -z "$out" ]; then echo "(no pre-flight line from a $JOB_PREFIX execution in the window)"; else printf '%s\n' "$out"; fi
 else
   echo "(no Log Analytics workspace, so no API console log)"

@@ -767,7 +767,7 @@ class Workflows(unittest.TestCase):
         w = sh[i:sh.index('section "worker app $WORKER_APP"')]
         self.assertIn("ContainerAppConsoleLogs_CL", w)
         self.assertIn("where app == '$WORKER_APP'", w)
-        self.assertIn("substring(text, 0, 200)", w)
+        self.assertIn("substring(text, 0, 600)", w, "fetched long, redacted, then cut in the shell (redact before cut)")
         self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
         self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
         self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
@@ -776,8 +776,8 @@ class Workflows(unittest.TestCase):
                       "anchored: a statement record is dropped even when log_statement is turned on")
 
     def test_diagnose_reads_the_api_console_and_preflight_with_redaction(self):
-        # D-OPS-DIAGNOSE-API-01: the API app's console and system log (newest first, capped), the migrate job's pre-flight lines, and the
-        # extra redaction net; the workflow passes the API app as the fifth argument and stays manual and read-only.
+        # D-OPS-DIAGNOSE-API-01 (and the lead's review of 46c6ef49): the API app's console and system log (newest first, capped), the migrate job's
+        # pre-flight lines, the exclusion on the PRINTED text with its count, request lines out of the cap, redact before cut, every section redacted.
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
         w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
         self.assertIn('API_APP="${5:-ca-aron-dev-api}"', sh)
@@ -786,19 +786,72 @@ class Workflows(unittest.TestCase):
         i = sh.index("console log of $API_APP in the window")
         a = sh[i:sh.index('section "worker app $WORKER_APP"')]
         self.assertIn("where app == '$API_APP'", a)
-        self.assertGreaterEqual(a.count("top 150 by TimeGenerated desc"), 2, "console and system log are capped, newest first")
-        self.assertIn("substring(text, 0, 200)", a)
+        self.assertGreaterEqual(a.count("top 150 by TimeGenerated desc") + a.count("top 100 by TimeGenerated desc"), 3, "console, system log and pre-flight are capped")
+        self.assertIn("where not(lg startswith 'aron.request')", a, "request lines cannot push start-up lines and errors out of the cap")
         self.assertIn("waiting-item sweep", a, "the sweep start-up line is kept")
         self.assertIn("pre-?flight", a)
-        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", a)
-        self.assertNotIn("ContainerAppSystemLogs_CL", a.split("system log of")[0], "console section reads the console table")
-        # Every query result of the new sections goes through redact().
-        for line in a.splitlines():
-            if "az monitor log-analytics query" in line:
-                self.assertIn("| redact", line, line)
-        r = sh[sh.index("redact() {"):sh.index("section() {")]
-        for needle in ("[phone]", "[email]", "[jwt]", "connection_?string", "jdbc:", "full_?name", "[long-token]"):
-            self.assertIn(needle, r, needle)
+        # The exclusion works on the projected text, not on the raw line (whose stack trace names org.jdbi.v3.core.statement / PgStatement).
+        console = a[:a.index("system log of $API_APP")]
+        self.assertIn("extend dropped = text matches regex", console)
+        self.assertNotIn("where not(line matches regex", console, "no exclusion on the raw JSON line")
+        self.assertNotIn("statement|parameters|bind", console, "the broad word list that dropped stack traces is gone")
+        self.assertIn("line(s) held back by the secret-word exclusion", console, "the count of dropped lines is printed")
+        # The pre-flight query prints the message, not the raw line.
+        pre = a[a.index("pre-flight lines"):]
+        self.assertIn("tostring(j.formattedMessage)", pre)
+        self.assertNotIn("project TimeGenerated, exec, line", pre)
+        # Redact before cut: no query output is cut before it is redacted, and every query result goes through show (redact, then cut).
+        self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
+        for line in sh.splitlines():
+            if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "analytics-query" in line and "-o tsv" in line:
+                self.assertTrue("| show " in line or "$out" in line or 'out="$(' in line, line)
+        for needle in ("substring(text, 0, 600)", "substring(msg, 0, 600)"):
+            self.assertIn(needle, sh, needle + ": fetch long, redact, then cut")
+        self.assertIn("exec > >(redact)", sh, "everything printed, the older sections too, passes the net")
+        # All five inputs have fixed patterns, in the script and in the workflow before login.
+        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app"):
+            self.assertIn('valid ' + name + ' ', sh, name)
+        self.assertLess(w.index("Validate the inputs"), w.index("azure/login@"), "inputs are validated before the Azure login")
+        self.assertIn("free-text names", sh.lower().replace("FREE-TEXT", "free-text"), "the comment says honestly what is not caught")
+
+    def test_diagnose_redaction_behaviour(self):
+        # D-OPS-DIAGNOSE-API-01: pipe sample lines through the real net (diagnose.sh --redact) and assert nothing sensitive survives.
+        import subprocess
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text, width=None):
+            cmd = ["bash", script, "--redact"] + ([str(width)] if width else [])
+            return subprocess.run(cmd, input=text, capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"}).stdout
+        phones = ["01712345678", "017-1234-5678", "017 1234 5678", "+880 1712 345678", "+8801712345678", "880-1712-345678", "1712345678",
+                  "tel01712345678x", "ph:01712345678", "\u09e6\u09e7\u09ed\u09e7\u09e8\u09e9\u09ea\u09eb\u09ec\u09ed\u09ee"]
+        for ph in phones:
+            out = run(f"outlet call from {ph} done\n")
+            self.assertIn("[phone]", out, f"phone form not caught: {ph!r} -> {out!r}")
+            self.assertFalse(any(c.isdigit() for c in out.replace("[phone]", "")), f"digits survive: {ph!r} -> {out!r}")
+        cases = {
+            "rahim.uddin@example.com": "@", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sigvalue123": "eyJ", "Authorization: Bearer abcDEF123.xyz-789": "abcDEF123",
+            "user_name=rahim99": "rahim99", '"full_name":"Abu Zafar"': "Abu", "password=hunter2xyz": "hunter2xyz", "otp=123456": "123456", "OTP is 654321": "654321",
+            "pin: 4321": "4321", "Cookie: session=abcd1234efgh": "abcd1234", "Set-Cookie: sid=zzTop9988; Path=/": "zzTop9988",
+            "jdbc:postgresql://db.host:5432/aron?user=app&password=pw0rd": "pw0rd", "Server=db;User Id=appuser;Password=s3cr3tpw": "s3cr3tpw",
+            "AccountKey=QUJDREVGR0g=": "QUJDREVGR0g", "SharedAccessSignature=sv=2021&sig=abcdef": "abcdef",
+            "client 203.0.113.77 and 2001:db8::1 and 2001:0db8:85a3:0000:0000:8a2e:0370:7334": "203.0.113.77",
+            "device 123e4567-e89b-12d3-a456-426614174000": "123e4567",
+        }
+        for text, secret in cases.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        self.assertIn("[ip]", run("2001:db8::1\n"))
+        # Ordinary diagnostics text survives: a timestamp, a level, a class name, a count.
+        keep = "2026-11-18T09:54:57Z ERROR aron.sync waiting-item sweep failed: 3 rows, SQLState 57014 at 09:54:57"
+        self.assertEqual(keep + "\n", run(keep + "\n"))
+        # A line cut at the boundary: redact first, so a number that straddles the cut leaves no fragment behind.
+        line = "x" * 190 + " 01712345678 trailing\n"
+        out = run(line, 200)
+        self.assertNotRegex(out, r"0171|1712|12345", out)
+        # Bad inputs are refused before any az call (az is not on the PATH here).
+        for bad in (["x'y", "2026-11-18T09:00:00Z"], ["2026-11-18T09:00:00Z", "2026-11-18T09:00:00Z'"], ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "a b"],
+                    ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "UPPER"], ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "ok", "x;y"]):
+            r = subprocess.run(["bash", script] + bad, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-aron-dev"})
+            self.assertEqual(2, r.returncode, (bad, r.stdout, r.stderr))
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
