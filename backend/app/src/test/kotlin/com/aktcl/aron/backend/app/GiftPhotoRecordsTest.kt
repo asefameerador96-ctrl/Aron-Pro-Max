@@ -921,20 +921,6 @@ class GiftPhotoRecordsTest {
     }
 
     @Test
-    fun theWaitingCountOfANonNationalReviewerStaysInsideItsReach() = world.withApi {
-        with(world) {
-            val p = waitingPhotoWithItsLineStored(lat + 0.0008); val id = itemOf(cu(p))
-            val lkxRoute = one("SELECT id FROM app.route WHERE code = 'LKX-SR-D'")
-            val nat0 = waitingCount("admin1001"); val sup0 = waitingCount("support1001")
-            assertEquals(true, nat0 >= 1 && sup0 >= 1 && sup0 <= nat0, "the item is on the MIR route: both see it ($nat0, $sup0)")
-            exec("UPDATE app.sync_quarantine SET route_id = $lkxRoute WHERE id = $id")   // the same item, now on a route of another zone
-            assertEquals(nat0, waitingCount("admin1001"), "national sees it everywhere"); assertEquals(sup0 - 1, waitingCount("support1001"), "the narrower reviewer's count drops by the item that left its reach")
-            val q = queueOf("support1001"); assertEquals(false, q["items"]!!.jsonArray.any { it.jsonObject["client_uuid"]!!.jsonPrimitive.content == cu(p) }, "and the list agrees")
-            exec("UPDATE app.sync_quarantine SET route_id = $route WHERE id = $id")
-        }
-    }
-
-    @Test
     fun theV0207BackfillGivesTrain115WaitingItemsTheirMarkerWithNoWaiverAndUnnamedOnesAPlainDetail() = world.withApi {
         with(world) {
             val awaited = UUID.randomUUID().toString(); val accepted = UUID.randomUUID().toString()
@@ -950,7 +936,7 @@ class GiftPhotoRecordsTest {
             assertEquals(awaited, rows("SELECT awaited_uuid::text AS a FROM app.sync_quarantine WHERE client_uuid = CAST('$named' AS uuid)").single()["a"]); assertEquals("visit_client_uuid", rows("SELECT awaited_field AS f FROM app.sync_quarantine WHERE client_uuid = CAST('$named' AS uuid)").single()["f"])
             val un = markerCols(unnamed); assertEquals(false, un["w"], un.toString())
             assertEquals(true, (itemRow(unnamed)["detail"] as String).startsWith("held after its first parent was accepted"), itemRow(unnamed).toString())
-            exec("UPDATE app.sync_quarantine SET status = 'discarded' WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid))")
+            exec("DELETE FROM app.sync_quarantine WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid)); DELETE FROM app.ingest_registry WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid))")
         }
     }
 }

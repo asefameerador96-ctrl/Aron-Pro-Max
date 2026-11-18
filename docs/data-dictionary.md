@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 183 | 3044 |
+| `app` | 183 | 3045 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -4893,6 +4893,7 @@ Records held for a human decision with their payload and resolution.
 | `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
 | `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. |
 | `awaited_uuid` | uuid | null |  | The parent a waiting item waits for (D-LOY-API-30). |
+| `awaited_field` | text | null |  | The field of the parent a waiting item waits for, e.g. visit_client_uuid (D-LOY-API-31). |
 | `accepted_parent_uuid` | uuid | null |  | The parent whose accept released this child into waiting (D-LOY-API-30). |
 | `waiting_release_code` | text | null |  | The override the reviewer's accept carried for this child at that time: the code of a same-uploader, same-device child; null otherwise (D-LOY-API-30). The automatic release carries exactly this. |
 | `awaited_refused` | boolean | not null |  | The awaited parent is refused or discarded; refreshed at every sweep pass (D-LOY-API-30). |
