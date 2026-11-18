@@ -1,0 +1,18 @@
+CampaignSku:
+  type: object
+  required:
+  - sku_id
+  - target_qty_base
+  - sold_qty_base
+  additionalProperties: false
+  properties:
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    target_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+    sold_qty_base:
+      type: integer
+      format: int64
+      minimum: 0

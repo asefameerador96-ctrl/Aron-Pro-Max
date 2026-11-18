@@ -233,7 +233,7 @@ class SaleFlow(
             throw ReviewNotCommittable(problems)
         }
         store.clear(draft.visitUuid)
-        ui.value = s.copy(committed = result)
+        ui.value = s.copy(committed = result, notice = null) // a saved sale carries no notice of a refused change or dropped QC
         result
     }
 
@@ -266,12 +266,15 @@ class SaleFlow(
      * state says [SaleNotice.Locked] (returns false); any other rejection of [change] is a [DraftRefusedException] (nothing written). Failures of the review, the store or a missing
      * sale are not draft refusals and propagate as they are. A screen that came back to the entry list after a rotation or a relaunch can still send such a change.
      */
+    /** The lock's own refusals (the checks of `SaleDraftOps` and `withEdit`); any other rejection on a locked draft (a zero sale with lines, ...) is an ordinary [DraftRefusedException]. */
+    private fun isLockRefusal(e: RuntimeException) = e is IllegalStateException && e.message in LOCK_MESSAGES
+
     private fun editLocked(change: (SaleDraft) -> SaleDraft): Boolean {
         val s = ui.value
         check(s.committed == null) { "sale already committed" }
         val current = checkNotNull(s.draft) { "no sale in progress" }
         val next = try { change(current) } catch (e: RuntimeException) {
-            if (current.qcCompleted && e is IllegalStateException) { ui.value = s.copy(notice = SaleNotice.Locked); return false }
+            if (current.qcCompleted && isLockRefusal(e)) { ui.value = s.copy(notice = SaleNotice.Locked); return false }
             if (e is IllegalStateException || e is IllegalArgumentException) throw DraftRefusedException(e.message, e)
             throw e
         }
@@ -288,3 +291,6 @@ class SaleFlow(
         ui.value = SaleUiState(visit, draft, catalog, SaleReviewCalculator.review(draft, catalog, qcCapMtkBySku()), committed, qcCapMtkBySku())
     }
 }
+
+/** The messages of the lock checks (`SaleDraftOps.setQuantity`/`setSlide`: "sale is locked after QC"; `setQc`/`replaceQc`: "QC is locked once completed"; `withEdit`). */
+private val LOCK_MESSAGES = setOf("sale is locked after QC", "QC is locked once completed", "a sale cannot be edited after QC") // i18n-ignore: the draft checks' internal messages, matched and never shown

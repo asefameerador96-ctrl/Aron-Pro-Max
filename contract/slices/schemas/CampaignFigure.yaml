@@ -1,0 +1,22 @@
+CampaignFigure:
+  type: object
+  required:
+  - target
+  - achieved
+  - remaining
+  additionalProperties: false
+  properties:
+    target:
+      type: integer
+      format: int64
+      minimum: 0
+      description: STD in base units (the STD target is rounded half up to a whole base unit) or the memo count.
+    achieved:
+      type: integer
+      format: int64
+      minimum: 0
+    remaining:
+      type: integer
+      format: int64
+      minimum: 0
+      description: max(target - achieved, 0).

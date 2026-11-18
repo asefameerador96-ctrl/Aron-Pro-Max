@@ -57,3 +57,24 @@ Use a test phone with a test login (an SR for the SR steps, an AMO for the AMO s
 
 ## SOURCE-SCANNING TESTS AND THE GRADLE CACHE (D-AGATE-29)
 Tests that read `.kt`/`.xml` source files at run time declare those files as inputs of their module's unit test tasks (`tasks.withType<Test>().configureEach { inputs.files(...) }` at the end of the build file; `core-ui` already did): `core-database` (EveryWriterIsGatedTest: core-database, core-sync, app-sr, app-amo, app-tso main sources), `app-sr` (NoAlwaysOnMapTest, ProgrammeStoreTest, SrPrinterAssistTest: app-sr, feature-sale, feature-attendance main), `app-amo` (AmoNavigationCoverageTest, MainActivityEffectKeysTest: app-amo, feature-amo main). Proof: gate moved below the photo claim in SrDay, run WITHOUT --rerun and WITHOUT --no-build-cache (the repo has org.gradle.caching=true): the test failed; reverted: it passed. Other tests that read files (core-geo, core-map, core-media, core-printing, app-tso icons) read their own module's resources or assets, which are already task inputs; not examined line by line.
+
+## PHOTO-CLAIM SWEEP (D-AGATE-31)
+
+Every `claimPhoto(` / `attach(` call in app-sr, app-amo, app-tso that runs before a repository write, with the gate position. Pinned by `EveryWriterIsGatedTest.everyPhotoClaimComesAfterTheGateOrIsNamed` (function-level: the gate must precede the claim, or the function is named in `claimsGatedElsewhere` with a reason) and `theSrOutletRequestCommitterGatesBeforeItsClaims`.
+
+| Call site | Gate position |
+|---|---|
+| SrDay.kt visit commit (geo-force photo) | gate first, before the uuid is used (visit-commit test) |
+| SrDay.kt `commitAll` (outlet requests) | **fixed this round**: gate is the first line, before the fix read and every claim |
+| SrDay.kt `saveSurvey` | claim runs after the gated repository transaction (named) |
+| SrDay.kt `claimPhotoIo` | helper; callers are gated (named) |
+| AmoDay.kt visit commit | gate first (AMO claim-order test) |
+| AmoDay.kt `claimPhoto`, `memoHeader` | helper / wiring lambda; callers gated (named) |
+| AmoRecordWriter `decideRequest`, `commitOutletRequest` | gate first |
+| AmoRecordWriter `saveSurveyLocked` | claim after the gated transaction; the replay branch has no gate (known gap, KNOWN RECORDED) |
+| ProgrammeStore `saveGiftPhoto` | gate at the top of the function |
+| TicketsHost.kt `TicketDevice.save` | **fixed this round**: gate before the held-check and the claim loop |
+| TsoReadModels.kt feedback queue | **fixed this round**: gate before the `attach(` claim |
+| TicketsHost.kt `refreshConfig` | wiring lambda only (named) |
+
+Mutation proofs (default Gradle caching, no `--rerun`): removing the gate in SrDay `commitAll`, `TicketDevice.save` or the feedback enqueue fails `everyPhotoClaimComesAfterTheGateOrIsNamed` (the first also fails the SR-specific test); using the geo-force photo uuid before the gate in the AMO visit commit fails the visit-commit test.

@@ -44,7 +44,7 @@ const API_ROUTES: readonly (readonly [string, GrantModule])[] = [
   ["/v1/admin/prices/**", "prices"],
   ["/v1/admin/offers/**", "discounts"], // portal-discount-web: Lane A moves it off `targets` (brief Q4 default)
   ["/v1/admin/programmes/**", "loyalty"], ["/v1/admin/gifts/**", "loyalty"], // portal-loyalty-web: the contract 1.13.0 paths (programmes, versions, status, enrolments, gifts), moved off `targets`; /v1/programmes/** of the phone stays on targets
-  ["/v1/admin/targets/**", "targets"], ["/v1/admin/route-targets/**", "targets"], ["/v1/admin/target-revisions/**", "targets"], ["/v1/admin/supervisor-targets/**", "targets"], ["/v1/admin/sales-plans/**", "targets"],
+  ["/v1/admin/targets/**", "targets"], ["/v1/admin/route-targets/**", "targets"], ["/v1/admin/route-kpi-targets/**", "targets"], ["/v1/admin/target-revisions/**", "targets"], ["/v1/admin/supervisor-targets/**", "targets"], ["/v1/admin/sales-plans/**", "targets"],
   ["/v1/admin/devices/**", "mdm"], ["/v1/admin/enrolment-tokens/**", "mdm"], ["/v1/admin/releases/**", "mdm"], ["/v1/admin/mdm/**", "mdm"], ["/v1/admin/notifications/**", "mdm"],
   ["/v1/support/tickets/**", "support"], // tso-manual W1: the support desk routes (R-F-11, B1 AdminModules); before /v1/support/** (first match wins)
   ["/v1/support/**", "mdm"],
@@ -66,7 +66,7 @@ const PAGES: readonly (readonly [string, GrantModule])[] = [
   ["/admin/user-access", "users"], ["/admin/users", "users"], ["/admin/sr-lifecycle", "routes"], ["/admin/sr-transfer", "routes"], ["/admin/routes", "routes"], ["/admin/route-assignments", "routes"], ["/routes", "routes"],
   ["/admin/outlet-requests", "outlets"], ["/admin/outlet-change", "outlets"], ["/admin/outlet-import", "outlets"], ["/admin/outlets", "outlets"], ["/admin/wholesale-marking", "outlets"],
   ["/admin/prices", "prices"], ["/admin/discounts", "discounts"], ["/admin/loyalty", "loyalty"], ["/admin/products", "products"], ["/admin/skus", "products"], ["/admin/categories", "products"], ["/admin/segments", "products"], ["/admin/brands", "products"], ["/admin/variants", "products"], ["/products", "products"],
-  ["/admin/route-targets", "targets"], ["/admin/supervisor-targets", "targets"], ["/admin/sales-plan", "targets"],
+  ["/admin/route-targets", "targets"], ["/admin/kpi-targets", "targets"], ["/admin/supervisor-targets", "targets"], ["/admin/sales-plan", "targets"],
   ["/admin/mdm", "mdm"], ["/admin/devices", "mdm"], ["/admin/releases", "mdm"], ["/admin/enrolment", "mdm"],
   ["/admin/data-entry", "data_entry"], ["/admin/entry-unlocks", "data_entry"], ["/admin/dues", "data_entry"], ["/admin/quarantine", "data_entry"], ["/admin/config/day", "data_entry"], ["/entry", "data_entry"], ["/final-submit/submit", "data_entry"],
   ["/admin/config", "config"], ["/admin/permissions", "config"], ["/admin/audit", "config"],

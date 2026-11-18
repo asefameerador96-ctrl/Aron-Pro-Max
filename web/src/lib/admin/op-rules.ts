@@ -3,6 +3,7 @@ import { isRealDate } from "@/components/admin/crud/validation";
 import { businessDate } from "@/lib/i18n";
 import { accessShapeRules } from "./access-grants";
 import { outletImportRules } from "./outlet-import";
+import { kpiTargetRules } from "./kpi-targets";
 import { routeTargetRules } from "./route-targets";
 import { containsMask } from "./mask";
 
@@ -28,6 +29,7 @@ export function opRules(op: string, body: Record<string, unknown>): FieldProblem
   if (op === "user-access.put") return accessShapeRules(body);
   if (op === "outlet-import.validate" || op === "outlet-import.commit") return outletImportRules(op === "outlet-import.validate" ? "validate" : "commit", body);
   if (op === "route-targets.validate" || op === "route-targets.commit") return routeTargetRules(op === "route-targets.validate" ? "validate" : "commit", body);
+  if (op === "kpi-targets.validate" || op === "kpi-targets.commit") return kpiTargetRules(op === "kpi-targets.validate" ? "validate" : "commit", body);
   if (op === "quarantine.resolve") {
     const out: FieldProblem[] = [];
     const fix = body.fixed_record;

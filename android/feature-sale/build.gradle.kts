@@ -29,3 +29,9 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+// SaleViewModelGuardTest reads SaleViewModel.kt as text; declare the module's own main sources so the test re-runs when they change (D-AGATE-29/31).
+tasks.withType<Test>().configureEach {
+    inputs.files(fileTree("src/main") { include("**/*.kt") })
+        .withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}

@@ -45,6 +45,7 @@ GET /v1/admin/mdm/policies/{}  # global by design: MDM policies are catalogue da
 GET /v1/admin/calendar/working-days  # global by design: the national calendar and weekend config are shared by every division
 GET /v1/admin/geo/house/duplicates  # debt: seed duplicate houses in the other division (houses are national master data read by national roles)
 GET /v1/admin/route-targets  # debt: seed route targets of the other division (the tables are pending in db, docs/requests/backend-admin-route-target-tables.md)
+GET /v1/admin/route-kpi-targets  # national roles only: ADMIN, SUPERADMIN and SUPPORT read one route by code; a division-scoped caller gets 403 (role matrix proven by RouteKpiTargetsTest); no other-division KPI rows are seeded
 GET /v1/support/tickets/summary  # per-caller: counts of the caller's own tickets (the desk: all), no rows, ids or text to show a division (tso-manual B1; scope proven by SupportTicketTest)
 GET /v1/me/notifications  # per-caller: the caller's own bell rows only (the user is the token's; no rows of another user, national or not), so no division can show (tso-manual B1; scope proven by InboxTest#ownRowsOnly)
 GET /v1/supervisor/call-targets  # per-caller: AMO only, answers counts of the caller's own visits and three config numbers; no ids, no geography rows, so the national control is refused (403) and cannot see another division by design (AmoFoundationF1Test#getSupervisorCallTargetsIsForAnAmoOnlyAndNeverReadsAnotherAmosVisits proves another AMO's visits are not counted)

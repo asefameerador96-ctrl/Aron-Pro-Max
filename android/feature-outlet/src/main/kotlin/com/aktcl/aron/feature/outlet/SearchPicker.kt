@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronField
 
@@ -110,9 +111,10 @@ private fun PickerDialog(title: String, searchHint: String, items: List<PickItem
 @Composable
 fun PickerSheet(title: String, searchHint: String, items: List<PickItem>, query: String, onQuery: (String) -> Unit, none: String, clear: String, onPick: (PickItem) -> Unit) {
     val look = LocalAronLook.current
+    val colors = com.aktcl.aron.core.ui.LocalAronColors.current
     val shown = remember(items, query) { filterPickItems(items, query) }
     Column(
-        Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFFEBE5F0)).padding(20.dp),
+        Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(if (colors.sunlight) colors.surfaceSolid else AronLook.LavenderPanel).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge, color = look.ink)

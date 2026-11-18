@@ -19,6 +19,9 @@ test("modules: the menu shows only granted modules; targets at read hides the up
   await expect(page.getByTestId("module-read-only")).toBeVisible();
   await expect(page.getByTestId("rt-upload")).toHaveCount(0);
   await expect(page.getByTestId("data-table")).toBeVisible(); // read shows the existing targets
+  await page.goto("/admin/kpi-targets");
+  await expect(page.getByTestId("kt-read-only")).toBeVisible(); // targets: r, so the KPI page is readable and has no upload
+  await expect(page.getByTestId("kt-upload")).toHaveCount(0);
 
   await page.goto("/admin/master-data");
   await expect(page.getByTestId("link-calendar")).toBeVisible(); // masterdata: r

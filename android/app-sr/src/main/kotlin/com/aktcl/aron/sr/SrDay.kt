@@ -941,6 +941,7 @@ class SrDay(
 
             /** Every draft of one save in ONE Room transaction (a failure of a later one leaves none), photos claimed first as before. */
             override suspend fun commitAll(drafts: List<com.aktcl.aron.feature.outlet.OutletRequestDraft>) {
+                com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-AGATE-31): before the fix read and the photo claims, so a refused request leaves no claimed photo behind (the repository gates again inside its transaction)
                 val rows = drafts.map { draft ->
                     val fix = draft.fix ?: fixSource.readFix("outlet_capture")
                     // One fix uuid per request across commit retries: the photo's stamp names the fix row that is finally stored.
