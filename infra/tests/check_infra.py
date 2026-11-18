@@ -918,12 +918,30 @@ class Workflows(unittest.TestCase):
             if "${{ matrix." in name:
                 # A matrix job is never required directly (skipped, it reports under the unexpanded name only); its
                 # aggregator job is: JvmSplit pins the one for jvm-analytics. D-LEAD-CI-ANALYTICS-SHARD-01.
-                self.assertEqual(name, "Backend analytics tests (${{ matrix.shard }})", "the only matrix job")
+                self.assertIn(name, ("Backend analytics tests (${{ matrix.shard }})", "Web e2e (shard ${{ matrix.shard }} of 5)"), "the only matrix jobs")
+                continue
+            if name == "Web (lint, types, tests, build)":
+                # The web build job feeds the e2e shards; the required check is its aggregator "Web (lint, types, tests,
+                # build, e2e)" (web-check, which fails when this job or a shard fails). D-CI-E2E-01.
                 continue
             self.assertIn(f"'{name}'", gov, "every ci job is a required check on main")
         self.assertNotIn("'Contract lint'", gov, "no required check without a job")
         self.assertIn("tools/ci/last-green-int.sh", c, "every ci run shows the last green INT run and its age")
         self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
+
+    def test_web_e2e_is_sharded_and_the_required_check_is_the_aggregator(self):
+        # D-CI-E2E-01: the e2e outgrew the 30-minute job limit; shards run in parallel, the limit is not widened.
+        c = self.text("ci.yml")
+        web = c[c.index("\n  web:"):c.index("\n  images:")]
+        self.assertIn("shard: [1, 2, 3, 4, 5]", web)
+        self.assertIn("PW_SHARD: ${{ matrix.shard }}/5", web)
+        self.assertIn("fail-fast: false", web)
+        self.assertNotIn("timeout-minutes: 3", web.replace("timeout-minutes: 30", ""), "no limit widened")
+        self.assertNotRegex(web, r"timeout-minutes: (3[1-9]|[4-9]\d|\d{3})")
+        self.assertIn("needs: [changes, web, web-e2e]", web)
+        self.assertIn("name: Web (lint, types, tests, build, e2e)", web)
+        self.assertIn("if: always()", web)
+        self.assertIn("count-e2e", web, "the shards must add up to the full list")
 
     def test_data_dictionary_stays_a_required_check(self):
         c = self.text("ci.yml")
@@ -1734,7 +1752,7 @@ class SliceSmoke(unittest.TestCase):
                                 "route_id", "bundle_version", "config_version", "payload"}
                     for r in b["records"]:
                         if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
-                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                                r"[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
                             return self.reply(400, {"code": "ERR_VALIDATION"})
                     if b["batch_uuid"] in state["batches"]:
                         return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})
