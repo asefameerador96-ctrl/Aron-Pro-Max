@@ -65,6 +65,13 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 | 36 | Memo detail | opens | Memo number `sr1001-261118-1001` (user, date, sequence), SKU lines, totals and discount lines (0.00), Print, Edit, Sale data | |
 | 37 | Memo edit | **pass** (gate) | Edit asks "Why are you editing this sale?" and states "You can edit a sale only at the shop, inside the geofence." Not saved | |
 
+| 38 | OFFLINE DAY (hard case) | **partly pass, reconcile FAIL** | Owner approved airplane mode. `adb shell cmd connectivity airplane-mode enable` (network unreachable, status bar "Airplane", Offline chip on the sale screen); Bluetooth was turned back on with `cmd bluetooth_manager enable` so the printer could be used. Offline: outlet, call, 1 packet MaxR-10S (92.00 BDT), "Mark this sale as due", amount collected 40 gives **Due: 52.00** (correct), Print, "The sale will be saved", saved as Memo 1002 (due 52.00). Memo list shows 1001 and 1002; Sales Submit says "1 retailers still owe 52.00. You can still submit." and "3 records are not synced yet". Printing was skipped by the owner (printer off), so "everything prints offline" is **not** shown. Airplane mode off (network validated again), Sync data twice: nothing changed (Sale device 2 / server 1, Sale line device 2 / server 1, Visit ends device 1 / server 0, 3 not synced, 7 rejected). **Server count does not equal device count** | |
+| 39 | Zero sale offline | **not done** | Needs another outlet call (force sale and photo) | |
+
+Radio settings were restored afterwards: airplane mode off, Bluetooth on, Wi-Fi on (same as the start of this section).
+
+**O6. Offline, Friends Store showed "You are within the outlet's range" with no force sale and no location fix, after earlier force sales for the same outlet that day.** Either a force sale is remembered for the outlet for the day, or a stale fix was used. Cause not determined; worth checking that such a sale is flagged force-sale (not geo-valid) on the server.
+
 **D1 update (2026-11-18):** the rejected count is now **7** (was 6), after the new sale above: the server also rejected the new records. The sync cannot clear them; the reason is still not shown anywhere on the phone. On the new day the SKU Stock column showed "-" (no issue loaded for the new route yet), and the printer icon on the sale screen showed "not connected" (the printer had been switched off).
 
 Correction to the note below: after the process was killed and restarted, Friends Store was out of range again (556 m, 3 refreshes), so the earlier "within the outlet's range" was force-sale state kept only while the app process stayed alive. That matches the rule that a force sale must never count as a clean geo sale; the server-side flags were not checked.
@@ -132,7 +139,7 @@ Not touched: Tickets, My Feedback, Log Out, the bell (notifications), device cod
 
 - Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
 - Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
-- Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
+- Section 4 cases that change phone settings: airplane mode was done with the owner's yes (row 38) and mock location (row 20). Still not done: date and time (a day and an hour), battery saver, data saver, permissions denied then granted, rotation, largest font and display size, dark mode, Sunlight mode, low memory.
 - AMO and TSO: only viewing was done (no call, verification, task, plan, leave or Final Submit); the TSO items listed as not touched in section 3b are untested.
 - Comparison of each screen with `docs/ui-reference/`, Bangla pass, rotation, font size and dark mode, Sunlight mode.
 - Section 6 budgets beyond the cold start above.
