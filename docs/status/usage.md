@@ -3379,3 +3379,4 @@
 
 - 2026-11-18T16:46Z lane check: INT 0aa547b62 (train 124 pushed; integration ci 44344358786 green; deploy run 44347162539 see state). All active lanes reported within 90 min.
 2026-11-18 18:47 UTC (lane check): health ok build 2c7ff3c1b (train 125). Active and reporting within 90 min: T-KPI3 (4 blocking sent 18:55), A-GATE8 (faf73ee8 + clock-pin round pending), A-PROG3 (d762c3aa1, failed job re-run once), L-A13 (8e807fd1b idle), P-SR1b (442fdccf) and P-SR2b (5395d93a3) pushed after the owner's approval, both told to merge INT. Idle: APSIS1, INFRA1, P-AMO3, A-INT3, P-TSO. No nudge needed. Workflows this window: small-rounds (7 agents), targets T1 (33 agents).
+2026-11-18 19:56 UTC (lead): workflows since 18:46: parity-sr-1 (3 agents), targets recheck (19), train126 check (6), targets third pass + loyalty (23).
