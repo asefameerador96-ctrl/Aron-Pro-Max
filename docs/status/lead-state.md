@@ -365,3 +365,4 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - android-sr-programmes 85b992cfd: FAIL (5: quarantine added, gift_choice type, redemption set cut by month, quarter key year, final-month rule). Last round on this path, else remove fetched months.
 - apsis phase 1 profile 9b0556171: FAIL (value lists leak; parser skips; quadratic regex; unbounded memory) -> ruling: NO value lists in automatic output; profile-values per named column, owner-run.
 - F-INFRA1 asked for a 'Whole-subscription move' section (D-OWNER-AZURE-MOVE-01).
+- 15:15 train 122 migrate console read (ops-diagnose 44324055563): schema was 0208, migrated to "0209 - attendance closed by comment", "Successfully applied 1 migration ... now at version v0209", 187 validated, exit 0; no ERROR in the migrate console or the worker section.
