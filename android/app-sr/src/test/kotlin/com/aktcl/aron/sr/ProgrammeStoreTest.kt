@@ -78,4 +78,14 @@ class ProgrammeStoreTest {
         assertEquals(1, r.size); assertEquals(200L, r[0].points) // the first basket stands, nothing was changed
         assertEquals(2, db.outboxDao().countInState("pending"))
     }
+
+    @Test fun theSameBasketAfterAKillAndReturnWithAnotherShownBalanceIsAlreadySavedNotAConflict() = runTest {
+        val uuid = ClientIds.newUuid()
+        fun planWith(balance: Long) = Basket(10, 3, balance).plus(chair).plan(listOf(chair), uuid, ClientIds::newUuid, "2026-11-18T05:00:00.000Z")
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), planWith(500)))
+        // after the kill and return the reloaded balance already has the first redemption subtracted (500 - 200 = 300): same uuid, same basket
+        assertEquals(SaveOutcome.ALREADY_SAVED, store.saveProgramme(meta.meta(7), planWith(300)))
+        assertEquals(1, store.redemptions().size)
+        assertEquals(2, db.outboxDao().countInState("pending")) // one redemption and its line, never a second redemption
+    }
 }

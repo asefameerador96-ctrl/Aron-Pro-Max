@@ -95,7 +95,8 @@ class ProgrammeStore(
     private fun signature(rs: List<AmoRecordEntity>): Pair<JsonObject, List<String>>? {
         val parent = rs.firstOrNull { it.rank == 0 }?.let { runCatching { Json.parseToJsonElement(it.payloadJson) as? JsonObject }.getOrNull() } ?: return null
         val lines = rs.filter { it.rank != 0 }.map { it.payloadJson.let { j -> runCatching { (Json.parseToJsonElement(j) as JsonObject).toString() }.getOrDefault(j) } }.sorted()
-        return JsonObject(parent - "confirmed_at") to lines
+        // derived figures are not part of the basket: the time it was confirmed and the balance the phone showed (after a kill and return the reloaded balance already holds the first redemption)
+        return JsonObject(parent - "confirmed_at" - "balance_before_points") to lines
     }
 
     /** The trusted capture meta of one outlet's route; take it ONCE per basket and use it for the plan's time and the save. */
