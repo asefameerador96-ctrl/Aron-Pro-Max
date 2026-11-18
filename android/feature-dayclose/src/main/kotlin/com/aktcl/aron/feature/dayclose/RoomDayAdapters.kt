@@ -96,8 +96,11 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             // stored-and-flagged lead); else a quarantined lead (STORED_FLAGGED).
             val exhausted = com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED
             val serverRefused = members.filter { it.state == OutboxState.REJECTED && it.lastCode != exhausted }
-            val parentRefused = serverRefused.any { it.rank <= lead.rank }
-            val gaveUp = !parentRefused && members.any { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
+            val exhaustedRows = members.filter { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
+            // only a refused ANCESTOR (strictly lower rank than the record the phone gave up on: the record it depends on) stops Send again; a refused SIBLING at the
+            // same rank never does (same rule as the SQL guard in requeueRetryExhausted). A record that never reached the server whose parents are stored can always be sent again.
+            val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x -> serverRefused.any { it.rank < x.rank } }
+            val gaveUp = exhaustedRows.isNotEmpty() && !parentRefused
             val outcome = when {
                 gaveUp -> RejectedOutcome.PHONE_GAVE_UP
                 serverRefused.isNotEmpty() -> RejectedOutcome.DROPPED
@@ -108,7 +111,7 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             entries += entry(lead.copy(memoNo = members.firstNotNullOfOrNull { it.memoNo }, outletId = members.firstNotNullOfOrNull { it.outletId }), shownCode,
                 outcome, lead.lastMessageKey,
                 // an orphaned child the phone gave up on (its parent was refused) can never be marked seen: "seen" is judged on the members that can be
-                members.filter { !(it.state == OutboxState.REJECTED && it.lastCode == exhausted) }.all { it.seenAt != null }, members.size, reasons, ref)
+                members.filter { !(it.state == OutboxState.REJECTED && it.lastCode == exhausted) }.let { markable -> markable.isNotEmpty() && markable.all { it.seenAt != null } }, members.size, reasons, ref)
         }
         for (row in retry) {
             entries += entry(row, row.lastCode, RejectedOutcome.RETRY, row.lastMessageKey, false, 1, reasons, ref)

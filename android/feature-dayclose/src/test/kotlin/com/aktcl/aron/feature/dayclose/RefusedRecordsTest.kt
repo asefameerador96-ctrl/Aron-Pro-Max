@@ -155,6 +155,28 @@ class RefusedRecordsTest {
         assertTrue("seen is judged on the members that can be marked", source.rejectedRows(today).single().seen)
     }
 
+    /** Review N3: a family whose refused rows are ALL exhausted is not "seen" (all{} of an empty list was true): it stays in the main list with Send again. */
+    @Test fun anExhaustedFamilyIsNeverSeenAndStaysInTheMainList() = runTest {
+        val family = ClientIds.newUuid()
+        row(today, "rejected", "retry_exhausted", "memo", family = family, rank = 1); row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2)
+        row(today, "rejected", "retry_exhausted", "due_collection")
+        val entries = source.rejectedRows(today)
+        assertEquals(2, entries.size)
+        assertTrue(entries.none { it.seen }); assertTrue(entries.all { it.canSendAgain })
+    }
+
+    /** Review N4: the memo was acked; line L1 refused by the server, its SIBLING L2 exhausted: L2's parent is stored, so Send again is offered and works. */
+    @Test fun aRefusedSiblingDoesNotHideSendAgainOfAnExhaustedLine() = runTest {
+        val family = ClientIds.newUuid()
+        row(today, "acked", null, "memo", family = family, rank = 1)
+        row(today, "rejected", "price_invalid", "memo_line", family = family, rank = 2)
+        val l2 = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2)
+        val e = source.rejectedRows(today).single()
+        assertEquals(RejectedOutcome.PHONE_GAVE_UP, e.outcome); assertTrue(e.canSendAgain)
+        assertTrue(source.sendAgain(l2))
+        assertEquals("pending", db.outboxDao().byClientUuid(l2)!!.state)
+    }
+
     /** A stored-and-flagged lead must not hide a child the server dropped. */
     @Test fun aRejectedChildIsNotHiddenBehindAFlaggedLead() = runTest {
         val family = ClientIds.newUuid()
