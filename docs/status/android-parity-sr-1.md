@@ -12,7 +12,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 05 | Camera / audio / nearby-device permission | COMPARED (our blocked screen); OS prompts | srp1b_perm_* (D-PAR-SR1-15) |
 | 06, 07, 08 | New update, download, update inside the app | COMPARED | srp1_update_bn_available, _downloading |
 | 09 | Dashboard (Home) | COMPARED, KEPT (field units, flag tile, card title wrap) | home_bn_tall, home_bn_tall_target (D-PAR-SR1-06, 07) |
-| 10 | Target and achievement by SKU | NOT YET | programme screen (D-OWNER-SR-PROGRAMMES-01) |
+| 10 | Target and achievement by SKU | NOT BUILT (no SR code; needs a data source) | programme screen (D-OWNER-SR-PROGRAMMES-01) |
 | 11, 12, 13 | Check-in, check-out, done | COMPARED, KEPT (coordinates not address, cancel link, darker dome) | srp1_att_* (8) |
 | 14 | Stock issue | COMPARED, KEPT (row density, PackCard shared) | stock_bn_*, stock_bn_packshots |
 | 15, 16, 17 | Bluetooth, pairing, connect | COMPARED (green bar; OS dialogs are not ours) | srp1b_stock_printer_connected (D-PAR-SR1-16) |
@@ -33,18 +33,18 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | COMPARED, KEPT (GEO info line); the opened cluster search dialog NOT recorded (test clock hangs on a field in a dialog) | srp1b_outlet_menu*, srp1b_req_*, srp1b_clusters* (D-PAR-SR1-17) |
 | 46 | Tutorial | GOLDEN-ONLY | sr_tutorial_* |
 | 47 | Tasks from the AMO | COMPARED, KEPT (Resolve link, my-requests link) | srp1b_tasks, _sunlight, _font20, _empty, _resolve_ask (tasks_bn_* are the stale frame) |
-| 48, 49 | Astha menu, year and quarter | NOT YET | programme |
-| 50 | Route STD and memo target | NOT YET | programme |
-| 51 | Shop-wise info | NOT YET | programme |
-| 52, 53, 54 | Gift selection, redemption, confirm | NOT YET | programme |
-| 55 | Outlet points | NOT YET | programme |
-| 56, 57, 58 | Photo menu, Astha gift photo, campaign gift photo | NOT YET | programme |
-| 59 | Sales Journey | NOT YET | |
-| 60, 61 | KPI dashboard, brand-wise KPI | NOT YET | |
-| 62 | Match Box Lifting Star | NOT YET | |
-| 63 | Settings and language | NOT YET | |
+| 48, 49 | Astha menu, year and quarter | NOT BUILT (Home tile goes to ComingSoon) | programme |
+| 50 | Route STD and memo target | NOT BUILT | programme |
+| 51 | Shop-wise info | NOT BUILT | programme |
+| 52, 53, 54 | Gift selection, redemption, confirm | NOT BUILT | programme |
+| 55 | Outlet points | NOT BUILT | programme |
+| 56, 57, 58 | Photo menu, Astha gift photo, campaign gift photo | NOT BUILT | programme |
+| 59 | Sales Journey | COMPARED, KEPT (status dot colours) | srp1b_journey, _font20, _empty (D-PAR-SR1-18) |
+| 60, 61 | KPI dashboard (monthly campaign cards), brand-wise KPI | NOT BUILT: KpiHost shows the Home KPI strip and money cards, not manual 60 | |
+| 62 | Match Box Lifting Star | NOT BUILT | |
+| 63 | Settings and language | COMPARED (tiles fixed, three to a row) | srp1b_settings, _sunlight, _font20 |
 | 64 | Configuration and data file | NOT YET | |
-| 65 | Log out | NOT YET | |
+| 65 | Log out | COMPARED (the submit-first warning box; the plain confirm box is the kit dialog) | srp1b_settings_logout_ask |
 | ui-reference | home-1/2, stock, attendance, sale-select, outlet-menu, tasks, astha, summary | as the rows above | |
 
 
