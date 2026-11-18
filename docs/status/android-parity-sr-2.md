@@ -2,6 +2,11 @@
 
 Branch `lane/android-parity-sr-2` from INT 4e0645556. Lead `session_01MbUQSxrP7AB9tbyANjUTPS`. Directive: D-OWNER-PARITY-02 (no user feels a change), D-OWNER-REA-01 (parity from screenshots and manuals). Spec: audit "SR app" section, manual pages 23-65, `docs/ui-reference/PARITY-SPEC.md`.
 
+## Known lows (lane P-SR2b, 2026-11-18)
+- **QC count typed before a recreate stays (lead ruling 2026-11-18, D-PAR-SR2-08).** The landed rule stands: no open QC page is restored after a recreate or a process restart, and QC reopens on its tiles. The exposure that follows is accepted and recorded here: a QC count the rep typed on the entry page before the recreate stays in the memo's QC lines (the counts are written live into the draft), so a mistyped count is not put back by বাতিল after the recreate. It is visible in the QC summary (SKU, QC type, quantity, the settlement) and clearable with ডিলিট. It changes the memo's QC deduction, which is why it is written down.
+- Slice 4 not built: the manual-20 outlet camera (the platform capture behind `PhotoPipeline`, core-media) has no Compose screen of its own to golden. The Photo Capture menu (manual 56) is now landed by the programmes lane and is no longer open here.
+- Pending: merge of train 126 (P-SR1b b08c3782 deletes `SrQcRouteRestoreTest`; its replacement is `SrSaleLockedRouteTest.anOpenQcPageIsNotRestored`), on the lead's word.
+
 ## HANDOVER (written at about 300 k tokens; read this first after a recycle)
 - Done and pushed: slices 1 to 3 (Memo vendor layout, edit-reason dialog, সেল ডাটা, Summary order, Sync and submit dues box, Tasks card, Product QC pages, DRP Slide, programme hook pages). CI: slice 2 run 43400564499 green; slice 3 run 43402289068 in progress when written.
 - NOT started: slice 4 = Change information (manual 44: edit form with cluster / shop / owner / mobile and GEO / photo), new shop (42), permanent close (43), clusters (45), outlet photo / Photo Capture menu (20, 56), Sales Journey (59), Tutorial (46), Settings with the fourth green "Update…" tile and its two success dialogs (63, 64), Logout (65; the logout dialog has an extra body line in ours). Audit rows for these are in the table below as PLANNED. Look first at what INT already has (several of these were built in the SRM-S* lanes; the audit rows "not recorded" mean RECORD first, compare once, then fix).
