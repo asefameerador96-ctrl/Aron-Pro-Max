@@ -34,9 +34,12 @@ class AttendanceRefusalTextTest {
         compose.setContent { Lang(AppLanguage.EN) { androidx.compose.foundation.layout.Column {
             Text(problemText(ReviewProblem.AttendanceRefused(AttendanceRefusal.NOT_CHECKED_IN)))
             Text(problemText(ReviewProblem.AttendanceRefused(AttendanceRefusal.CHECKED_OUT)))
+            Text(problemText(ReviewProblem.AttendanceRefused(AttendanceRefusal.EARLIER_CALL_OPEN)))
             Text(problemText(ReviewProblem.ClockMovedBack))
         } } }
         compose.onNodeWithText("You are not checked in for this day, so nothing was saved.", substring = true).assertExists()
+        // D-AGATE-22 (item 8): an earlier day's open call is its own text: the advice is to finish that call, not to check in
+        compose.onNodeWithText("An earlier day's call is still open, so nothing was saved. Finish that call first", substring = true).assertExists()
         compose.onNodeWithText("You have already checked out for this day", substring = true).assertExists()
         compose.onNodeWithText("clock was set back", substring = true).assertExists()
     }
@@ -44,9 +47,11 @@ class AttendanceRefusalTextTest {
     @Test fun bangla() {
         compose.setContent { Lang(AppLanguage.BN) { androidx.compose.foundation.layout.Column {
             Text(problemText(ReviewProblem.AttendanceRefused(AttendanceRefusal.NOT_CHECKED_IN)))
+            Text(problemText(ReviewProblem.AttendanceRefused(AttendanceRefusal.EARLIER_CALL_OPEN)))
             Text(problemText(ReviewProblem.ClockMovedBack))
         } } }
         compose.onNodeWithText("আপনি হাজিরা দেননি", substring = true).assertExists()
+        compose.onNodeWithText("আগের দিনের একটি কল এখনও খোলা", substring = true).assertExists()
         compose.onNodeWithText("ঘড়ি পিছনে", substring = true).assertExists()
     }
 }

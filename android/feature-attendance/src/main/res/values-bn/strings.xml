@@ -63,4 +63,9 @@
     <string name="att_settling">এক মুহূর্ত: ফোন আপনার দিনের অবস্থা দেখছে। কয়েক সেকেন্ডের মধ্যে চেক ইন ও চেক আউট খুলবে।</string>
     <string name="att_close_failed_title">কলটি বন্ধ করা গেল না</string>
     <string name="att_close_failed_body">ফোন এই কলের সমাপ্তি লিখতে পারেনি। কলটি এখনও খোলা আছে, কিছু হারায়নি। আবার চেষ্টা করুন; বারবার ব্যর্থ হলে অ্যাপ বন্ধ করে আবার খুলুন।</string>
+    <!-- D-AGATE-22 item 5 -->
+    <string name="att_lockout_title">এই ফোনে দিনটি বন্ধ করা যায়নি</string>
+    <string name="att_lockout_body">আগের একটি দিন বা কল বন্ধ করা যায়নি, তাই সেটি বন্ধ না হওয়া পর্যন্ত হাজিরা বন্ধ থাকবে। আবার চেষ্টা করুন। বারবার ব্যর্থ হলে সুপারভাইজারকে এই কোডটি জানান।</string>
+    <string name="att_lockout_code">কোড: %1$s</string>
+    <string name="att_lockout_retry">আবার চেষ্টা করুন</string>
 </resources>

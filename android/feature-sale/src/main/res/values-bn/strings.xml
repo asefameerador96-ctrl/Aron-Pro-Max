@@ -32,6 +32,7 @@
     <string name="sale_stock_first_action">স্টক খুলুন</string>
     <string name="review_problem_edit_superseded">এই মেমো আগেই সম্পাদনা করা হয়েছে। মেমো স্ক্রিন থেকে মেমোর সর্বশেষ সংস্করণটি খুলে সেটি সম্পাদনা করুন। কিছু সেভ হয়নি।</string>
     <string name="review_problem_not_checked_in">এই দিনের জন্য আপনি হাজিরা দেননি, তাই কিছু সংরক্ষণ হয়নি। হাজিরা খুলে হাজিরা দিন, তারপর আবার সংরক্ষণ করুন।</string>
+    <string name="review_problem_earlier_call_open">আগের দিনের একটি কল এখনও খোলা, তাই কিছু সংরক্ষণ হয়নি। আগে সেই কলটি শেষ করুন (বা বন্ধ করুন), তারপর ফিরে আসুন।</string>
     <string name="review_problem_checked_out">এই দিনের জন্য আপনি আগেই চেক-আউট করেছেন, তাই কিছু সংরক্ষণ হয়নি। চেক-আউটের সাথে বিক্রি বন্ধ হয়ে যায়।</string>
     <string name="review_problem_clock_back">মেমো খোলার পরে ফোনের ঘড়ি পিছনে দেওয়া হয়েছে, তাই এটি নিজের তারিখে সংরক্ষণ করা যাবে না। কিছু সংরক্ষণ হয়নি। তারিখ ও সময় স্বয়ংক্রিয় করে মেমোটি আবার খুলুন।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
@@ -166,6 +167,8 @@
     <string name="qc_fault_mkt">MKT Fault</string>
     <string name="qc_col_qctype">QC টাইপ</string>
     <string name="review_problem_call_closed">এই কলটি আগেই শেষ হয়েছে, তাই বিক্রিটি সংরক্ষণ হয়নি। এর জন্য কিছুই লেখা হয়নি।</string>
+    <string name="review_later_title">সংরক্ষিত মেমো দেখানো হচ্ছে</string>
+    <string name="review_later_body">আপনার শেষ পরিবর্তনের আগেই মেমোটি সংরক্ষিত হয়েছিল। সংরক্ষিত মেমোটি দেখানো হচ্ছে; এর পরে করা পরিবর্তনগুলো সংরক্ষিত হয়নি। প্রয়োজন হলে মেমো এডিট করুন।</string>
     <string name="qc_discard_message">QC তে যা লিখেছেন সব বাদ দিতে চান?</string>
     <string name="qc_summary_none">QC করার জন্য কোন পণ্য নেই</string>
     <string name="qc_entry_title">QC এন্ট্রি</string>

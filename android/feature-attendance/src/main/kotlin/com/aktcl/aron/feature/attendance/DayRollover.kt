@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.attendance
 
+import kotlinx.coroutines.ensureActive
 import java.time.LocalDate
 import java.time.ZoneOffset
 
@@ -39,6 +40,19 @@ inline fun <T> catching(block: () -> T): Result<T> = try {
     Result.success(block())
 } catch (c: kotlinx.coroutines.CancellationException) {
     throw c
+} catch (t: Throwable) {
+    Result.failure(t)
+}
+
+/**
+ * D-AGATE-25: like [catching], but a CancellationException that is NOT the caller's own (Room throws one when its database is closed while a query runs) is a plain failure:
+ * the caller goes on (a timer re-arms). The caller's own cancellation is still rethrown (`ensureActive`).
+ */
+suspend inline fun <T> catchingLive(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (c: kotlinx.coroutines.CancellationException) {
+    kotlin.coroutines.coroutineContext.ensureActive()
+    Result.failure(c)
 } catch (t: Throwable) {
     Result.failure(t)
 }

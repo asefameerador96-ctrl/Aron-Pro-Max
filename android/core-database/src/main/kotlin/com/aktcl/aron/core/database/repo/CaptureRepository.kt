@@ -316,6 +316,8 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        // D-AGATE-25: an audit record of a visit (its family) is refused once the call has its close: the close classified the call without it. A replay (above) still answers false.
+        if (!own && capture.visitCloseCount(record.familyUuid) > 0) throw CallAlreadyClosedException(record.familyUuid)
         requireCheckedIn(record.meta.businessDate) // rule 1: every AMO record is operational
         requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
@@ -386,6 +388,7 @@ class CaptureRepository(
         requireCheckedIn(answer.meta.businessDate)
         requireOpenRouteDay(answer.meta)
         requireSurveyVisit(answer.visitClientUuid)
+        if (capture.visitCloseCount(answer.visitClientUuid) > 0) throw CallAlreadyClosedException(answer.visitClientUuid) // D-AGATE-25
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }
@@ -443,12 +446,15 @@ class CaptureRepository(
     suspend fun recordCheckOut(
         event: AttendanceEventEntity, fix: GeoFixEntity,
         phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+        /** D-AGATE-22 (item 6): runs FIRST inside the transaction; the rep's check-out passes a read of the open work (it throws to refuse, nothing is written), the phone's own close none. */
+        guard: (suspend () -> Unit)? = null,
         buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
     ) = db.withTransaction {
         // Developer options gate FIRST (independent of, and before, the check-in gate: a rep who is not checked in still sees the developer-options block first; D-OWNER-MDM-02).
         com.aktcl.aron.core.common.ActionGate.requireOpen()
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         require(event.kind == "check_out") { "recordCheckOut writes a check_out" }
+        guard?.invoke()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
         val date = event.meta.businessDate
@@ -461,7 +467,9 @@ class CaptureRepository(
         submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
         capture.insertFix(fix)
         capture.insertAttendance(event)
-        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+        // D-AGATE-22 (item 1): closed_by says WHO closed, read from the phone's own DAY_CLOSED mark written in this same transaction (never from comparing times)
+        val byPhone = phoneMarks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED && it.businessDate == date }
+        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso(), closedByPhone = byPhone)))
         phoneMarks.forEach { capture.insertPhoneMark(it) } // D-AGATE-18: the phone closed this day: marker and check-out commit together
         rows
     }

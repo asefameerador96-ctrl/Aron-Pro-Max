@@ -89,7 +89,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * categories first, so the money totals are the same ones the manual Sales Submit writes.
      */
     internal fun autoDaySubmits() = com.aktcl.aron.feature.dayclose.AutoDaySubmits(
-        db, day.capture, { r -> day.metaProvider.meta(r ?: 0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() },
+        db, day.capture, { r -> day.metaProvider.meta(r ?: 0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { date -> !day.slipNotPrintedOn(date) },
     )
 
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()

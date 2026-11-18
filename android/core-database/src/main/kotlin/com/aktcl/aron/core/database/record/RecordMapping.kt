@@ -1,7 +1,6 @@
 package com.aktcl.aron.core.database.record
 
 import com.aktcl.aron.contract.AttendanceEventPayload
-import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.DeviceGeoVerdict
 import com.aktcl.aron.contract.DeviceStatusReport
@@ -116,12 +115,13 @@ object RecordMapping {
         "fix_stale", "fix_clock_mismatch", "jump", "speed", "provider_disagree", "root_hint", "emulator", "hook_framework",
     )
 
-    fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String) = outbox(
+    fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String, closedByPhone: Boolean = false) = outbox(
         RecordType.ATTENDANCE_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         AttendanceEventPayload.serializer(), AttendanceEventPayload(
             e.kind, fix(fix), e.addressDisplay,
-            // contract 1.19.0 (train 117): the phone's own close of a forgotten day says so, derived from the stored event (never a flag); the rep's own check-out sends nothing (the server reads that as `rep`)
-            closedBy = if (e.closedByPhone()) "phone" else null,
+            // contract 1.19.0 (train 117): the phone's own close of a forgotten day says so. D-AGATE-22: the caller says WHO closed (CaptureRepository.recordCheckOut, from the
+            // DAY_CLOSED mark written in the same transaction), it is never derived from the capture time; the rep's own check-out sends nothing (the server reads that as `rep`)
+            closedBy = if (closedByPhone && e.kind == "check_out") "phone" else null,
         ),
     )
 

@@ -274,4 +274,5 @@
     <string name="amo_ok">ওকে</string>
     <string name="amo_field_invalid">মানটি যাচাই করুন</string>
     <string name="amo_verify_loading">বিস্তারিত লোড হচ্ছে…</string>
+    <string name="amo_gate_day_submitted">এই কলের দিনের বিক্রি আগেই জমা দেওয়া হয়েছে। কলটি ফোনে শেষ করা হয়েছে।</string>
 </resources>

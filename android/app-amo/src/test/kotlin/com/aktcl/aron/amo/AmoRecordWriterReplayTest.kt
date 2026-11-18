@@ -27,6 +27,7 @@ import com.aktcl.aron.feature.outlet.OutletRequestKind
 import com.aktcl.aron.feature.outlet.SurveyAnswer
 import com.aktcl.aron.feature.outlet.SurveyQuestion
 import com.aktcl.aron.feature.outlet.SurveyResponseRow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -234,6 +235,24 @@ class AmoRecordWriterReplayTest {
 
     // ---------- SR performance assessment ----------
     private val brands = listOf(AmoBrand(1, "A", null), AmoBrand(2, "B", null))
+
+    /**
+     * D-AGATE-25 (lead low 4): an audit record of a CLOSED call is refused inside the transaction (`CallAlreadyClosedException`) and nothing is stored or queued; a replay of a stored
+     * record still answers quietly. (The lock the audit saves run under is proved on the production wiring: `AmoAuditLockWiringTest`.)
+     */
+    @Test fun anAuditRecordOfAClosedCallIsRefusedAndStoresNothing() = runBlocking {
+        val v = visit()
+        capture.recordVisitClose(com.aktcl.aron.core.database.entity.VisitCloseEntity(
+            clientUuid = ClientIds.newUuid(), meta = metaProvider.meta(route), visitClientUuid = v, outcomeCode = "abandoned",
+            callStartedAt = null, callDeclined = false, endedAt = "2026-10-17T04:30:00.000Z", isZeroSale = true,
+        ))
+        val base = outbox().size
+        val state = PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true)
+        assertTrue(runCatching { writer.saveAssessment(v, brands, state) }.exceptionOrNull() is com.aktcl.aron.core.database.repo.CallAlreadyClosedException)
+        assertTrue(runCatching { writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4, 2L to 5)), 7L) }.exceptionOrNull() is com.aktcl.aron.core.database.repo.CallAlreadyClosedException)
+        assertEquals("nothing was queued", base, outbox().size)
+        assertEquals("nothing was stored", 0, db.captureDao().amoRecordsOfFamily(v).size)
+    }
 
     @Test fun assessmentSurvivesRelaunchAndReplayWritesNothingMore() = runBlocking {
         val v = visit(); val base = outbox().size
