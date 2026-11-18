@@ -255,7 +255,7 @@ LOWS:
 - An unquoted name or address value loses only its first word: `name=Rahim Uddin` gives `name=[redacted] Uddin`, `outletName=Karim Store` gives `[redacted] Store`, and `address=House 12, Road 5, Gulshan 1` gives `address=[redacted] 12, Road 5, Gulshan 1`. The 3-word tail rule exists only for password-like keys.
 - Free-text names (`created outlet for Abdul Karim at Gulshan`, `customer Rahim Uddin phone ...`) pass in message mode. This is a known gap that the header documents.
 - Strict whole-line replacement over-redacts ordinary rows, and since it runs on the whole TSV row, those rows lose their time, level and kind columns too in message mode. Affected: any HTTP line whose path has a digit (`GET /api/v1/routes/today 200 OK in 45ms`, `POST /sync/upload 409 ...`, `Unhandled: POST /v1/sync/upload`); `job bundle2 ran in 120ms`; `revision ca-aron-dev-api--r7x9k2 ready`; an `image ghcr.io/...:sha-abc1234` line; trace_id/span_id lines; and the real Flyway line `Migrating schema "public" to version "0186 - sr server train2 flags"` (`train2` after `server`). Other real descriptions such as `scd2` and `v0192` survive. Default mode is not affected.
-- Survivors that are only secret-shaped, not proven secrets: `sk-ant-api03-abcdefgh1234` (a short key below the 40-character long-token threshold) and the AWS key id `AKIAIOSFODNN7EXAMPLE`.
+- Survivors that are only secret-shaped, not proven secrets: `sk-ant-api03-abcdefgh1234` (a short key below the 40-character long-token threshold) and the AWS key id `[sample removed]`.
 - Minor leftovers: a double-encoded `sig%3DAbc123%252B` keeps the `%252B` tail, and `jwt eyJhbGc.eyJzdWIi.sig1234` keeps the first segment `eyJhbGc.` (only a header fragment).
 
 
