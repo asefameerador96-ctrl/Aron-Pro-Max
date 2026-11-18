@@ -9,7 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /** What the shop-wise list needs of a stored outlet (the host maps its rows to this, so this module holds no database types). */
-data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannelId: Long?)
+data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannelId: Long?, val chip: String = "", val routeId: Long = 0L)
 
 /** One card of the shop-wise list. [subChannel] is the label of the outlet's sub-channel (the Astha tier), null when unknown. */
 data class ShopInfo(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannel: String?)

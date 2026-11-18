@@ -16,6 +16,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
+    implementation(project(":android:core-database")) // ProgrammePayloads: the redemption record shapes
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
