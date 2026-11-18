@@ -28,6 +28,7 @@ ORDER = ["master_locations", "master_dep", "master_routes", "master_sku", "maste
 STATE_RANK = {"pending": 0, "staged": 1, "transformed": 2, "verified": 3, "failed": -1}
 STAGE = "apsis_stage"
 ALLOWED_TZ = {"UTC", "Asia/Dhaka"}
+PHASE2_FILE = HERE / "PHASE2_ENABLED"       # not present in phase 1: the lead adds it
 
 
 def raw_tables(mapping):
@@ -591,7 +592,7 @@ def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(prog="apsis-migration")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("profile", "run", "reconcile", "finalize", "cleanup", "reset-transform"):
+    for name in ("profile", "profile-values", "run", "reconcile", "finalize", "cleanup", "reset-transform"):
         s = sub.add_parser(name)
         s.add_argument("--dsn", help="libpq connection string WITHOUT a password (use PGPASSWORD / an Entra token in the environment)")
         s.add_argument("--db-role", help="SET ROLE for the session: apsis_migrator")
@@ -610,7 +611,10 @@ def main(argv=None):
         s.add_argument("--run-id", type=int)
         s.add_argument("--out-dir", help="with profile: directory OUTSIDE the repository for the four profile files")
         s.add_argument("--refs", default=str(HERE / "mapping" / "profile_refs.json"))
-        s.add_argument("--cap", type=int, default=100000, help="with profile: distinct-value cap per column (memory bound)")
+        s.add_argument("--cap", type=int, default=50000, help="with profile: distinct-value cap per column (entries; a hash and a count each)")
+        s.add_argument("--table", help="with profile-values")
+        s.add_argument("--column", help="with profile-values")
+        s.add_argument("--profile-json", help="with profile-values: an existing apsis-profile.json")
         s.add_argument("--signoff", help="with cleanup: the owner's sign-off file (Q21-Q33 answered or waived)")
     a = ap.parse_args(argv)
     mapping = staging.load_mapping(a.mapping)
@@ -629,8 +633,17 @@ def main(argv=None):
         for r in full["refused"]:
             print(f"REFUSED {r['table']}: {r['refused']}", file=sys.stderr)
         return 0 if full["ok"] else 3
-    if os.environ.get("APSIS_PHASE") != "2":
-        sys.exit("refused: phase 1 is PRESERVE + PROFILE only; the transform, reconciliation, cleanup and finalize are parked until the lead enables phase 2")
+    if a.cmd == "profile-values":
+        from . import profiler
+        try:
+            f, n = profiler.profile_values(a.dump_dir, a.profile_json, a.table or "", a.column or "", a.out_dir or "", mapping, charset=a.charset)
+        except (safety.Refused, KeyError, FileNotFoundError, ValueError) as e:
+            sys.exit(str(e) if isinstance(e, safety.Refused) else "refused: cannot read the profile or the dump")
+        print(f"profile-values: {n} distinct value(s) written to an owner-only file in the output directory")
+        return 0
+    if os.environ.get("APSIS_PHASE") != "2" or not PHASE2_FILE.exists():
+        sys.exit("refused: phase 1 is PRESERVE + PROFILE only; the transform, reconciliation, cleanup and finalize are parked until the lead enables phase 2 "
+                 "(APSIS_PHASE=2 AND the file tools/apsis-migration/PHASE2_ENABLED, which the lead adds later, are both required)")
     if a.cmd in ("run", "reconcile") and a.source_tz and a.source_tz not in ALLOWED_TZ:
         sys.exit("refused: --source-tz must be one of " + ", ".join(sorted(ALLOWED_TZ)))
     if a.dsn and re.search(r"password\s*=", a.dsn, re.I):

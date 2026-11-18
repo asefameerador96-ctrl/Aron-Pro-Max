@@ -412,6 +412,9 @@ class FullRun(Base):
         # the tool never decides or switches the zone: it refuses to run without an explicit one
         os.environ["APSIS_PHASE"] = "2"
         self.addCleanup(lambda: os.environ.pop("APSIS_PHASE", None))
+        if not runner.PHASE2_FILE.exists():                     # the lead adds this file when phase 2 is enabled; the test creates it only for its own duration
+            runner.PHASE2_FILE.write_text("test only")
+            self.addCleanup(runner.PHASE2_FILE.unlink)
         for argv in (["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator"],
                      ["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator", "--source-tz", "UTC", "--dsn", "dbname=x password=secret"]):
             with self.assertRaises(SystemExit) as cm:

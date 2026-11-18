@@ -20,11 +20,9 @@ _TAIL = re.compile(r"ENGINE\s*=\s*([A-Za-z0-9_]+)", re.I)
 _TAILCS = re.compile(r"CHARSET\s*=\s*([A-Za-z0-9_]+)", re.I)
 _INSERT = re.compile(r"^INSERT (?:IGNORE )?INTO `?([^`\s(]+)`?\s*(\(([^)]*)\))?\s*VALUES\s*", re.I)
 _TOKEN = re.compile(
-    r"""'(?:[^'\\]|\\.|'')*'      # quoted string
-      |_binary\s+'(?:[^'\\]|\\.|'')*'
-      |0x[0-9A-Fa-f]+
+    r"""'[^'\\]*(?:(?:\\.|'')[^'\\]*)*'      # quoted string (unrolled: linear, no catastrophic backtracking)
       |NULL
-      |-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?
+      |-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?
       |[(),;]
     """,
     re.X | re.S,
@@ -80,10 +78,6 @@ def _value(tok: str):
         return None
     if tok[0] == "'":
         return _unescape(tok[1:-1])
-    if tok.startswith("_binary"):
-        return _unescape(tok[tok.index("'") + 1:-1])
-    if tok.startswith("0x"):
-        return tok          # a hex blob literal, kept as text
     return tok
 
 
@@ -95,28 +89,36 @@ MAX_LINE = 256 * 1024 * 1024
 
 
 def iter_values(text: str):
-    """Lazily parse '(a,b),(c,d);' into tuples (a 1 GB statement is never held as a list of rows). Raises ValueError on a malformed statement."""
-    cur, depth = None, 0
+    """Lazily parse '(a,b),(c,d);' into tuples. EVERY character must be consumed by a modelled token or be whitespace: anything else (double-quoted
+    strings, TRUE/FALSE, X'..', 0x.., _binary, b'..', stray text, text after the closing ';') is refused, never skipped. The message never holds the text."""
+    cur, depth, pos, ended = None, 0, 0, False
     for m in _TOKEN.finditer(text):
+        if ended:
+            raise UnsupportedShape("text after the end of an INSERT statement")
+        if m.start() != pos and text[pos:m.start()].strip():
+            raise UnsupportedShape("an unrecognised or unmodelled literal inside an INSERT (double-quoted string, TRUE/FALSE, X'..', 0x.., _binary, b'..' or stray text)")
+        pos = m.end()
         t = m.group(0)
         if t == "(":
             depth += 1
             cur = []
         elif t == ")":
             if depth != 1 or cur is None:
-                raise ValueError("unbalanced parenthesis")
+                raise UnsupportedShape("unbalanced parenthesis inside an INSERT")
             yield tuple(cur)
             cur, depth = None, 0
         elif t == ",":
             pass
         elif t == ";":
-            break
+            ended = True
         else:
             if cur is None:
-                raise ValueError("value outside a row")
+                raise UnsupportedShape("a value outside a row inside an INSERT")
             cur.append(_value(t))
+    if text[pos:].strip():
+        raise UnsupportedShape("an unrecognised or unmodelled literal inside an INSERT (double-quoted string, TRUE/FALSE, X'..', 0x.., _binary, b'..' or stray text)")
     if depth != 0:
-        raise ValueError("statement ended inside a row")
+        raise UnsupportedShape("a statement ended inside a row")
 
 
 def parse_values(text: str):
@@ -186,22 +188,23 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     continue
                 if s.startswith("`"):
                     mt = _split_type(s)
-                    if mt:
-                        schema.columns.append(Column(
-                            re.match(r"^`([^`]+)`", s).group(1), mt.group(1).lower(), mt.group(2) or "",
-                            bool(mt.group(3))))
+                    if not mt:
+                        raise UnsupportedShape(f"a column definition the reader cannot parse in a CREATE TABLE (file line {lineno})")
+                    schema.columns.append(Column(
+                        re.match(r"^`([^`]+)`", s).group(1), mt.group(1).lower(), mt.group(2) or "",
+                        bool(mt.group(3))))
                 continue
             mc = _CREATE.match(line.strip())
             if mc:
                 schema = TableSchema(mc.group(1))
                 in_create = True
                 continue
-            head = line[:12].upper()
+            head = line.lstrip()[:12].upper()
             if head.startswith("REPLACE"):
                 raise UnsupportedShape(f"REPLACE INTO at line {lineno} (mysqldump --replace) is not read: re-dump without --replace")
             if head.startswith("INSERT") and not _INSERT.match(line):
-                raise UnsupportedShape(f"an INSERT shape the reader does not know at line {lineno}")
-            if line.startswith(("(", ",(")):
+                raise UnsupportedShape(f"an INSERT shape the reader does not know (indented, or not a plain INSERT INTO t VALUES) at line {lineno}")
+            if line.startswith(("(", ",(")) or line.lstrip().startswith(("(", ",(")):
                 raise UnsupportedShape(f"a row continues from an earlier line at line {lineno} (row-spanning INSERT / mydumper layout): re-dump with mysqldump --extended-insert one statement per line")
             mi = _INSERT.match(line)
             if mi:
@@ -214,15 +217,21 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                 ordinal += 1
                 if ordinal <= skip_statements:
                     continue
+                width = len(schema.columns)
                 it = iter_values(line[mi.end():])
                 try:
                     cur = list(islice(it, batch_rows))
                     while cur:
+                        for r in cur:
+                            if len(r) != width:
+                                raise UnsupportedShape(f"a row has {len(r)} values but the table has {width} columns (statement {ordinal}): a shifted or garbled row")
                         nxt = list(islice(it, batch_rows))
                         yield ("rows", mi.group(1), cur, ordinal, not nxt)
                         cur = nxt
-                except ValueError as e:
-                    raise ValueError(f"statement {ordinal} (file line {lineno}): {e}") from None
+                except UnsupportedShape as e:
+                    raise UnsupportedShape(f"statement {ordinal} (file line {lineno}): {e}") from None
+        if in_create:
+            raise UnsupportedShape("a CREATE TABLE statement is not closed before the end of the file")
 
 
 def tsv_events(path, table, batch_rows=50000, charset="utf-8", strict=True):
