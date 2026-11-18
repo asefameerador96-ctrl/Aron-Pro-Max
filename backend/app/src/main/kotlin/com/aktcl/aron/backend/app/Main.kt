@@ -59,6 +59,8 @@ fun main() {
         }
         ServerRole.API -> {
             val wiring = Wiring.production(settings)
+            // D-LOY-API-28: the waiting-item sweep runs in the API process with the API role (least privilege: the worker login stays away from the ingest tables); never in migrate/worker.
+            wiring.startBackgroundJobs()
             apiServer(wiring, settings.port).start(wait = true)
         }
         ServerRole.WORKER -> {
@@ -124,7 +126,7 @@ fun apiServer(w: Wiring, port: Int, callThreads: Int? = null) =
         },
     ) {
         aronApi(w)
-        monitor.subscribe(ApplicationStopped) { runCatching { w.securityStore?.close() }; w.database?.close() }
+        monitor.subscribe(ApplicationStopped) { runCatching { w.stopBackgroundJobs() }; runCatching { w.securityStore?.close() }; w.database?.close() }
     }
 
 @Serializable

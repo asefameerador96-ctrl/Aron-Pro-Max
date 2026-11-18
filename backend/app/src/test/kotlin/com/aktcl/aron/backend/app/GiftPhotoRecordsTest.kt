@@ -448,9 +448,9 @@ class GiftPhotoRecordsTest {
     // ---- C-R4: the accept loop through the REAL records and the REAL accept endpoint ----
     private val oldSecs = 15L * 86_400   // outside the 7-day backdate window: held as business_date_out_of_window until a reviewer accepts
 
-    private fun headerRec(h: String, lineCount: Int, secondsAgo: Long = oldSecs) = world.record(
+    private fun headerRec(h: String, lineCount: Int, secondsAgo: Long = oldSecs, outletId: Long = outlet) = world.record(
         "redemption",
-        """{"balance_before_points":5000,"cash_mtk":0,"cash_points":0,"cash_rate_mtk_per_point":0,"confirmed_at":"${java.time.Instant.now()}","line_count":$lineCount,"outlet_id":$outlet,"points_total":${lineCount * 100},"programme_id":$campaign}""",
+        """{"balance_before_points":5000,"cash_mtk":0,"cash_points":0,"cash_rate_mtk_per_point":0,"confirmed_at":"${java.time.Instant.now()}","line_count":$lineCount,"outlet_id":$outletId,"points_total":${lineCount * 100},"programme_id":$campaign}""",
         routeId = route, cu = h, family = h, secondsAgo = secondsAgo,
     )
     private fun lineRec(h: String, secondsAgo: Long, cu: String = UUID.randomUUID().toString()) = world.record(
@@ -478,6 +478,9 @@ class GiftPhotoRecordsTest {
             assertEquals("open", itemRow(cu(p))["status"], "C-R5: the photo stays held in review, the phone is told nothing final"); assertEquals(0L, openNaming(head), "no item names the accepted header any more")
             assertEquals(true, (itemRow(cu(p))["detail"] as String).startsWith("waits for another parent"), itemRow(cu(p)).toString())
             assertEquals(0L, storedPhoto(p))
+            val lineAgain = sync(sr, listOf(l1))   // the line was released with the header: its resend is a replay (stores nothing) and the phone's feed says accepted
+            assertEquals("duplicate", ack(lineAgain, cu(l1)).status()); assertEquals(listOf("accepted"), phoneResolutions(lineAgain, cu(l1)))
+            assertEquals(1L, one("SELECT count(*) FROM app.redemption_line WHERE client_uuid = CAST('${cu(l1)}' AS uuid)"), "the line's resend stored nothing more")
             val again = sync(sr, listOf(p))
             assertEquals("quarantined", ack(again, cu(p)).status(), "the phone's view of the photo is still: held in review")
             assertEquals(emptyList<String>(), phoneResolutions(again, cu(p)), "the phone-visible resolution feed carries nothing for it (never 'discarded')")
@@ -642,6 +645,315 @@ class GiftPhotoRecordsTest {
             assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit)); assertEquals(1L, allItems(visit))
             assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit), "a replay changes nothing")
             assertEquals(HttpStatusCode.OK, accept(itemOf(visit))); assertEquals(1L, one("SELECT count(*) FROM app.visit WHERE client_uuid = CAST('$visit' AS uuid)"))
+        }
+    }
+
+    // ---- D-LOY-API-28: the worker sweep of WAITING items, the review queue's state and count, and the as-sent hash through every child path ----
+    private fun sweep() = waitingSweepJob(world.wiring, world.clock, world.fresh.url).tick()!!
+    private suspend fun io.ktor.client.HttpClient.queue(): kotlinx.serialization.json.JsonObject =
+        with(world) { kotlinx.serialization.json.Json.parseToJsonElement(getWeb("admin1001", "/v1/admin/quarantine?status=open&limit=200").bodyAsText()).jsonObject }
+    private fun queueItem(q: kotlinx.serialization.json.JsonObject, uuid: String) = q["items"]!!.jsonArray.map { it.jsonObject }.single { it["client_uuid"]!!.jsonPrimitive.content == uuid }
+    /** The stored copy of a held record differs from what the phone sent (as when a device member is dropped on storage): the registry must keep the as-sent hash on every release path. */
+    private fun storedCopyDiffers(vararg uuids: String) = uuids.forEach { world.exec("UPDATE app.sync_quarantine SET payload = jsonb_set(payload, '{captured_elapsed_ms}', '1'::jsonb) WHERE client_uuid = CAST('$it' AS uuid) AND status = 'open'") }
+
+    @Test
+    fun aWaitingPhotoIsReleasedByTheWorkerSweepWhenItsLastLineIsStoredAndTheQueueShowsItsStateAndCount() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00021)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            // waiting: the queue says so (state, awaited parent, count), and the item's code is NOT presented as its own state
+            val q = queue()
+            val it1 = queueItem(q, cu(p))
+            assertEquals(true, it1["waiting"]!!.jsonPrimitive.content.toBoolean()); assertEquals(head, it1["waits_for_uuid"]!!.jsonPrimitive.content); assertEquals(false, it1["waits_for_refused"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(false, (it1["detail"]!!.jsonPrimitive.content).contains("is quarantined"), "it does not show the first parent's hold as its own")
+            assertEquals(true, q["waiting_count"]!!.jsonPrimitive.content.toInt() >= 1)
+            val before = q["waiting_count"]!!.jsonPrimitive.content.toInt()
+            // the other line has not synced: a pass changes nothing and finalises nothing
+            sweep().also { assertEquals(0, it.released, it.toString()) }; assertEquals("open", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            // the line arrives; the sweep releases the photo through the accept path, as the reviewer's accept would
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            sweep().also { assertEquals(1, it.released, it.toString()) }
+            assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the waiting-item sweep (job)")); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
+            assertEquals("aron.system", rows("SELECT u.username FROM app.sync_quarantine q JOIN app.app_user u ON u.id = q.resolved_by_user_id WHERE q.client_uuid = CAST('${cu(p)}' AS uuid)").single()["username"], "a job did it: the system actor, not the reviewer of the first parent")
+            assertEquals(before - 1, queue()["waiting_count"]!!.jsonPrimitive.content.toInt())
+            val feed = sync(sr, listOf(p)); assertEquals("duplicate", ack(feed, cu(p)).status()); assertEquals(listOf("accepted"), phoneResolutions(feed, cu(p)))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p), "a second pass stores nothing more")
+        }
+    }
+
+    @Test
+    fun theSweepLeavesAnItemLockedByAReviewerAloneAndANonOpenOneIsNeverTouched() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00022)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            // a reviewer is in the middle of resolving the photo's item (its row lock): the sweep skips it, nothing is lost, nothing is stored twice
+            fresh.dataSource.connection.use { c ->
+                c.autoCommit = false
+                c.createStatement().use { it.execute("SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid) AND status = 'open' FOR UPDATE") }
+                sweep().also { assertEquals(0, it.released, it.toString()); assertEquals(0, it.failed) }
+                c.rollback()
+            }
+            assertEquals("open", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            // the reviewer's accept wins; the sweep afterwards finds nothing open and stores nothing again
+            assertEquals(HttpStatusCode.OK, accept(itemOf(cu(p)))); assertEquals(1L, storedPhoto(p))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p)); assertEquals("accepted", itemRow(cu(p))["status"])
+            assertEquals(false, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the waiting-item sweep (job)"), "the reviewer's own accept stands")
+        }
+    }
+
+    @Test
+    fun aWaitingPhotoWhoseOtherParentWasRefusedIsNeverFinalisedByTheSweepAndTheDiscardIsTheWayOut() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00023)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals("open", itemRow(cu(p))["status"]); assertEquals(false, (itemRow(cu(p))["detail"] as String).contains("refused"))
+            // the second line is then refused for good
+            registry(UUID.randomUUID().toString(), "redemption_line", "rejected", "schema_invalid", familyOf(head))
+            sweep().also { assertEquals(0, it.released, it.toString()); assertEquals(1, it.hinted, it.toString()) }
+            assertEquals("open", itemRow(cu(p))["status"], "not finalised: the photo is not stored and not closed"); assertEquals(0L, storedPhoto(p))
+            val item = queueItem(queue(), cu(p))
+            assertEquals(true, item["waits_for_refused"]!!.jsonPrimitive.content.toBoolean()); assertEquals(true, (item["detail"]!!.jsonPrimitive.content).contains("the other parent was refused or discarded"))
+            sweep().also { assertEquals(0, it.hinted, "the hint is written once"); assertEquals(0, it.released) }
+            val feed = sync(sr, listOf(p)); assertEquals(emptyList<String>(), phoneResolutions(feed, cu(p)), "the phone is told nothing final")
+            assertEquals(HttpStatusCode.OK, discard(itemOf(cu(p)))); assertEquals("discarded", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status(), "the phone's resend after the discard is answered as before; nothing is stored"); assertEquals(0L, storedPhoto(p))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(0L, storedPhoto(p))
+        }
+    }
+
+    @Test
+    fun theAsSentHashSurvivesTheReleaseLoopTheFollowedDiscardAndAWaitingChildReleasedByTheSweep() = world.withApi {
+        with(world) {
+            // (a) the re-release loop: the photo is held before its line (ids order it first), the stored copies differ from what the phone sent
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 1); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00024); val l1 = lineRec(head, 90)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status())
+            storedCopyDiffers(cu(p), cu(l1))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals(1L, storedPhoto(p))
+            for (r in listOf(p, l1)) { val a = ack(sync(sr, listOf(r)), cu(r)); assertEquals("duplicate", a.status(), "loop: the as-sent resend of ${r["type"]}: $a") }
+            // (b) followDiscardedParent: the header is discarded, the photo follows (stored, flagged); the as-sent resend is a duplicate
+            val head2 = UUID.randomUUID().toString()
+            val h2 = headerRec(head2, 1); val l2 = lineRec(head2, 90); val p2 = photo(null, 100, unit = head2 to 1, flat = lat + 0.00025)
+            for (r in listOf(h2, l2, p2)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            storedCopyDiffers(cu(p2))
+            assertEquals(HttpStatusCode.OK, discard(itemOf(head2))); assertEquals(1L, storedPhoto(p2)); assertEquals("parent_refused", flag(p2)["check_flag"])
+            assertEquals("duplicate", ack(sync(sr, listOf(p2)), cu(p2)).status(), "followed discard: the as-sent resend")
+            // (c) a waiting child released by the sweep: the line that completes the redemption arrives later
+            val head3 = UUID.randomUUID().toString()
+            val h3 = headerRec(head3, 2); val l3 = lineRec(head3, 120); val p3 = photo(null, 100, unit = head3 to 1, flat = lat + 0.00026)
+            for (r in listOf(h3, l3, p3)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            storedCopyDiffers(cu(l3), cu(p3))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head3))); assertEquals("open", itemRow(cu(p3))["status"], "waits")
+            assertEquals("duplicate", ack(sync(sr, listOf(l3)), cu(l3)).status(), "loop: the line, as sent")
+            val l4 = lineRec(head3, 90); assertEquals("accepted", ack(sync(sr, listOf(l4)), cu(l4)).status())
+            sweep().also { assertEquals(1, it.released, it.toString()) }
+            assertEquals(1L, storedPhoto(p3)); assertEquals("duplicate", ack(sync(sr, listOf(p3)), cu(p3)).status(), "sweep: the as-sent resend of the waiting photo")
+            assertEquals(1L, one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(p3)}' AS uuid)"))
+        }
+    }
+
+    /** A photo that waits: header (2 lines) accepted with the line l1, the second line l2 stored afterwards; returns the photo. */
+    private suspend fun io.ktor.client.HttpClient.waitingPhotoWithItsLineStored(flat: Double): JsonObject = with(world) {
+        val head = UUID.randomUUID().toString()
+        val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = flat)
+        for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+        assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals("open", itemRow(cu(p))["status"])
+        val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+        p
+    }
+
+    @Test
+    fun twoSweepersOnTheSameItemReleaseItOnce() = world.withApi {
+        with(world) {
+            repeat(3) { round ->
+                val p = waitingPhotoWithItsLineStored(lat + 0.0003 + round * 0.00001)
+                val a = waitingSweepJob(wiring, clock, fresh.url); val b = waitingSweepJob(wiring, clock, fresh.url)   // two replicas: two jobs, two ingest services
+                val go = java.util.concurrent.CountDownLatch(1)
+                val results = listOf(a, b).map { job -> java.util.concurrent.CompletableFuture.supplyAsync { go.await(); job.tick() } }
+                go.countDown()
+                val done = results.map { it.get(60, java.util.concurrent.TimeUnit.SECONDS)!! }
+                assertEquals(1, done.sumOf { it.released }, "released exactly once across both sweepers: $done"); assertEquals(0, done.sumOf { it.failed }, done.toString())
+                assertEquals(1L, one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid) AND status = 'accepted'"), "the item was closed once")
+                assertEquals(1L, storedPhoto(p), "stored once"); assertEquals("accepted", itemRow(cu(p))["status"])
+                assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status())
+            }
+        }
+    }
+
+    @Test
+    fun theStartedJobSweepsOnItsOwnAndStopsCleanlyAndTheSwitchesStopIt() = world.withApi {
+        with(world) {
+            // switched off by the emergency env: nothing is released, tick says so
+            val p0 = waitingPhotoWithItsLineStored(lat + 0.00041)
+            assertEquals(null, waitingSweepJob(wiring, clock, fresh.url, env = { if (it == "ARON_WAITING_SWEEP") "off" else null }).tick(), "off by env")
+            assertEquals("open", itemRow(cu(p0))["status"])
+            // started explicitly (no test starts it otherwise): the first pass is at once and releases the item; stop() returns and the job answers nothing afterwards
+            val job = waitingSweepJob(wiring, clock, fresh.url, firstDelayS = 0)
+            job.start()
+            val t0 = System.currentTimeMillis()
+            while (itemRow(cu(p0))["status"] == "open" && System.currentTimeMillis() - t0 < 30_000) Thread.sleep(100)
+            job.stop()
+            assertEquals("accepted", itemRow(cu(p0))["status"], "released by the job's own schedule"); assertEquals(1L, storedPhoto(p0))
+            assertEquals(null, job.tick(), "stopped: no further pass")
+            // a second pass never overlaps the first: the guard answers null while one is running (same job, concurrent ticks)
+            val p1 = waitingPhotoWithItsLineStored(lat + 0.00042)
+            val j2 = waitingSweepJob(wiring, clock, fresh.url); val go = java.util.concurrent.CountDownLatch(1)
+            val rs = (1..4).map { java.util.concurrent.CompletableFuture.supplyAsync { go.await(); j2.tick() } }; go.countDown()
+            val outs = rs.map { it.get(60, java.util.concurrent.TimeUnit.SECONDS) }
+            assertEquals(1, outs.filterNotNull().sumOf { it.released }, "one release in all"); assertEquals(1L, storedPhoto(p1))
+        }
+    }
+
+    @Test
+    fun theWorkerRolesStillCannotWriteTheIngestTables() = world.withApi {
+        with(world) {
+            val tables = listOf("sync_quarantine", "ingest_registry", "memo", "memo_line", "due_collection", "redemption", "redemption_line", "gift_photo", "gift_assignment")
+            for (role in listOf("worker_rw", "jobs_rw")) for (t in tables) for (priv in listOf("INSERT", "UPDATE")) {
+                assertEquals(false, one("SELECT CASE WHEN has_table_privilege('$role', 'app.$t', '$priv') THEN 1 ELSE 0 END") == 1L, "$role must not hold $priv on app.$t: widening the worker to the money tables is a least-privilege decision (D-LOY-API-28)")
+            }
+            for (t in tables) assertEquals(true, one("SELECT CASE WHEN has_table_privilege('api_rw', 'app.$t', 'UPDATE') THEN 1 ELSE 0 END") == 1L, "api_rw holds UPDATE on app.$t (the sweep's role)")
+            // and a real statement as the worker role is refused
+            fresh.dataSource.connection.use { c -> c.createStatement().use { st -> st.execute("SET ROLE jobs_rw"); try { assertTrue(runCatching { st.execute("UPDATE app.sync_quarantine SET detail = detail WHERE false") }.isFailure, "permission denied") } finally { st.execute("RESET ROLE") } } }
+        }
+    }
+
+    // ---- D-LOY-API-30: the lead's review of the sweep (wrong waiver, audit row, starvation, own-check failure) ----
+    @Test
+    fun theSweepExaminesTheLeastRecentlyCheckedFirstSoUnreleasableItemsNeverStarveTheReleasableOne() = world.withApi {
+        with(world) {
+            val stuck = (1..3).map { i ->
+                val head = UUID.randomUUID().toString()
+                val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.0005 + i * 0.00001)
+                for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+                assertEquals(HttpStatusCode.OK, accept(itemOf(head))); p   // the second line never syncs: it waits for ever
+            }
+            val ok = waitingPhotoWithItsLineStored(lat + 0.0006)   // created last: the highest id
+            val job = waitingSweepJob(wiring, clock, fresh.url, batch = 2)
+            val first = job.tick()!!; assertEquals(0, first.released, first.toString()); assertEquals(true, first.skippedByCap >= 2, "the cap leaves the rest for the next pass: $first")
+            assertEquals("open", itemRow(cu(ok))["status"])
+            var released = first.released
+            repeat(3) { released += job.tick()!!.released }
+            assertEquals(1, released, "the releasable item was reached although three stuck items have lower ids"); assertEquals("accepted", itemRow(cu(ok))["status"]); assertEquals(1L, storedPhoto(ok))
+            for (p in stuck) assertEquals("open", itemRow(cu(p))["status"])
+        }
+    }
+
+    @Test
+    fun stopCancelsThePendingPassAtOnceInsteadOfWaitingTheGrace() = world.withApi {
+        with(world) {
+            val job = waitingSweepJob(wiring, clock, fresh.url, firstDelayS = 3600)
+            job.start(); val t0 = System.currentTimeMillis(); job.stop(graceS = 20)
+            assertEquals(true, System.currentTimeMillis() - t0 < 5_000, "stop returned in ${System.currentTimeMillis() - t0} ms")
+        }
+    }
+
+    // ---- D-LOY-API-31: the second review (a stale marker after a close or a re-open), the backfill, a reviewer racing the sweep ----
+    private fun markerCols(uuid: String) = world.rows("SELECT waiting_since IS NOT NULL AS w, awaited_uuid IS NOT NULL AS a, awaited_field IS NOT NULL AS f, accepted_parent_uuid IS NOT NULL AS p, waiting_release_code AS rc, awaited_refused AS r, waiting_checked_at IS NOT NULL AS c, status FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) ORDER BY id DESC LIMIT 1").single()
+    private suspend fun io.ktor.client.HttpClient.waitingCount(user: String = "admin1001"): Int = with(world) { queueOf(user)["waiting_count"]!!.jsonPrimitive.content.toInt() }
+    private suspend fun io.ktor.client.HttpClient.queueOf(user: String): kotlinx.serialization.json.JsonObject =
+        with(world) { kotlinx.serialization.json.Json.parseToJsonElement(getWeb(user, "/v1/admin/quarantine?status=open&limit=200").bodyAsText()).jsonObject }
+
+    @Test
+    fun aWaitingItemReturnedToTheDeviceAndHeldAgainStartsCleanAndTheSweepNeverReleasesIt() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00061)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(true, markerCols(cu(p))["w"], "waiting"); assertEquals("redemption_client_uuid", rows("SELECT awaited_field AS f FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["f"])
+            val countWaiting = waitingCount()
+            assertEquals(HttpStatusCode.OK, returnToDevice(itemOf(cu(p))))
+            val m = markerCols(cu(p)); assertEquals("discarded", m["status"]); assertEquals(false, m["w"], "the close cleared the marker: $m"); assertEquals(false, m["a"]); assertEquals(null, m["rc"]); assertEquals(false, m["c"])
+            assertEquals(countWaiting - 1, waitingCount(), "no longer counted as waiting")
+            // the missing line arrives but is itself held (too old); the phone resends the photo: judged again, held again with that line, the SAME row re-opens
+            val l2 = lineRec(head, oldSecs); assertEquals("quarantined", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
+            val again = markerCols(cu(p)); assertEquals("open", again["status"]); assertEquals(1L, allItems(cu(p)), "the same row re-opened"); assertEquals(false, again["w"], "a re-opened item starts clean: $again"); assertEquals(null, again["rc"])
+            assertEquals(false, queueItem(queue(), cu(p))["waiting"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(countWaiting - 1, waitingCount(), "waiting_count unchanged by the re-opened item")
+            sweep().also { assertEquals(0, it.released, it.toString()); assertEquals(0, it.heldOwn, it.toString()) }
+            assertEquals(0L, storedPhoto(p)); assertEquals("open", itemRow(cu(p))["status"])
+        }
+    }
+
+    @Test
+    fun aDiscardedWaitingItemCarriesNoMarkerAndANonOpenRowCannotCarryOne() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00062)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals(true, markerCols(cu(p))["w"])
+            val before = waitingCount()
+            assertEquals(HttpStatusCode.OK, discard(itemOf(cu(p))))
+            val m = markerCols(cu(p)); assertEquals("discarded", m["status"]); assertEquals(false, m["w"], m.toString()); assertEquals(false, m["a"]); assertEquals(false, m["p"]); assertEquals(false, m["f"])
+            assertEquals(before - 1, waitingCount())
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            sweep().also { assertEquals(0, it.released, it.toString()) }; assertEquals(0L, storedPhoto(p)); assertEquals("discarded", itemRow(cu(p))["status"])
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status(), "answered as before; a discarded item is never re-opened"); assertEquals("discarded", itemRow(cu(p))["status"])
+            // the database itself refuses a marker on a row that is not open
+            val bad = runCatching { exec("UPDATE app.sync_quarantine SET waiting_since = now() WHERE client_uuid = CAST('${cu(p)}' AS uuid)") }
+            assertEquals(true, bad.isFailure, "CHECK sync_quarantine_waiting_open")
+        }
+    }
+
+    @Test
+    fun aReviewersAcceptRacingTheSweepStoresTheRecordOnceAndNeitherGets500() = world.withApi {
+        with(world) {
+            repeat(3) { round ->
+                val p = waitingPhotoWithItsLineStored(lat + 0.0007 + round * 0.00001)
+                val item = itemOf(cu(p)); val job = waitingSweepJob(wiring, clock, fresh.url)
+                val go = java.util.concurrent.CountDownLatch(1)
+                val sweepF = java.util.concurrent.CompletableFuture.supplyAsync { go.await(); job.tick() }
+                go.countDown()
+                val r = postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"accept","reason":"the reviewer accepts while the sweep runs"}""")
+                sweepF.get(60, java.util.concurrent.TimeUnit.SECONDS)
+                assertEquals(true, r.status == HttpStatusCode.OK || r.status == HttpStatusCode.Conflict, "accept answered ${r.status} ${r.bodyAsText()}")
+                assertEquals(1L, storedPhoto(p), "stored once"); assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status())
+            }
+        }
+    }
+
+    @Test
+    fun theWaitingMigrationBackfillGivesTrain115WaitingItemsTheirMarkerWithNoWaiverAndUnnamedOnesAPlainDetail() = world.withApi {
+        with(world) {
+            val awaited = UUID.randomUUID().toString(); val accepted = UUID.randomUUID().toString()
+            val named = UUID.randomUUID().toString(); val unnamed = UUID.randomUUID().toString()
+            for ((u, d) in listOf(named to "waits for another parent: visit_client_uuid $awaited (parent $accepted was accepted)", unnamed to "waits for another parent: the redemption or its lines are not stored yet (parent $accepted was accepted)")) {
+                held(u, "due_collection", code = "scope_out_of_reach")
+                exec("UPDATE app.sync_quarantine SET detail = '$d' WHERE client_uuid = CAST('$u' AS uuid)")
+            }
+            val updates = File(repoRoot, "db/migrations").listFiles { f -> f.name.matches(Regex("V\\d+__cfg_waiting_sweep_keys\\.sql")) }!!.single().readText().split(Regex(";\\s*\\n")).map { it.lines().filterNot { l -> l.trimStart().startsWith("--") }.joinToString("\n").trim() }.filter { it.startsWith("UPDATE app.sync_quarantine") }
+            assertEquals(2, updates.size, "the migration's two backfill statements")
+            for (u in updates) exec(u)
+            val n = markerCols(named); assertEquals(true, n["w"], n.toString()); assertEquals(true, n["a"]); assertEquals(true, n["p"]); assertEquals(true, n["f"]); assertEquals(null, n["rc"], "no waiver")
+            assertEquals(awaited, rows("SELECT awaited_uuid::text AS a FROM app.sync_quarantine WHERE client_uuid = CAST('$named' AS uuid)").single()["a"]); assertEquals("visit_client_uuid", rows("SELECT awaited_field AS f FROM app.sync_quarantine WHERE client_uuid = CAST('$named' AS uuid)").single()["f"])
+            val un = markerCols(unnamed); assertEquals(false, un["w"], un.toString())
+            assertEquals(true, (itemRow(unnamed)["detail"] as String).startsWith("held after its first parent was accepted"), itemRow(unnamed).toString())
+            exec("DELETE FROM app.sync_quarantine WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid)); DELETE FROM app.ingest_registry WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid))")
+        }
+    }
+
+    @Test
+    fun aPoisonItemWhoseReleaseThrowsIsStampedInItsOwnTransactionSoItCannotKeepTheHeadOfTheOrder() = world.withApi {
+        with(world) {
+            val p = waitingPhotoWithItsLineStored(lat + 0.0009)
+            exec("CREATE OR REPLACE FUNCTION app.test_poison() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.status = 'accepted' THEN RAISE EXCEPTION 'poison'; END IF; RETURN NEW; END \$\$")
+            exec("CREATE TRIGGER test_poison BEFORE UPDATE ON app.sync_quarantine FOR EACH ROW WHEN (NEW.client_uuid = CAST('${cu(p)}' AS uuid)) EXECUTE FUNCTION app.test_poison()")
+            try {
+                assertEquals(false, rows("SELECT waiting_checked_at IS NOT NULL AS c FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["c"])
+                sweep().also { assertEquals(1, it.failed, it.toString()); assertEquals(0, it.released, it.toString()) }   // the release throws: the whole item transaction rolls back
+                val r = rows("SELECT status, waiting_since IS NOT NULL AS w, waiting_checked_at IS NOT NULL AS c FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()
+                assertEquals("open", r["status"]); assertEquals(true, r["w"], "still waiting"); assertEquals(true, r["c"], "stamped in its own small transaction: it goes to the back of the order")
+                assertEquals(0L, storedPhoto(p))
+            } finally { exec("DROP TRIGGER test_poison ON app.sync_quarantine"); exec("DROP FUNCTION app.test_poison()") }
+            sweep().also { assertEquals(1, it.released, it.toString()) }; assertEquals(1L, storedPhoto(p))
         }
     }
 }
