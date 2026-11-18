@@ -610,3 +610,65 @@ LOWS (shortened):
 - BOM directly followed by CREATE TABLE (no header comment) skips the CREATE and then refuses with a misleading 'INSERT before any CREATE TABLE'. It is loud, but the wrong cause is reported.
 - (refuted 2/3) Missing tables do not affect the exit code or 'ok', so the default whole-database mysqldump yields an empty profile with exit 0: The sign-off can be mistaken for complete. The most commo
 - (refuted 3/3) Standard mysqldump 8 output for partitioned tables, triggers with INSERT bodies and (very likely) binary/BIT and generated columns is refused: The task treats a standard mysqldump shape 
+
+
+## Phase 1 profile third review at 83d1f1ba9, 2026-11-18
+
+Reviewers ran the tool on synthetic dumps. No leak found; fails on usability (standard mysqldump shapes refused).
+
+### leak-hunt-3 verdict=fail
+
+#### BLOCKING upheld=3/3: Tables with triggers (the mysqldump default) are refused: the trigger preamble lines end in ' */ ;' with a space
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py events(): _DIRECTIVE_SET = ^/\*!\d{5} SET [^;*]*\*/;$ needs '*/;' with no space; the only other fallback is _SET
+WHY: mysqldump --triggers is on by default. Before each DELIMITER ;; block it writes '/*!50003 SET @saved_cs_client = @@character_set_client */ ;' and '/*!50003 SET sql_mode = ... */ ;', with a space before the ';'. No pattern accepts these lines, so the reader never reaches the DELIMITER block it was built to skip. A standard per-table file is refused.
+
+#### BLOCKING upheld=3/3: Binary/BLOB/BIT values in the standard formats are refused: 8.0 '_binary' strings and --hex-blob 0x literals
+WHERE: mysqldump.py iter_values(): _BAD branch (anything that is not a quoted string, NULL or a number)
+WHY: mysqldump 8.0 writes binary-charset columns (VARBINARY, BLOB, BINARY, BIT) as _binary '...'. With --hex-blob it writes 0x.... Both are standard formats, and the rule lists --hex-blob output and bit columns as formats that must be read. Any table with such a column cannot be profiled.
+
+#### BLOCKING upheld=3/3: Tables with generated columns are refused: mysqldump forces a column list for them
+WHERE: mysqldump.py events(): 'if mi.group(2): raise UnsupportedShape(INSERT with a column list ...)'
+WHY: For a table with a VIRTUAL or STORED generated column, mysqldump writes INSERT INTO `t` (`a`,`b`) VALUES ..., leaving out the generated column. This cannot be turned off, so the suggested fix ('re-dump without --complete-insert') cannot work. The rule names generated columns explicitly.
+
+LOWS (shortened):
+- hour_of_day_stored stays in the SANITISED (public) files. sanitise() pops only number_descriptor and year_month_range. README line 8 and runbook line 12 say hour histograms are in the full file only, and test line 111 ch
+- The near-unique guard is skipped when a column has fewer than 100 non-null values (describable(): 'nn >= 100 and ...'). In a 1000-row table a column with one non-null value (100 percent unique) still gets descriptors in 
+- Stems of non-allow-listed files with unsupported extensions are printed verbatim when they pass IDENT. A file named like a person's name with a .sql.zst suffix showed up in stderr and in both sanitised files as 'REFUSED 
+- profile-values prints its warning before running the test and words it as fact ('A person has decided that this column holds codes, not people'). It does not say that names, places, PINs or gender pass the test. It write
+- profile-values counts NULL as a value and then requires every value to be non-null. So an enum column with any NULL is refused, while profile's enum_candidate ignores NULLs and flags the same column. This is a usability 
+- Missing allow-listed tables still exit 0: 23 to 25 of 26 were missing in my runs. A prior low, unchanged.
+- Partitioned tables are still refused with the generic 'line the reader does not recognise' message. No content leaks; a prior low.
+- write_outputs still follows an existing symlink at a fixed output filename. A prior low, unchanged.
+- In test_profiler.py line 126, the 1/5/40-row leak test skips values shorter than 6 characters, so it does not check 4-digit PINs. I checked them by hand and found no leak.
+- Outside this lens and not verified: multi-line SET @@GLOBAL.GTID_PURGED values (several server UUIDs) would probably be refused by the per-line _SET rule.
+
+### usable-on-real-dumps verdict=fail
+
+#### BLOCKING upheld=3/3: Every table that has a trigger is refused, because mysqldump puts a space before ';' in its trigger SET lines
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py, _DIRECTIVE_SET = ^/\*!\d{5} SET [^;*]*\*/;$ (it requires '*/;' with no space). tests/test_profiler.py test_a_trigger_body_is_skipped_unread_and_never_counted_as_rows uses a bare CREATE TRIGGER without the real wrapper lines, so it passes on a shape mysqldump never writes.
+WHY: mysqldump dumps triggers by default (--triggers is on). Around each DELIMITER ;; block it writes lines such as '/*!50003 SET sql_mode = ... */ ;' and '/*!50003 SET character_set_client = utf8mb4 */ ;', with a space before the semicolon. The first of those lines matches no known construct, so a STANDARD per-table file is refused. The message is the generic 'a line the reader does not recognise (file line N)', which gives the operator no fix (other than re-dumping with --skip-triggers, which the runbook never mentions). Likelihood: medium, since summary tables such as trans_section_summary are typical trigger targets. Fix: accept \s*; on directives, and test the exact mysqldump trigger wrapper.
+
+#### BLOCKING upheld=3/3: No mysqldump output mode can be read for a table with a BINARY, VARBINARY, BLOB, BIT or geometry column
+WHERE: mysqldump.py iter_values: _BAD refuses 0x.. and _binary. _open/_lines: strict UTF-8 decoding.
+WHY: Default mysqldump (5.7 style) writes binary values as raw bytes inside a quoted string. Non-UTF-8 bytes trigger a CharsetError whose text tells the owner to 'decide the character set (Q2)'. That points the operator at the wrong cause: the data is binary, not a different text encoding. The obvious remedy, --hex-blob, writes 0x... and is refused. As far as I recall, MySQL 8.0 mysqldump also writes `_binary '...'` for binary-charset BIT, BLOB, BINARY and GEOMETRY values (I could not confirm the exact versions without a binary), and that is refused too. So for the 8.0 client, every table with a bit(1) flag (common in Java/Hibernate schemas), a binary(16) uuid, a blob, or a POINT column (possible in the 31 GB geo table) is refused in every dump mode, and the operator has no workaround. Likelihood: medium. The source is Azure Database for MySQL, so the client is likely 8.0.
+
+#### BLOCKING upheld=3/3: Partitioned tables are refused with a generic message
+WHERE: mysqldump.py events(): in_create ends at the ')' line, and the multi-line '/*!50100 PARTITION BY ... */;' that follows matches no known construct
+WHY: A partitioned table (plausible for a 122 M-row sales table or the 31 GB geo table) gives a STANDARD per-table mysqldump file that is refused as 'a line the reader does not recognise ... UPDATE, DELETE, ALTER ...'. mysqldump has no option to leave the partition clause out, so the operator has no remedy, and the message names the wrong cause.
+
+#### BLOCKING upheld=3/3: Tables with generated columns are refused, and the message suggests a remedy that cannot work
+WHERE: mysqldump.py events(): mi.group(2) means a column list, which is refused with 're-dump without --complete-insert'
+WHY: For a table with a GENERATED ALWAYS AS column, mysqldump always writes a column-list INSERT that leaves the generated column out. So a STANDARD per-table file is refused, and re-dumping without --complete-insert changes nothing. A column list is also easy to read safely: map the listed names to CREATE TABLE positions and check the width. Likelihood: low to medium.
+
+LOWS (shortened):
+- A file cut at a line boundary (for example a copy of a 31 GB file truncated during the FTP transfer) gives a short row count with exit 0. Case 'trunc': 1 of 2 rows, rc 0. mysqldump always writes '-- Dump completed' unles
+- A whole-database file (synthdb.sql) is counted as 'not on the allow list'. The run exits 0 with '0 table(s), 0 refused, 26 missing'. Neither the runbook nor docs/requests/apsis-dump-landing.md says how the vendor must pr
+- MAX_LINE counts characters, but the message says bytes. Peak memory is about 6 to 7 copies of the line: 410 MB for a 60 MB line with emoji. A line near the 256 M-character cap could need several GB. That is bounded, and 
+- _unescape drops NUL characters. A bit(1) zero value becomes an empty string (shape 'empty'), and the lengths of values containing \0 are reported one short. Cosmetic.
+- Prefix-index columns, for example KEY p (`nm`(10)), and functional indexes come out as [name-N] instead of the column name, because the regex [^)]* stops at the first ')'. Cosmetic.
+- A refused column in profile-values prints its loud WARNING before the refusal. Only the validated column name is shown, so this is harmless but confusing. On a real 8.0 file with 1200 rows, profile-values listed a 3-valu
+- mysqldump's default --tz-utc converts TIMESTAMP columns to UTC, while DATETIME columns stay as stored. The hour histograms used as time-zone evidence will therefore always look UTC for TIMESTAMP columns. The runbook shou
+- The runbook's Phase 1 introduction still says every command except profile refuses 'unless the lead sets APSIS_PHASE=2'. Step 7 has the correct two-key rule.
+- Percona mysqldump's /*!50717 rocksdb */ header lines, an uncommented --master-data=1 CHANGE MASTER line, a UTF-8 BOM and a view placeholder are all refused with the generic 'line not recognised' message. Each is loud and
+- The new test_one_five_and_forty_row_tables... strips every occurrence of str(n) from the output text before searching, so its leak check is vacuous for n=1 and weak for 5 and 40. Re-run without the stripping: 0 leaks.
+- test_the_profile_is_never_written_inside_the_repository depends on the copy sitting inside a git work tree. It fails when run from an archive or installed copy.
