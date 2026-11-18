@@ -60,6 +60,13 @@ object CampaignPhotoModel {
         return (fromServer + fromPhone).filter { it.openUnits.isNotEmpty() }
     }
 
+    /**
+     * The client uuid of one unit's photo: fixed by its subject (the redemption, the gift line and the unit number; unit numbers restart for every gift line), so a retry after a
+     * kill, a second tap or a retake is the same record and the server upserts by it.
+     */
+    fun unitUuid(group: CampaignGroup, unitNo: Int): String =
+        com.aktcl.aron.core.common.ClientIds.derivedUuid("gift_photo", "campaign", group.redemptionUuid, group.giftId.toString(), unitNo.toString())
+
     /** The record of one unit's photo: own family, rank 0 ([uuid] is fixed per unit so a double tap or a retry is one record). [fix] is the contract GeoFix of that shutter. */
     fun planUnit(group: CampaignGroup, unitNo: Int, photoUuid: String, fix: JsonObject, uuid: String): PlannedRecord =
         PlannedRecord("gift_photo", uuid, uuid, 0, ProgrammePayloads.giftPhoto("campaign", group.outletId, group.giftId, photoUuid, fix, redemptionUuid = group.redemptionUuid, unitNo = unitNo))

@@ -1,15 +1,19 @@
-# Server needs of the SR programme screens (lane android-sr-programmes, 2026-11-18)
+# SR programmes: what the phone still needs from the server (lane android-sr-programmes)
 
-For the lead to route to the server lanes. Each item names what the phone screen needs and why the wire cannot supply it today. Contract version read: 1.18.1. Units follow rule 5 (storage in base units, money in integer milli-taka).
+Written 2026-11-18 by lane A-PROG2. Each item says what the phone does today and what it would do with the server's answer. None of this blocks the cutover.
 
-| Id | Screens | Need | Today |
-|---|---|---|---|
-| N-1 | 49, 50 | Astha target rows for the whole current quarter (three months), not only the month of the business date, so the year/quarter/month chips work offline. Cap stays at 1,000 rows or a second truncated flag. | `astha_targets` holds the current month only; other months need the online `listAsthaTargets`. |
-| N-2 | 10 (and Home target card) | The SR's per-SKU monthly STD target (by route or SR) and the calendar numbers for ADS, TADS, PADS, RADS (working days of the month, elapsed, left), plus the SR's month-to-date achievement per SKU with `as_of`. The phone can then add today's local memos, keyed by memo UUID, without double counting. The formulas of ADS, TADS, PADS and RADS need the owner's exact definitions (part A row SRM-A-15, question 4). | `RouteSnapshot.targets` and `achievement_mtd` exist in the contract but the bundle keeps them empty (BundleService). `route_monthly_target` is route by month, so a SKU split may need an extension. |
-| N-3 | 21 | Per-outlet per-SKU target and sales for the outlet's campaign (the "Super Star Low (November)" pop-up: target STD, achievement STD, remaining, target memo, achievement memo, remaining memo; and the SKU table with category totals). | Not in the bundle. Astha rows carry per-outlet per-brand STD and memo, a different programme. |
-| N-4 | 53, 55 | Confirm the loyalty earning job and nightly expiry posting are live; until they are, every `loyalty[].balance_points` is 0 and the redemption screen has nothing to spend. Also confirm that `redemption`, `gift_choice` and `gift_photo` ingest are real (not 501) in the dev API, and that a refused record (`gift_locked`, `gift_not_for_tier`, `parent_missing`) comes back in the sync response in a form the phone can show. | Contract says yes from 1.15.0 to 1.17.0; BundleContent.kt note said "the server posts none". Not verified by this lane. |
-| N-5 | 61 | Brand-wise KPI: per SR and month, per brand: volume target and achievement, memo target and achievement, "KPI today" taka, with `as_of`. The memo target per route, brand and month does not exist in `route_monthly_target` (qty only). | Nothing in the bundle. Same gap as the KPI dashboard (lane android-parity-sr-1). |
-| N-6 | 50 | RESOLVED: `products.nodes` (level brand, `name`, `name_bn`) carries the brand names; slice 1 reads them. To confirm only that `AsthaTargetRow.brand_id` is the product-tree node id of the brand. | The brand id of an Astha row not found among the nodes shows as `#id` on the phone. |
-| N-7 | 51 | The Astha tier of each outlet in the bundle outlet row (`sub_channel`, 1.18.0) or in `gift_assignments.tier_code`; confirm that the bundle outlet carries it. | To verify in slice 2. |
-| N-8 | 62 | Match Box Lifting Star snapshot per SR and month: target, STD, projection, LMS, LMWD, WD, EWD, LMADS, PADS, growth, status text, achieved slab, slab amount, projected amount (decimals exact, money in milli-taka), computed on the server, with `as_of`. The phone may recompute the simple ratios on top of local memos only when the formulas are confirmed (SRM-B-145). | Programme `rules` (slabs and criteria) are in the bundle; the figures are not. |
-| N-9 | 51 | Names of the outlet's Wing, Division, Territory and Zone for the shop-wise card (manual 51 shows four more rows). Also: the list of outlets enrolled in the active Astha programme, so an enrolled outlet with no outlet-level target row is still listed (the phone lists only outlets that carry an Astha outlet row). | The bundle user holds only `zone_id` and `territory_id` (no names, no wing or division); outlet rows carry cluster only. The phone shows name, owner, contact and sub-channel and omits the four geography rows (honest gap, no invented text). |
+## S-1 Which unit numbers of a campaign gift are already photographed (Gift Verify, manual 58)
+
+`pending_gift_verifications[]` carries `redemption_client_uuid`, `outlet_id`, `gift_id`, `qty` and `photos_captured` (a COUNT). The phone shows one camera slot per unit (`unit_no` 1..qty) and cannot tell WHICH units the count covers.
+
+- Today: the count is taken as the lowest unit numbers not photographed on this phone (this phone's own `gift_photo` records are exact). If another phone or the TSO photographed unit 3 of 3, this phone offers units 1 and 2 again and the server stores the later photos as flagged duplicates (never refused), so the harm is a wasted photo.
+- Request: add to each pending item the list of unit numbers that already have a (non-duplicate, non-voided) photo: `units_captured: [integer]` (each 1..50, ascending, at most `qty` entries), next to `photos_captured` (kept for old phones). Same bound and same snapshot as the rest of the section.
+- With it: the phone offers exactly the open units and drops the lowest-units rule.
+
+## S-2 The tier of an outlet for gift selection
+
+Already asked as N-7: `loyalty[].tier_code` (and `gift_assignments[].tier_code`, which exists). Until the server sends a tier the gift page says so and offers no restricted gift.
+
+## S-3 Quarter months beyond the bundle's current month
+
+Already asked as N-1 (`astha_truncated_months`, the whole quarter within the 1,000-row bound). Until then the phone reads other months online with `listAsthaTargets`, keeps them in an app-private file cache, and shows "not downloaded, connect once" for a month never fetched.

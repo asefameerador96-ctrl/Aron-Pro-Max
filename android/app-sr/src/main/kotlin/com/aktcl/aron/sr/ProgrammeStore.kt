@@ -104,7 +104,7 @@ class ProgrammeStore(
 
     /**
      * Saves one gift photo record in this order: (1) the write gates (check-in, open route-day) are checked with nothing written; (2) the photo must still be in the media
-     * queue; (3) a record uuid this phone already holds is a replay (ALREADY_SAVED) or a different basket (CONFLICT) and the photo is not touched; (4) only then is the photo
+     * queue; (3) a record uuid this phone already holds is the subject's first photo (ALREADY_SAVED, whatever the new photo is) and the photo is not touched; (4) only then is the photo
      * claimed for the record, with the shutter fix, BEFORE the record commits (so the media worker uploads it after the record's ack); (5) the record is saved through the one
      * programme write path. A photo that is gone, a refused gate or a failed claim leaves nothing saved; the result says why.
      */
@@ -116,7 +116,9 @@ class ProgrammeStore(
         catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { return@withContext SaveOutcome.CHECK_IN_FIRST }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
-        if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isNotEmpty()) return@withContext saveProgramme(meta, listOf(plan)) // a replay or another basket: the photo stays as it is
+        // The record uuid is fixed by its subject (assignment or unit), so a record already held under it is THE photo of that subject (the first one wins, as on the server): a retry after
+        // a kill or a second tap ends here as already saved and the new photo is not claimed; the host drops it.
+        if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isNotEmpty()) return@withContext SaveOutcome.ALREADY_SAVED
         try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
         val out = saveProgramme(meta, listOf(plan))
         // a refusal after the claim (a gate that closed in between, a conflict race) gives the claim back, so the next record uuid can claim this photo

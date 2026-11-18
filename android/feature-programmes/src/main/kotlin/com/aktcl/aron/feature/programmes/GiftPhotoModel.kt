@@ -28,6 +28,9 @@ object GiftPhotoModel {
         return if (mine) PhotoStatus.Captured(a.giftId, onThisPhone = true) else PhotoStatus.Ready(a.giftId, a.id)
     }
 
+    /** The client uuid of an Astha gift photo: fixed by its subject (the assignment and the quarter), so a retry, a kill or a second tap is the same record. */
+    fun asthaUuid(assignmentId: Long, quarter: String): String = com.aktcl.aron.core.common.ClientIds.derivedUuid("gift_photo", "astha", assignmentId.toString(), quarter)
+
     /** The Astha hand-over record the Submit button writes: own family, rank 0, [uuid] fixed when the page opens so a double tap is one record. [fix] is the contract GeoFix of the shutter. */
     fun planAstha(outletId: Long, giftId: Long, assignmentId: Long, photoUuid: String, fix: JsonObject, uuid: String): PlannedRecord =
         PlannedRecord("gift_photo", uuid, uuid, 0, ProgrammePayloads.giftPhoto("astha", outletId, giftId, photoUuid, fix, assignmentId = assignmentId))

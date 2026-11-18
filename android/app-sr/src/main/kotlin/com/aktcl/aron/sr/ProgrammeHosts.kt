@@ -201,7 +201,6 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
         var local by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.local) }
         var selected by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<Long?>(null) }
         var round by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
-        var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         val capture = androidx.compose.runtime.remember(selected, round) { day.newCapture("gift_photo") }
         val cs by capture.state.collectAsState()
         val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -212,13 +211,13 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             onSubmit = { outletId, giftId, assignmentId ->
                 val photo = cs.photo; val fix = cs.fix
                 if (photo == null || fix == null || !fix.isOk) return@GiftPhotoScreen SaveOutcome.REFUSED
+                val uuid = GiftPhotoModel.asthaUuid(assignmentId, page.quarter) // fixed by the subject: a retry, a kill or a second tap is one record
                 val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
                 val plan = GiftPhotoModel.planAstha(outletId, giftId, assignmentId, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)
                 val shop = page.shops.firstOrNull { it.outletId == outletId }
                 val out = day.programmes.saveGiftPhoto(day.programmes.metaFor(shop?.routeId ?: 0L), plan, photo.photoUuid, fixEntity)
                 when (out) {
-                    SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { runCatching { day.programmes.giftPhotos() }.onSuccess { local = it }; uuid = day.programmes.newUuid(); round++ }
-                    SaveOutcome.CONFLICT -> uuid = day.programmes.newUuid()
+                    SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { runCatching { day.programmes.giftPhotos() }.onSuccess { local = it }; round++ }
                     else -> Unit
                 }
                 out
@@ -252,7 +251,6 @@ fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
         var photos by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.photos) }
         var selected by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<Long?>(null) }
         var round by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
-        val uuids = androidx.compose.runtime.remember { HashMap<String, String>() } // one fixed record uuid per (redemption, gift, unit)
         val captures = androidx.compose.runtime.remember(round) { HashMap<String, com.aktcl.aron.feature.outlet.GeoPhotoCapture>() }
         val states = androidx.compose.runtime.remember(round) { androidx.compose.runtime.mutableStateMapOf<String, com.aktcl.aron.feature.outlet.GeoPhotoState>() }
         val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -273,12 +271,11 @@ fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
                 for (u in g.openUnits) {
                     val cs = states[key(g, u)]; val photo = cs?.photo; val fix = cs?.fix
                     if (photo == null || fix == null || !fix.isOk) { result = SaveOutcome.REFUSED; break }
-                    val uuid = uuids.getOrPut(key(g, u)) { day.programmes.newUuid() }
+                    val uuid = CampaignPhotoModel.unitUuid(g, u) // fixed by the subject (redemption, gift line, unit): a retry after a kill is the same record
                     val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
                     val plan = CampaignPhotoModel.planUnit(g, u, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)
                     val shop = page.shops.firstOrNull { it.outletId == g.outletId }
                     val out = day.programmes.saveGiftPhoto(day.programmes.metaFor(shop?.routeId ?: 0L), plan, photo.photoUuid, fixEntity)
-                    if (out == SaveOutcome.CONFLICT) uuids.remove(key(g, u))
                     if (out != SaveOutcome.SAVED && out != SaveOutcome.ALREADY_SAVED) { result = out; break }
                 }
                 runCatching { day.programmes.giftPhotos() }.onSuccess { photos = it }

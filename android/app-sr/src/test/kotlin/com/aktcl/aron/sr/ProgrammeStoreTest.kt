@@ -108,7 +108,7 @@ class ProgrammeStoreTest {
         assertEquals(1, claims.size); assertEquals(1, db.outboxDao().countInState("pending"))
     }
 
-    @Test fun aPhotoThatIsGoneSavesNothingAndAnotherBasketUnderTheUuidIsAConflictWithoutTouchingThePhoto() = runTest {
+    @Test fun aPhotoThatIsGoneSavesNothingAndAnotherPhotoUnderTheSameUuidIsAlreadySavedWithoutTouchingThePhoto() = runTest {
         val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
         claimFails = true
         assertEquals(SaveOutcome.REFUSED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
@@ -116,8 +116,8 @@ class ProgrammeStoreTest {
         claimFails = false
         assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
         val before = claims.size
-        assertEquals(SaveOutcome.CONFLICT, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid(), assignment = 72), photo, fixEntity))
-        assertEquals(before, claims.size) // the conflict claims nothing; the host's new uuid claims afresh
+        assertEquals(SaveOutcome.ALREADY_SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid()), photo, fixEntity)) // the first photo of the subject wins
+        assertEquals(before, claims.size) // and the later one is not claimed
     }
 
     @Test fun withoutACheckInNothingIsClaimedAndNothingIsSaved() = runTest {
@@ -143,5 +143,29 @@ class ProgrammeStoreTest {
         assertEquals("pending", store.redemptions().single().state)
         db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_BUNDLE_UNCERTAIN, uuid))
         assertEquals("uncertain", store.redemptions().single().state)
+    }
+
+    @Test fun aRetryAfterAKillMakesOneRecordBecauseTheRecordUuidIsFixedBySubject() = runTest {
+        val s = photoStore()
+        val assignment = 71L; val quarter = "2026-Q4"
+        val uuid = com.aktcl.aron.feature.programmes.GiftPhotoModel.asthaUuid(assignment, quarter)
+        assertEquals(uuid, com.aktcl.aron.feature.programmes.GiftPhotoModel.asthaUuid(assignment, quarter)) // the same on every attempt, also after a relaunch
+        // killed after the capture and the claim, before the commit: nothing is held
+        claimFails = true
+        assertEquals(SaveOutcome.REFUSED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertEquals(0, db.outboxDao().countInState("pending"))
+        // the relaunch retries with a NEW capture: one record
+        claimFails = false
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        // killed after the commit, retried (another shutter, a second tap): still one record
+        assertEquals(SaveOutcome.ALREADY_SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertEquals(1, db.outboxDao().countInState("pending")); assertEquals(1, claims.size)
+    }
+
+    @Test fun theCampaignUnitUuidIsFixedBySubjectAndUnitNumbersOfDifferentGiftLinesDoNotCollide() {
+        val a = com.aktcl.aron.feature.programmes.CampaignGroup("r1", 10, 4, 3, emptySet()); val b = a.copy(giftId = 5)
+        val m = com.aktcl.aron.feature.programmes.CampaignPhotoModel
+        assertEquals(m.unitUuid(a, 1), m.unitUuid(a, 1))
+        assertTrue(m.unitUuid(a, 1) != m.unitUuid(a, 2)); assertTrue(m.unitUuid(a, 1) != m.unitUuid(b, 1))
     }
 }
