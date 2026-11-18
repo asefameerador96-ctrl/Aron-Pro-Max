@@ -199,7 +199,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         return day.endCallIfClosed()?.also { callStarted.remove(v.visitUuid) }
     }
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
-        SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
+        SaleVisit(v.visitUuid, v.outletId, v.routeId, day.visitDate(v), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
     private val closer = VisitCloser(day.capture, CaptureMetaSource.dated { rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
 
@@ -216,7 +216,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         day.endCallIfClosed()?.let { callStarted.remove(open.visitUuid); return it }
         var why: DayRefusal? = null
         val queued = SrLockGate.closeCall(day.visitSession, { why = it }) { v ->
-            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined)
         }
         if (queued) runCatching { day.requestSync() }
         return why

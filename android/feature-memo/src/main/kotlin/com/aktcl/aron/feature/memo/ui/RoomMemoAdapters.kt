@@ -87,8 +87,17 @@ class VisitDueCollectionWriter(
 ) : DueCollectionWriter {
     /** The meta and the visit of a collection for [outletId]: the one rule [write] and [accepts] share. */
     private suspend fun target(outletId: Long): Pair<CaptureMeta, String?> {
-        val visit = db.captureDao().visitsOn(businessDate()).lastOrNull { it.outletId == outletId }
-        return metaFor(visit?.meta?.routeId) to visit?.clientUuid
+        val dao = db.captureDao()
+        val today = businessDate()
+        var visit = dao.visitsOn(today).lastOrNull { it.outletId == outletId }
+        if (visit == null) {
+            // a call opened before Dhaka midnight and still open: its collection carries the VISIT's date (ruling 2), never a midnight check-in's
+            val earlier = java.time.LocalDate.parse(today).minusDays(1).toString()
+            val closed = (dao.visitClosesOn(earlier) + dao.visitClosesOn(today)).map { it.visitClientUuid }.toSet()
+            visit = dao.visitsOn(earlier).lastOrNull { it.outletId == outletId && it.clientUuid !in closed }
+        }
+        val meta = metaFor(visit?.meta?.routeId).let { m -> if (visit != null && visit.meta.businessDate != m.businessDate) m.copy(businessDate = visit.meta.businessDate) else m }
+        return meta to visit?.clientUuid
     }
 
     override suspend fun write(draft: DueCollectionDraft) {

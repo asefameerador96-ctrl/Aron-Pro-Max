@@ -159,6 +159,16 @@ class SrDay(
     /** The sync sheet's "sync now" (screens-sr s19): a manual trigger, scheduled, never awaited. */
     fun requestSyncNow() = scheduler.requestSync(userId, SyncTrigger.MANUAL)
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
+    /**
+     * The business date of an open call's VISIT (the date every record of the call carries, D-LEAD-PREREQ-03 ruling 2, also after Dhaka midnight):
+     * the date of the trusted time the visit opened at. Falls back to the clock's date when the stored time cannot be read.
+     */
+    fun visitDate(v: com.aktcl.aron.feature.outlet.OpenVisit): String =
+        runCatching { BusinessDate.of(java.time.Instant.parse(v.openedAtIso).toEpochMilli()).toString() }.getOrElse { businessDate() }
+
+    /** The capture meta of [v]'s route dated with the VISIT's date (never the clock's), for the route-day checks and the records of the call. */
+    fun callMeta(v: com.aktcl.aron.feature.outlet.OpenVisit) = metaProvider.meta(v.routeId).copy(businessDate = visitDate(v))
+
     /** Milliseconds until the next check-out time (`cfg.day.checkout_earliest_time`, 17:00 by default) or the next midnight on Dhaka trusted time (at least one second). */
     fun millisToNextBoundary(): Long {
         val dayMs = 24L * 3_600_000L
@@ -246,7 +256,7 @@ class SrDay(
     suspend fun closeVisitAbandoned(): DayRefusal? {
         val v = visitSession.current.value ?: return null
         var why: DayRefusal? = null
-        if (SrCallLock.abandon(capture, visitSession, metaProvider.meta(v.routeId), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
+        if (SrCallLock.abandon(capture, visitSession, callMeta(v), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
         return why
     }
 
@@ -257,7 +267,7 @@ class SrDay(
      */
     suspend fun openCallRefusal(): DayRefusal? {
         val v = visitSession.current.value ?: return null
-        return SrCallLock.refusal(capture, metaProvider.meta(v.routeId))
+        return SrCallLock.refusal(capture, callMeta(v))
     }
 
     /**
@@ -267,7 +277,7 @@ class SrDay(
      */
     suspend fun endCallIfClosed(): DayRefusal? {
         val v = visitSession.current.value ?: return null
-        return SrCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))
+        return SrCallLock.endedBy(capture, visitSession, callMeta(v))
     }
 
     /**

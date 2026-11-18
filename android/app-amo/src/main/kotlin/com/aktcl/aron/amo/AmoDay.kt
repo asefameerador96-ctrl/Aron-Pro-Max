@@ -117,6 +117,16 @@ class AmoDay(
     private val isoMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
+    /**
+     * The business date of an open call's VISIT (the date every record of the call carries, D-LEAD-PREREQ-03 ruling 2, also after Dhaka midnight):
+     * the date of the trusted time the visit opened at. Falls back to the clock's date when the stored time cannot be read.
+     */
+    fun visitDate(v: com.aktcl.aron.feature.outlet.OpenVisit): String =
+        runCatching { BusinessDate.of(java.time.Instant.parse(v.openedAtIso).toEpochMilli()).toString() }.getOrElse { businessDate() }
+
+    /** The capture meta of [v]'s route dated with the VISIT's date (never the clock's), for the route-day checks and the records of the call. */
+    fun callMeta(v: com.aktcl.aron.feature.outlet.OpenVisit) = metaProvider.meta(v.routeId).copy(businessDate = visitDate(v))
+
     /** Milliseconds until the next Dhaka midnight on trusted time (at least one second): the AMO's ONE boundary timer, no tick (D-LEAD-PREREQ-03 round 3). */
     fun millisToNextMidnight(): Long {
         val dayMs = 24L * 3_600_000L
@@ -394,7 +404,7 @@ class AmoDay(
         // refuse its close day_final_submitted), so leaving a control or joint call never throws; X4a follow-up (R-W-23): the
         // same when the AMO's supervisor-day Sales Submit stands. The answer says why the call ended without a close (the
         // host shows the matching text), or null when a close was queued.
-        AmoCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))?.let { routeId = null; return@withLock it }
+        AmoCallLock.endedBy(capture, visitSession, callMeta(v))?.let { routeId = null; return@withLock it }
         val date = businessDate()
         val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
         val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
@@ -417,7 +427,7 @@ class AmoDay(
      */
     suspend fun endCallIfClosed(): DayRefusal? = closeLock.withLock {
         val v = visitSession.current.value ?: return@withLock null
-        AmoCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))?.also { routeId = null }
+        AmoCallLock.endedBy(capture, visitSession, callMeta(v))?.also { routeId = null }
     }
 
     /** True once today's supervisor day is submitted: no new call starts until the server reopens it (the same fact the Submit screen reads). */
@@ -474,7 +484,7 @@ class AmoDay(
         val queued = AmoLockGate.closeCall(visitSession, { why = it }) {
             capture.recordVisitClose(
                 com.aktcl.aron.core.database.entity.VisitCloseEntity(
-                    clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
+                    clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = callMeta(v), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
                     callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
                 ),
             )
