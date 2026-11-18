@@ -417,3 +417,190 @@ LOWS:
 - SrBundleScaleMeasureTest has no assertions and needs pg_ctlcluster and OS cache drops. It is correctly gated by ARON_SCALE_MEASURE=1 and labelled as scratch-only. Its KDoc says 500 routes x 28 days x 60 memos while the status says 502 routes x 70 outlets; the cosmetic inconsistency is in that test file. The whole-bundle figure (290 KB raw / 22.5 KB gzip) is one SR route, measured in a scratch container on the test account, not the final account.
 - The campaign figure counts every route's memos at the outlet (stated in SrCampaigns and the contract). An SR's campaign STD therefore includes another route's memos at that outlet, for example after an outlet moves route mid-month. This is by design (the target belongs to the outlet), but SrTargetsScopeTest does not cover that case.
 - AmoManualContractTest: the function was renamed from versionIs1210 to versionIs1190 while it now asserts 1.22.0, a misleading name. The status says the contract number stays provisional, yet info.version is pinned at 1.22.0 in a test.
+
+
+## Delta review c30c52c63..c6c799b69, 2026-11-18
+
+Read from code only; nothing built or run.
+
+### rule-completeness verdict=fail
+SUMMARY: This is a read-only review of lane/sr-targets-server at c6c799b69: the delta from c30c52c63, the whole lane against ce6792f67, and the paths in IngestService, OpsApi, DataVoidApi and matchBackfill/ingestManual. Nothing was built, run or checked out.
+
+What c6c799b69 fixed from the previous review:
+- Star now has one rule.
+- The memo_count definitions match SrMemoFigures and the aggregator.
+- Status file sections are rewritten.
+- targets_truncated is tested at 501 and at 500, and campaigns_truncated with a second campaign.
+- The contract change is description text only; AchievementRow.memo_count gained a description and nothing else.
+- Migrations are still V0230..V0233 only. No shipped migration was touched and no test was weakened.
+
+Verified in the code (what can move a memo):
+- After a memo is stored, nothing changes its outlet, route or business date. I found no UPDATE of those columns on app.memo.
+- acceptQuarantined keeps client_uuid, type, family_uuid, business_date, route_id, acting_for_user_id and outlet_id.
+- memo and memo_line are in MONEY_TYPES, so every fix of a memo family is refused 409. accept_with_fix therefore cannot happen for a memo.
+- An outlet route change only rewrites outlet_placement_history.
+- Memos leave the figure only by supersede or void (DuesLedger), or by the admin data void (memo.voided_at plus registry 'voided').
+- matchBackfill aliases later voids and edits to the paper twin.
+
+The add half of the quarantine rule is sound: a held memo is never added, so a reviewer's release cannot cause a double count. The rule is still not complete, though:
+- It has no held state for a void or an edit, so the old memo is subtracted twice.
+- It defines acknowledged as the memo AND all its lines. Lines are acked one by one, and a zero-price line is refused for good while its memo is stored.
+- It says a release before the phone hears is exact. That is false for a memo dated after through_date.
+- It names a resolution value, `rejected`, that the wire enum does not have.
+- It ignores the admin data void of today's memos and the paper-backfill twin.
+- D-TKPI-13 says tests pin claims that the test only prints.
+
+I compared the contract and request-doc texts sentence by sentence. They agree except where noted under the lows, and they share every flaw above.
+
+Not verified:
+- test results and CI;
+- whether the phone app allows a cross-date void (cross-date edits are allowed, and the lane tests one);
+- what a phone does with the stored replay response of a same-uuid batch;
+- the phone lane itself;
+- whether any visit-only hold makes a memo a child of the visit, so that the sweep could release an edit memo.
+
+#### BLOCKING upheld=3/3: No held state for a void or an edit: after a reviewer releases it, the old memo is subtracted twice
+WHERE: contract/openapi.yaml RouteSnapshot ('It SUBTRACTS a memo that was acknowledged before R ... when ... that void or edit record was not acknowledged before R'); docs/requests/sr-programmes-phone-rule-b.md rule 4; IngestService.process step 5b (GATED_TYPES = attendance_event, memo, memo_void, due_collection; device_integrity_failed / device_not_enrolled), steps 3 and 9b (business_date_out_of_window, after_final_submit), acceptQuarantined -> releaseHeld -> DuesLedger supersede/void; SrPhoneWouldShowTest model line 150 and SrPhoneWouldShowIngestTest (no held void or held edit case)
+WHY: Rule 2 covers only a memo whose own last answer is `quarantined`. Rule 4 subtracts the old memo whenever the removing record (a memo_void, or an edit memo carrying supersedes_client_uuid) is 'not acknowledged', and quarantined counts as not acknowledged. memo_void and edit memos pass through the same holds as sales: the device gate, the date window and after_final_submit. A reviewer's accept (or the sweep) then supersedes or voids the old memo in app.memo, and the phone hears only later, through a resolution. Between those two moments the figure already lacks the old memo and the phone subtracts it again. Neither the model test nor the ingest test has a held removal, so this cannot fail today.
+SCENARIO: 1. On 2027-01-02, memo M (200 sticks of SKU X) is accepted and acknowledged.
+2. On 2027-01-03, Play Integrity on the phone reads 'unevaluated' and cfg.device.require_integrity is on. The SR edits M: edit E is dated 2027-01-03 with 200 sticks and supersedes M. E's ack is `quarantined device_integrity_failed`.
+3. An admin accepts E at 11:00, so the server marks M superseded.
+4. At 11:05 the phone asks for a bundle. through_date is 2027-01-02, so the figure lacks M, and E (today) is not in it either.
+5. The phone: M was acknowledged before R and is superseded locally, and E is not acknowledged, so rule 4 subtracts 200. E is held, so it is not added. It shows the others minus 200; the true total is the others plus 200 (E).
+6. Through the delta path the resolution arrives in the same response, after R, so the error is certain for that cycle. If the resolution is missed (7 days or 200 rows), the error lasts to month end.
+
+Fix: while the void or edit's last answer is quarantined, do not subtract the old memo, and do not add the edit, until an ack or resolution arrives. Add a held-void and a held-edit case to both tests.
+
+#### BLOCKING upheld=3/3: 'Acknowledged = memo AND all its lines' is never met when one line is refused while its memo is stored, so the whole memo is added on every bundle
+WHERE: contract/openapi.yaml RouteSnapshot ('accepted or duplicate for the memo AND for all its lines'); rule-b doc rule 1; IngestService.processInSavepoint (each record in its own savepoint; a family is not all-or-nothing) and step 8a (D-SALE-ZERO-PRICE-01: 'a sale line priced at zero is a final price_invalid for that line alone ... the memo and its other lines still add up and are stored'); step 7b (a line parked qty_invalid after its memo was stored)
+WHY: Lines are acked one by one. A family can commit the memo and some of its lines while another line is refused: price_invalid is final, and a qty_invalid park or a per-record server_error is retryable. The memo's last answer is `accepted`, not quarantined, so neither the 'held' case nor the 'final refusal' case applies, and the memo is never acknowledged under the definition. Rule 3 then ADDS the whole local memo, including lines the server already counts and the refused line it will never count. Because a final refusal never turns into an ack, this repeats on every bundle until month end.
+SCENARIO: 1. The phone's price list has a zero price for SKU Y.
+2. Memo M: line 1 is 20 sticks of X at the normal price; line 2 is 10 sticks of Y at price 0.
+3. Upload acks: memo accepted, line 1 accepted, line 2 rejected price_invalid (final). The server stores M with line 1 only, flagged zero_price_line.
+4. Next day's bundle: the figure holds X = 20 and memo_count 1.
+5. The phone: M is not acknowledged (line 2 has no accepted ack), so it adds M. It shows X = 40, Y = 10, memo_count 2 for X, and the KPI brand and campaign memo counts doubled, on every bundle of the month.
+
+Fix: define acknowledgement per record. A memo counts as acknowledged when its header is accepted or duplicate; add only lines without an accepted ack, and drop lines with a final refusal. Or state how a line's final refusal ends the memo's addition. Add a test with a zero-price line.
+
+#### BLOCKING upheld=3/3: 'Released before the phone hears ... which is exact' is false for a memo dated after through_date
+WHERE: contract/openapi.yaml RouteSnapshot ('the server may commit it before the phone hears ... then the figure holds it while the phone still does not add it, which is exact'); rule-b doc rule 2; docs/status/sr-targets-server.md line 55; SrPhoneWouldShowIngestTest (every memo is dated 2027-01-03 and the bundle is for 2027-01-04, so through_date always equals the memo date)
+WHY: The figure holds a released memo only if it is dated on or before through_date. A sale held today and released today by a reviewer (the common case for device-gate and scope holds) is in no server figure, because today is cut. The phone does not add it because it is held. So it is missing from the total until an ack or resolution reaches the phone before a bundle request. The texts promise exactness, and the ingest test chooses dates that cannot show the gap.
+SCENARIO: 1. At 10:00 on 2027-01-03, memo N (50 sticks) is held as device_not_enrolled.
+2. At 10:30 an admin accepts it, and app.memo holds N.
+3. At 10:35 the phone takes the 2027-01-03 bundle (through_date 2027-01-02). The figure lacks N and the phone holds it as quarantined, so it adds nothing.
+4. The screen is 50 below the committed total until the phone next uploads or polls and receives the resolution. If the resolution falls outside the 7-day / 200-row window, the gap lasts until 2027-01-04, when N is on or before through_date.
+
+Fix: either state this as the intended display ('a held memo is out of the total until the phone hears of its release, even after the server stores it'), or add a released memo once its resolution is held whatever its date. Add a test with a memo dated on the bundle date.
+
+#### BLOCKING upheld=3/3: The rule names a resolution `rejected` that does not exist; the wire value is `discarded`, which also carries return_to_device
+WHERE: contract/openapi.yaml RouteSnapshot ('A resolution `rejected` or any final refusal removes it') and the Resolution schema (resolution enum [accepted, accepted_with_fix, discarded]); rule-b doc rule 2; OpsApi.resolve (discard and return_to_device are both stored as status 'discarded'); SrPhoneWouldShowIngestTest.aDiscardedQuarantine... comment 'the resolution `rejected` reached the phone'
+WHY: The phone lane implements from these texts. A phone that matches `rejected` against resolutions never sees it, and keeps a discarded memo as held. That changes no figure, but the text is not supported by the contract it lives in. The text also does not say that return_to_device arrives as `discarded` although it is not a final refusal (returnedWithoutOpenItem re-judges a resend).
+SCENARIO: 1. A reviewer discards a held memo.
+2. The delta carries {resolution: 'discarded'}.
+3. The phone code written from the rule waits for 'rejected' and never moves the memo out of 'awaiting review'.
+4. A memo returned to the device is shown as refused for ever and never resent, although the server expects a resend.
+
+Fix: name `discarded` and say what return_to_device means for the phone.
+
+#### BLOCKING upheld=3/3: D-TKPI-13 says the line-quantity fix is 'pinned by tests' and that accept_with_fix is tested through the real ingest; the test only prints the answer
+WHERE: DECISIONS.md D-TKPI-13 ('Tested THROUGH THE REAL INGEST ... accept_with_fix ... a quantity fix of a memo line is refused (409 ...) ... both are pinned by tests, not assumed'); docs/requests/sr-programmes-phone-rule-b.md status line; SrPhoneWouldShowIngestTest.anAcceptWithFixIsInTheFigureOnceAndThePhoneNeverAddsItsPreFixCopy
+WHY: The test calls resolve(..., 'accept_with_fix', cheaper) and passes the response to note(...), which is println only. No assertion checks for 409, and no accept_with_fix is ever stored. The memo is then released by a plain 'accept'. The comment 'a fix of a non-money field of the visit is the fix the reviewer can make' describes nothing the test does. If acceptQuarantined started accepting a money fix, the test would still pass. The sweep claim is pinned for only one setup: a memo held for its own scope reason, whose visit is missing. releaseHeld/settleChild mark ANY held child with a retryable parent_missing as WAITS, so 'the sweep cannot release a memo' is wider than the test.
+SCENARIO: Someone removes the MONEY_TYPES guard in acceptQuarantined. A reviewer's 20 -> 18 quantity fix of a line is then stored, and the phone, which holds 20 locally, is told accepted_with_fix. SrPhoneWouldShowIngestTest stays green: the fix's status is printed, not asserted, and the memo's figure is still asserted from a plain accept.
+
+Fix: assertEquals(Conflict, tried.status), rename the test, and narrow the sweep sentence to what the test shows, or add an edit-memo-waits-for-its-superseded-memo case.
+
+#### BLOCKING upheld=3/3: An admin data void of today's route-day leaves the phone adding the voided memos; the text says the total goes below, but it goes above
+WHERE: contract/openapi.yaml RouteSnapshot ('A memo taken out of the figure by an admin data void with no phone event leaves the phone's total below its local memos'); rule-b doc rule 7; DataVoidApi.voidDay (date <= today allowed; memo.voided_at set, registry 'voided'); IngestService.process step 2 ('accepted','voided' -> duplicate)
+WHY: Rule 3 adds every live local memo dated after through_date, acknowledged or not. A data void of the bundle date tombstones today's acknowledged memos on the server. The phone gets no event for them: a resend of a voided record answers `duplicate`, which reads as acknowledged. So the phone keeps adding them, and its total is ABOVE the true total for the rest of the day. The texts state the opposite direction and give no way to learn of the void (day_state.submit_voided is not mentioned).
+SCENARIO: 1. By 13:00 on 2027-01-03 the SR has sold 5 memos, 600 sticks, all acknowledged.
+2. At 14:00 an ADMIN data-voids route R for 2027-01-03, scope app_memos.
+3. At 14:05 the bundle for 2027-01-03 comes back. The figure (through 2027-01-02) is unchanged, and the phone adds the 5 live local memos.
+4. The screen shows +600 that the server, the dashboards and the true total no longer count, until the day ends.
+
+Fix: give the phone a signal and a rule (for example, a voided route-day in day_states means drop that day's local memos), or state honestly that the phone overcounts the voided day.
+
+#### BLOCKING upheld=3/3: A paper backfill twin of a memo the phone has not uploaded yet is counted twice
+WHERE: IngestService.ingestManual (paper memo of a dead-phone day stored for the SR's route) and matchBackfill (the phone's later copy is held as memo_no_duplicate); RouteSnapshot rule ('ADDS a local memo iff it is not acknowledged before R'); single flight covers only a batch in flight, not pending records
+WHY: The rule assumes that a server memo the phone did not hear about has no local twin under another uuid. A paper backfill breaks that: the figure holds the paper memo X, while the phone's own copy P (same memo_no and lines, a different uuid) is unacknowledged, not held and not in flight. A bundle request before P is uploaded adds P on top of X. Once P is uploaded it is held as memo_no_duplicate and the total is exact again. Nothing in the rule requires uploading pending records before asking for a bundle.
+SCENARIO: 1. On 2027-01-02 the SR's phone dies after printing memo 1001-270102-0007 (300 sticks).
+2. On 2027-01-03 SUPPORT keys the printed copy through ingestManual.
+3. On 2027-01-04 the phone revives. At start of day it fetches the bundle for 2027-01-04 before its outbox upload (allowed: no batch is in flight).
+4. The figure holds X (300) and the phone adds P (300): 600 shown, 300 true.
+5. The error lasts until P is uploaded and held.
+
+Fix: require 'upload every pending record and receive its answer before a bundle request' (and say so in the single-flight sentence), or state the twin case.
+
+LOWS:
+- The contract 'ADDS a local memo (live, dated inside the bundle month)' does not say 'with this snapshot's route_id' (or, for campaigns, 'at this outlet'). The test model filters by route and the doc lists a two-route test, but the binding text is silent. An SR moved off route A mid-month, or covering a route, could add route-A memos into route B.
+- Rule-b doc rule 5 says 'replay it until it is answered (the answer is duplicate)'. A replay with the same batch_uuid returns the stored response (replayed:true) with the original `accepted` acks (replayOrClaim). The ingest test replays under a NEW batch_uuid, so it shows `duplicate`. Say 'accepted or duplicate'.
+- Retryable refusals are not named: parent_missing, server_error, scope_stale, price_list_unknown, outlet_pending_approval and the qty_invalid park. By the text they are 'not acknowledged, not held, not refused', so the memo is added. That is right while a resend will store it. For a pack-factor qty_invalid park the resend never succeeds until master data changes, so the phone adds a sale the server never stores for the rest of the month. State it.
+- Resolution delivery: resolutions() and resolutionsAfter() return at most 200 rows, newest first, within 7 days of resolved_at. A held memo whose resolution is missed stays 'awaiting' on the phone for ever: the figure is exact once the memo is on or before through_date, and it is not double counted. Combined with blocking 1, a missed resolution of a held edit or void keeps the undercount to month end. A bulk accept of more than 200 items silently drops the oldest.
+- A held line whose memo is released (releaseHeld ChildEnd.STAYS) leaves the memo stored without that line, while the memo's resolution `accepted` makes the memo 'acknowledged'. The figure lacks the line and the phone does not add it, which is consistent with 'held is not counted', but the text speaks only of memo-level holds.
+- The truth definitions in the tests disagree. SrPhoneWouldShowTest.truth() excludes held memos, while SrPhoneWouldShowIngestTest expects a released, still-held memo to be counted (20,1). For a held edit the model's truth excludes both the old and the new memo, which is how blocking 1 hides from the model.
+- The contract text lists 'accept_with_fix' and 'the sweep of waiting children' as ways the server commits a memo. For memos, accept_with_fix is unreachable (MONEY_TYPES, outlet, route and date locked). That is harmless, but the text implies a memo can change on review when it cannot.
+- The waiting-sweep test discards the batch acks (statuses(...) unused) and its memo is held for its own scope reason. It does not show the case the code supports: a memo held as a child of its visit that waits for a second parent (supersedes_client_uuid).
+- The status line 'An admin data void ... lowers the phone's total below its local memos' repeats the wrong direction for today's memos (blocking 6).
+- D-TKPI-12 says 'each [truncated flag] seen to fail when its flag is not set'. The tests now exist (501 and 500 rows; second campaign true, then null). The 'seen to fail' part cannot be checked from the repository.
+
+### tests-contract-claims verdict=fail
+SUMMARY: Read-only review of lane/sr-targets-server at c6c799b69. I looked at the c30c52c63..c6c799b69 delta and at the whole lane against ce6792f67, through the tests, contract and claims lens. I read diffs and files only; nothing was built, run or checked out.
+
+The delta changes no production code: only tests, the contract text, the request doc, the status file and DECISIONS.
+
+What holds:
+- **Migrations:** only V0230..V0233 are added. No shipped migration (V0208 and below) is touched.
+- **Contract:** the change against the base is additive. Against the base, the only removed yaml lines are the version bump, two descriptions and one `memo_count` line that gained a description. AchievementRow's `required` list is unchanged. The slices and `web/src/contract/openapi.d.ts` changed only in descriptions, in step with the yaml. WireDtos is not in the delta.
+- **DECISIONS against the base:** 0 removed lines. Against c30c52c63, D-TKPI-12 (a lane-only entry that never reached the base) was rewritten in place, and D-TKPI-13 was appended.
+- **No assertion removed or loosened:**
+  - In SrPhoneWouldShowTest, the through_date check now runs only when `calendar` is present. It defaulted to the same value before, so this is equivalent. The outer `assertEquals(through, th)` is now tautological.
+  - SrBundleStabilityTest, SrCampaignsBundleTest and SrTargetsBundleTest only gained tests or assertions.
+- **The new truncated tests are real:** `targets_truncated` is checked at 501 rows and absent at 500, and `campaigns_truncated` is true with a second campaign and absent with one. The identical-edit and void version tests are real.
+- **SrPhoneWouldShowIngestTest really goes through the HTTP path:** `POST /v1/sync/batch` (gzip), `POST /v1/admin/quarantine/{id}/resolve` and `GET /v1/sync/bundle`, and it reads `achievement_mtd` off the JSON.
+  - The lost-response test can fail. The naive count is 40 against a true total of 20, and after the duplicate replay it is exact.
+  - The quarantine-then-accept and discard tests can fail on the server figure: (0,0), then (20,1).
+  - The two-route, month-boundary, prefetch, cross-date-edit, other-route-at-campaign-outlet and free-only tests compare the phone model with a truth computed from the phone's own memos, so they can fail.
+
+Two separate REPEATABLE READ snapshots: verified in BundleService. `routeSnapshots` runs in its own transaction, then `programmes` runs in a second one on the same handle. Under single flight, none of this phone's own uploads can commit between the two reads. What can commit in between is a reviewer release of one of its held memos, or a memo from another device or login of the same SR. Then one bundle can show Astha with memo M and targets without it. Each figure is exact for the moment it was read, and the gap closes at the next bundle. That is not a double count, as long as the phone also never adds a held memo to Astha (see lows). So the split is reachable but not wrong under rule B; I rate it low.
+
+Two blocking points: claims the tests do not support (accept_with_fix and the 409), and "every truncated flag tested" while `brands_truncated` true is untested.
+
+Not verified:
+- any test run, CI, or that the new tests are green;
+- that the line-quantity `accept_with_fix` actually returns 409;
+- that resolutions reach the phone through `delta` or batch responses;
+- the "seen to fail when the flag is not set" claims;
+- whether any memo can become a waiting item (for example an edit whose superseded memo is held);
+- whether the generated slice files match the yaml byte for byte (only folding differs in my spot check);
+- the phone lane's implementation.
+
+#### BLOCKING upheld=3/3: accept_with_fix and the 409 'finding' are claimed as tested through the real ingest; the test only prints them, and its phone assertions are tautological
+WHERE: backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrPhoneWouldShowIngestTest.kt anAcceptWithFixIsInTheFigureOnceAndThePhoneNeverAddsItsPreFixCopy (lines ~286-310); DECISIONS.md D-TKPI-13 ('Tested THROUGH THE REAL INGEST ... accept_with_fix'; 'a quantity fix of a memo line is refused (409 ...) ... both are pinned by tests, not assumed'); docs/requests/sr-programmes-phone-rule-b.md status line ('SrPhoneWouldShowIngestTest (... accept-with-fix ...)'); docs/status/sr-targets-server.md
+WHY: In that test the only `accept_with_fix` call is on a line. Its result goes to `note(...)` (println) and no assertion checks its status. The visit and the memo are then released with a plain `accept`, so no accept_with_fix succeeds anywhere in the test. The comment 'a fix of a non-money field of the visit is the fix the reviewer can make' is never carried out. Both phone assertions are true by construction. `shows()` adds nothing for HELD or ACKED, so `shows(...) == server - base == figure` for any server behaviour. `figure.first` (the quantity, which is what a fix would change) is never asserted. So the test cannot fail on the property it is named for. The '409 for a line quantity fix' finding is not pinned by this or any other test: QuarantineAcceptTest pins a memo-header money fix, not a line quantity. The phone lane implements from texts that say these cases are covered.
+SCENARIO: 1. The resolve endpoint starts accepting `accept_with_fix` of a line quantity, 20 -> 18 sticks, with 200 OK. It stores 18 and sends the phone a resolution `accepted_with_fix`.
+2. The test prints '200 ...' and stays green: the memo count is still 1, the quantity is unchecked, and both `shows` assertions are tautological.
+3. Rule B's 'add every local memo dated after through_date whether acknowledged or not' then makes a phone add its local pre-fix 20 for a today-dated memo, while the server holds 18.
+4. The claim 'cannot occur today, pinned by tests' never fires.
+
+Fix: assert `tried.status == Conflict`, do one successful `accept_with_fix` (for example the visit's `sequence_no`, as in QuarantineAcceptTest), assert `figure.first`, and drop or reword the tautological assertions. Or correct D-TKPI-13, the request doc and the status file.
+
+#### BLOCKING upheld=3/3: 'Every truncated flag tested' is claimed, but brands_truncated=true has no test
+WHERE: DECISIONS.md D-TKPI-13 item (5) 'Tests for every truncated flag'; docs/status/sr-targets-server.md ('every truncated flag tested'); code backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrKpi.kt:153 `put("brands_truncated", rows.size > shown.size)`; tests: the only assertion is SrKpiBundleTest:130 `assertEquals(false, brands_truncated)`
+WHY: The new tests cover `targets_truncated` (at 501 and 500) and `campaigns_truncated` (a second campaign). `star_truncated` has an earlier test. `brands_truncated` is only ever asserted false, and the true path (more than the brand cap) has no test at any lane commit. The 'achievement_mtd cut at 500' half of `targets_truncated` is also untested. The project rule counts a DECISIONS or status claim that the tests do not support as blocking, and the previous review raised the same class for these flags.
+SCENARIO: 1. Someone changes SrKpi to compute `brands_truncated` after `take(cap)`, so it is always false.
+2. A route with more brand rows than the cap then loses rows silently and the phone shows no truncation notice.
+3. Every test stays green, while D-TKPI-13 and the status file say every truncated flag is tested.
+
+Fix: add a test past the brand cap (true there, false at exactly the cap), or narrow the claim to the three flags actually tested.
+
+LOWS:
+- Two REPEATABLE READ snapshots (routeSnapshots, then programmes, separate transactions in BundleService.bundle). Two things can commit between them: a reviewer or sweep release of this SR's held memo, or a memo from another device or login of the same SR. One bundle then shows Astha with memo M and targets/KPI without it. Each figure is exact for its read and the gap closes at the next bundle; under single flight no own upload can fall between, so there is no double count. One sentence in the RouteSnapshot or ProgrammesSection description would prevent a future 'mismatch' bug.
+- Cross-section definition risk, related to the point above. RouteSnapshot rule B now defines ACKNOWLEDGED narrowly: accepted or duplicate for the memo and every line, or a resolution accepted or accepted_with_fix; quarantined is excluded and held is never added. The ProgrammesSection ACHIEVEMENT RULE (base text, unchanged) still says 'adds its own memos that had NOT been acknowledged'. That rule has no held exclusion and does not mention resolutions. The delta also removed the old 'DIFFERS from the Astha rule' pointer. A phone that keeps ONE acknowledged set by rule B's definition and applies the Astha rule literally would add a quarantined memo to Astha. It would then double count it after the reviewer's release, because the Astha snapshot holds it. Say in one place that both families use the same acknowledged, held and refused sets, and that held memos are never added in Astha either.
+- The fact that held/acknowledged status is frozen at R (request doc item 6, 'merged with the memos as they stood at its own R') is not in the contract, which is the text that wins. Literal contract reading: 'ADDS ... iff not acknowledged before R and not held'. A resolution `accepted` arriving after R, for example in the same delta response as a bundle read after the release, makes the memo 'not held and not acknowledged before R', so the phone adds it. That is a double count until the next bundle. Add 'held, refused and acknowledged are judged at R' to the RouteSnapshot text. Item 6's wording 'memos as they stood at R' could also be misread as excluding sales made after R.
+- 'ADDS every such local memo dated after through_date whether acknowledged or not' does not say that 'such' excludes held or refused memos. A today-dated quarantined memo could be read as added, against the earlier 'NEVER added'. Say so explicitly.
+- The contract parenthetical '(held for review, or waiting for a parent record)' under `quarantined` is inaccurate for an in-scope memo whose visit is missing. IngestService.park answers `rejected` parent_missing with retryable=true (parked), not `quarantined`. Under rule B a parked memo is not acknowledged, not held and not finally refused, so it is added, which is correct. A phone lane that reads 'waiting for a parent' as held would undercount until the re-send. State that a parked (retryable rejected) memo is added. Also, the sweep test's memo is quarantined because its outlet is out of scope, not for the missing visit. Its first batch statuses are not asserted. So it does not show what it says about parent_missing.
+- The claim 'the waiting sweep cannot release a MEMO' generalises from one case (a missing visit). The markWaiting path (IngestService ~854) releases any child type whose second parent is not stored, and that is not shown to be impossible for a memo (for example an edit whose superseded memo is held). Under rule B this is harmless (a held memo is never added and the figure stays exact), but the claim should be narrowed to the case tested.
+- SrPhoneWouldShowIngestTest: `assertFailsWith<IllegalStateException> { shows(..., inFlight = true) }` only tests the test's own `check()`, so it is a tautology. The quarantine test's 'phone hears' step is a replay that returns `duplicate`. The resolution path the rule names (a `resolutions` row from a batch response or `GET /v1/sync/delta`) is never exercised or read.
+- SrPhoneWouldShowTest: the new `held` and `refused` fields of LocalMemo and the held and refused branches of `requestBundle` and `truth()` are never set by any test, so they are dead model code. `requestBundle`'s `assertEquals(through, th)` is now tautological, because `th` is computed from the same `date`.
+- DECISIONS.md: D-TKPI-12, the text the lead reviewed at c30c52c63, was edited in place instead of being corrected only by an appended entry. Against the base the file is still append-only (0 removed lines), but against c30c52c63 one existing line changed. The new D-TKPI-12 phrase 'each seen to fail when its flag is not set' cannot be verified from the repository.
+- SrTargetsBundleTest.targetsTruncated... inserts 499 `TR-*` SKUs and deletes only their target rows; the SKUs stay in the class's database. This is harmless unless a later test in the class counts SKUs or products.
+- Prior lows still open by choice (stated in D-TKPI-13): N+1 last-month Star read, SKU dimension read on every build, and morning-burst measurement owed at final-account sizing.
