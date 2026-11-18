@@ -672,3 +672,71 @@ LOWS (shortened):
 - Percona mysqldump's /*!50717 rocksdb */ header lines, an uncommented --master-data=1 CHANGE MASTER line, a UTF-8 BOM and a view placeholder are all refused with the generic 'line not recognised' message. Each is loud and
 - The new test_one_five_and_forty_row_tables... strips every occurrence of str(n) from the output text before searching, so its leak check is vacuous for n=1 and weak for 5 and 40. Re-run without the stripping: 0 leaks.
 - test_the_profile_is_never_written_inside_the_repository depends on the copy sitting inside a git work tree. It fails when run from an archive or installed copy.
+
+
+## Phase 1 profile fourth review at f78f09f1a, 2026-11-18
+
+Reviewers ran the tool on synthetic dumps. No leak found; fails on line accounting in three skipped regions and on remaining refused standard shapes.
+
+### new-surface-attacks verdict=fail
+
+#### BLOCKING upheld=3/3: A forged 'DELIMITER ;' line inside a trigger body ends the block early: rows inside the body are counted, and in whole-database mode a whole table section is profiled
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py events(): `if in_block: if line.strip() == "DELIMITER ;": in_block = False; continue` (no tracking of quotes or comments inside the block)
+WHY: Binding rule: an INSERT inside a DELIMITER block must never be counted, and a section boundary must never be missed. mysqldump copies trigger and routine bodies verbatim, newlines included, so a multi-line string literal in a body can contain a line that reads exactly 'DELIMITER ;'. Every line after it is then parsed as top-level SQL.
+
+#### BLOCKING upheld=3/3: Lines inside a multi-line PARTITION clause are swallowed unvalidated until any line ending '*/;'
+WHERE: mysqldump.py events(): `if in_part: part_count += ...; if line.rstrip().endswith("*/;"): ...; continue`
+WHY: The parser must account for every line or refuse the table. Any line between '/*!50100 PARTITION BY' and the next line ending '*/;' is dropped silently, INSERT lines included. If the closing line is written '*/ ;' (with a space), the reader keeps swallowing until the next '*/;' line, e.g. the following SET character_set_client directive.
+
+#### BLOCKING upheld=3/3: The plain-comment regex accepts a line that carries a statement between two comments: the INSERT is skipped silently
+WHERE: mysqldump.py `_COMMENT = re.compile(r"^/\*[^!].*\*/$|^/\*\*/$")`, checked before the INSERT and unknown-line checks (unchanged this round, but still at head)
+WHY: '.*' spans '*/ ... /*', so any line that starts with '/* x */' and ends with '*/' counts as a comment. The rule says no line is silently skipped with exit 0.
+
+#### BLOCKING upheld=3/3: Standard mysqldump shapes still refused: routines, events, views in whole-database files, CREATE DATABASE/USE
+WHERE: mysqldump.py events(): only '/*!NNNNN SET' and 'ALTER TABLE ... KEYS' directives are accepted; `_CREATE` requires a bare '^CREATE TABLE'; there is no rule for USE or CREATE DATABASE
+WHY: A standard mysqldump shape that is still refused is blocking. The refusal is safe: no content in the messages and exit 3.
+
+LOWS (shortened):
+- Partition count is wrong for two shapes. A HASH clause with 'PARTITIONS 4' on the continuation line gives partitions=0, because _PARTITION_WORD does not match 'PARTITIONS' and _PARTITIONS_N only runs on the first line. A
+- Column list: tokens without backticks are ignored, because names come from re.findall of backticked spans. '(`sku_code`, junkword, `acct...`)' is accepted when the tuple width happens to be 2. It should require the list 
+- A duplicate column name in the list is refused with the message 'names a column the table does not have', which is misleading.
+- Whole-database mode blames the wrong table in refusals. A duplicate CREATE, a view, or anything else refused at a section boundary is reported under the PREVIOUS section's table (e.g. 'trans_section_summary'), because `c
+- Binary byte length is computed by re-encoding the decoded string to UTF-8, so it is wrong under --charset latin1: a _binary value of 4 raw bytes reports length 6. Lengths only, no content.
+- A column list that omits a non-generated column is accepted. That column reports rows 0 and null_share None, with no flag saying its values were not dumped. It should be flagged or refused unless the column is declared G
+- Raw non-UTF-8 bytes in -- comments, trigger bodies and partition clauses pass without the charset refusal, because those lines are never inspected. No leak, but the strict-charset claim covers less than stated.
+- Multi-line 'SET @@GLOBAL.GTID_PURGED=... uuid1:1-9,' followed by 'uuid2:1-5';' (written by mysqldump on servers with several GTID sources) is refused as an unrecognised line. Safe, but it is a standard shape.
+- The docs (status section 0 and the runbook) list 'trigger/routine bodies' as recognised, yet the same text refuses '/*!50003 DROP ... */ ;', so a --routines dump can never pass. The docs should say so plainly or the shap
+- skip_statements is reset per section in multi mode (ordinal=0 at each CREATE), so a resume in whole-database mode would skip the first N statements of EVERY table. It is not reachable now, since phase 2 refuses and profi
+- Not verified: linear time and bounded memory at 52 GB scale; .gz input for the new shapes; output from a real mysqldump binary (the fixtures are hand-written); whether mysqldump 8 writes JSON columns with _binary (if so,
+
+### real-formats-and-scale verdict=fail
+
+#### BLOCKING upheld=3/3: Whole-database dumps that contain a view are refused, and the refusal names the wrong table
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py events(): the view lines match no construct (_DIRECTIVE_SET only matches /*!NNNNN SET; _CREATE needs a plain CREATE TABLE). profiler.py read_file() reports the error under the table read just before the view (cur).
+WHY: mysqldump writes every view by default: a stand-in ('/*!50001 DROP VIEW IF EXISTS ...*/;' plus '/*!50001 CREATE VIEW ... AS SELECT 1 AS ...*/;' in 8.0, or '/*!50001 CREATE TABLE ... ENGINE=MyISAM */;' in 5.7) and a 'Final view structure' block ('/*!50001 CREATE ALGORITHM=UNDEFINED */', '/*!50013 DEFINER=... */', '/*!50001 VIEW ... AS select ... */;'). The first such line refuses the rest of the file. The message is the generic 'line not recognised: UPDATE, DELETE, ALTER ...' with no remedy (no mention of views or --ignore-table). It names a table whose data was complete. The run exits non-zero and leaks nothing, but a standard file cannot be read.
+
+#### BLOCKING upheld=3/3: --databases / --all-databases headers and the --routines / --events sections are refused
+WHERE: mysqldump.py events(): 'CREATE DATABASE /*!32312 IF NOT EXISTS*/ ...;', 'USE `db`;', '/*!50003 DROP PROCEDURE IF EXISTS `p` */;' and '/*!50106 DROP EVENT IF EXISTS `e` */;' each match no construct. The DELIMITER blocks themselves are fine.
+WHY: These are the usual shapes of a 'whole database' backup: -B or -A for the header, -R or -E for routines and events. They are exactly what the new --whole-database mode is for. Any of them refuses the file, with a generic message and no remedy (for example: re-dump without -B, or skip the routines section).
+
+#### BLOCKING upheld=3/3: Data files are skipped silently with exit 0: --tab .txt files, and one of a t.sql / t.sql.gz pair
+WHERE: profiler.py profile_dump(): files that do not match ^(.*)\.(sql|tsv)(\.gz)?$ are skipped by 'if not m: continue', without being counted or reported. files[table] = p overwrites an earlier file for the same table without saying so.
+WHY: mysqldump --tab writes t.sql (schema only) and t.txt (data). The profiler reads each t.sql as a 0-row table, ignores every .txt, and exits 0. A whole dump is reported as empty tables with a passing exit code, which breaks the rule that every line is accounted for or the table is refused. Likewise, if master_sku.sql and master_sku.sql.gz both exist, the .sql is never read and nothing says so.
+
+#### BLOCKING upheld=3/3: A multi-line SET @@GLOBAL.GTID_PURGED refuses every file (plausible: it depends on the server's GTID history)
+WHERE: mysqldump.py events(): _SET = ^SET [A-Za-z@_][^;]*;$ is matched per line. A GTID set split over lines matches no construct.
+WHY: With GTIDs on, mysqldump copies @@GLOBAL.GTID_EXECUTED into the header of each file. When the server has more than one source UUID (after a failover or on some managed replicas), that value contains newlines after its commas. Every per-table file, and the whole-database file, would then be refused with the generic message, with no hint that --set-gtid-purged=OFF fixes it. The previous review listed this as unverified; it is now reproduced with a synthetic file.
+
+LOWS (shortened):
+- PARTITION BY HASH/KEY with 'PARTITIONS N' on its own line ('/*!50100 PARTITION BY HASH (...)' then 'PARTITIONS 4 */;') records partitions=0: _PARTITIONS_N only looks at the first clause line. Case partition-hash-2line. N
+- The lines inside a partition clause and inside a DELIMITER block are consumed without being checked. If a partition clause is missing its closing '*/;', every following line up to the next line ending in '*/;' is swallow
+- A column list without commas is accepted: INSERT INTO t (`n` `c`) VALUES (...) profiles with exit 0, because re.findall only picks out the backticked names. Not a mysqldump shape. Mapping is still by name and nothing lea
+- --no-create-info is refused, but the message says 'a data-only file: mydumper layout is not supported'. It names neither --no-create-info nor the fix (re-dump with CREATE TABLE).
+- A --no-data (-d) dump profiles every table as 0 rows with exit 0. A real empty table cannot be told apart from a schema-only dump. Suggest a warning for 0-row tables, or a comparison with mapping/expected_counts.json.
+- Files ending in .tsv are picked up by the file pattern but read with the SQL reader, and are refused with 'line not recognised (file line 1)'. The TSV path is advertised but cannot be used from profile, and a .tsv also r
+- Still a prior low: a file truncated on a line boundary gives a short count with exit 0, in both the per-table and whole-database cases (truncated-per-table, truncated-whole). With one 52 GB whole-database file this matte
+- A column whose distinct-value set hit the cap is treated as not near-unique. Capped near-unique columns therefore still get descriptors in the FULL file: integer digits for id, integer digits and decimal places for lat/l
+- Binary and bit columns report 'distinct': 0, for example bit(1) with 1.52 M non-null values. Binary values are never hashed, so this misleads; null or 'not tracked' would be accurate.
+- In whole-database mode, a refusal caused by a line between sections is reported under the table read just before it, even when that table's data was complete. Every table from that point on is reported as missing.
+- profile-values only finds per-table files (files[table] by file stem), so it cannot be used on a column of a table that exists only inside a whole-database file.
+- Throughput extrapolation: 3.4 MB/s for narrow rows gives about 4.3 h for 52 GB here, on one thread. Not measured: a slower container vCPU, and reference checks with real 1.5 M-key master sets, which add hashing per row.
