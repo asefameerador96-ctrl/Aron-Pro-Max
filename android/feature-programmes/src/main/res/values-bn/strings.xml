@@ -94,6 +94,7 @@
     <string name="pg_gift_on_phone">এই ফোনে নির্বাচিত, এখনো পাঠানো হয়নি: %1$s</string>
     <string name="pg_gift_refused">সার্ভার এই নির্বাচন নেয়নি: %1$s। আবার নির্বাচন করুন।</string>
     <string name="pg_gift_sent">সার্ভারে পাঠানো হয়েছে: %1$s</string>
+    <string name="pg_gift_unconfirmed">পাঠানো হয়েছে, এখনো নিশ্চিত হয়নি: %1$s। এভাবে থাকলে বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় খুঁজে "আবার পাঠান" চাপুন।</string>
     <string name="pg_gift_tier_unknown">সার্ভার এখনও এই দোকানের ক্যাটাগরি পাঠায়নি, তাই উপহার দেখানো যাচ্ছে না।</string>
     <string name="pg_gift_chosen">নির্বাচিত গিফট: %1$s</string>
     <string name="pg_gift_none_for_tier">এই দোকানের ক্যাটাগরির জন্য কোনো গিফট নেই।</string>
@@ -135,6 +136,10 @@
     <plurals name="pg_awaiting_redemptions">
         <item quantity="one">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
         <item quantity="other">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
+    </plurals>
+    <plurals name="pg_given_up_redemptions">
+        <item quantity="one">%1$sটি রিডিম্পশন পাঠানো হয়েছে কিন্তু নিশ্চিত হয়নি, আর এই ফোন পাঠানো বন্ধ করেছে। বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় এটি খুঁজে "আবার পাঠান" চাপুন।</item>
+        <item quantity="other">%1$sটি রিডিম্পশন পাঠানো হয়েছে কিন্তু নিশ্চিত হয়নি, আর এই ফোন পাঠানো বন্ধ করেছে। বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় এগুলো খুঁজে "আবার পাঠান" চাপুন।</item>
     </plurals>
     <string name="pg_photo_locked">সার্ভার এই উপহারটি লক করেছে, ছবির প্রয়োজন নেই: %1$s</string>
     <string name="pg_campaign_none">ছবির অপেক্ষায় কোনো রিডিম করা ক্যাম্পেইন উপহার নেই।</string>

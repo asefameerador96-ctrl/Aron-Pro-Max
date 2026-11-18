@@ -143,7 +143,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
         RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(page.redemptions, o, pr, page.ackedBefore) })
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), givenUp = com.aktcl.aron.feature.programmes.LocalRedeemed.givenUp(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(page.redemptions, o, pr, page.ackedBefore) })
     }
 }
 
@@ -163,7 +163,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
+            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), givenUp = com.aktcl.aron.feature.programmes.LocalRedeemed.givenUp(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = page.cashRateMtk ?: 0L

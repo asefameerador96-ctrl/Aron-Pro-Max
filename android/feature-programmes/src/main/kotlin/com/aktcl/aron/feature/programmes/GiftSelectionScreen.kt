@@ -108,6 +108,7 @@ fun GiftSelectionScreen(
             is GiftState.Locked -> Text(stringResource(R.string.pg_gift_locked, nameOf(state.giftId)), Modifier.testTag(GiftTags.LOCKED), style = TextStyle(fontSize = 16.sp, color = look.ink, fontWeight = FontWeight.Medium))
             is GiftState.Held -> Text(stringResource(R.string.pg_gift_held, nameOf(state.giftId)), Modifier.testTag(GiftTags.HELD), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.Sent -> Text(stringResource(R.string.pg_gift_sent, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
+            is GiftState.Unconfirmed -> Text(stringResource(R.string.pg_gift_unconfirmed, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.OnThisPhone -> if (state.refused) {
                 val why = (if (locale == UiLocale.BN) state.reasonBn ?: state.reasonEn else state.reasonEn ?: state.reasonBn)?.takeIf { it.isNotBlank() }
                 Text(stringResource(R.string.pg_gift_refused, nameOf(state.giftId)) + (why?.let { "\n$it" } ?: ""), Modifier.testTag(GiftTags.REFUSED), style = TextStyle(fontSize = 15.sp, color = look.red, fontWeight = FontWeight.Medium))

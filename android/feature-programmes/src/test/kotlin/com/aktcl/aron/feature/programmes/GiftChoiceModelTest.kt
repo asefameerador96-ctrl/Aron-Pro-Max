@@ -48,6 +48,13 @@ class GiftChoiceModelTest {
 
     @Test fun missingSectionIsNull() { assertNull(GiftChoiceModel.parse(null)); assertNull(GiftChoiceModel.parse("[]")) }
 
+    @Test fun aSentUnconfirmedChoiceNeverHidesTheBundlesAssignmentAndOtherwiseReadsNotConfirmed() {
+        val unsure = LocalGiftChoice(10, "2026-Q4", 2, "uncertain", uuid = "u1")
+        assertEquals(GiftState.Chosen(1), d.stateOf(10, "2026-Q4", listOf(unsure))) // the server's assignment is shown
+        val other = LocalGiftChoice(99, "2026-Q4", 2, "uncertain", uuid = "u2")
+        assertEquals(GiftState.Unconfirmed(2), d.stateOf(99, "2026-Q4", listOf(other))) // no assignment in the bundle: "sent, not confirmed"
+    }
+
     @Test fun anAcknowledgedChoiceReadsSentUntilABundleRequestedAfterTheAckHoldsItAndARefusalCarriesTheServersReason() {
         val acked = LocalGiftChoice(10, "2026-Q4", 2, "acked", uuid = "c1")
         assertEquals(GiftState.Sent(2), d.stateOf(10, "2026-Q4", listOf(acked), emptySet())) // the bundle request left before the ack: shows the old gift, the phone says sent

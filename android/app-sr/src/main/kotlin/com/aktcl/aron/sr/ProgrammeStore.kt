@@ -47,7 +47,7 @@ class ProgrammeStore(
             // rejected only by a DEFINITE server refusal means refused (points come back); a row the phone itself gave up on (retry_exhausted, transport_*, ack_mismatch) may be stored on the server: uncertain
             val state = if (ob?.state == "rejected" && !isDefiniteRefusal(ob)) "uncertain" else readState(r.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = false)
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
-                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt, r.clientUuid)
+                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt, r.clientUuid, gaveUp = ob?.state == "rejected" && !isDefiniteRefusal(ob))
         }
     }
 
