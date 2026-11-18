@@ -19,6 +19,8 @@
 // on the account itself. Owner rights on the subscription do not include blob data access, hence the explicit assignment.
 targetScope = 'resourceGroup'
 
+@description('The FINAL subscription id, typed by the person deploying (never committed, never read from the signed-in context: that would always match). The deployment FAILS before anything is created when it is not the subscription the deployment runs in. infra/scripts/apsis-landing.sh also refuses the test account before it gets here.')
+param expectedSubscriptionId string
 @minLength(2)
 @maxLength(8)
 param namePrefix string = 'aron'
@@ -47,7 +49,10 @@ param logAnalyticsWorkspaceId string = ''
 
 var suffix = empty(nameSuffix) ? take(uniqueString(resourceGroup().id), 6) : nameSuffix
 // 2 + at most 8 + 5 + at most 8 = 23 characters: inside the 24 of a storage account name, no truncation needed.
-var storageName = toLower('st${namePrefix}apsis${suffix}')
+// Guard: int() of a non-number is an evaluation error, so a wrong subscription stops the deployment at validation, before the
+// storage account (whose name carries the guard value, '' when the ids match) or anything else is created.
+var subscriptionGuard = toLower(expectedSubscriptionId) == toLower(subscription().subscriptionId) ? '' : string(int('wrong-subscription-the-dump-may-only-enter-the-final-account'))
+var storageName = toLower('st${namePrefix}apsis${suffix}${subscriptionGuard}')
 var dumpContainer = 'apsis-dump'
 var reportsContainer = 'apsis-reports'
 var blobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'

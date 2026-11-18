@@ -4,6 +4,7 @@ using '../apps.bicep'
 var envLocation = readEnvironmentVariable('AZURE_LOCATION', '')
 var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
 var envBackendImage = readEnvironmentVariable('ARON_BACKEND_IMAGE', '')
+var envApsisDbSecret = readEnvironmentVariable('ARON_APSIS_LOADER_DB_SECRET', '')
 var envApsisImage = readEnvironmentVariable('ARON_APSIS_LOADER_IMAGE', '')
 var envApsisDump = readEnvironmentVariable('ARON_APSIS_DUMP_URL', '')
 var envApsisReports = readEnvironmentVariable('ARON_APSIS_REPORTS_URL', '')
@@ -28,6 +29,7 @@ param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
 // logins are still created. Flipping it is one reviewed line: params/stage.apps.bicepparam is already true.
 // Apsis loader job (apsis-migration lane): off until an image is given (export ARON_APSIS_LOADER_IMAGE before infra/deploy.sh).
 param apsisLoaderImage = envApsisImage
+param apsisLoaderDbSecretName = envApsisDbSecret
 param apsisDumpContainerUrl = envApsisDump
 param apsisReportsContainerUrl = envApsisReports
 param dbPerAppLogins = false

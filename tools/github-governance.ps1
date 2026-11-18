@@ -81,8 +81,15 @@ $protection = @{
   allow_deletions = $false
   required_conversation_resolution = $true
 } | ConvertTo-Json -Depth 6
-Api PUT "repos/$Repo/branches/main/protection" $protection | Out-Null
-Write-Host 'main protection set'
+# A re-run must never replace the LIVE required checks (the live list has more checks than the list above: e2e and analytics
+# shards) with this script's older list. Protection that exists is left exactly as it is; change it by hand after re-reading it.
+gh api "repos/$Repo/branches/main/protection" 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) {
+  Write-Host 'main protection already exists: NOT touched (re-read its required checks in Settings > Branches before the first gate pull request)'
+} else {
+  Api PUT "repos/$Repo/branches/main/protection" $protection | Out-Null
+  Write-Host 'main protection set'
+}
 
 Step "Protect the integration branch ($Int) from force-push and deletion only (lanes keep pushing directly: no PR, no required checks)"
 $intProtection = @{
@@ -96,7 +103,7 @@ $intProtection = @{
 Api PUT "repos/$Repo/branches/$Int/protection" $intProtection | Out-Null
 Write-Host "${Int}: force-push and deletion blocked"
 
-Step 'Environments for the final account: azure-stage (from main, owner approves) and azure-prod (owner approves; tags server-v* and app-v*). azure-dev is left alone.'
+Step 'Environments for the final account: azure-stage (from main, owner approves) and azure-prod (owner approves; tags server-v*) and app-release (owner approves; tags app-v*). azure-dev is left alone.'
 # Names match deploy.yml, promote-prod.yml, release-app.yml and the OIDC federated subjects (infra lane). deploy.yml refuses
 # a stage or prod run whose environment has no required reviewer (D-FINAL-INFRA-03), so BOTH carry the owner as reviewer.
 # Run this BEFORE the first workflow run that names them: GitHub creates a missing environment unprotected.
@@ -107,13 +114,14 @@ Write-Host 'environment azure-stage ready (owner is the required reviewer; branc
 $prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
 Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
 Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
-# release-app.yml runs its release job in azure-prod so the final Maps and Firebase values stay environment-scoped; deploy.yml
-# itself still refuses prod from anything but a server-v* tag.
-Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'app-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
-Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* and app-v*)'
-# AUD-DG-08: one set of names (azure-dev, azure-stage, azure-prod). This script only creates and updates; it never
+# release-app.yml runs its release job in its OWN environment app-release (final Maps and Firebase values, owner approves, tags
+# app-v* only). It has no Azure identity: no federated credential trusts it, so an app-v* job can never sign in to Azure.
+$appBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
+Api PUT "repos/$Repo/environments/app-release" $appBody | Out-Null
+Api POST "repos/$Repo/environments/app-release/deployment-branch-policies" (@{ name = 'app-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
+Write-Host 'environment app-release ready (owner is the required reviewer; tags app-v* only)'
+# AUD-DG-08: one set of names (azure-dev, azure-stage, azure-prod, app-release). This script only creates and updates; it never
 # deletes. An unexpected environment is reported to the lead, not removed here.
-}
 
 Step 'Secret scanning and push protection (only where the plan supports it)'
 try {

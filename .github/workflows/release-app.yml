@@ -60,11 +60,12 @@ jobs:
     if: needs.guard.outputs.go == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    # The FINAL Maps and Firebase values are scoped to the azure-prod GitHub environment (an environment secret wins over
-    # a repository secret of the same name), so the test keys that ci.yml still uses for the dev APKs are never mixed
-    # in. The environment's reviewer approves each app release; its tag policy admits server-v* and app-v* tags.
-    # The signing keystore secrets stay repository-wide: the same release key signs both accounts (docs/24 D24-49).
-    environment: azure-prod
+    # The FINAL Maps and Firebase values are scoped to the GitHub environment app-release (an environment secret wins over a
+    # repository secret of the same name). Until the owner has set them there, the repository-wide TEST values are used: set them
+    # BEFORE the first app-v* tag. app-release has no Azure identity (no federated credential trusts it), so this job can never
+    # sign in to Azure; its tag policy admits app-v* tags only. The signing keystore secrets stay repository-wide: the same release
+    # key signs both accounts (docs/24 D24-49).
+    environment: app-release
     permissions:
       contents: write
     env:

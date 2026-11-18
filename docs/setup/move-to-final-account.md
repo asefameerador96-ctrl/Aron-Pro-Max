@@ -20,7 +20,26 @@ The templates are the same everywhere; only the parameter file and the GitHub en
 quotas, two bootstrap runs, switches on, stage then prod, new Google keys, the release APKs for the final host, sign in again. It
 needs two working days of operator time plus the quota lead time (up to a week).
 
-## 0. Before the move day (one to two weeks ahead)
+## 0. The order, honestly: what can start now and what waits for the owner's approval of the release flow
+
+`main` is still the 2026-10-07 baseline: it has **none** of the stage wiring (no `stage` choice in `deploy.yml`, no replica gate,
+no lab-grant seeding). Staging deploys only from `main`, and `promote-prod` needs a soaked `main` commit with a `server-v*` tag. So
+the staging and prod steps (s2) **cannot run until the owner approves the release flow (docs/30: the daily gate pull request from
+the integration branch to `main`, gate tags, `server-v*` tags) and the first promotion to `main`**. Nobody opens that pull request or
+pushes `main` before that approval (CLAUDE.md rule 11).
+
+| Can be done NOW (needs no `main` change) | Waits for step 0 (the owner's approval and the first promotion to `main`) |
+|---|---|
+| quota requests (`docs/setup/azure-quota-request.md`); the Google / Firebase final project; provider registration | the `stage` deploy, the staging proofs and soak, the `server-v*` tag, `promote-prod`, the prod deploy |
+| `tools/github-governance.ps1` and both `bootstrap-azure.ps1` runs (run from the laptop; the scripts are files, they do not need `main`) | the `app-v*` release run of `release-app.yml` for the final host needs the prod host, so it comes after prod |
+| a **laptop what-if** of the final profile against the bootstrapped group: `AZURE_RESOURCE_GROUP=rg-aron-stage ARON_ENV=stage infra/validate.sh` (it runs `az deployment group what-if` when `az` is signed in; changes nothing) | the `whatif` and `ops-diagnose` workflows for stage and prod (they too run from `main` only) |
+| the Apsis landing place and the dump upload (`docs/requests/apsis-dump-landing.md`) | |
+
+**Step 0 itself (owner):** approve the release flow and the first promotion of the integration branch to `main` (the lead then opens
+the gate pull request with the gate report). The bootstrap refuses to run before `tools/github-governance.ps1` has created the
+GitHub environments, and the governance script leaves an existing `main` and its protection exactly as they are.
+
+## 0a. Before the move day (one to two weeks ahead)
 
 1. The owner holds **Owner** on the final subscription and has a final Google Cloud / Firebase project (D5).
 2. **Quotas**: file every request in `docs/setup/azure-quota-request.md` (subscription-level ones now; the per-environment Container
@@ -57,17 +76,27 @@ A job that names an environment reads its own values before any repository value
 script **refuses** `azure-stage` or `azure-prod` while the environment is missing or has no required reviewer (it must not
 overwrite the governance script's protection).
 
-**Move the TEST account's values into `azure-dev` once** (so the test deploys keep working and nothing repository-wide is left to
-collide): re-supply the three `AZURE_*` secrets of the dev identity (GitHub cannot return a secret's value) and set the variables
-on the environment, then delete the repository-wide copies:
+**Move the TEST account's values into `azure-dev` once (the OWNER runs this in their own shell; no agent session handles the ids).**
+Environment values win over repository values of the same name, so either order with the bootstrap works. GitHub cannot return a
+secret's value, so the owner re-supplies the three `AZURE_*` secrets of the dev identity from the portal; `gh` prompts for the
+value when `--body` is left out, so it never lands in a command line or transcript:
 
 ```bash
-gh secret set AZURE_CLIENT_ID --env azure-dev            # paste when asked; same for AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+gh secret set AZURE_CLIENT_ID --env azure-dev            # paste when asked; same for AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID
 gh variable set AZURE_RESOURCE_GROUP --env azure-dev --body rg-aron-dev    # same for AZURE_LOCATION, ARON_ALERT_EMAILS, ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX
-# check with one manual `deploy` run of profile dev, then remove the repository-wide values (Settings > Secrets and variables)
+# check with one manual `deploy` run of profile dev, THEN remove only these repository-wide values:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_LOCATION, ARON_ALERT_EMAILS,
+#   ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX.
+# MUST STAY repository-wide: MAPS_ANDROID_KEY, MAPS_WEB_KEY, GOOGLE_SERVICES_JSON, FCM_SERVICE_ACCOUNT_JSON,
+#   PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON (ci.yml and the dev deploy still read the TEST values), ANDROID_SIGNING_* (one release key
+#   for both accounts), ARON_FINAL_ACCOUNT, ARON_PROD_API_BASE_URL, ARON_DEPLOY_FREEZE_DHAKA (repository-only by design).
 ```
 
-## 2. Final-account switches, staging, then prod
+Until the owner has set the final Google/Firebase values in the final environments, a stage or prod deploy falls back to the
+repository-wide TEST values of the same name (it would copy the test FCM account into the final Key Vault): set them **before the
+first stage deploy** (s4).
+
+## 2. Final-account switches, staging, then prod (after step 0: needs the code on `main`)
 
 1. Repository variable `ARON_FINAL_ACCOUNT=true`. Until it is true: `deploy.yml` refuses `stage` and `prod`, `infra/deploy.sh`
    refuses them again, `promote-prod.yml` and `release-app.yml` do nothing.
@@ -76,7 +105,7 @@ gh variable set AZURE_RESOURCE_GROUP --env azure-dev --body rg-aron-dev    # sam
    environment has a required reviewer (fails closed). `deploy.sh stage` runs `main.bicep` with `params/stage.bicepparam`,
    seeds Key Vault (including the **per-environment lab grant key**, see s5), builds and pushes the images, runs the migrations on
    the empty database, runs the `dblogins` job (`dbPerAppLogins` is on in stage), deploys the apps (the backend sees
-   `ARON_ENV=prod`; stage is prod-shaped) and smoke-tests through Front Door.
+   `ARON_ENV=prod`; stage is prod-shaped, so everything the backend keys on prod (strictness, alerts, integrity defaults) also applies in staging: expect it in the drills) and smoke-tests through Front Door.
 3. **Read replica**: the first run of a server never asks for the replica (Premium SSD v2 must finish its first backup first:
    Microsoft Learn, "Premium SSD v2 storage option in Azure Database for PostgreSQL flexible server"). `deploy.sh` asks for it when
    it exists already or the primary has a completed backup; the what-if guard allows exactly the `<server>-r1` Create. So a **second
@@ -114,10 +143,12 @@ restored. Real data arrives by the Apsis history load and by real traffic.
 1. In the final Google Cloud project create new keys: an Android Maps key restricted to the package names and the release
    certificate SHA-1, and a web Maps key restricted by referrer to the final web host. Daily caps and a budget alert as in `docs/28` rule 4.
 2. New Firebase project: download the new `google-services.json` and a new FCM service account.
-3. Store them **in the GitHub environment `azure-prod`** (and `azure-stage` if stage gets its own Firebase app):
-   `gh secret set MAPS_ANDROID_KEY --env azure-prod`, same for `MAPS_WEB_KEY`, `GOOGLE_SERVICES_JSON`, `FCM_SERVICE_ACCOUNT_JSON`
-   (and `PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON` when Play Integrity is live). `release-app.yml`'s release job runs in `azure-prod`, so
-   it reads these; `ci.yml` keeps reading the repository-wide TEST values for the dev APKs. The signing keystore secrets stay
+3. Store them in the GitHub environments (the owner runs these; the value is prompted for, not put on the command line):
+   server side in **`azure-stage` and `azure-prod`**: `gh secret set FCM_SERVICE_ACCOUNT_JSON --env azure-prod`, same for `MAPS_WEB_KEY`
+   (and `PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON` when Play Integrity is live); the app side in **`app-release`**:
+   `gh secret set MAPS_ANDROID_KEY --env app-release`, same for `GOOGLE_SERVICES_JSON`. `release-app.yml`'s release job runs in
+   `app-release` (owner approves each app release; tags `app-v*` only; it has **no Azure identity**, so an app tag can never sign in
+   to Azure), `ci.yml` keeps reading the repository-wide TEST values for the dev APKs. The signing keystore secrets stay
    repository-wide (the same release key signs both: `docs/24` D24-49). Redeploy prod: the FCM account goes to the prod Key Vault,
    the web key becomes the Container Apps secret `maps-web-key`.
 4. Revoke the test keys after the parallel run.
@@ -140,9 +171,9 @@ gone and `docs/setup/device-owner-test-phone.md` is obsolete. What a phone needs
 4. **Lab grant key pair, one per environment.** The private half is the server secret `ARON_LAB_GRANT_KEY`; the public half is built
    into the APK (`android/core-system/src/main/res/values/lab_grant.xml`, present after train 121). For `stage` and `prod`,
    `infra/scripts/seed-secrets.sh` creates the pair once per Key Vault (`aron-lab-grant-key`, `aron-lab-grant-public`; never printed)
-   and the api reads the private half through a Key Vault reference. Read the public half on the laptop
-   (`az keyvault secret show --vault-name <kv> --name aron-lab-grant-public --query value -o tsv`) and build it into **that
-   environment's** APK; **never reuse one key across the test and final servers**, or a test-server admin could sign a grant a
+   and the api reads the private half through a Key Vault reference. The public half is not a secret and the vault is RBAC-only (the owner holds no data-plane right on it), so each
+   deploy prints it in its summary as the row **"Lab grant public key (stage|prod; not a secret)"**: take it from there and build it
+   into **that environment's** APK; **never reuse one key across the test and final servers**, or a test-server admin could sign a grant a
    production phone honours. Until the public half is built in, no release build honours any grant (fail closed) and ADB walks on
    release builds stay impossible. Injecting the per-environment public key at release build time is not done yet (follow-up after
    train 121; check the key format against `tools/make-lab-grant-key.sh`).

@@ -32,8 +32,8 @@ ALLOWED_ROLES = {
     "db58b8e5-c6ad-4a2a-8342-4190687cbf4a",  # Storage Blob Delegator
     "8a0f0c08-91a1-4084-bc3d-661d67233fed",  # Storage Queue Data Message Processor
     "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",  # Storage Queue Data Message Sender
-    "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",  # Storage Blob Data Reader (infra/apsis-landing.bicep, deployed by the owner, not by the pipeline identity)
 }
+APSIS_LANDING_ROLES = ALLOWED_ROLES | {"2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"}  # + Storage Blob Data Reader: only infra/apsis-landing.bicep (owner-deployed)
 
 
 def load(name):
@@ -108,7 +108,8 @@ class ResourceGroupScopeOnly(unittest.TestCase):
         for src in list((ROOT / "infra").rglob("*.bicep")) + list((ROOT / "infra").rglob("*.bicepparam")):
             text = src.read_text(encoding="utf-8")
             for g in guid.findall(text):
-                self.assertIn(g, ALLOWED_ROLES | set(), f"{src}: literal GUID {g} (subscription or tenant id?)")
+                allowed = APSIS_LANDING_ROLES if src.name == "apsis-landing.bicep" else ALLOWED_ROLES
+                self.assertIn(g, allowed, f"{src}: literal GUID {g} (subscription or tenant id?)")
             if src.suffix == ".bicep":
                 self.assertNotRegex(text, r"location:\s*'(?!global')[a-z]+'", f"{src}: hard-coded region")
 
@@ -2559,10 +2560,13 @@ class FinalAccountStage(unittest.TestCase):
     def test_release_app_uses_the_prod_environment_for_the_final_keys(self):
         ra = self.wf("release-app.yml")
         rel = ra[ra.index("  release:"):]
-        self.assertIn("    environment: azure-prod\n", rel)
+        self.assertIn("    environment: app-release\n", rel)
+        self.assertNotIn("id-token", rel, "app-release has no Azure identity: the release job can never sign in to Azure")
         self.assertIn("secrets.MAPS_ANDROID_KEY", rel)
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
-        self.assertIn("name = 'app-v*'; type = 'tag'", gov, "the prod environment admits the app release tags")
+        self.assertIn("name = 'app-v*'; type = 'tag'", gov, "app-release admits the app release tags")
+        self.assertNotIn("azure-prod/deployment-branch-policies\" (@{ name = 'app-v*'", gov, "azure-prod admits server-v* tags only: its OIDC subject must not be reachable from an app tag")
+        self.assertIn("main protection already exists: NOT touched", gov, "a re-run never replaces the live required checks")
         self.assertIn("name = 'server-v*'; type = 'tag'", gov)
         stage_body = gov[gov.index("$stageBody"):gov.index("Api PUT \"repos/$Repo/environments/azure-stage\"")]
         self.assertIn("reviewers = @(@{ type = 'User'; id = $OwnerId })", stage_body, "stage has a required reviewer too")
@@ -2674,7 +2678,7 @@ class ApsisLanding(unittest.TestCase):
                              "the dump account is never part of the pipeline's deployment or of rg-aron-<env>")
         self.assertFalse(list((ROOT / "infra" / "params").glob("apsis*")), "no parameter file: ids are given on the command line")
         reset = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
-        self.assertIn('== "apsis-landing"', reset, "a reset of rg-aron-<env> never compares the landing account with the profile")
+        self.assertNotIn("apsis-landing", reset, "no exemption: a landing account found in an environment group (rg-aron-dev included) must be flagged, not skipped")
 
     def test_storage_account_is_private_keyless_and_entra_only(self):
         (st,) = resources_of(self.tpl(), "Microsoft.Storage/storageAccounts")
@@ -2767,6 +2771,7 @@ class ApsisLanding(unittest.TestCase):
         src = (ROOT / "infra" / "apsis-landing.bicep").read_text(encoding="utf-8")
         guids = set(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", src, re.I))
         self.assertEqual(guids, {"ba92f5b4-2d11-453d-a403-e96b0029c9fe", "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"}, "only built-in role ids")
+        self.assertLessEqual(guids, APSIS_LANDING_ROLES)
         self.assertNotRegex(src, r"(?i)password|sig=|accountkey|connectionstring|sv=\d{4}")
         self.assertNotRegex(src, r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "no IP address in the template")
         doc = (ROOT / "docs" / "requests" / "apsis-dump-landing.md")
@@ -2806,8 +2811,12 @@ class ApsisLoaderJob(unittest.TestCase):
     def test_nothing_exists_without_an_image(self):
         res = load("apps.json")["resources"]
         for k in ("idApsis", "apsisAcrPull", "apsisKvRead", "apsisLoader"):
-            self.assertEqual(res[k]["condition"], "[not(empty(parameters('apsisLoaderImage')))]", k)
+            self.assertEqual(res[k]["condition"], "[variables('apsisLoaderEnabled')]", k)
         self.assertEqual(param_default("apps.json", "apsisLoaderImage"), "")
+        self.assertEqual(param_default("apps.json", "apsisLoaderDbSecretName"), "", "never shipped on the admin database URL: needs its own login's secret")
+        self.assertEqual(load("apps.json")["variables"]["apsisLoaderEnabled"],
+                         "[and(not(empty(parameters('apsisLoaderImage'))), not(empty(parameters('apsisLoaderDbSecretName'))))]")
+        self.assertNotIn("dbDirectUrl", json.dumps(load("apps.json")["resources"]["apsisLoader"]))
         for f in ("dev", "dev-lite", "stage", "stage-lite", "prod"):
             self.assertEqual(params(f"{f}.apps.parameters.json").get("apsisLoaderImage", ""), "", f"no profile deploys a loader by default: {f}")
 
@@ -2837,6 +2846,112 @@ class ApsisLoaderJob(unittest.TestCase):
         self.assertIn("keyVaultSecretsUser", roles_)
         out = load("apps.json")["outputs"]
         self.assertIn("apsisLoaderPrincipalId", out, "the owner needs it for loaderPrincipalIds of the landing template")
+
+
+class AccountBoundary(unittest.TestCase):
+    """D-FINAL-INFRA-11 (lead review of 2f13c5bc3): nothing crosses the test/final boundary by accident."""
+
+    def test_every_powershell_script_the_owner_runs_is_structurally_valid(self):
+        sys.path.insert(0, str(ROOT / "infra" / "tests"))
+        import psbalance
+        files = sorted(list((ROOT / "infra").glob("*.ps1")) + list((ROOT / "tools").glob("*.ps1")))
+        self.assertGreaterEqual(len(files), 4)
+        for f in files:
+            self.assertIsNone(psbalance.check(f.read_text(encoding="utf-8")), f"{f.name} does not parse (brace/quote balance)")
+        # the checker itself: the exact defect that shipped (a stray closing brace) and the other ways to break a script
+        for bad in ("if ($x) {\n  1\n}\n}\n", "function f {\n  1\n", "$a = 'x\n", 'Write-Host "a $(1 + (2) "\n', "@(1,2\n", "<# open\n"):
+            self.assertIsNotNone(psbalance.check(bad), bad)
+        for good in ("# } in a comment\n$s = '}' + \"{\" + \"$(1)\"\n", "@'\n}}}\n'@\n$x = @{ a = 1 }\n", "$q = 'it''s {'\n", "<# { #>\n$a = @(1)\n"):
+            self.assertIsNone(psbalance.check(good), good)
+
+    def test_bootstrap_checks_the_reviewer_first_and_never_defaults_to_test_names(self):
+        b = (ROOT / "infra" / "bootstrap-azure.ps1").read_text(encoding="utf-8")
+        self.assertLess(b.index("has no required reviewer"), b.index("az account set"), "reviewer check before anything is created")
+        self.assertLess(b.index("has no required reviewer"), b.index("az provider register"))
+        self.assertIn("[string]$ResourceGroup  = '',", b)
+        self.assertIn("[string]$AppName        = '',", b)
+        self.assertIn('$ResourceGroup = "rg-aron-$short"', b)
+        self.assertIn("must not use the test names", b)
+        self.assertNotRegex(b, r'Write-Host "Tenant:|Using subscription \$', "no subscription or tenant id is printed")
+        self.assertIn("$ErrorActionPreference = 'Continue'", b, "gh's 404 on stderr is not a terminating error in Windows PowerShell 5.1")
+
+    def test_deploy_script_checks_the_signed_in_subscription_for_final_profiles(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('need AZURE_SUBSCRIPTION_ID', d)
+        self.assertIn('[ "${signed_sub,,}" = "${AZURE_SUBSCRIPTION_ID,,}" ] || die', d)
+        self.assertLess(d.index("signed_sub="), d.index("az group show"), "before anything is read or changed")
+        self.assertIn("AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}", (WORKFLOWS / "deploy.yml").read_text(encoding="utf-8").split("- name: Deploy (infra/deploy.sh)")[1])
+
+    def test_lab_grant_halves_are_written_public_first_and_published_in_the_deploy_summary(self):
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
+        self.assertLess(block.index("put_file aron-lab-grant-public"), block.index("put_file aron-lab-grant-key"), "public half first")
+        self.assertIn("re-derived from the private key", block, "a vault with only the private half is healed")
+        self.assertNotRegex(block, r"echo[^\n]*lab-heal|cat[^\n]*lab-heal")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("Lab grant public key (${ENV_NAME}; not a secret)", d)
+        docs = (ROOT / "docs" / "setup" / "move-to-final-account.md").read_text(encoding="utf-8")
+        self.assertNotIn("az keyvault secret show --vault-name <kv> --name aron-lab-grant-public", docs, "the owner has no data-plane right on the RBAC vault")
+
+    def test_apsis_landing_wrapper_refuses_the_test_account_before_anything(self):
+        import subprocess, tempfile, stat
+        wrapper = str(ROOT / "infra" / "scripts" / "apsis-landing.sh")
+        good = "11111111-2222-3333-4444-555555555555"
+        other = "99999999-2222-3333-4444-555555555555"
+        ack = "the dump goes to the final account only"
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "az"
+            fake.write_text("#!/usr/bin/env bash\n"
+                            "echo \"$*\" >> \"$FAKE_LOG\"\n"
+                            "case \"$*\" in\n"
+                            "  'account show'*) echo \"$FAKE_SUB\";;\n"
+                            "  'group exists --name rg-aron-dev'*) echo \"$FAKE_HAS_DEV\";;\n"
+                            "  'group exists --name rg-aron-prod'*) echo \"$FAKE_HAS_PROD\";;\n"
+                            "  'group exists --name rg-aron-stage'*) echo false;;\n"
+                            "  'ad signed-in-user show'*) echo 00000000-0000-0000-0000-000000000001;;\n"
+                            "esac\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+            def run(args, sub=good, dev="false", prod="true"):
+                log = Path(d) / "log"
+                log.write_text("")
+                env = {**os.environ, "PATH": d + os.pathsep + os.environ["PATH"], "FAKE_SUB": sub, "FAKE_HAS_DEV": dev,
+                       "FAKE_HAS_PROD": prod, "FAKE_LOG": str(log)}
+                r = subprocess.run(["bash", wrapper, *args], env=env, capture_output=True, text=True, timeout=60)
+                return r, log.read_text()
+            base = ["deploy", "--final-subscription-id", good, "--ack", ack, "--region", "r", "--owner-ip", "203.0.113.7"]
+            cases = [
+                ("no ack", ["deploy", "--final-subscription-id", good, "--region", "r", "--owner-ip", "203.0.113.7"], {}),
+                ("wrong ack", base[:3] + ["--ack", "yes"] + base[5:], {}),
+                ("no subscription id", ["deploy", "--ack", ack, "--region", "r", "--owner-ip", "203.0.113.7"], {}),
+                ("signed in elsewhere", base, {"sub": other}),
+                ("the TEST account (holds rg-aron-dev)", base, {"dev": "true"}),
+                ("not bootstrapped (no rg-aron-prod/stage)", base, {"prod": "false"}),
+            ]
+            for name, args, kw in cases:
+                r, log = run(args, **kw)
+                self.assertNotEqual(r.returncode, 0, f"{name}: {r.stdout}{r.stderr}")
+                for write in ("group create", "deployment group create", "storage"):
+                    self.assertNotIn(write, log, f"{name}: nothing may be created or uploaded before the guard passes")
+            r, log = run(base)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("group create --name rg-aron-apsis-landing", log)
+            self.assertIn(f"expectedSubscriptionId={good}", log)
+            self.assertIn("lifecycle", r.stdout + r.stderr)
+            up, ulog = run(["upload", "--final-subscription-id", good, "--ack", ack, "--account", "x", "--source", d, "--date", "20261118"], dev="true")
+            self.assertNotEqual(up.returncode, 0)
+            self.assertNotIn("azcopy", ulog)
+        src = (ROOT / "infra" / "apsis-landing.bicep").read_text(encoding="utf-8")
+        self.assertIn("param expectedSubscriptionId string\n", src)
+        t = load("apsis-landing.json")
+        self.assertNotIn("defaultValue", t["parameters"]["expectedSubscriptionId"], "required, no default")
+        self.assertIn("subscription().subscriptionId", json.dumps(t["variables"]["subscriptionGuard"]).replace("[subscription()", "subscription()") if False else json.dumps(t["variables"]["subscriptionGuard"]))
+        self.assertIn("variables('subscriptionGuard')", json.dumps(t["variables"]["storageName"]), "the guard is evaluated by the account name")
+        doc = (ROOT / "docs" / "requests" / "apsis-dump-landing.md").read_text(encoding="utf-8")
+        self.assertNotIn("--ftp-ssl", doc)
+        self.assertIn("--ssl-reqd", doc)
+        self.assertNotRegex(doc, r"(?m)^\s*\[[a-zA-Z]+=", "no bracketed optional parameter inside a copyable command")
+        self.assertNotIn("azcopy copy '<local", doc, "the upload runs only through the wrapper")
 
 
 if __name__ == "__main__":

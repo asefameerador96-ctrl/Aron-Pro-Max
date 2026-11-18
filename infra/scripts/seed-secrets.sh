@@ -105,9 +105,19 @@ if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then
     openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -outform DER -out "$tmp/lab.der"
     base64 -w0 < "$tmp/lab.der" > "$tmp/lab.b64"
     openssl pkey -inform DER -in "$tmp/lab.der" -pubout -outform DER | base64 -w0 > "$tmp/lab-pub.b64"
-    put_file aron-lab-grant-key "$tmp/lab.b64" text/plain
+    # Public half FIRST: the private key's presence is what later deploys test, so a failure between the two writes leaves
+    # no private key without its public half (the next deploy simply tries again).
     put_file aron-lab-grant-public "$tmp/lab-pub.b64" text/plain
-    note "aron-lab-grant-key and aron-lab-grant-public created"
+    put_file aron-lab-grant-key "$tmp/lab.b64" text/plain
+    note "aron-lab-grant-public and aron-lab-grant-key created"
+  fi
+  # Self-heal for a vault whose public half is missing while the private key exists (never print either).
+  if ! exists aron-lab-grant-public; then
+    az keyvault secret show --vault-name "$kv" --name aron-lab-grant-key --query value -o tsv | tr -d '\r\n' | base64 -d > "$tmp/lab-heal.der" 2>/dev/null \
+      || die "aron-lab-grant-key is unreadable; cannot derive its public half"
+    openssl pkey -inform DER -in "$tmp/lab-heal.der" -pubout -outform DER | base64 -w0 > "$tmp/lab-pub.b64"
+    put_file aron-lab-grant-public "$tmp/lab-pub.b64" text/plain
+    note "aron-lab-grant-public re-derived from the private key"
   fi
 fi
 

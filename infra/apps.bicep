@@ -71,6 +71,8 @@ param attestationRootsSha256 array = loadJsonContent('params/attestation-roots.j
 // private endpoint (docs/requests/apsis-dump-landing.md).
 @description('Image of the Apsis loader job, built by the apsis-migration lane and pushed to the registry; empty = no loader.')
 param apsisLoaderImage string = ''
+@description('Key Vault secret holding the loader\'s OWN least-privilege database URL (the apsis_loader login, db-lane work). Empty = no loader, even with an image: the loader is never shipped on the admin database URL.')
+param apsisLoaderDbSecretName string = ''
 @description('Blob URL of the apsis-dump container (dumpContainerUrl output of the owner-deployed landing template); a locator, not a secret.')
 param apsisDumpContainerUrl string = ''
 @description('Blob URL of the apsis-reports container (reportsContainerUrl output of the landing template).')
@@ -109,6 +111,7 @@ resource idWorker 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 resource idMigrate 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idMigrate }
 resource idWeb 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idWeb }
 
+var apsisLoaderEnabled = !empty(apsisLoaderImage) && !empty(apsisLoaderDbSecretName)
 var kvSecretUrl = '${kv.properties.vaultUri}secrets/'
 // Which Key Vault secret each app's database URLs come from (docs/requests/db-runtime-roles.md).
 var perApp = dbPerAppLogins && !empty(psqlImage)
@@ -277,13 +280,13 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
 // apsisLoaderPrincipalId below). No secret is stored in the job: the database URL is a Key Vault reference and the dump is
 // read with the identity's Entra token. Manual trigger only, scale to zero by nature (it exists only while a run runs).
 // Logs: the loader prints counts and checksums only (its contract); nothing here turns verbose logging on.
-resource idApsis 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (!empty(apsisLoaderImage)) {
+resource idApsis 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (apsisLoaderEnabled) {
   name: n.idApsisLoader
   location: location
   tags: allTags
 }
 
-resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apsisLoaderImage)) {
+resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (apsisLoaderEnabled) {
   name: guid(acr.id, n.idApsisLoader, roles.acrPull)
   scope: acr
   properties: {
@@ -293,7 +296,7 @@ resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if 
   }
 }
 
-resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apsisLoaderImage)) {
+resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (apsisLoaderEnabled) {
   name: guid(kv.id, n.idApsisLoader, roles.keyVaultSecretsUser)
   scope: kv
   properties: {
@@ -303,7 +306,7 @@ resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (
   }
 }
 
-resource apsisLoader 'Microsoft.App/jobs@2025-07-01' = if (!empty(apsisLoaderImage)) {
+resource apsisLoader 'Microsoft.App/jobs@2025-07-01' = if (apsisLoaderEnabled) {
   name: n.apsisLoaderJob
   location: location
   tags: allTags
@@ -319,7 +322,7 @@ resource apsisLoader 'Microsoft.App/jobs@2025-07-01' = if (!empty(apsisLoaderIma
       replicaRetryLimit: 0
       manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
       registries: [{ server: acr.properties.loginServer, identity: idApsis!.id }]
-      secrets: [kvSecret('db-direct-url', secretNames.dbDirectUrl, kvSecretUrl, idApsis!.id)]
+      secrets: [kvSecret('db-direct-url', apsisLoaderDbSecretName, kvSecretUrl, idApsis!.id)]
     }
     template: {
       containers: [
@@ -724,8 +727,8 @@ resource appMetricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for a i
 }]
 
 output migrateJobName string = migrate.name
-output apsisLoaderPrincipalId string = empty(apsisLoaderImage) ? '' : idApsis!.properties.principalId
-output apsisLoaderJobName string = empty(apsisLoaderImage) ? '' : apsisLoader.name
+output apsisLoaderPrincipalId string = !apsisLoaderEnabled ? '' : idApsis!.properties.principalId
+output apsisLoaderJobName string = !apsisLoaderEnabled ? '' : apsisLoader.name
 output dbLoginsJobName string = empty(psqlImage) ? '' : dblogins.name
 output dbPerAppLogins bool = perApp
 output apiFqdn string = deployServices ? api!.properties.configuration.ingress.fqdn : ''

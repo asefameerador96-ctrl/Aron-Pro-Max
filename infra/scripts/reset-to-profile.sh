@@ -109,8 +109,6 @@ zonal = lambda sku: "ZRS" in (sku or "")
 lake_sku = params.get("lakeStorageSku", {}).get("value", "Standard_LRS")
 for a in load("storage.json"):
     sku = (a.get("sku") or {}).get("name")
-    if (a.get("tags") or {}).get("component") == "apsis-landing":
-        continue  # the Apsis dump landing account (infra/apsis-landing.bicep) lives in its own group; never compared with the profile
     is_lake = (a.get("tags") or {}).get("component") == "lake"
     wanted = lake_sku if is_lake else storage_sku
     if sku != wanted and zonal(sku) != zonal(wanted):

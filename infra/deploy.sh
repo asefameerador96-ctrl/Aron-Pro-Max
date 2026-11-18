@@ -16,7 +16,7 @@
 # the image already in the registry for that commit, by digest: no build, no migrations, no infra stage, and the
 # ordering guard is bypassed on purpose.
 #
-# Environment: ARON_PROD_API_BASE_URL (prod: the host the release APKs were built for; checked against the served host),
+# Environment: AZURE_SUBSCRIPTION_ID (stage and prod: must equal the signed-in subscription), ARON_PROD_API_BASE_URL (prod: the host the release APKs were built for; checked against the served host),
 # AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), ARON_FINAL_ACCOUNT (must be
 # true for the profiles stage and prod), AZURE_LOCATION,
 # ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
@@ -41,6 +41,14 @@ esac
 need AZURE_RESOURCE_GROUP "the resource group to deploy into"
 need ARON_ALERT_EMAILS "who receives the budget and platform alerts"
 RG="$AZURE_RESOURCE_GROUP"
+# stage and prod: the signed-in subscription must be the one this environment was bootstrapped for (AZURE_SUBSCRIPTION_ID of the
+# GitHub environment; a person exports it), so a shell still pointed at the TEST subscription can never deploy a final profile.
+case "$PROFILE" in
+  stage|stage-lite|prod)
+    need AZURE_SUBSCRIPTION_ID "the subscription this environment belongs to (GitHub environment secret; the signed-in az account must be it)"
+    signed_sub="$(az account show --query id -o tsv 2>/dev/null)" || die "az is not signed in"
+    [ "${signed_sub,,}" = "${AZURE_SUBSCRIPTION_ID,,}" ] || die "the signed-in subscription is not the one of the ${ENV_NAME} environment (AZURE_SUBSCRIPTION_ID); nothing was changed" ;;
+esac
 SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 ROLLBACK_SHA="${ROLLBACK_SHA:-}"
@@ -870,6 +878,12 @@ if [ "$ENV_NAME" = prod ]; then
   fi
 fi
 summary "| Backend image | ${BACKEND_IMAGE} |"
+# The lab grant PUBLIC key (not a secret) is published here because the Key Vault is RBAC-only and nobody but the pipeline identity may
+# read its secrets: this row is how the owner gets the half that is built into that environment's APK (docs/setup/move-to-final-account.md s5).
+if [[ "$ENV_NAME" == stage || "$ENV_NAME" == prod ]]; then
+  lab_pub="$(az keyvault secret show --vault-name "$KV" --name aron-lab-grant-public --query value -o tsv 2>/dev/null || true)"
+  summary "| Lab grant public key (${ENV_NAME}; not a secret) | ${lab_pub:-NOT READABLE: the seeding step did not run} |"
+fi
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
 # Read-only evidence for the what-if's recurring "Modify networkAcls" on the vault (D-INFRA-LAKE-05/06): the live ACLs

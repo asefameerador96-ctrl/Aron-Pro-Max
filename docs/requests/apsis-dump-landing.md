@@ -17,7 +17,7 @@ the owner or the laptop operator fills in locally; no id, address, host name or 
 | Own resource group `rg-aron-apsis-landing` | not `rg-aron-prod`, not touched by the pipeline | the pipeline's deploy identity has no rights there, so CI can never read the dump; deleting the group is the one-step removal after sign-off; `reset-to-profile.sh` never compares it with the profile |
 | Storage account `st<prefix>apsis<suffix>` | StorageV2, `Standard_LRS`, Hot | a transient copy of a file the owner keeps: no zone or geo redundancy is paid for (docs/28 spirit); a re-upload is possible |
 | Access | shared keys **disabled**, Entra only, `defaultToOAuthAuthentication`, no account SAS can exist, anonymous access off, TLS 1.2, HTTPS only, SFTP and local users off, copy scope AAD | Microsoft Learn, "Prevent Shared Key authorization for an Azure Storage account" |
-| Network | default **Deny**; allowed: the owner's public IPv4 address(es) (single addresses: Storage rejects /31 and /32 CIDR rules) and, later, the loader's subnet | nothing is reachable from the internet at large; every request still needs an Entra token |
+| Network | default **Deny**; allowed: the owner's public IPv4 address(es) for the upload only (single addresses: Storage rejects /31 and /32 CIDR rules), the loader's blob private endpoint, and the `AzureServices` bypass (trusted Azure services still need an Entra role) | nothing is reachable from the internet at large; every request still needs an Entra token |
 | Containers | `apsis-dump` (written by the owner, read by the loader), `apsis-reports` (written by the loader, read by the owner), both `publicAccess: None` | different permission models for input and for output |
 | Roles (container scope only, never on the account) | owner: Storage Blob Data Contributor on `apsis-dump`; loader identity: Storage Blob Data Reader on `apsis-dump` and Storage Blob Data Contributor on `apsis-reports` | Owner rights on the subscription do not include blob data access, hence the explicit assignment |
 | Lifecycle | delete blobs under `apsis-dump/` **60 days after their last write** (`dumpDeleteAfterDays`, 7 to 365) | safety net; the plan is the group deletion at sign-off |
@@ -43,32 +43,39 @@ apsis-reports/                               (output; the loader writes, the own
   stops on a mismatch. (Azure also stores a per-blob MD5 when `--put-md5` is used, see s4.)
 - The loader needs **no write access to `apsis-dump`**, and nobody but the owner has any access to `apsis-reports` beyond the loader.
 
-## 3. Deploy (laptop operator, after the owner's `az login` with MFA)
+## 3. Deploy (laptop operator, after the owner's `az login` with MFA): only through the wrapper
+
+`infra/scripts/apsis-landing.sh` is the ONLY way the landing place is created or filled. Before it creates or uploads anything it
+refuses unless: `--final-subscription-id` (typed by the person running it from the owner's value; never committed and never read
+from the signed-in context, which would always match) equals the signed-in subscription; `--ack "the dump goes to the final account only"`
+is given; the subscription does **not** hold `rg-aron-dev` (that is the TEST account) and **does** hold `rg-aron-prod` or
+`rg-aron-stage`. The Bicep template repeats the first check (`expectedSubscriptionId`): a mismatch fails the deployment at
+validation, before the storage account exists.
 
 ```bash
-# the final subscription, the region of the platform (docs/status/infra-final.md D1)
-az account set --subscription <final-subscription-id>
-OWNER_OID="$(az ad signed-in-user show --query id -o tsv)"          # the owner's Entra object id (never committed)
-MY_IP="<owner's public IPv4 address, as the Azure portal's "Add your client IP" shows it>"
-
-az group create --name rg-aron-apsis-landing --location <region> \
-  --tags project=aron component=apsis-landing data-class=confidential lifecycle=delete-after-migration-signoff
-
-az deployment group create --resource-group rg-aron-apsis-landing --template-file infra/apsis-landing.bicep \
-  --parameters uploaderPrincipalIds="[\"$OWNER_OID\"]" uploaderIpAddresses="[\"$MY_IP\"]" \
-  [logAnalyticsWorkspaceId="$(az monitor log-analytics workspace show -g rg-aron-prod -n log-aron-prod --query id -o tsv)"] \
-  --query "properties.outputs" -o json
+az account set --subscription <final-subscription-id>          # the shell must already be on the FINAL subscription
+infra/scripts/apsis-landing.sh deploy --final-subscription-id <final-subscription-id> \
+  --ack "the dump goes to the final account only" --region <region> --owner-ip <owner public IPv4 address> \
+  --pe-subnet-id <snet-pe id> --dns-zone-id <blob private DNS zone id>
+# optional, add to the same command when wanted:   --log-workspace-id <existing Log Analytics workspace id>
+#                                                   --loader-principal-id <apsisLoaderPrincipalId output of the apps deployment>
 ```
 
-The outputs give `storageAccountName` and `dumpContainerUrl`. A new role assignment can take a few minutes to apply. If the owner's
-address changes (home network, travel): `az storage account network-rule add -g rg-aron-apsis-landing --account-name <account> --ip-address <new-ip>`.
-`what-if` first if wanted: `az deployment group what-if` with the same arguments. Nothing in this template is deployed by a workflow.
+The outputs give `storageAccountName` and `dumpContainerUrl`. A new role assignment can take a few minutes to apply. The wrapper
+prints two warnings the owner must read: **(1) the lifecycle rule deletes dump blobs 60 days after their last write**: if the
+migration will run longer (a long parallel run), re-upload or raise `dumpDeleteAfterDays` before then; **(2) remove the owner's
+address after the upload** (run `deploy` again without it is not offered: use `az storage account network-rule remove -g rg-aron-apsis-landing --account-name <account> --ip-address <ip>`),
+so the private endpoint is the only way in. With `--log-workspace-id` the blob access logs (caller address, blob names) live in that
+shared workspace and **outlive the group's deletion for the workspace's retention**; without it a small workspace is created in the
+landing group and is deleted with it. If the owner's address changes: `az storage account network-rule add ... --ip-address <new-ip>`.
+The network rule `bypass: AzureServices` stays (trusted Azure services still need an Entra role). Nothing in this template is deployed by a workflow.
 
 ## 4. Copy: FTP server -> owner's machine -> private container (owner, own machine)
 
-Prerequisites on the owner's machine: [AzCopy v10](https://learn.microsoft.com/azure/storage/common/storage-use-azcopy-v10) (a single
-binary), the FTP details of the organisation's server (host, user, folder; the password is typed when asked, never put in a script,
-a file or the chat), and either about 60 GB of free local disk (path A) or a stable connection (path B).
+Prerequisites on the owner's machine: [AzCopy v10](https://learn.microsoft.com/azure/storage/common/storage-use-azcopy-v10), the FTP
+details of the organisation's server (host, user, folder; the password is typed when asked, never put in a script, a file or the
+chat), and either about 60 GB of free local disk (path A) or a stable connection (path B). **The upload runs only through
+`infra/scripts/apsis-landing.sh`** (same guard as s3: it refuses the TEST subscription before AzCopy starts).
 
 **Sign in (once; browser with MFA, no key, no token pasted anywhere):**
 
@@ -79,27 +86,30 @@ azcopy login --tenant-id <tenant-id>
 **Path A (recommended: resumable, verifiable): download, hash, upload.**
 
 ```bash
-# 1. download with any resumable FTP client (WinSCP, lftp, FileZilla) into  D:\apsis-dump\<yyyymmdd>\  (or ~/apsis-dump/<yyyymmdd>/)
-#    prefer FTPS or SFTP when the server offers it: plain FTP sends the password unencrypted.
+# 1. download with any resumable FTP client (WinSCP, lftp, FileZilla) into  ~/apsis-dump/<yyyymmdd>/
+#    use FTPS or SFTP and REQUIRE encryption in the client: plain FTP sends the password unencrypted.
 # 2. hash the local files (they are the reference the loader checks against):
 cd ~/apsis-dump/<yyyymmdd> && sha256sum -- *.sql > MANIFEST.sha256 && wc -l MANIFEST.sha256   # expect 26
 #    Windows PowerShell:
 #    Get-ChildItem *.sql | ForEach-Object { "{0}  {1}  {2}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Length, $_.Name } | Set-Content MANIFEST.sha256
-# 3. upload the folder, with a stored MD5 per blob (AzCopy stores none for files over 256 MB unless asked):
-azcopy copy '<local folder>/*' 'https://<account>.blob.core.windows.net/apsis-dump/incoming/<yyyymmdd>/' --put-md5 --block-blob-tier Hot
+# 3. upload the folder through the wrapper (stores an MD5 per blob; AzCopy stores none for files over 256 MB unless asked):
+infra/scripts/apsis-landing.sh upload --final-subscription-id <final-subscription-id> --ack "the dump goes to the final account only" \
+  --account <account> --source ~/apsis-dump/<yyyymmdd> --date <yyyymmdd>
 # 4. a failed or interrupted run is resumed, not restarted:
 azcopy jobs list
 azcopy jobs resume <job-id>
 ```
 
 **Path B (no local disk: stream each file from FTP straight into the container).** One file at a time; a dropped connection
-means that one file starts again (no resume), and no source-side hash is possible, so the manifest is written from the SERVER
-listing sizes only and the loader's own hash becomes the first checksum on record (it logs it).
+means that one file starts again (no resume), and no source-side hash is possible, so the loader's own hash becomes the first
+checksum on record (it logs it).
 
 ```bash
-curl --fail --silent --show-error --user '<ftp-user>' --ftp-ssl 'ftp://<ftp-host>/<folder>/<file>.sql' \
- | azcopy copy --from-to PipeBlob 'https://<account>.blob.core.windows.net/apsis-dump/incoming/<yyyymmdd>/<file>.sql' --put-md5
-# curl asks for the FTP password on the terminal; use ftps:// or sftp:// where the server supports it
+curl --fail --silent --show-error --ssl-reqd --user '<ftp-user>' 'ftp://<ftp-host>/<folder>/<file>.sql' \
+ | infra/scripts/apsis-landing.sh upload-stream --final-subscription-id <final-subscription-id> \
+     --ack "the dump goes to the final account only" --account <account> --date <yyyymmdd> --name <file>.sql
+# --ssl-reqd makes curl REFUSE a server that cannot encrypt (--ssl would silently fall back to plain FTP and send the password in clear)
+# curl asks for the FTP password on the terminal
 ```
 
 **Verify (owner or operator):**
@@ -118,14 +128,14 @@ StorageBlobLogs
 | summarize requests = count(), bytes_out = sum(ResponseBodySize) by OperationName, AuthenticationType, CallerIpAddress
 ```
 
-`AuthenticationType` must be `OAuth` for every row; any `AccountKey` or `SAS` row is impossible by configuration and would mean
+`AuthenticationType` must be `OAuth` for every row; an `AccountKey` or `SAS` row should not appear while shared keys stay disabled; if one does,
 the account was changed: investigate.
 
 ## 5. What the loader needs (apsis-migration lane + lead; infra answers here)
 
 1. **Identity.** The loader runs as a Container Apps job in `cae-aron-prod` (the database is private; docs/status/infra-final.md s2c).
    Give it a user-assigned managed identity; its **principal id** goes into `loaderPrincipalIds` on a re-run of the deployment of
-   s3 (Reader on `apsis-dump`, Contributor on `apsis-reports`). Nothing else gets a role.
+   s3 (Reader on `apsis-dump`, Contributor on `apsis-reports`). Nothing else gets a role. **The loader is not shipped with the admin database URL as its default**: keep it absent until the least-privilege `apsis_loader` login exists (db-lane request).
 2. **Network path (lead ruling 2026-11-18: blob private endpoint).** `main.bicep` (stage and prod, `privateNetworking`) now adds
    the subnet `snet-pe` (`10.40.2.32/27` prod, `10.41.2.32/27` stage) and the private DNS zone `privatelink.blob.core.windows.net`
    linked to the VNet (outputs `privateEndpointSubnetId`, `blobPrivateDnsZoneId` of the network module). `infra/apsis-landing.bicep`

@@ -188,7 +188,7 @@ jobs:
       - name: Explain a failed sign-in
         if: failure() && steps.login.outcome == 'failure'
         run: |
-          echo "::error title=Azure sign-in (OIDC) failed::Usually the identity's federated credential does not match the subject GitHub presents (shown above as 'subject claim'). Re-run infra/bootstrap-azure.ps1 on the laptop: it trusts both the classic and the ID-qualified subject of the azure-dev environment. See infra/README.md, 'Sponsor steps'."
+          echo "::error title=Azure sign-in (OIDC) failed::Usually the identity's federated credential does not match the subject GitHub presents (shown above as 'subject claim'), or the environment's AZURE_* values are missing or belong to another account. Re-run infra/bootstrap-azure.ps1 on the laptop for THIS environment (azure-dev, azure-stage or azure-prod): it trusts both the classic and the ID-qualified subject of that environment. See infra/README.md, 'Sponsor steps'."
           exit 1
 
       - name: Azure CLI settings
@@ -203,6 +203,7 @@ jobs:
       - name: Deploy (infra/deploy.sh)
         env:
           GIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
           PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON }}
           MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}

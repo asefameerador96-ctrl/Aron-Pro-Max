@@ -33,7 +33,8 @@ param(
   [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
   [string]$SubscriptionId,
   [string]$Location       = 'southeastasia',
-  [string]$ResourceGroup  = 'rg-aron-dev',
+  # Empty = derived from -Environment (rg-aron-dev, rg-aron-stage, rg-aron-prod): the final account never inherits a dev name.
+  [string]$ResourceGroup  = '',
   [string]$Repo           = 'asefameerador96-ctrl/Aron-Pro-Max',
   # azure-dev (test account), azure-stage or azure-prod (final account). The OIDC subjects below name this environment.
   [ValidateSet('azure-dev', 'azure-stage', 'azure-prod')]
@@ -41,7 +42,7 @@ param(
   # azure-dev only: the only branch the environment (and so the Azure identity) accepts deployments from. azure-stage
   # (main) and azure-prod (server-v* and app-v* tags) get their policies from tools/github-governance.ps1.
   [string]$Branch         = 'claude/wonderful-thompson-k6ejnf',
-  [string]$AppName        = 'sp-aron-github-dev',
+  [string]$AppName        = '',
   # Who receives the budget and platform alerts (comma-separated). Stored as the GitHub variable ARON_ALERT_EMAILS.
   [string]$AlertEmails    = ''
 )
@@ -51,10 +52,30 @@ $ErrorActionPreference = 'Stop'
 function Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
 function Check([string]$what) { if ($LASTEXITCODE -ne 0) { throw "FAILED: $what" } }
 
-Step "Using subscription $SubscriptionId"
+# Names follow the environment. A final environment must not end up with a test-account name (that would create rg-aron-dev and reuse
+# the test deploy identity in the final subscription).
+$short = $Environment -replace '^azure-', ''
+if (-not $ResourceGroup) { $ResourceGroup = "rg-aron-$short" }
+if (-not $AppName) { $AppName = "sp-aron-github-$short" }
+if ($Environment -ne 'azure-dev' -and ($ResourceGroup -match '-dev$' -or $AppName -match '-dev$')) {
+  throw "environment $Environment must not use the test names ($ResourceGroup, $AppName): leave -ResourceGroup and -AppName out, or give final names."
+}
+
+# FIRST, before anything is created in Azure: a final environment must already exist on GitHub with its required reviewer (made by
+# tools/github-governance.ps1). `gh api` writes a 404 to stderr, which Windows PowerShell 5.1 turns into a terminating error under
+# 'Stop', so the probe runs under 'Continue'.
+if ($Environment -ne 'azure-dev') {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $reviewers = gh api "repos/$Repo/environments/$Environment" --jq '[.protection_rules[] | select(.type == "required_reviewers")] | length' 2>$null
+  $ghExit = $LASTEXITCODE; $ErrorActionPreference = $prev
+  if ($ghExit -ne 0 -or [int]$reviewers -lt 1) {
+    throw "GitHub environment $Environment is missing or has no required reviewer: run tools/github-governance.ps1 first, then this script again. Nothing was created."
+  }
+}
+
+Step 'Using the given subscription'
 az account set --subscription $SubscriptionId; Check 'az account set'
 $tenantId = az account show --query tenantId -o tsv; Check 'read tenant'
-Write-Host "Tenant: $tenantId"
 
 # 1. Resource providers the platform needs (registration is idempotent and non-blocking).
 Step 'Registering resource providers'
@@ -182,13 +203,6 @@ if ($Environment -eq 'azure-dev') {
   if ($policies -notcontains $Branch) {
     gh api --method POST "repos/$Repo/environments/$Environment/deployment-branch-policies" -f "name=$Branch" -f type=branch | Out-Null
     Check "environment branch policy $Branch"
-  }
-} else {
-  # The final account's environments are created ONLY by tools/github-governance.ps1, with the owner as required reviewer
-  # and the branch or tag policy. Creating one here would replace that protection (a PUT resets it) or leave it open.
-  $reviewers = gh api "repos/$Repo/environments/$Environment" --jq '[.protection_rules[] | select(.type == "required_reviewers")] | length' 2>$null
-  if ($LASTEXITCODE -ne 0 -or [int]$reviewers -lt 1) {
-    throw "GitHub environment $Environment is missing or has no required reviewer: run tools/github-governance.ps1 first, then this script again."
   }
 }
 gh secret set AZURE_CLIENT_ID       --env $Environment --body $appId          --repo $Repo; Check 'secret AZURE_CLIENT_ID'
