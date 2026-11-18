@@ -24,7 +24,7 @@ fun SecureScreen() {
 }
 
 /** Reference count per window: two screens that overlap (a transition) keep the flag until the last one leaves. Main thread only. */
-private object SecureHolders {
+object SecureHolders {
     private class Hold(var count: Int, val wasSecure: Boolean)
     private val holds = java.util.WeakHashMap<android.view.Window, Hold>()
 

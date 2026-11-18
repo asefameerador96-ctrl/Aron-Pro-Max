@@ -60,6 +60,7 @@ class TsoOutbox(
         /** Mirror rows removed in the same transaction (a pending flag ends with the record that settles it). */
         deletes: List<String> = emptyList(),
     ): Int {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate (D-OWNER-MDM-02): every TSO record enters here
         val db = databases.of(userId)
         val added = db.withTransaction {
             val outbox = db.outboxDao()

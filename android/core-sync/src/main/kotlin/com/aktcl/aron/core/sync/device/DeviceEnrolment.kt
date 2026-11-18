@@ -17,7 +17,6 @@ import com.aktcl.aron.core.network.WireJson
 import com.aktcl.aron.core.session.DeviceIdentity
 import com.aktcl.aron.core.session.EnrolmentOutcome
 import com.aktcl.aron.core.session.SessionComponents
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.dpc.enrolment.EnrolCallResult
 import com.aktcl.aron.dpc.enrolment.EnrolDeviceResponse
 import com.aktcl.aron.dpc.enrolment.Enrolment
@@ -45,13 +44,10 @@ import com.aktcl.aron.dpc.enrolment.DeviceFacts as EnrolmentFacts
  * Device enrolment for the SR, AMO and TSO apps (docs/24 s10.4; the gate `cfg.device.require_enrolled`): the dpc
  * [EnrolmentCoordinator] wired to the app's API client, the Keystore device key and [DeviceIdentity].
  *
- * Two ways in, one coordinator:
- * - device-owner QR: the provisioning activity stores the QR extras ([Enrolment.install] makes it use this coordinator);
- *   [install] runs the pending enrolment at app start, the enrolment screen retries it;
- * - a normally installed phone: the enrolment screen hands the token (typed, pasted or the portal's QR text) to [submit].
+ * One way in (D-OWNER-MDM-02 removed device-owner QR provisioning): the enrolment screen hands the token (typed or
+ * pasted) to [submit]; [install] runs a pending enrolment at app start and the screen retries it.
  *
- * On success the server's `device_uuid` becomes the phone's [DeviceIdentity] (login and `X-Device-Id` use it) and, on a
- * device-owner phone, the policy is applied. Only reached before the first login of a new install: no sale waits for it.
+ * On success the server's `device_uuid` becomes the phone's [DeviceIdentity] (login and `X-Device-Id` use it). Only reached before the first login of a new install: no sale waits for it.
  * The token is never logged; it leaves the phone's storage once the server answered.
  */
 class DeviceEnrolment(
@@ -62,7 +58,6 @@ class DeviceEnrolment(
     private val identity: DeviceIdentity,
     /** The API origin this build talks to (`https://host`); enrolment always goes there (see [ApiEnrolmentTransport]). */
     private val apiOrigin: String,
-    private val applyPolicy: (EnrolDeviceResponse) -> Unit,
 ) {
     /**
      * The phone keeps the UUID it already sends as `X-Device-Id` (a session signed in on a dev server without the gate
@@ -72,9 +67,9 @@ class DeviceEnrolment(
         if (store.refused()?.code in UUID_REFUSALS) ClientIds.newUuid() else identity.deviceUuid
 
     val coordinator = EnrolmentCoordinator(store, keys, transport, facts, ::uuidForNewToken) { response, _ ->
-        // The UUID first: the server knows the phone by it from now on, whatever happens to the policy apply.
+        // The UUID first: the server knows the phone by it from now on. The policy in the response is ignored since
+        // D-OWNER-MDM-02: no device-owner policy is applied by the app.
         identity.setEnrolledUuid(response.deviceUuid)
-        if (facts.isDeviceOwner()) applyPolicy(response)
     }
 
     /** True once the server has enrolled this phone (the DPC's done marker). */
@@ -87,8 +82,7 @@ class DeviceEnrolment(
     fun refusedCode(): String? = if (pending()) null else store.refused()?.code
 
     /**
-     * Application.onCreate: makes the provisioning activity use this coordinator and start the enrolment as soon as it has
-     * stored the QR extras (same process); then, off the main thread, repairs the device UUID if a kill came between the
+     * Application.onCreate: installs the coordinator; then, off the main thread, repairs the device UUID if a kill came between the
      * done marker and [DeviceIdentity.setEnrolledUuid] and runs a pending enrolment. Nothing runs when there is nothing to do.
      */
     fun install(scope: CoroutineScope): Job {
@@ -201,7 +195,6 @@ class DeviceEnrolment(
             return DeviceEnrolment(
                 Enrolment.pendingStore(app), KeystoreEnrolmentKeys(AndroidDeviceKeyStore(app)), ApiEnrolmentTransport(components.apiClient),
                 AndroidEnrolmentFacts(app, components.appVersion), components.deviceIdentity, components.apiClient.origin.origin,
-                applyPolicy = { r -> DeviceOwnerPolicy.get(app).receive(r.policy) },
             )
         }
     }

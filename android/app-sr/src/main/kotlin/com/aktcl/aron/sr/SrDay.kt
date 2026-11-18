@@ -23,7 +23,6 @@ import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.sync.BundleOutcome
 import com.aktcl.aron.core.sync.BundleDownloaders
 import com.aktcl.aron.core.sync.SyncScheduler
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.feature.attendance.AttendanceFlow
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.outlet.CapturedPhoto
@@ -120,7 +119,7 @@ class SrDay(
         }
     }
 
-    /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
+    /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the trusted-clock calendar) from this user's bundle. */
     fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
 
     internal val database: AronDatabase get() = db
@@ -444,12 +443,6 @@ class SrDay(
             capture.recordCheckOut(e, f, phoneMarks) { date -> sale.autoDaySubmits().build(date) }
         } else capture.recordAttendance(e, f)
         refreshDayGate()
-        runCatching {
-            val policy = DeviceOwnerPolicy.get(context)
-            if (e.kind == "check_in") policy.onCheckInCommitted()
-            // the close of an EARLIER day (a forgotten day) must not mark TODAY as checked out and release today's attendance-held apps (round-3 low)
-            else if (e.meta.businessDate == businessDate()) policy.onCheckOutCommitted()
-        }
         // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
         runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
         // Play Integrity evidence at check-in (docs/24 s8.7): collected by the next sync run, never awaited here.
@@ -602,6 +595,7 @@ class SrDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { v, f ->
             // tso-manual A3 (D-TSO-MAN-31): no new call on a route-day closed by its zone's Final Submit; the flow shows a failed commit
+            com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate first: a refused visit must not leave a claimed photo behind (D-OWNER-MDM-02)
             FinalSubmitLock.requireCallOpen(db, v.meta)
             v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
             capture.recordVisitOpen(v, f); runCatching { requestSync() }

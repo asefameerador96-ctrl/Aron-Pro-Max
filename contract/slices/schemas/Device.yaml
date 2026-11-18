@@ -109,3 +109,13 @@ Device:
       oneOf:
       - $ref: '#/components/schemas/DeviceStatusReport'
       - type: 'null'
+    lab_exemption:
+      description: The unexpired lab exemption of this phone; absent when there is none. Never carries the signed
+        token.
+      oneOf:
+      - $ref: '#/components/schemas/LabExemption'
+      - type: 'null'
+    lab_exemption_available:
+      type: boolean
+      description: True when the server can sign a grant (the signing secret is set); the portal offers the action
+        only then.

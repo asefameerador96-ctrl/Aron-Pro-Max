@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DeviceDetailView } from "@/components/admin/config/device-detail-view";
 import { DeviceReplaceView } from "@/components/admin/config/device-replace-view";
 import { DevicesView } from "@/components/admin/config/devices-view";
+import { parseLabDays } from "@/components/admin/config/lab-exemption-card";
 import type { Device } from "@/lib/admin/types";
 import { admin, op, setupMock, support, tso } from "./helpers/harness";
 import { html, text } from "./helpers/render";
@@ -44,6 +45,46 @@ describe("device.state through the proxy", () => {
     const r = await op(await admin(), { op: "device.directive", params: { device_id: "9" }, body: { type: "send_status" }, reason: "ignored reason text here" });
     expect(r.status).toBe(201);
     expect(h.calls()[0]?.body).toEqual({ type: "send_status" });
+  });
+});
+
+describe("lab exemption (D-OWNER-MDM-02 iii)", () => {
+  it("grant is a PUT with days and note and no reason; only ADMIN and SUPERADMIN may, never SUPPORT or TSO", async () => {
+    h.stub({ method: "PUT", path: "/v1/admin/devices/9/lab-exemption", fn: () => ({ status: 200, body: dev(9) }) });
+    const r = await op(await admin(), { op: "device.lab-exemption.grant", params: { device_id: "9" }, body: { days: 3, note: "ADB walk" }, reason: "ignored reason text here" });
+    expect(r.status).toBe(200);
+    expect(h.calls()[0]?.body).toEqual({ days: 3, note: "ADB walk" });
+    expect((await op(await support(), { op: "device.lab-exemption.grant", params: { device_id: "9" }, body: { days: 3 } })).status).toBe(403);
+    expect((await op(await tso(), { op: "device.lab-exemption.grant", params: { device_id: "9" }, body: { days: 3 } })).status).toBe(403);
+  });
+  it("withdraw is a DELETE without a body", async () => {
+    h.stub({ method: "DELETE", path: "/v1/admin/devices/9/lab-exemption", fn: () => ({ status: 200, body: dev(9) }) });
+    const r = await op(await admin(), { op: "device.lab-exemption.revoke", params: { device_id: "9" }, body: { x: 1 } });
+    expect(r.status).toBe(200);
+    expect(h.calls()[0]?.body).toBeUndefined();
+    expect((await op(await support(), { op: "device.lab-exemption.revoke", params: { device_id: "9" } })).status).toBe(403);
+  });
+  it("days are whole numbers from 1 to 14", () => {
+    for (const ok of ["1", "7", "14", " 3 "]) expect(parseLabDays(ok)).not.toBeNull();
+    for (const bad of ["", "0", "15", "2.5", "-1", "abc", "014x", "100"]) expect(parseLabDays(bad)).toBeNull();
+  });
+  it("the card shows the state, offers the action only to a writer and only when the server can sign", () => {
+    const card = (over: Partial<Device>, canLab: boolean) => html(<DeviceDetailView locale="en" device={dev(1, over)} history={[]} directives={[]} canWrite canLab={canLab} />);
+    const none = card({ lab_exemption_available: true }, true);
+    expect(text(none)).toContain("No exemption");
+    expect(none).toContain("lab-grant");
+    expect(none).not.toContain("lab-revoke");
+    const on = card({ lab_exemption_available: true, lab_exemption: { granted_at: "2026-11-18T04:00:00.000Z", expires_at: "2026-11-20T04:00:00.000Z", granted_by: 1, note: "ADB walk" } }, true);
+    expect(text(on)).toContain("Active until");
+    expect(text(on)).toContain("ADB walk");
+    expect(on).toContain("lab-revoke");
+    const off = card({ lab_exemption_available: false }, true);
+    expect(off).toContain("lab-unavailable");
+    expect(off).not.toContain("lab-grant");
+    const reader = card({ lab_exemption_available: true }, false);
+    expect(reader).not.toContain("lab-grant");
+    expect(text(reader)).toContain("No exemption");
+    expect(html(<DeviceDetailView locale="bn" device={dev(1, { lab_exemption_available: true })} history={[]} directives={[]} canWrite canLab />, "bn")).toContain("ডেভেলপার অপশন ছাড়");
   });
 });
 

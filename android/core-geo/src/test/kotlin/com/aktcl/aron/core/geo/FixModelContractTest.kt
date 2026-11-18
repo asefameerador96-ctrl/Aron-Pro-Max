@@ -39,7 +39,12 @@ class FixModelContractTest {
         val forbidden = Regex("""requestLocationUpdates|getLastLocation|lastLocation|getLastKnownLocation|lastKnownLocation|requestSingleUpdate""")
         // The platform fallback below API 30 needs one single update and removes its listener on return; breadcrumbs
         // (N-035, off by default) are the one batched request, removed whenever they are off.
-        val allowed = mapOf("AndroidLocation.kt" to setOf("requestSingleUpdate"), "AndroidBreadcrumbs.kt" to setOf("requestLocationUpdates"))
+        // AndroidSpoofProbes (D-OWNER-MDM-02) reads the last-known NETWORK location passively, ONLY to compare it with the fused fix
+        // (PROVIDER_DISAGREE); it is never returned as a fix and starts no request. Any other file using it still fails.
+        val allowed = mapOf(
+            "AndroidLocation.kt" to setOf("requestSingleUpdate"), "AndroidBreadcrumbs.kt" to setOf("requestLocationUpdates"),
+            "AndroidSpoofProbes.kt" to setOf("getLastKnownLocation"),
+        )
         val hits = File(System.getProperty("aron.coreGeoSrc")!!).walkTopDown().filter { it.extension == "kt" }.flatMap { f ->
             f.readLines().filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
                 .flatMap { line -> forbidden.findAll(line).map { it.value }.toList() }
