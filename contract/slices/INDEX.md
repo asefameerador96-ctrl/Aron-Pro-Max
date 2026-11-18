@@ -370,7 +370,7 @@ Source: contract/openapi.yaml, version 1.21.0.
 - `schemas/ReportQuery.yaml` (3256 B)
 - `schemas/ReportResult.yaml` (824 B)
 - `schemas/ExportJob.yaml` (762 B)
-- `schemas/QuarantineItem.yaml` (2289 B)
+- `schemas/QuarantineItem.yaml` (2603 B)
 - `schemas/QuarantinePage.yaml` (549 B)
 - `schemas/QuarantineResolveRequest.yaml` (621 B)
 - `schemas/MasterAudit.yaml` (348 B)

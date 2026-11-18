@@ -448,9 +448,9 @@ class GiftPhotoRecordsTest {
     // ---- C-R4: the accept loop through the REAL records and the REAL accept endpoint ----
     private val oldSecs = 15L * 86_400   // outside the 7-day backdate window: held as business_date_out_of_window until a reviewer accepts
 
-    private fun headerRec(h: String, lineCount: Int, secondsAgo: Long = oldSecs) = world.record(
+    private fun headerRec(h: String, lineCount: Int, secondsAgo: Long = oldSecs, outletId: Long = outlet) = world.record(
         "redemption",
-        """{"balance_before_points":5000,"cash_mtk":0,"cash_points":0,"cash_rate_mtk_per_point":0,"confirmed_at":"${java.time.Instant.now()}","line_count":$lineCount,"outlet_id":$outlet,"points_total":${lineCount * 100},"programme_id":$campaign}""",
+        """{"balance_before_points":5000,"cash_mtk":0,"cash_points":0,"cash_rate_mtk_per_point":0,"confirmed_at":"${java.time.Instant.now()}","line_count":$lineCount,"outlet_id":$outletId,"points_total":${lineCount * 100},"programme_id":$campaign}""",
         routeId = route, cu = h, family = h, secondsAgo = secondsAgo,
     )
     private fun lineRec(h: String, secondsAgo: Long, cu: String = UUID.randomUUID().toString()) = world.record(
@@ -779,7 +779,7 @@ class GiftPhotoRecordsTest {
                 val results = listOf(a, b).map { job -> java.util.concurrent.CompletableFuture.supplyAsync { go.await(); job.tick() } }
                 go.countDown()
                 val done = results.map { it.get(60, java.util.concurrent.TimeUnit.SECONDS)!! }
-                assertEquals(true, done.sumOf { it.released } >= 1, "released across both sweepers: $done"); assertEquals(0, done.sumOf { it.failed }, done.toString())
+                assertEquals(1, done.sumOf { it.released }, "released exactly once across both sweepers: $done"); assertEquals(0, done.sumOf { it.failed }, done.toString())
                 assertEquals(1L, one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid) AND status = 'accepted'"), "the item was closed once")
                 assertEquals(1L, storedPhoto(p), "stored once"); assertEquals("accepted", itemRow(cu(p))["status"])
                 assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status())
@@ -821,6 +821,36 @@ class GiftPhotoRecordsTest {
             for (t in tables) assertEquals(true, one("SELECT CASE WHEN has_table_privilege('api_rw', 'app.$t', 'UPDATE') THEN 1 ELSE 0 END") == 1L, "api_rw holds UPDATE on app.$t (the sweep's role)")
             // and a real statement as the worker role is refused
             fresh.dataSource.connection.use { c -> c.createStatement().use { st -> st.execute("SET ROLE jobs_rw"); try { assertTrue(runCatching { st.execute("UPDATE app.sync_quarantine SET detail = detail WHERE false") }.isFailure, "permission denied") } finally { st.execute("RESET ROLE") } } }
+        }
+    }
+
+    // ---- D-LOY-API-30: the lead's review of the sweep (wrong waiver, audit row, starvation, own-check failure) ----
+    @Test
+    fun theSweepExaminesTheLeastRecentlyCheckedFirstSoUnreleasableItemsNeverStarveTheReleasableOne() = world.withApi {
+        with(world) {
+            val stuck = (1..3).map { i ->
+                val head = UUID.randomUUID().toString()
+                val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.0005 + i * 0.00001)
+                for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+                assertEquals(HttpStatusCode.OK, accept(itemOf(head))); p   // the second line never syncs: it waits for ever
+            }
+            val ok = waitingPhotoWithItsLineStored(lat + 0.0006)   // created last: the highest id
+            val job = waitingSweepJob(wiring, clock, fresh.url, batch = 2)
+            val first = job.tick()!!; assertEquals(0, first.released, first.toString()); assertEquals(true, first.skippedByCap >= 2, "the cap leaves the rest for the next pass: $first")
+            assertEquals("open", itemRow(cu(ok))["status"])
+            var released = first.released
+            repeat(3) { released += job.tick()!!.released }
+            assertEquals(1, released, "the releasable item was reached although three stuck items have lower ids"); assertEquals("accepted", itemRow(cu(ok))["status"]); assertEquals(1L, storedPhoto(ok))
+            for (p in stuck) assertEquals("open", itemRow(cu(p))["status"])
+        }
+    }
+
+    @Test
+    fun stopCancelsThePendingPassAtOnceInsteadOfWaitingTheGrace() = world.withApi {
+        with(world) {
+            val job = waitingSweepJob(wiring, clock, fresh.url, firstDelayS = 3600)
+            job.start(); val t0 = System.currentTimeMillis(); job.stop(graceS = 20)
+            assertEquals(true, System.currentTimeMillis() - t0 < 5_000, "stop returned in ${System.currentTimeMillis() - t0} ms")
         }
     }
 }

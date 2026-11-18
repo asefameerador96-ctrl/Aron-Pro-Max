@@ -3,7 +3,7 @@ package com.aktcl.aron.backend.sync
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.exitIfFatal
 import org.slf4j.LoggerFactory
-import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,6 +26,8 @@ class WaitingChildSweepJob(
     private val config: ServerConfig? = null,
     private val env: (String) -> String? = System::getenv,
     private val firstDelayS: Long = 30,
+    /** Tests: a fixed batch in place of `cfg.sync.waiting_sweep_batch`. */
+    private val fixedBatch: Int? = null,
 ) {
     private val log = LoggerFactory.getLogger("aron.sync")
     private val running = AtomicBoolean(false)
@@ -33,8 +35,8 @@ class WaitingChildSweepJob(
     private var exec: ScheduledExecutorService? = null
 
     private fun enabled(): Boolean = !"off".equals(env("ARON_WAITING_SWEEP"), ignoreCase = true) && runCatching { config?.bool("cfg.sync.waiting_sweep_enabled") }.getOrNull() != false
-    fun intervalS(): Long = (runCatching { config?.int("cfg.sync.waiting_sweep_interval_s") }.getOrNull() ?: 60).coerceAtLeast(10).toLong()
-    private fun batch(): Int = (runCatching { config?.int("cfg.sync.waiting_sweep_batch") }.getOrNull() ?: 200).coerceIn(1, 1000)
+    fun intervalS(): Long = (runCatching { config?.int("cfg.sync.waiting_sweep_interval_s") }.getOrNull() ?: 60).coerceIn(10, 3600).toLong()
+    private fun batch(): Int = fixedBatch ?: (runCatching { config?.int("cfg.sync.waiting_sweep_batch") }.getOrNull() ?: 200).coerceIn(1, 1000)
 
     /** One pass, or null when the sweep is switched off or another pass is still running. */
     fun tick(): IngestService.WaitingSweep? {
@@ -44,7 +46,8 @@ class WaitingChildSweepJob(
     }
 
     fun start() {
-        val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "waiting-item-sweep").apply { isDaemon = true } }
+        val ex = ScheduledThreadPoolExecutor(1) { r -> Thread(r, "waiting-item-sweep").apply { isDaemon = true } }
+        ex.executeExistingDelayedTasksAfterShutdownPolicy = false   // stop() cancels the pending pass and waits only for one that is running
         exec = ex
         fun schedule(delayS: Long) {
             if (stopped) return
@@ -56,7 +59,7 @@ class WaitingChildSweepJob(
 
     private fun pass(next: (Long) -> Unit) {
         try {
-            tick()?.let { if (it.released + it.hinted + it.failed + it.skippedByCap > 0) log.info("waiting-item sweep: {} waiting, {} released, {} hinted, {} still waiting, {} failed, {} skipped by the cap", it.waiting, it.released, it.hinted, it.stillWaiting, it.failed, it.skippedByCap) }
+            tick()?.let { if (it.released + it.hinted + it.heldOwn + it.failed + it.skippedByCap > 0) log.info("waiting-item sweep: {} waiting, {} released, {} hinted, {} became ordinary held items, {} still waiting, {} failed, {} skipped by the cap", it.waiting, it.released, it.hinted, it.heldOwn, it.stillWaiting, it.failed, it.skippedByCap) }
         } catch (e: Throwable) {
             e.exitIfFatal(log, "waiting-item sweep"); log.error("waiting-item sweep failed", e)
         } finally { next(intervalS()) }

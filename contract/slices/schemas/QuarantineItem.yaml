@@ -67,8 +67,10 @@ QuarantineItem:
       description: 'From 1.21.0. True for an OPEN item that waits for another parent: its first parent was accepted
         and the record''s other parent is not stored yet. `code` stays the first parent''s code (the accept waives
         that check) and is not the item''s own state; `detail` says what it waits for (`waits for another parent:
-        <field> <uuid> ...`, field names and uuids only). The worker releases it when that parent is stored; a reviewer
-        can accept it meanwhile. The phone is told nothing final for it.'
+        <field> <uuid> ...`, field names and uuids only). The server''s own sweep (in the API process) releases
+        it when that parent is stored, with exactly the override a reviewer''s accept carried for it and nothing
+        more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held
+        item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it.'
     waits_for_uuid:
       oneOf:
       - $ref: '#/components/schemas/Uuid'
@@ -76,5 +78,6 @@ QuarantineItem:
       description: From 1.21.0. The parent a waiting item awaits; null when not waiting.
     waits_for_refused:
       type: boolean
-      description: 'From 1.21.0. True when the awaited parent was refused or discarded: the item is never released
-        by the worker, and discarding it (resolve `discard`) is the way out.'
+      description: 'From 1.21.0. True when the awaited parent is refused or discarded (refreshed at every pass):
+        the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`)
+        is the way out.'

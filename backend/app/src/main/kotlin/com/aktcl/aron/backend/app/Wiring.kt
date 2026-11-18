@@ -201,7 +201,7 @@ class Wiring(
             com.aktcl.aron.backend.sync.VisitPlanRecords(), // tso-manual B3: Set Plan records (SP-03)
         )
 
-        /** THE ingest service with every production record handler: the API builds it, and the worker builds the same one for the waiting-item sweep (D-LOY-API-28), so a released child runs the very handlers of its first delivery. */
+        /** THE ingest service with every production record handler: the API builds it, and the waiting-item sweep (D-LOY-API-30) is built from it too and runs in the API process, so a released child runs the very handlers of its first delivery. */
         fun ingestService(
             db: Database, config: com.aktcl.aron.backend.platform.ServerConfig, reach: com.aktcl.aron.backend.platform.ReachResolver, clock: AronClock, generation: () -> String,
             push: com.aktcl.aron.backend.notify.PushNotifier, extraRecordHandlers: List<RecordHandler> = emptyList(),

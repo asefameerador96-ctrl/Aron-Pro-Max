@@ -88,7 +88,7 @@ data class ZoneFinalDto(val zone_id: Long, val final_submitted: Boolean)
 data class QuarantineItemDto(
     val quarantine_id: Long, val client_uuid: String, val type: String, val code: String, val status: String, val user_id: Long, val device_id: Long?, val route_id: Long?,
     val business_date: String, val received_at: String, val payload: JsonElement, val detail: String?, val resolved_by_user_id: Long?, val resolved_at: String?, val resolution_note: String?,
-    /** Contract 1.21.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. */
+    /** Contract 1.21.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0207. */
     val waiting: Boolean = false, val waits_for_uuid: String? = null, val waits_for_refused: Boolean = false,
 )
 
@@ -322,7 +322,7 @@ class OpsService(
         val rows = st.map { rs, _ -> toDto(rs) }.list()
         // Contract 1.21.0: the open items waiting for another parent inside the caller's reach, whatever the page and the status/code/date filters.
         val reachWhere = if (reach.national) "true" else "q.route_id IN (SELECT route_id FROM dw.dim_geo WHERE zone_id = ANY(:rz))"
-        val wq = h.createQuery("SELECT count(*)::int FROM app.sync_quarantine q WHERE q.status = 'open' AND q.detail LIKE :wp AND $reachWhere").bind("wp", com.aktcl.aron.backend.platform.QuarantineWaiting.PREFIX + "%")
+        val wq = h.createQuery("SELECT count(*)::int FROM app.sync_quarantine q WHERE q.status = 'open' AND q.waiting_since IS NOT NULL AND $reachWhere")
         if (!reach.national) wq.bindArray("rz", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         QuarantinePage(rows.take(limit), if (rows.size > limit) rows[limit - 1].quarantine_id.toString() else null, wq.mapTo(Int::class.java).one())
     }
@@ -330,12 +330,12 @@ class OpsService(
     private fun toDto(rs: java.sql.ResultSet): QuarantineItemDto {
         fun t(c: String) = rs.getObject(c, OffsetDateTime::class.java)?.toInstant()?.wire()
         val detail = rs.getString("detail")
-        val waiting = rs.getString("status") == "open" && com.aktcl.aron.backend.platform.QuarantineWaiting.isWaiting(detail)
+        val waiting = rs.getString("status") == "open" && rs.getObject("waiting_since") != null
         return QuarantineItemDto(
             rs.getLong("id"), rs.getString("client_uuid"), rs.getString("record_type"), rs.getString("code"), rs.getString("status"), rs.getLong("user_id"), rs.getObject("device_id") as Long?,
             rs.getObject("route_id") as Long?, rs.getObject("business_date", LocalDate::class.java).toString(), t("received_at")!!, Json.parseToJsonElement(rs.getString("payload")), detail,
             rs.getObject("resolved_by_user_id") as Long?, t("resolved_at"), rs.getString("resolution_note"),
-            waiting, if (waiting) com.aktcl.aron.backend.platform.QuarantineWaiting.awaited(detail)?.second else null, waiting && com.aktcl.aron.backend.platform.QuarantineWaiting.refusedHint(detail),
+            waiting, if (waiting) rs.getString("awaited_uuid") else null, waiting && rs.getBoolean("awaited_refused"),
         )
     }
 

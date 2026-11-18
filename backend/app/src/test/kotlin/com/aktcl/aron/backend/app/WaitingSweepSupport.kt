@@ -17,7 +17,7 @@ private val apiDbs = ConcurrentHashMap<String, Database>()
 fun apiRoleDatabase(url: String): Database = apiDbs.getOrPut(url) { Database(HikariDataSource(HikariConfig().apply { jdbcUrl = url; maximumPoolSize = 4; connectionInitSql = "SET ROLE api_rw" })) }
 
 /** The waiting-item sweep built as the production wiring builds it (D-LOY-API-28): the real job, the same ingest builder and handlers as the API, on the API's database role. Not started: tests call `tick()` or `start()` themselves. */
-fun waitingSweepJob(wiring: Wiring, clock: AronClock, url: String, env: (String) -> String? = { null }, firstDelayS: Long = 30): WaitingChildSweepJob {
+fun waitingSweepJob(wiring: Wiring, clock: AronClock, url: String, env: (String) -> String? = { null }, firstDelayS: Long = 30, batch: Int? = null): WaitingChildSweepJob {
     val db = apiRoleDatabase(url)
-    return WaitingChildSweepJob(Wiring.ingestService(db, wiring.config, SqlReachResolver(db, GeoRepository(db, clock), clock), clock, { NIL_GENERATION }, PushNotifier(db, wiring.config, null)), wiring.config, env, firstDelayS)
+    return WaitingChildSweepJob(Wiring.ingestService(db, wiring.config, SqlReachResolver(db, GeoRepository(db, clock), clock), clock, { NIL_GENERATION }, PushNotifier(db, wiring.config, null)), wiring.config, env, firstDelayS, batch)
 }
