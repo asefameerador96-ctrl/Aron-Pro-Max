@@ -1,5 +1,53 @@
 # Lane P-SR1 (android-parity-sr-1): SR parity, first half of the journey
 
+## COVERAGE TABLE (P-SR1b, 2026-11-18): every SR screen of the owner's manual and docs/ui-reference/ (Memo, Summary, Sales Submit and gate logic excluded: lane P-SR2b)
+
+Status words: COMPARED = recorded through the production host flags and compared with the manual image (golden named); KEPT = differences kept with the reason; GOLDEN-ONLY = a golden exists from an older test frame, not yet compared with the manual; NOT YET = no golden of the production frame; OS = drawn by Android, not by us.
+
+| Manual | Screen | Status | Golden / reason |
+|---|---|---|---|
+| 01, 02 | Find the APK, install | OS | Android installer |
+| 03 | Login and location permission | COMPARED | srp1_login_bn_empty(_sunlight), srp1_login_en_empty (D-PAR-SR1 login row) |
+| 04 | OTP, first login on a device | COMPARED | srp1_otp_bn_empty, _filled |
+| 05 | Camera / audio / nearby-device permission | COMPARED (our blocked screen); OS prompts | srp1b_perm_* (D-PAR-SR1-15) |
+| 06, 07, 08 | New update, download, update inside the app | COMPARED | srp1_update_bn_available, _downloading |
+| 09 | Dashboard (Home) | COMPARED, KEPT (field units, flag tile, card title wrap) | home_bn_tall, home_bn_tall_target (D-PAR-SR1-06, 07) |
+| 10 | Target and achievement by SKU | NOT YET | programme screen (D-OWNER-SR-PROGRAMMES-01) |
+| 11, 12, 13 | Check-in, check-out, done | COMPARED, KEPT (coordinates not address, cancel link, darker dome) | srp1_att_* (8) |
+| 14 | Stock issue | COMPARED, KEPT (row density, PackCard shared) | stock_bn_*, stock_bn_packshots |
+| 15, 16, 17 | Bluetooth, pairing, connect | COMPARED (green bar; OS dialogs are not ours) | srp1b_stock_printer_connected (D-PAR-SR1-16) |
+| 18 | Select the outlet | COMPARED, KEPT (search field, due chip) | picker_bn_open(_sunlight) |
+| 19 | Start the call | COMPARED | srp1b_call_question_* |
+| 20 | Outlet photo | NOT YET | CallPhotoStep, camera |
+| 21 | Outlet target (today's target) | NOT YET | OutletTargetPopup |
+| 22 | Enter quantity | COMPARED, KEPT (ADS N/A) | srp1b_qty_* |
+| 23 | Sale history | GOLDEN-ONLY | history_bn_* (old frame) |
+| 24 | Review | COMPARED, KEPT (no discount table, field units) | srp1b_review_* |
+| 25, 26 | Product QC and QC entry | GOLDEN-ONLY | qc_bn_* (old frame) |
+| 27, 28, 29 | Partial payment, confirm and print, saved | COMPARED | srp1b_credit_dialog*, srp1b_dialog_* |
+| 30, 31, 32 | Out of range, force reason, zero sale | COMPARED, KEPT (force gate) | srp1b_out_of_range*, srp1b_force_reason*, srp1b_zero_* |
+| 33, 34 | DRP slide collection, enter slides | GOLDEN-ONLY (offers deferred) | slide_bn_offer |
+| 35 | KV and POSM survey | NOT YET | CallContentHost |
+| 36, 37, 38 | Find memo, edit sale, collect due | excluded (P-SR2b) | |
+| 39, 40, 41 | Sales summary, sync and submit, submitted | excluded (P-SR2b) | |
+| 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | NOT YET | outlet menu, request forms; own_requests_bn_empty only |
+| 46 | Tutorial | GOLDEN-ONLY | sr_tutorial_* |
+| 47 | Tasks from the AMO | COMPARED, KEPT (Resolve link, my-requests link) | srp1b_tasks, _sunlight, _font20, _empty, _resolve_ask (tasks_bn_* are the stale frame) |
+| 48, 49 | Astha menu, year and quarter | NOT YET | programme |
+| 50 | Route STD and memo target | NOT YET | programme |
+| 51 | Shop-wise info | NOT YET | programme |
+| 52, 53, 54 | Gift selection, redemption, confirm | NOT YET | programme |
+| 55 | Outlet points | NOT YET | programme |
+| 56, 57, 58 | Photo menu, Astha gift photo, campaign gift photo | NOT YET | programme |
+| 59 | Sales Journey | NOT YET | |
+| 60, 61 | KPI dashboard, brand-wise KPI | NOT YET | |
+| 62 | Match Box Lifting Star | NOT YET | |
+| 63 | Settings and language | NOT YET | |
+| 64 | Configuration and data file | NOT YET | |
+| 65 | Log out | NOT YET | |
+| ui-reference | home-1/2, stock, attendance, sale-select, outlet-menu, tasks, astha, summary | as the rows above | |
+
+
 ## HANDOVER P-SR1b (2026-11-18, supersedes the order below)
 Lane P-SR1b did, in order, with D-PAR-SR1-11 to 15: Sale page (call question, out of range, force reason, zero sale), quantity pop-up, Review + partial-payment box + confirm/print/success boxes, permissions blocked screen. All goldens are `srp1b_*` in `android/ui-screenshots/src/test/screenshots/` via `SrParity1bSaleTests`; every existing image unchanged. Method as before (`export ANDROID_HOME=/opt/android-sdk`, record with `-Proborazzi.record=true --tests '*SrParity1bSaleTests*'`, read git status for amo_/tso_). Open for the next owner: (1) R-PAR-SR1-02 ADS consumer (data lane); (2) Force Sale shows only when `forceSaleAvailable` allows it, the old page shows both at once (flow gate, lead decides); (3) the Review keeps field-unit rows and no discount table (deferred); (4) box widths in goldens are Robolectric full width for AlertDialog, device margin not walked; (5) gotchas: a text field inside Material `AlertDialog` hangs the compose test clock (use plain `Dialog`, `focusable=false` in goldens); new core-ui options are default-off so AMO/TSO stay 0 changed; the existing `ManualCallScreensTest` scrolls to সংরক্ষণ, keep the pop-up's scroll container. Nothing was walked on a device; no printer.
 

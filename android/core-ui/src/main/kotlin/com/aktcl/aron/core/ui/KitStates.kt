@@ -75,6 +75,9 @@ fun AronConfirmDialog(
     )
 }
 
+/** True inside the SR app: shared pieces that exist in two looks (the printer-connected sentence) wear the old SR's; AMO and TSO leave it false. */
+val LocalSrManualLook = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 /** The icon over the sentence of the old SR's boxes: the yellow triangle (sure?), the blue "i" (question) or the green tick (done), manual 28 and 29. */
 enum class ManualDialogKind { Warning, Info, Success }
 

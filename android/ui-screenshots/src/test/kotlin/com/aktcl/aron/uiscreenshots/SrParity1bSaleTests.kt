@@ -71,20 +71,20 @@ class SrParity1bSaleTests {
     private val open = VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z"))
     private val q = CallQuestion(label, {}, {}, {})
 
-    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, content: @Composable () -> Unit) {
+    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, titleText: String? = null, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         // a dialog focuses its text field, whose cursor blinks for ever: the clock is stepped by hand for those frames
         if (frozenClock) rule.mainClock.autoAdvance = false
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(AppLanguage.BN, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
-                    ParityFrame(stringResource(title), icon, printerConnected = false) { content() }
+                    ParityFrame(titleText ?: stringResource(title), icon, printerConnected = false) { content() }
                 }
             }
         }
         if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle()
         typeInto?.let { (tag, text) -> rule.onNodeWithTag(tag).performTextInput(text); if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle() }
-        clicks.forEach { rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
+        clicks.forEach { if (it.startsWith("#")) rule.onNodeWithTag(it.drop(1)).performClick() else rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
     }
@@ -218,4 +218,35 @@ class SrParity1bSaleTests {
     @Test fun permCameraSettings() = shot("srp1b_perm_camera_settings") { Gate(gate(G.PHOTO, P.CAMERA, A.OPEN_APP_SETTINGS)) }
     @Test fun permBluetoothAsk() = shot("srp1b_perm_bluetooth_ask") { Gate(gate(G.PRINT, P.BLUETOOTH, A.ASK_AGAIN)) }
     @Test fun permLocationSettingsFont20() = shot("srp1b_perm_location_settings_font20", fontScale = 2.0f) { Gate(gate(G.ATTENDANCE, P.LOCATION, A.OPEN_APP_SETTINGS)) }
+
+    // ---- Tasks (manual 47) as SrApp draws them (manual = true) and the printer-connected bar (manual 17) ----
+    private val taskLabels = mapOf("poor_brand_visibility" to com.aktcl.aron.feature.tasks.TaskTypeLabel("Poor Brand Visibility", "Poor Brand Visibility"))
+    private val taskList = com.aktcl.aron.feature.tasks.TaskListState(
+        listOf(
+            com.aktcl.aron.feature.tasks.TaskItem("t1", "poor_brand_visibility", "Ruku Store", "রুকু স্টোরে দ্রুত প্রোডাক্ট দেও", 5, "Ruku Store", "2026-11-11", "ongoing", null),
+            com.aktcl.aron.feature.tasks.TaskItem("t2", "oos", "Babu Store", "Babu Store দোকানে Avon এ OOS আছে", 6, "Babu Store", "2025-11-30", "ongoing", null),
+            com.aktcl.aron.feature.tasks.TaskItem("t3", "oos", "Banani Store", "POSM check", 7, "Banani Store", "2026-10-02", "completed", "2026-10-02T05:00:00.000Z"),
+        ),
+        2, "2026-11-18T04:42:00.000Z",
+    )
+    private fun stockSku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
+        com.aktcl.aron.core.database.entity.SkuEntity(id, name.replace(' ', '-'), id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
+    private val tasksTitle = com.aktcl.aron.feature.home.R.string.hm_tile_tasks
+    @Composable private fun Tasks(st: com.aktcl.aron.feature.tasks.TaskListState = taskList) =
+        com.aktcl.aron.feature.tasks.TaskContent(st, {}, onMyRequests = {}, typeLabels = taskLabels, nowMs = java.time.Instant.parse("2026-11-18T05:00:00Z").toEpochMilli(), manual = true)
+
+    @Test fun tasksManual() = shot("srp1b_tasks", titleText = "টাস্ক", icon = null) { Tasks() }
+    @Test fun tasksManualSunlight() = shot("srp1b_tasks_sunlight", sunlight = true, titleText = "টাস্ক", icon = null) { Tasks() }
+    @Test fun tasksManualFont20() = shot("srp1b_tasks_font20", fontScale = 2.0f, titleText = "টাস্ক", icon = null) { Tasks() }
+    @Test fun tasksManualEmpty() = shot("srp1b_tasks_empty", titleText = "টাস্ক", icon = null) { Tasks(com.aktcl.aron.feature.tasks.TaskListState(showEmptyState = true, syncedAt = "2026-11-18T04:42:00.000Z")) }
+    @Test fun tasksManualAsk() = shot("srp1b_tasks_resolve_ask", titleText = "টাস্ক", icon = null, clicks = listOf("#" + com.aktcl.aron.feature.tasks.TaskTags.resolve("t1"))) { Tasks() }
+
+    @Test fun printerConnectedBar() = shot("srp1b_stock_printer_connected", title = com.aktcl.aron.feature.home.R.string.hm_tile_stock, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_stock) {
+        com.aktcl.aron.feature.stock.StockContent(
+            listOf(com.aktcl.aron.feature.stock.StockRow(stockSku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380), com.aktcl.aron.feature.stock.StockRow(stockSku(3, "lighter", "Aster", "piece", 1), 400, 0, stockBase = 25)),
+            listOf(com.aktcl.aron.feature.stock.CategoryTotal("cigarette", 600), com.aktcl.aron.feature.stock.CategoryTotal("lighter", 400)),
+            null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true,
+        )
+        com.aktcl.aron.core.printing.ui.PrinterConnectedBar()
+    }
 }

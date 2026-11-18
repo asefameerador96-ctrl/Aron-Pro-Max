@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider,
                 com.aktcl.aron.core.system.permission.LocalManualPermissionLook provides true,
+                com.aktcl.aron.core.ui.LocalSrManualLook provides true,
             ) {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
