@@ -105,4 +105,13 @@ class SrParity1bContentTests {
         Survey(true, true, true)
         com.aktcl.aron.feature.outlet.SurveyConfirmDialog("আপনি কি সার্ভে জমা দেওয়ার বিষয়ে নিশ্চিত?", "হ্যাঁ", "না", {}, {})
     }
+
+    /** The opened drop-down of the manual (43, 44): the inside of the dialog (see `PickerSheet`), over the grey page. */
+    private val clusters = listOf("গুলশান-১", "গুলশান-২", "বনানী", "বারিধারা", "নিকেতন").mapIndexed { i, l -> com.aktcl.aron.feature.outlet.PickItem("c$i", l) }
+    @Composable private fun Sheet(query: String) = Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        com.aktcl.aron.feature.outlet.PickerSheet("ক্লাস্টার", "অনুসন্ধান", clusters, query, {}, "কিছু পাওয়া যায়নি", "মুছুন", {})
+    }
+    @Test fun clusterPickerOpen() = shot("srp1b_cluster_picker_open", titleText = "ক্লাস্টার") { Sheet("") }
+    @Test fun clusterPickerFiltered() = shot("srp1b_cluster_picker_filtered", titleText = "ক্লাস্টার") { Sheet("গুলশান") }
+    @Test fun clusterPickerNone() = shot("srp1b_cluster_picker_none", titleText = "ক্লাস্টার") { Sheet("zzz") }
 }
