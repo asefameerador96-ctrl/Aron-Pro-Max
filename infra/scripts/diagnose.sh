@@ -140,24 +140,33 @@ REDACT_SALT="${REDACT_SALT:-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n
 redact() { perl -e "$REDACT_PL"; }
 # show <width>: redact the whole text first, then cut to the width in characters (inside the same perl program).
 show() { REDACT_WIDTH="$1" perl -e "$REDACT_PL"; }
-# The ALLOW-LIST of built-in PostgreSQL message heads (D-OPS-DIAGNOSE-API-09; the lead's ruling, replacing the open "letters before the first colon" rule that printed free text such as
-# "Rahim Uddin of Gulshan"). A record prints ONLY one of these phrases (the phrase itself, never the words after it) or [text]. The same list is used by the KQL head and by pglog_head
-# (RE2 and PCRE agree on this syntax). Phrases only from the PostgreSQL server source; no phrase carries a name, a table or a value.
-PG_HEADS='checkpoint starting|checkpoint complete|checkpoints are occurring too frequently|database system is ready to accept(?: read-only)? connections|database system is shut down|database system was shut down|database system was interrupted|database system was not properly shut down|database system is starting up|database system is in recovery mode|terminating connection due to [a-z ]{3,40}|terminating (?:autovacuum process|background worker|walsender process) due to [a-z ]{3,40}|could not receive data from client|could not send data to client|could not connect to server|could not extend file|could not write to file|could not read block|could not fsync file|could not truncate file|could not open file|could not create (?:lock )?file|connection received|connection authorized|connection authenticated|disconnection|deadlock detected|canceling statement due to (?:statement timeout|lock timeout|user request|conflict with recovery)|canceling autovacuum task|out of memory|server process [0-9]+ was terminated by signal [0-9]+|recovery (?:restart point|has paused|has resumed|complete|ended|started)|redo (?:starts|done) at|received (?:fast|smart|immediate) shutdown request|shutting down|aborting any active transactions|archive command failed|sorry, too many clients already|remaining connection slots are reserved|password authentication failed|duplicate key value violates unique constraint|could not serialize access due to [a-z ]{3,40}|autovacuum launcher (?:started|shutting down)|background writer process'
+# The ALLOW-LIST of built-in PostgreSQL message heads (D-OPS-DIAGNOSE-API-09/-10; the lead's ruling, replacing the open "letters before the first colon" rule that printed free text such as
+# "Rahim Uddin of Gulshan"). RULE FOR THE WHOLE LIST, enforced mechanically by a test: every alternative is a LITERAL phrase (no character class, no quantifier, no digit pattern; only the
+# alternation bar and non-capturing groups of literals), so the printed head is always exactly the matched literal and never a word of the record. A message that continues in words the list does not
+# know prints the bare phrase (for example "terminating connection"), never the rest. The longer, more specific phrases come first (the first match wins). The same list is used by the KQL head and
+# by pglog_head. Phrases only from the PostgreSQL server source; no phrase carries a name, a table or a value. The one message whose real shape has a number in it ("server process (PID N) was
+# terminated by signal N") is a separate shape rule with a FIXED label and no digits (SIGNAL_LABEL).
+# (The "concurrent d-e-l-e-t-e" serialization reason is not a separate literal: INT's read-only guard test (check_infra.py, ops_diagnose_is_read_only) refuses that verb anywhere in the script's code lines, and
+# the bare phrase "could not serialize access" already covers it without printing the reason.)
+PG_HEADS='checkpoint starting|checkpoint complete|checkpoints are occurring too frequently|database system is ready to accept read-only connections|database system is ready to accept connections|the database system is starting up|the database system is shutting down|the database system is in recovery mode|database system is shut down|database system was shut down|database system was interrupted|database system was not properly shut down|terminating connection due to administrator command|terminating connection due to conflict with recovery|terminating connection due to unexpected postmaster exit|terminating connection due to crash of another server process|terminating connection due to idle-in-transaction timeout|terminating connection due to idle-session timeout|terminating connection due to transaction timeout|terminating connection|terminating autovacuum process due to administrator command|terminating autovacuum process|terminating walsender process due to replication timeout|terminating background worker|could not receive data from client|could not send data to client|could not connect to server|could not extend file|could not write to file|could not read block|could not fsync file|could not truncate file|could not open file|could not create lock file|could not create file|could not serialize access due to read/write dependencies among transactions|could not serialize access due to concurrent update|could not serialize access|connection received|connection authorized|connection authenticated|disconnection|deadlock detected|canceling statement due to statement timeout|canceling statement due to lock timeout|canceling statement due to user request|canceling statement due to conflict with recovery|canceling statement|canceling autovacuum task|out of memory|server process|recovery restart point|recovery has paused|archive recovery complete|starting archive recovery|automatic recovery in progress|redo starts|redo done|received fast shutdown request|received smart shutdown request|received immediate shutdown request|shutting down|aborting any active transactions|archive command failed|sorry, too many clients already|remaining connection slots are reserved|password authentication failed|duplicate key value violates unique constraint|autovacuum launcher started|autovacuum launcher shutting down'
 export PG_HEADS
-# pglog_head: a downloaded PostgreSQL server-log record -> "<time> UTC <severity> <head>", ONLY for LOG, ERROR, FATAL and PANIC records. The head is an allow-listed phrase, else [text]; a slow-statement
+SIGNAL_LABEL='server process was terminated by signal'
+# pglog_head: a downloaded PostgreSQL server-log record -> "<time> UTC <severity> <head>", ONLY for LOG, ERROR, FATAL and PANIC records. The head is a literal allow-listed phrase, else [text]; a slow-statement
 # record keeps only its duration figure ("duration 123456.789 ms"), never the statement or any value after it. Every record is cut to 400 characters BEFORE any matching (only the head is used, and a
-# 100 KB whitespace run must stay linear). A record that does not have the expected log_line_prefix shape (time, UTC, session id, severity) is not printed; the number of such records is counted.
+# 100 KB whitespace run must stay linear). Bytes are decoded leniently (invalid UTF-8 becomes U+FFFD, no warning). A record that does not have the expected log_line_prefix shape (time, UTC, session id,
+# severity) is not printed; the number of such records is counted.
 pglog_head() {
-  perl -CSDA -ne '
-    BEGIN { our $dropped = 0; our $heads = qr/(?:$ENV{PG_HEADS})/; }
-    chomp; $_ = substr($_, 0, 400);
-    unless (/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12}) ?UTC\S{0,40}?-([A-Z]{3,9}):[ \t]{0,10}(.*)$/) { $dropped++; next }
+  SIGNAL_LABEL="$SIGNAL_LABEL" perl -ne '
+    BEGIN { use Encode qw(decode encode FB_DEFAULT); no warnings; binmode(STDIN); binmode(STDOUT); our $dropped = 0; our $heads = qr/(?:$ENV{PG_HEADS})/; }
+    chomp; my $l = decode("UTF-8", $_, FB_DEFAULT); $l = substr($l, 0, 400);
+    unless ($l =~ /^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12}) ?UTC\S{0,40}?-([A-Z]{3,9}):[ \t]{0,10}(.*)$/) { $dropped++; next }
     my ($t, $sev, $msg) = ($1, $2, $3);
     next unless $sev =~ /^(?:LOG|ERROR|FATAL|PANIC)$/;
-    if ($msg =~ /^duration: ([0-9]+(?:\.[0-9]+)?) ms/) { print "$t UTC $sev duration $1 ms\n"; next }
-    my $head = ($msg =~ /^($heads)/) ? $1 : "[text]";
-    print "$t UTC $sev $head\n";
+    my $out;
+    if ($msg =~ /^duration: ([0-9]+(?:\.[0-9]+)?) ms/) { $out = "$t UTC $sev duration $1 ms" }
+    elsif ($msg =~ /^server process \(PID [0-9]+\) was terminated by signal [0-9]+/) { $out = "$t UTC $sev $ENV{SIGNAL_LABEL}" }
+    else { my $head = ($msg =~ /^($heads)/) ? $1 : "[text]"; $out = "$t UTC $sev $head" }
+    print encode("UTF-8", $out), "\n";
     END { print "($dropped record(s) dropped: unknown log line prefix shape)\n" if $dropped; }'
 }
 # held_note: stdin = the two numbers (held, shown) of the count query; prints the line that says how many lines the secret-word exclusion held back.
@@ -373,7 +382,7 @@ if [ -n "${ws:-}" ]; then
      | where not(msg matches regex @'-LOG:\s+(execute|statement|parse|bind)')
      | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
      | extend sev = extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(LOG|ERROR|FATAL|PANIC):', 1, msg)
-     | extend head = iff(isempty(sev), '', coalesce(extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(?:LOG|ERROR|FATAL|PANIC):[ ]{0,10}(${PG_HEADS})', 1, msg), '[text]'))"
+     | extend head = iff(isempty(sev), '', iff(msg matches regex @'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(?:LOG|ERROR|FATAL|PANIC):[ ]{0,10}server process \(PID [0-9]+\) was terminated by signal [0-9]+', '${SIGNAL_LABEL}', coalesce(extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(?:LOG|ERROR|FATAL|PANIC):[ ]{0,10}(${PG_HEADS})', 1, msg), '[text]')))"
   if [ "$INCLUDE_MESSAGES" = true ]; then
     la "$pgq | where isnotempty(sev) | order by TimeGenerated asc | project TimeGenerated, sev, msg = replace_regex(msg, @'[\r\n\t]+', ' ') | take 300" "[].[TimeGenerated, sev, msg]" 300
   else

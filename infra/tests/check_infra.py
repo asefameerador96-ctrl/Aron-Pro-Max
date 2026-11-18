@@ -1283,7 +1283,7 @@ exit 0
         self.assertIn("extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(LOG|ERROR|FATAL|PANIC):', 1, msg)", code)
         self.assertIn("summarize dropped = countif(isempty(sev))", code)
         self.assertIn("record(s) dropped: unknown log line prefix shape", code)
-        self.assertIn("substr($_, 0, 400)", code, "every record is cut before any matching")
+        self.assertIn("substr($l, 0, 400)", code, "every record is cut before any matching")
         import re as _re
         heads = _re.search(r"^PG_HEADS='([^']*)'", sh, _re.M).group(1)
         rx = _re.compile("^(?:" + heads + ")")
@@ -1294,6 +1294,53 @@ exit 0
         for free in ("Rahim Uddin of Gulshan: could not find outlet", "outlet Abu Zafar not found", "could not deliver to outlet", "role rahim does not exist", "SELECT 1"):
             self.assertFalse(rx.match(free), free)
         self.assertNotIn("'", heads); self.assertNotIn('"', heads); self.assertNotIn("$", heads)
+
+    def test_diagnose_pg_heads_are_literals_only(self):
+        # Round 9 (lead ruling): every PG_HEADS alternative is a LITERAL phrase (no character class, no quantifier, no digit pattern; only the alternation bar and non-capturing groups of literals)
+        # and the printed head equals the matched literal. Enforced mechanically here, plus the negative cases the lead named.
+        import re as _re, subprocess
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        heads = _re.search(r"^PG_HEADS='([^']*)'", sh, _re.M).group(1)
+        self.assertEqual(heads.count("(?:"), heads.count(")"), "balanced non-capturing groups")
+        stripped = heads.replace("(?:", "").replace(")", "").replace("|", "")
+        self.assertRegex(stripped, r"^[A-Za-z ,/\-]+$", "only literal text remains once the group tokens and bars are removed: no class, quantifier, digit or metacharacter")
+        for bad in ("[", "]", "{", "}", "*", "+", "\\", "^", "$", ".", "?"):
+            self.assertNotIn(bad, stripped)
+        def expand(expr):  # alternation with non-capturing groups of literals -> the list of literals
+            m = _re.search(r"\(\?:([^()]*)\)", expr)
+            if not m: return expr.split("|") if "|" in expr else [expr]
+            out = []
+            for alt in m.group(1).split("|"):
+                out += expand(expr[:m.start()] + alt + expr[m.end():])
+            return out
+        literals = []
+        for top in _re.split(r"\|(?![^(]*\))", heads):
+            literals += expand(top)
+        self.assertGreater(len(literals), 50); self.assertEqual(len(literals), len(set(literals)), "no duplicate literal")
+        pre = "2026-11-18 09:30:00.000 UTC-690b-LOG:  "
+        def heads_of(msgs):
+            text = "\n".join(pre + m for m in msgs) + "\n"
+            sel = "sed -n \"/^PG_HEADS=/p;/^SIGNAL_LABEL=/p;/^export PG_HEADS/p\" " + script
+            fn = "sed -n '/^pglog_head() {/,/^}/p' " + script
+            out = subprocess.run(["bash", "-c", f'eval "$({sel})"; export PG_HEADS; eval "$({fn})"; pglog_head'], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True)
+            self.assertEqual(b"", out.stderr, out.stderr)
+            return [l.split(" UTC LOG ", 1)[1] for l in out.stdout.decode().splitlines()]
+        # the printed head equals the matched literal (a literal followed by free words prints the literal only)
+        self.assertEqual(literals, heads_of([l + " rahim uddin of gulshan road twelve" for l in literals]))
+        self.assertEqual(literals, heads_of([l for l in literals]))
+        # negative cases: free words after "due to", digits after "server process", the real signal shape
+        out = heads_of(["terminating connection due to rahim uddin of gulshan road twelve", "terminating autovacuum process due to rahim", "could not serialize access due to rahim uddin",
+                        "server process 4242 foo", "server process (PID 1234) was terminated by signal 9: Killed", "redo done at 0/1A2B", "redo starts at 0/1A2B", "Rahim Uddin of Gulshan: could not find outlet"])
+        self.assertEqual(["terminating connection", "terminating autovacuum process", "could not serialize access", "server process", "server process was terminated by signal", "redo done", "redo starts", "[text]"], out)
+        for line in out:
+            self.assertNotRegex(line, r"[0-9]|rahim|gulshan", line)
+        # invalid UTF-8 bytes: no perl warning on stderr (heads_of asserts an empty stderr), the record still prints
+        text = (pre + "checkpoint complete \xff\xfe bad").encode("latin-1") + b"\n"
+        r = subprocess.run(["bash", "-c", 'eval "$(sed -n \'/^PG_HEADS=/p;/^SIGNAL_LABEL=/p;/^export PG_HEADS/p\' %s)"; export PG_HEADS; eval "$(sed -n \'/^pglog_head() {/,/^}/p\' %s)"; pglog_head' % (script, script)], input=text, capture_output=True, env={"PATH": "/usr/bin:/bin"})
+        self.assertEqual(b"", r.stderr); self.assertIn(b"checkpoint complete", r.stdout)
+        # the KQL path has the same list and the fixed signal label, and no digit pattern in the printed value
+        self.assertIn("'${SIGNAL_LABEL}'", sh)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
