@@ -582,3 +582,6 @@ LOWS:
 - In message mode (private terminal only, unreachable from the workflow) KQL_HELD does not cover the old worker exclusion's 'bind' and bare 'token' words (it has token[=:] only). This affects no public path.
 - The width cut was raised from 200 to 300 characters for console rows. That is fine because only structured columns are printed by default, but the width is not asserted by any test.
 - Az stderr reaches the output through try's 2>&1 and the pre-flight query's 2>&1. It is redacted, and it carries only CLI error text and the script-authored query with validated inputs.
+
+## Backend part check at 7b8e22c6f (before train 123), 2026-11-18: PASS
+Two Opus checkers read backend/ in ffbe8d6fd..7b8e22c6f: MigrationPreflight and WaitingChildSweepJob change only what is logged (a "nothing to do" line with per-check state; one start line for the sweep naming why it is disabled); control flow, transactions, throws and scheduling unchanged; no personal or secret data in the new lines; tests replaced empty-output assertions by exact-line assertions (stricter). Lows: no test for the dev-repair success path; one test without a level assertion; the parser accepts a state `repaired` the backend never emits.
