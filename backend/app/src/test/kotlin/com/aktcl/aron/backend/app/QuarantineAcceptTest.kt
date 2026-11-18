@@ -326,6 +326,33 @@ class QuarantineAcceptTest {
         assertEquals("accepted", item(visit).second)
     }
 
+    /**
+     * D-SV2-22 (lead review of 9b69fba3): a record outside the business-date window with a bad `closed_by` is held as `business_date_out_of_window` (not a final schema error), and a reviewer's
+     * accept re-runs the whole judgement with the window waived: the `closed_by` check then refuses it, so the accept is a 409 and nothing changes (the item stays open, the registry row stays
+     * quarantined, no attendance row exists). The reviewer's way out is discard or return-to-device, never a stored record with a value the contract forbids.
+     */
+    @Test
+    fun anOutOfWindowRecordWithABadClosedByIsHeldAndItsAcceptIsRefusedWith409() = testApplication {
+        app()
+        val id = uuid()
+        val bad = JsonObject(envelope("attendance_event", id, id, 0, Json.parseToJsonElement(
+            """{"kind":"check_out","closed_by":"server","fix":{"purpose":"attendance_out","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+        ).jsonObject, route = null) + mapOf("business_date" to JsonPrimitive("2026-10-01"), "captured_at" to JsonPrimitive("2026-10-01T12:00:00.000Z")))
+        val r = json(client.send(client.token(), batch(listOf(bad))).bodyAsText())
+        assertEquals(listOf("quarantined"), statuses(r), r.toString())
+        assertEquals("business_date_out_of_window", r["acks"]!!.jsonArray.single().jsonObject["code"]!!.jsonPrimitive.content, "held by the window, not rejected for its value")
+        assertEquals(0L, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$id' AS uuid)"), "not a final reject")
+        val (itemId, status) = item(id)
+        assertEquals("open", status)
+        val res = client.resolve(itemId, "accept")
+        assertEquals(HttpStatusCode.Conflict, res.status, res.bodyAsText())
+        assertEquals("open", item(id).second, "the refused accept leaves the item open")
+        assertEquals("quarantined", registry(id).substringBefore('/'), "and the registry row quarantined")
+        assertEquals(0L, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST('$id' AS uuid)"), "nothing stored")
+        assertEquals(0L, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$id' AS uuid)"), "and no final reject was written by the failed accept (it rolled back)")
+    }
+
     @Test
     fun aPayloadConflictCopyCannotBeAccepted() = testApplication {
         app()

@@ -588,7 +588,7 @@ One check-in or check-out of a user with its on-demand location fix.
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `address_display` | text | null | personal | Reverse-geocoded address shown for display only; never used for a decision. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
-| `closed_by` | text | not null |  | Who closed a check-out: rep (the rep pressed check-out; every check-in and every record of an older phone) or phone (the phone closed a forgotten day at a later start, no location). A phone close is read everywhere as "no check-out". |
+| `closed_by` | text | not null |  | Who closed a check-out: rep (the rep pressed check-out; every check-in and every record of an older phone) or phone (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is kept on this row only: never a geo_fix, never the newest location). A phone close is read everywhere as "no check-out"; a real check-out of the same day outranks it. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 

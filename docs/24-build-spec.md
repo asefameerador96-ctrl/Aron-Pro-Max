@@ -707,7 +707,7 @@ Sums are taken over unrounded integer line values and rounded **once** (`cfg.mem
 
 ### 7.5 Memo number
 
-Format **`<username>-<yyMMdd>-<seq>`** (`cfg.memo.number_format`), for example `sr1042-261005-007`. `username` is the lower-case login of the capturing user (SR and AMO usernames match `^[a-z][a-z0-9]{2,31}$`, 3 to 32 characters, no hyphen; contract 1.20.0); `yyMMdd` is the business date; `seq` is decimal, zero-padded to at least 3 digits.
+Format **`<username>-<yyMMdd>-<seq>`** (`cfg.memo.number_format`), for example `sr1042-261005-007`. `username` is the lower-case login of the capturing user (SR and AMO usernames match `^[a-z][a-z0-9]{2,31}$`, 3 to 32 characters, no hyphen; master-data train V0197/V0198, contract 1.18.x); `yyMMdd` is the business date; `seq` is decimal, zero-padded to at least 3 digits.
 
 - `seq = bind_ordinal × block_size + n`, with `n = 1, 2, …` the user's memo counter for that business date on this phone, `block_size` = `cfg.memo.seq_block_size` (500) and `bind_ordinal` ∈ {0, 1, 2, 3} assigned by the server at bind-device: the lowest ordinal not held by another active binding of the user. A user may hold at most 4 active device bindings (`409 ERR_DEVICE_LIMIT_REACHED`). Two phones of one user therefore never produce the same number offline (D24-24).
 - If `n` exceeds `block_size`, the phone continues in the overflow range `seq = 5000 + bind_ordinal × 1000 + (n − block_size)` for up to 999 more memos and records `memo_seq_overflow` in telemetry; beyond that the phone refuses a new memo with `memo.seq_exhausted` (1,499 memos in a day on one phone; not reachable in practice).
