@@ -6,7 +6,7 @@ export interface PointerIssue {
   code: string;
 }
 
-const ROW_POINTER = /^(?:body\.|\/)?rows\/(\d{1,5})(?:\/([A-Za-z_]+))?$/;
+const ROW_POINTER = /^(?:body\.|\/)?(?:[a-z]+_)*rows\/(\d{1,5})(?:\/([A-Za-z_]+))?$/;
 
 /** Row errors found in a problem's `errors` member; anything that is not a row pointer is ignored. `columnOf` maps a body member to the sheet column. */
 export function rowIssuesOf(errors: unknown, columnOf: (member: string) => string = (m) => m): PointerIssue[] {

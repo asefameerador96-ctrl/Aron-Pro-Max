@@ -17,6 +17,8 @@ export const MASTER_LINKS: readonly MasterLink[] = [
   { id: "prices", href: "/admin/prices", labelKey: "menu.admin.prices", group: "products", roles: ADMIN_PORTAL_ROLES },
   // Route monthly targets (D-TARGET-MIN-01): the Excel upload behind the rings of the national dashboard and the route map.
   { id: "route-targets", href: "/admin/route-targets", labelKey: "menu.admin.route_targets", group: "routes", roles: ADMIN_PORTAL_ROLES },
+  // KPI targets (brand memo target and KPI, month KPI and CPR, Star programme target, outlet campaign targets): the SR app's programme screens.
+  { id: "kpi-targets", href: "/admin/kpi-targets", labelKey: "menu.admin.kpi_targets", group: "routes", roles: ADMIN_PORTAL_ROLES },
   // Houses with the same name in one territory: resolve so the dashboard House filter lists each active house once (docs/34 s2).
   { id: "house-dedupe", href: "/admin/house-dedupe", labelKey: "menu.admin.house_dedupe", group: "geography", roles: ADMIN_PORTAL_ROLES },
   // Outlet import from Excel: the channel is mandatory on every row (docs/34 s2).
