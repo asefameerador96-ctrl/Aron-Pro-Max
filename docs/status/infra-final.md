@@ -211,5 +211,5 @@ the buffer the recommended 9,000 needs the owner's yes (step 16).
 |---|---|
 | 1. This audit | pushed (this commit) |
 | 2. `stage` wired end to end | pushed (D-FINAL-INFRA-02 to -05); `infra/validate.sh` green locally (bicep build and lint, `check_infra.py` incl. the new `FinalAccountStage` tests, actionlint, shellcheck) |
-| 3. Runbook and quota document | pending |
+| 3. Runbook and quota document | pushed (docs-only: ci's path filter starts no run) |
 | 4. Apsis dump landing place | pending |
