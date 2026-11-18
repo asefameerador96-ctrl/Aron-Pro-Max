@@ -478,3 +478,70 @@ LOWS:
 - Owner questions: Q1-Q33 are neutral and nothing is loaded by guess. Two exceptions: history_until is inserted as 2026-09-30 while Q16 is open, and Q10, Q11 and Q15 are phrased with a presumed answer ('Yes', 'no memo numbers', 'assumed yes'). Missing questions: retention or purge of the raw archive and extra; the free-text column policy; brand scope for history reports. The 'vendor column names public?' question is unnumbered and blocks nothing in the tool.
 - Not verified: that the 50 tests pass; behaviour on Azure Flexible Server (PGOPTIONS role with an Entra principal, token lifetime); outlet triggers under apsis_migrator during the fill outside the test database; the real dump's column names, free-text fields and time zone; whether the server lane or infra-final have accepted these requests.
 - (refuted 3/3) Isolating history from the sync path depends on per-app database logins, which prod and stage switch off; the runbook never checks them: The lane's guarantee that api_rw, worker_rw and jobs_rw never read history is true of the roles, and test_g proves it. But the final account's API and worker processes, sync path included, connect as the server administrator while dbPerAppLogins=false. The administrator reads apsis_hist, apsis_stage (the staging copy of every kept column), raw_archive and the coordinate and attendance views. No runbook precondition or gate requires per-app logins before the load. The request also states something false about infra ('Entra token as for the other pools'), so infra-final gets a wrong premise for the hist login.
+
+
+## Phase 1 (profile command) review at 9b0556171, 2026-11-18
+
+The reviewers ran the profile command on synthetic dumps they wrote (made-up data only). Examples of leaked synthetic values are summarised, not quoted, in this file.
+
+### leak-hunt verdict=fail
+
+#### BLOCKING upheld=3/3: Value lists emit personal names and logins: only one capitalisation form is caught
+WHERE: tools/apsis-migration/apsis_migration/profiler.py Col.enum_values (lines 130-138), ENUM_HINT line 18, _CAPITALISED line 36; staging.PERSONAL
+WHY: _CAPITALISED (^[A-Z][a-z]+$) is the only name guard. It does not catch lowercase, UPPERCASE, CamelCase or names with digits, so those pass in any column. Capitalised names also pass in any column whose name contains a hint substring such as type, code, state, group or level. PERSONAL does not match username, login, fullname, sr or nm.
+
+#### BLOCKING upheld=3/3: Value lists emit PINs, short tokens, NIDs, salaries, birth years, landlines, integer coordinates and hex blobs
+WHERE: profiler.py Col.enum_values; staging.CRED; the longdigits guard (lines 118-119) applies only to value_range
+WHY: CRED does not match pin, auth or jwt. The digit-string guard is only the phone regex (10-14 digits), so 17-digit NIDs and 8-9-digit phones pass. Numeric columns get value lists, which put the very range that sanitise() strips back into the sanitised file. Hex blob literals (0x...) are treated as codes.
+
+#### BLOCKING upheld=3/3: No rows-per-value threshold: every column of a small table becomes 'enum-like'
+WHERE: profiler.py Col.enum_values (only len(distinct) < 30)
+WHY: A column with one row per distinct value is identifying data, not an enum. Master tables (field forces, depots, routes, users) will have few rows, so their whole contents are printed with count 1 each.
+
+#### BLOCKING upheld=3/3: Indented INSERT lines are silently skipped; short or misaligned rows are silently accepted
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py events() (head/INSERT checks anchored at column 0; other lines ignored) and iter_values() (_TOKEN.finditer skips unmatched text; no check of row arity against the column count)
+WHY: The rule says refuse loudly on any statement shape the parser cannot read. Instead, lines starting with a space or tab are ignored without error, so row counts come out wrong. Rows shorter than the column list, double-quoted strings, TRUE and stray text are dropped or shifted into the wrong columns without error. Shifted values can push a name into a column that passes the enum test.
+
+#### BLOCKING upheld=3/3: Quadratic time in shape() on long values containing '@'
+WHERE: profiler.py _R_EMAIL (line 27), called from shape() for every non-null value
+WHY: The pattern ^[^@\s]+@[^@\s]+\.[^@\s]+$ backtracks across every '.' when the run after '@' ends in a second '@' or in whitespace. Cost is O(n^2) per value, so one multi-megabyte JSON or GPS-trace value can stall the run for hours.
+
+#### BLOCKING upheld=3/3: The distinct-value cap limits the number of values, not bytes, so memory is not bounded
+WHERE: profiler.py Col.add (cap = CAP_DISTINCT 100000 values per column, with the full strings kept); RefCheck master_exact/master_norm have no cap at all
+WHY: Memory is about 100k times the value length per column, and a value can be up to 256 MB (MAX_LINE). A base64 photo, signature or JSON column with 100k distinct 100 KB values keeps about 10 GB.
+
+LOWS (titles only; full text in the lead's task output):
+- Column, index and FK names come from the CREATE TABLE text and are never IDENT-validated (only table names are). A column named `Rahim Uddin 01712345678 | injec
+- ENUM_HINT matches substrings, so it also fires on barcode, postcode, estate, statement, community, holiday and model, widening the Capitalised-name exemption.
+- A dropped or garbled column definition, or rows longer than the column list, ends in an uncaught IndexError traceback: no table named, no outputs written, and t
+- The phase-1 gate is just the environment variable APSIS_PHASE=2. Anyone can set it; there is no signed or recorded enablement.
+- write_outputs writes four fixed filenames into an existing --out-dir, and check_out_dir resolves only the directory. A pre-existing symlink named apsis-profile.
+- The legacy runner.profile and suggest_review remain importable (they are used by a test); the CLI no longer reaches them.
+- Missing allow-listed tables (23 of 26 in my run) still give rc=0. Only refused files make the run exit non-zero.
+- The tests never check lowercase or uppercase names, numeric value lists, 17-digit strings, short PINs or tokens, hex blobs, indented INSERTs, short rows or path
+- (refuted 3/3) The full profile pinpoints a coordinate pair, a timestamp and dates of birth when a table has very few rows: For a one-row table, min equals max, 
+
+### parser-scale-phase-gate verdict=fail
+
+#### BLOCKING upheld=3/3: Unrecognised tokens are silently skipped and row width is never checked: personal values shift into another column and its value list reaches the sanitised (public) file
+WHERE: apsis_migration/mysqldump.py iter_values/_TOKEN (finditer skips anything it does not match); apsis_migration/profiler.py profile_dump `for i, v in enumerate(r): cols[i].add(v)` with no len(r)==len(cols) check
+WHY: Any token outside the regex (TRUE/FALSE, DEFAULT, an unterminated quote, stray text between rows) is silently dropped. A row with fewer values than columns is accepted, so every later value moves one column left. A personal column's values can land on a column whose name passes the enum check (status/class/type/code hints), and sanitise() keeps 'values'. This is also a silently mis-read statement shape.
+
+#### BLOCKING upheld=3/3: Distinct-value cap counts entries, not bytes: memory grows with value length (TEXT, address, remarks, GPS traces)
+WHERE: apsis_migration/profiler.py Col.add (self.distinct dict keyed by the full value, cap=100_000 entries)
+WHY: Until a column reaches 100k distinct values, every full value is held in memory. Per column that is up to cap x max value length. A wide table with several long text or JSON columns (GPS polylines, remarks, addresses) can need many GB. The bound depends on the data, not the tool, so on the real dump memory is effectively unbounded.
+
+#### BLOCKING upheld=3/3: Statement shapes silently skipped or mis-attributed with exit 0 (wrong counts, no error)
+WHERE: apsis_migration/mysqldump.py events() main loop (lines that are not CREATE/INSERT/REPLACE/'(' are ignored; a second CREATE TABLE silently replaces the schema; no end-of-dump check); profiler.profile_dump (ok = not problems ignores tables_missing)
+WHY: The rule says refuse loudly rather than skip. These give wrong profiles that look successful.
+
+LOWS (titles only; full text in the lead's task output):
+- Uncaught exception types give a traceback (exit 1) with no table named, and no output for ANY table: ValueError from iter_values (a trigger body `INSERT INTO lo
+- Peak memory per long line is about 13x the line size: a 105 MB single INSERT line peaked at 1.36 GB RSS. Copies come from line.strip() on every line, line.rstri
+- check_out_dir compares against the tool's own location (parents[3]), not 'any git working tree'. Run from an installed or archived copy, it accepted --out-dir /
+- Existing output files are overwritten silently, and other files in --out-dir are left in place. No --force or refuse-if-exists.
+- The column-list INSERT refusal says 're-dump without --complete-insert'. mysqldump forces a column list for tables with generated columns, so that hint cannot f
+- RefCheck.master_exact/master_norm sets are uncapped; master_outlets keys are held in full. Probably fine at about 1M outlets, but not bounded.
+- The KEY index column parse `\(([^)]*)\)` mangles prefix indexes: `a`(10),`b` becomes a"(10". Cosmetic.
+- Enum heuristic, from outside this lens: a lowercase login column named e.g. `username` matches neither PERSONAL nor CRED, so fewer than 30 lowercase logins woul
+- No tests cover row-width mismatch, unknown tokens, multiple CREATE TABLEs per file, truncation at a line boundary, the uncaught exception types, or the all-tabl
