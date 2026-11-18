@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.22.0.
 
 
-## Schemas (665)
+## Schemas (670)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -246,16 +246,21 @@ Source: contract/openapi.yaml, version 1.22.0.
 - `schemas/KpiBrandTargetWriteRow.yaml` (560 B)
 - `schemas/KpiMonthTargetWriteRow.yaml` (606 B)
 - `schemas/KpiProgrammeTargetWriteRow.yaml` (433 B)
-- `schemas/RouteKpiTargetWrite.yaml` (681 B)
-- `schemas/RouteKpiTargetPreview.yaml` (1015 B)
+- `schemas/KpiCampaignTargetWriteRow.yaml` (527 B)
+- `schemas/KpiCampaignSkuTargetWriteRow.yaml` (557 B)
+- `schemas/RouteKpiTargetWrite.yaml` (958 B)
+- `schemas/RouteKpiTargetPreview.yaml` (1231 B)
 - `schemas/RouteKpiTargetList.yaml` (1835 B)
 - `schemas/RouteKpi.yaml` (1606 B)
 - `schemas/KpiTotal.yaml` (431 B)
 - `schemas/KpiBrand.yaml` (1187 B)
 - `schemas/KpiCategory.yaml` (549 B)
 - `schemas/KpiCpr.yaml` (509 B)
+- `schemas/RouteCampaign.yaml` (1219 B)
+- `schemas/CampaignFigure.yaml` (507 B)
+- `schemas/CampaignSku.yaml` (337 B)
 - `schemas/RouteStar.yaml` (2992 B)
-- `schemas/RouteSnapshot.yaml` (3143 B)
+- `schemas/RouteSnapshot.yaml` (3495 B)
 - `schemas/PrintTemplate.yaml` (736 B)
 - `schemas/SupervisorSection.yaml` (1006 B)
 - `schemas/TeamMember.yaml` (544 B)

@@ -106,6 +106,29 @@ class RouteKpiTargetsTest {
     }
 
     @Test
+    fun campaignTargetsPerOutletAndSkuAreValidatedAndCommittedTogether() = env.app {
+        val admin = env.tok("admin1001"); val mo = next.plusMonths(4); val u = UUID.randomUUID()
+        env.exec("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSL-T', 'Super Star Low', date '$mo-01', date '$mo-28', 'active')")
+        val outlet = env.scalar("SELECT code FROM app.outlet WHERE status = 'active' ORDER BY id LIMIT 1")!!
+        fun c(o: String, p: String, std: String, memo: Any) = """{"outlet_code":"$o","programme_code":"$p","month":"$mo","std_target":$std,"memo_target":$memo}"""
+        fun k(o: String, sku: String, qty: Any) = """{"outlet_code":"$o","programme_code":"SSL-T","month":"$mo","sku_code":"$sku","qty_base":$qty}"""
+        fun cb(camp: List<String>, sku: List<String>, dry: Boolean, id: UUID = UUID.randomUUID()) =
+            """{"batch_uuid":"$id","campaign_rows":[${camp.joinToString(",")}],"campaign_sku_rows":[${sku.joinToString(",")}],"dry_run":$dry${if (!dry) ""","change_reason":"$reason"""" else ""}}"""
+        val bad = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, cb(listOf(c("NOPE", "SSL-T", "\"1\"", 1), c(outlet, "NOPE", "\"1\"", 1), c(outlet, "SSL-T", "2240", 1), c(outlet, "SSL-T", "\"2240\"", -1)), listOf(k(outlet, "NOSKU", 1), k(outlet, "MaxR-10S", "1.5")), true))
+        val errs = bad.objA3().getValue("errors").jsonArray.map { it.jsonObject }.map { it.strA3("section") + it.strA3("row") + it.strA3("column") + it.strA3("code") }
+        assertEquals(
+            listOf("campaign_rows1outlet_codeunknown_outlet", "campaign_rows2programme_codeunknown_programme", "campaign_rows3std_targetinvalid_quantity", "campaign_rows4memo_targetinvalid_quantity",
+                "campaign_sku_rows1sku_codeunknown_sku", "campaign_sku_rows2qty_baseinvalid_quantity"),
+            errs,
+        )
+        val ok = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, cb(listOf(c(outlet, "SSL-T", "\"2240.000\"", 18)), listOf(k(outlet, "MaxR-10S", 1500), k(outlet, "MaxR-20S", 740)), false, u))
+        assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText()); assertEquals("3", ok.objA3().strA3("rows"))
+        assertEquals(1, env.count("SELECT count(*) FROM app.outlet_campaign_target t JOIN app.outlet o ON o.id = t.outlet_id WHERE o.code = '$outlet' AND t.std_target = 2240 AND t.memo_target = 18 AND t.batch_uuid = '$u'"))
+        assertEquals(2, env.count("SELECT count(*) FROM app.outlet_campaign_sku_target WHERE batch_uuid = '$u' AND month = date '$mo-01'"))
+        assertEquals("true", sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, cb(listOf(c(outlet, "SSL-T", "\"2240.000\"", 18)), listOf(k(outlet, "MaxR-20S", 740), k(outlet, "MaxR-10S", 1500)), false, u)).objA3().strA3("replayed"))
+    }
+
+    @Test
     fun aBadRowRefusesTheWholeBatchAndTheRoleMatrixHolds() = env.app {
         val admin = env.tok("admin1001"); val u = UUID.randomUUID()
         val before = env.count("SELECT count(*) FROM app.route_brand_kpi_target")

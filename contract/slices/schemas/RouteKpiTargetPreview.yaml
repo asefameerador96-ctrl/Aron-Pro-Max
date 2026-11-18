@@ -5,6 +5,8 @@ RouteKpiTargetPreview:
   - brand_rows
   - month_rows
   - programme_rows
+  - campaign_rows
+  - campaign_sku_rows
   - errors
   - errors_truncated
   additionalProperties: false
@@ -18,6 +20,12 @@ RouteKpiTargetPreview:
       type: integer
       minimum: 0
     programme_rows:
+      type: integer
+      minimum: 0
+    campaign_rows:
+      type: integer
+      minimum: 0
+    campaign_sku_rows:
       type: integer
       minimum: 0
     errors:
@@ -38,6 +46,8 @@ RouteKpiTargetPreview:
             - brand_rows
             - month_rows
             - programme_rows
+            - campaign_rows
+            - campaign_sku_rows
           row:
             type: integer
             minimum: 1

@@ -6812,6 +6812,21 @@ export interface components {
             month: components["schemas"]["RouteTargetMonth"];
             target_qty: components["schemas"]["Decimal3"];
         };
+        KpiCampaignTargetWriteRow: {
+            outlet_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            std_target: components["schemas"]["Decimal3"];
+            memo_target: number;
+        };
+        KpiCampaignSkuTargetWriteRow: {
+            outlet_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            sku_code: string;
+            /** Format: int64 */
+            qty_base: number;
+        };
         RouteKpiTargetWrite: {
             batch_uuid: components["schemas"]["Uuid"];
             dry_run: boolean;
@@ -6819,15 +6834,19 @@ export interface components {
             brand_rows?: components["schemas"]["KpiBrandTargetWriteRow"][];
             month_rows?: components["schemas"]["KpiMonthTargetWriteRow"][];
             programme_rows?: components["schemas"]["KpiProgrammeTargetWriteRow"][];
+            campaign_rows?: components["schemas"]["KpiCampaignTargetWriteRow"][];
+            campaign_sku_rows?: components["schemas"]["KpiCampaignSkuTargetWriteRow"][];
         };
         RouteKpiTargetPreview: {
             batch_uuid: components["schemas"]["Uuid"];
             brand_rows: number;
             month_rows: number;
             programme_rows: number;
+            campaign_rows: number;
+            campaign_sku_rows: number;
             errors: {
                 /** @enum {string} */
-                section: "brand_rows" | "month_rows" | "programme_rows";
+                section: "brand_rows" | "month_rows" | "programme_rows" | "campaign_rows" | "campaign_sku_rows";
                 row: number;
                 column: string;
                 code: string;
@@ -6933,6 +6952,40 @@ export interface components {
             /** Format: int64 */
             achieved_bp: number | null;
         };
+        /** @description Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the phone adds its own memos by UUID). Contract 1.22.0. */
+        RouteCampaign: {
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            label_en: string;
+            label_bn: string | null;
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            std: components["schemas"]["CampaignFigure"];
+            memo: components["schemas"]["CampaignFigure"];
+            skus: components["schemas"]["CampaignSku"][];
+        };
+        CampaignFigure: {
+            /**
+             * Format: int64
+             * @description STD in base units (the STD target is rounded half up to a whole base unit) or the memo count.
+             */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
+            /**
+             * Format: int64
+             * @description max(target - achieved
+             */
+            remaining: number;
+        };
+        CampaignSku: {
+            sku_id: components["schemas"]["Id"];
+            /** Format: int64 */
+            target_qty_base: number;
+            /** Format: int64 */
+            sold_qty_base: number;
+        };
         /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.22.0. */
         RouteStar: {
             programme_id: components["schemas"]["Id"];
@@ -6995,6 +7048,8 @@ export interface components {
             calendar?: components["schemas"]["RouteCalendar"] | null;
             /** @description Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional. */
             kpi?: components["schemas"]["RouteKpi"] | null;
+            /** @description Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. Contract 1.22.0, optional. */
+            campaigns?: components["schemas"]["RouteCampaign"][] | null;
             /** @description Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional. */
             star?: components["schemas"]["RouteStar"] | null;
             /**

@@ -79,6 +79,15 @@ RouteSnapshot:
       - type: 'null'
       description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0,
         optional.
+    campaigns:
+      type:
+      - array
+      - 'null'
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/RouteCampaign'
+      description: Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target
+        pop-up figures and the SKU table. Empty or absent otherwise. Contract 1.22.0, optional.
     star:
       oneOf:
       - $ref: '#/components/schemas/RouteStar'

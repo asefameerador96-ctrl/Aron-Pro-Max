@@ -510,6 +510,7 @@ class BundleService(
             .groupBy({ it.first }, { it.second })
         val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config) else emptyMap()
         val kpi = if (zoneIds == null) SrKpi.load(h, plans.map { it.routeId }, date) else emptyMap()
+        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date) else emptyMap()
         val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date) else emptyMap()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
@@ -521,7 +522,7 @@ class BundleService(
                 assignment_kind = r.assignmentKind, acting_for_user_id = if (zoneIds == null && r.assignmentKind == "cover") primaries[r.routeId]?.takeIf { it != userId } else null,
                 planned_today = r.plannedToday, target_outlets = target, outlets = routeOutlets,
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
-                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar, kpi = kpi[r.routeId], star = star[r.routeId],
+                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar, kpi = kpi[r.routeId], star = star[r.routeId], campaigns = campaigns[r.routeId]?.takeIf { it.isNotEmpty() },
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
                 sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )

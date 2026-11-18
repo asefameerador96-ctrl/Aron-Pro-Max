@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 186 | 3065 |
+| `app` | 188 | 3083 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -113,6 +113,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.offer_version_product`](#appoffer_version_product) | table | backend:masterdata | ONLINE | master | none | Product the offer version applies to, at category, brand, variant or SKU level. |
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
+| [`app.outlet_campaign_sku_target`](#appoutlet_campaign_sku_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page). |
+| [`app.outlet_campaign_target`](#appoutlet_campaign_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month. |
 | [`app.outlet_change_request`](#appoutlet_change_request) | table | backend:masterdata | OFFLINE | transaction | sensitive | A request from the field to add, close, edit, move or relocate an outlet, with proposed data and decision trail. |
 | [`app.outlet_class_history`](#appoutlet_class_history) | table | db | SERVER | master | none | One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, price type and status (route and cluster are in app.outlet_placement_history) (V0119); written by the history trigger on app.outlet, seeded from app.audit_log. |
 | [`app.outlet_location_history`](#appoutlet_location_history) | table | backend:masterdata | SERVER | master | none | Append-only history of every map pin an outlet has had and where it came from. |
@@ -2925,6 +2927,50 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (merged_into_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (pii_key_id) REFERENCES app.pii_key(key_id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+
+## app.outlet_campaign_sku_target
+
+Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `sku_id` | bigint | not null |  | SKU (app.sku). |
+| `qty_base` | bigint | not null |  | Target quantity in the SKU's base unit (sticks, pieces or dozens). |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id, sku_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
+## app.outlet_campaign_target
+
+Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `std_target` | numeric(16,3) | not null |  | STD target of the month, up to three decimals (base units of the campaign SKUs; owner question Q-H). |
+| `memo_target` | integer | not null |  | Number of memos the outlet should place with the campaign SKUs in the month. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.outlet_change_request
 

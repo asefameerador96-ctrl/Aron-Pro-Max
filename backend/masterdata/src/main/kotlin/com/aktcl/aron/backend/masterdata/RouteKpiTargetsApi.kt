@@ -55,6 +55,8 @@ fun Route.routeKpiTargetRoutes(d: RouteTargetDeps) {
 private class BrandRow(val i: Int, val route: String?, val brand: String?, val month: LocalDate?, val memo: Long?, val alloc: Long?)
 private class MonthRow(val i: Int, val route: String?, val month: LocalDate?, val alloc: Long?, val cprBp: Long?, val cprAlloc: Long?, val cprBpSet: Boolean, val cprAllocSet: Boolean)
 private class ProgRow(val i: Int, val route: String?, val programme: String?, val month: LocalDate?, val qty: java.math.BigDecimal?)
+private class CampRow(val i: Int, val outlet: String?, val programme: String?, val month: LocalDate?, val std: java.math.BigDecimal?, val memo: Long?)
+private class CampSkuRow(val i: Int, val outlet: String?, val programme: String?, val month: LocalDate?, val sku: String?, val qty: Long?)
 private class KErr(val section: String, val index: Int, val member: String, val code: String)
 
 private fun kText(o: JsonObject, k: String): String? = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() && it.length <= 40 && '\u0000' !in it }
@@ -83,9 +85,23 @@ private fun parseProg(arr: JsonArray) = arr.mapIndexed { i, el ->
     ProgRow(i, kText(o, "route_code"), kText(o, "programme_code"), kMonth(o), q)
 }
 
-private class KChecked(val errors: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>, val programmeIds: Map<String, Long> = emptyMap())
+private val DEC3 = Regex("^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,3})?$")
 
-private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, current: LocalDate): KChecked {
+private fun parseCamp(arr: JsonArray) = arr.mapIndexed { i, el ->
+    val o = el as? JsonObject ?: bad("body.campaign_rows/$i", "invalid_type")
+    o.keys.firstOrNull { it !in setOf("outlet_code", "programme_code", "month", "std_target", "memo_target") }?.let { bad("body.campaign_rows/$i/$it", "unknown_member") }
+    CampRow(i, kText(o, "outlet_code"), kText(o, "programme_code"), kMonth(o), (o["std_target"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { DEC3.matches(it) }?.let { java.math.BigDecimal(it) }, kInt(o, "memo_target", 1_000_000))
+}
+
+private fun parseCampSku(arr: JsonArray) = arr.mapIndexed { i, el ->
+    val o = el as? JsonObject ?: bad("body.campaign_sku_rows/$i", "invalid_type")
+    o.keys.firstOrNull { it !in setOf("outlet_code", "programme_code", "month", "sku_code", "qty_base") }?.let { bad("body.campaign_sku_rows/$i/$it", "unknown_member") }
+    CampSkuRow(i, kText(o, "outlet_code"), kText(o, "programme_code"), kMonth(o), kText(o, "sku_code"), kInt(o, "qty_base", 1_000_000_000))
+}
+
+private class KChecked(val errors: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>, val programmeIds: Map<String, Long> = emptyMap(), val campaignIds: Map<String, Long> = emptyMap(), val outletIds: Map<String, Long> = emptyMap(), val skuIds: Map<String, Long> = emptyMap())
+
+private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, camp: List<CampRow>, campSku: List<CampSkuRow>, current: LocalDate): KChecked {
     val routeCodes = (brand.mapNotNull { it.route } + month.mapNotNull { it.route } + prog.mapNotNull { it.route }).distinct()
     val routes = HashMap<String, Pair<Long, String>>()
     h.createQuery("SELECT id, code, kind FROM app.route WHERE code = ANY(:c) AND status = 'active'").bindArray("c", String::class.java, routeCodes)
@@ -140,34 +156,65 @@ private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog
         if (r.qty == null) errors += KErr("programme_rows", r.i, "target_qty", "invalid_quantity")
         if (errors.size == n0 && !seenP.add(Triple(r.route!!, r.programme!!, r.month!!))) errors += KErr("programme_rows", r.i, "route_code", "duplicate_row")
     }
-    return KChecked(errors, routes.mapValues { it.value.first }, brands, programmes)
+    val campaigns = HashMap<String, Long>()
+    val campCodes = (camp.mapNotNull { it.programme } + campSku.mapNotNull { it.programme }).distinct()
+    h.createQuery("SELECT id, code FROM app.programme WHERE kind = 'campaign' AND status = 'active' AND code = ANY(:c)").bindArray("c", String::class.java, campCodes)
+        .map { rs, _ -> rs.getString(2) to rs.getLong(1) }.list().forEach { campaigns[it.first] = it.second }
+    val outlets = HashMap<String, Long>()
+    h.createQuery("SELECT id, code FROM app.outlet WHERE code = ANY(:c) AND status = 'active'").bindArray("c", String::class.java, (camp.mapNotNull { it.outlet } + campSku.mapNotNull { it.outlet }).distinct())
+        .map { rs, _ -> rs.getString(2) to rs.getLong(1) }.list().forEach { outlets[it.first] = it.second }
+    val skus = HashMap<String, Long>()
+    h.createQuery("SELECT id, code FROM app.sku WHERE code = ANY(:c) AND status = 'active'").bindArray("c", String::class.java, campSku.mapNotNull { it.sku }.distinct())
+        .map { rs, _ -> rs.getString(2) to rs.getLong(1) }.list().forEach { skus[it.first] = it.second }
+    val seenC = HashSet<Triple<String, String, LocalDate>>(); val seenCS = HashSet<List<Any>>()
+    for (r in camp) {
+        val n0 = errors.size
+        if (r.outlet == null || outlets[r.outlet] == null) errors += KErr("campaign_rows", r.i, "outlet_code", "unknown_outlet")
+        if (r.programme == null || campaigns[r.programme] == null) errors += KErr("campaign_rows", r.i, "programme_code", "unknown_programme")
+        monthOk("campaign_rows", r.i, r.month)
+        if (r.std == null) errors += KErr("campaign_rows", r.i, "std_target", "invalid_quantity")
+        if (r.memo == null) errors += KErr("campaign_rows", r.i, "memo_target", "invalid_quantity")
+        if (errors.size == n0 && !seenC.add(Triple(r.outlet!!, r.programme!!, r.month!!))) errors += KErr("campaign_rows", r.i, "outlet_code", "duplicate_row")
+    }
+    for (r in campSku) {
+        val n0 = errors.size
+        if (r.outlet == null || outlets[r.outlet] == null) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "unknown_outlet")
+        if (r.programme == null || campaigns[r.programme] == null) errors += KErr("campaign_sku_rows", r.i, "programme_code", "unknown_programme")
+        if (r.sku == null || skus[r.sku] == null) errors += KErr("campaign_sku_rows", r.i, "sku_code", "unknown_sku")
+        monthOk("campaign_sku_rows", r.i, r.month)
+        if (r.qty == null) errors += KErr("campaign_sku_rows", r.i, "qty_base", "invalid_quantity")
+        if (errors.size == n0 && !seenCS.add(listOf(r.outlet!!, r.programme!!, r.month!!, r.sku!!))) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "duplicate_row")
+    }
+    return KChecked(errors, routes.mapValues { it.value.first }, brands, programmes, campaigns, outlets, skus)
 }
 
-private fun kDigest(brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>): ByteArray {
+private fun kDigest(brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, camp: List<CampRow>, campSku: List<CampSkuRow>): ByteArray {
     val md = MessageDigest.getInstance("SHA-256")
-    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}" } + prog.map { "P|${it.route}|${it.programme}|${it.month}|${it.qty?.toPlainString()}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
+    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}" } + prog.map { "P|${it.route}|${it.programme}|${it.month}|${it.qty?.toPlainString()}" } + camp.map { "C|${it.outlet}|${it.programme}|${it.month}|${it.std?.toPlainString()}|${it.memo}" } + campSku.map { "S|${it.outlet}|${it.programme}|${it.month}|${it.sku}|${it.qty}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
     return md.digest()
 }
 
-private fun kReady(h: Handle) = h.createQuery("SELECT to_regclass('app.route_brand_kpi_target') IS NOT NULL AND to_regclass('app.route_kpi_month') IS NOT NULL AND to_regclass('app.route_programme_target') IS NOT NULL AND to_regclass('app.route_target_batch') IS NOT NULL").mapTo(Boolean::class.java).one()
+private fun kReady(h: Handle) = h.createQuery("SELECT to_regclass('app.route_brand_kpi_target') IS NOT NULL AND to_regclass('app.route_kpi_month') IS NOT NULL AND to_regclass('app.route_programme_target') IS NOT NULL AND to_regclass('app.outlet_campaign_target') IS NOT NULL AND to_regclass('app.outlet_campaign_sku_target') IS NOT NULL AND to_regclass('app.route_target_batch') IS NOT NULL").mapTo(Boolean::class.java).one()
 
 private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonElement {
     val p = call.principal
     if (p.role !in KPI_WRITERS) throw AdminSupport.forbidden("KPI targets are written by ADMIN and SUPERADMIN")
     val body = call.receiveStrict(JsonObject.serializer(), KPI_MAX_BODY)
-    body.keys.firstOrNull { it !in setOf("batch_uuid", "brand_rows", "month_rows", "programme_rows", "dry_run", "change_reason") }?.let { bad("body.$it", "unknown_member") }
+    body.keys.firstOrNull { it !in setOf("batch_uuid", "brand_rows", "month_rows", "programme_rows", "campaign_rows", "campaign_sku_rows", "dry_run", "change_reason") }?.let { bad("body.$it", "unknown_member") }
     val uuid = AdminSupport.uuid((body["batch_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: bad("body.batch_uuid", "required"), "body.batch_uuid")
     val dry = (body["dry_run"] as? JsonPrimitive)?.takeIf { !it.isString }?.content.let { when (it) { "true" -> true; "false" -> false; else -> bad("body.dry_run", "required") } }
     val brand = parseBrand(body["brand_rows"] as? JsonArray ?: JsonArray(emptyList()))
     val month = parseMonth(body["month_rows"] as? JsonArray ?: JsonArray(emptyList()))
     val prog = parseProg(body["programme_rows"] as? JsonArray ?: JsonArray(emptyList()))
-    if (brand.size + month.size + prog.size !in 1..KPI_MAX_ROWS) bad("body.brand_rows", "length")
+    val camp = parseCamp(body["campaign_rows"] as? JsonArray ?: JsonArray(emptyList()))
+    val campSku = parseCampSku(body["campaign_sku_rows"] as? JsonArray ?: JsonArray(emptyList()))
+    if (brand.size + month.size + prog.size + camp.size + campSku.size !in 1..KPI_MAX_ROWS) bad("body.brand_rows", "length")
     val current = AdminSupport.today(d.clock).withDayOfMonth(1)
     if (dry) return d.db.jdbi.withHandle<JsonElement, Exception> { h ->
         if (!kReady(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "KPI targets are not deployed in this environment")
-        val c = kCheck(h, brand, month, prog, current)
+        val c = kCheck(h, brand, month, prog, camp, campSku, current)
         buildJsonObject {
-            put("batch_uuid", uuid.toString()); put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size)
+            put("batch_uuid", uuid.toString()); put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size); put("campaign_rows", camp.size); put("campaign_sku_rows", campSku.size)
             put("errors", buildJsonArray { c.errors.take(KPI_MAX_ERRORS).forEach { e -> add(buildJsonObject { put("section", e.section); put("row", e.index + 1); put("column", e.member); put("code", e.code) }) } })
             put("errors_truncated", c.errors.size > KPI_MAX_ERRORS)
         }
@@ -178,16 +225,16 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
         d.db.jdbi.inTransaction<JsonElement, Exception> { h ->
             if (!kReady(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "KPI targets are not deployed in this environment")
             h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended('route-target-upload', 0))").mapTo(String::class.java).findOne()
-            val sha = kDigest(brand, month, prog)
+            val sha = kDigest(brand, month, prog, camp, campSku)
             h.createQuery("SELECT content_sha256, row_count, committed_by FROM app.route_target_batch WHERE batch_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> Triple(rs.getBytes(1), rs.getInt(2), rs.getLong(3)) }.findOne().orElse(null)?.let { (stored, n, by) ->
                     if (!stored.contentEquals(sha) || by != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "batch_uuid was already used for a different batch")
                     return@inTransaction buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", n); put("replayed", true) }
                 }
-            val c = kCheck(h, brand, month, prog, current)
+            val c = kCheck(h, brand, month, prog, camp, campSku, current)
             if (c.errors.isNotEmpty()) throw ApiProblem(ProblemCode.ERR_VALIDATION, "${c.errors.size} row errors", errors = c.errors.take(KPI_MAX_ERRORS).map { e -> FieldError("body.${e.section}/${e.index}/${e.member}", e.code) })
             h.createUpdate("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES (:u, :h, :n, :by)")
-                .bind("u", uuid).bind("h", sha).bind("n", brand.size + month.size + prog.size).bind("by", p.userId).execute()
+                .bind("u", uuid).bind("h", sha).bind("n", brand.size + month.size + prog.size + camp.size + campSku.size).bind("by", p.userId).execute()
             val bb = h.prepareBatch("INSERT INTO app.route_brand_kpi_target (route_id, brand_id, month, memo_target, kpi_alloc_mtk, batch_uuid, updated_by) VALUES (:r, :b, :m, :t, :a, :u, :by) " +
                 "ON CONFLICT (route_id, brand_id, month) DO UPDATE SET memo_target = EXCLUDED.memo_target, kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
             brand.forEach { r -> bb.bind("r", c.routeIds.getValue(r.route!!)).bind("b", c.brandIds.getValue(r.brand!!)).bind("m", r.month).bind("t", r.memo!!.toInt()).bind("a", r.alloc!!).bind("u", uuid).bind("by", p.userId).add() }
@@ -200,10 +247,18 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
                 "ON CONFLICT (programme_id, route_id, month) DO UPDATE SET target_qty = EXCLUDED.target_qty, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
             prog.forEach { r -> pb.bind("p", c.programmeIds.getValue(r.programme!!)).bind("r", c.routeIds.getValue(r.route!!)).bind("m", r.month).bind("q", r.qty!!).bind("u", uuid).bind("by", p.userId).add() }
             if (prog.isNotEmpty()) pb.execute()
+            val cb = h.prepareBatch("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid, updated_by) VALUES (:p, :m, :o, :s, :t, :u, :by) " +
+                "ON CONFLICT (programme_id, month, outlet_id) DO UPDATE SET std_target = EXCLUDED.std_target, memo_target = EXCLUDED.memo_target, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
+            camp.forEach { r -> cb.bind("p", c.campaignIds.getValue(r.programme!!)).bind("m", r.month).bind("o", c.outletIds.getValue(r.outlet!!)).bind("s", r.std!!).bind("t", r.memo!!.toInt()).bind("u", uuid).bind("by", p.userId).add() }
+            if (camp.isNotEmpty()) cb.execute()
+            val sb = h.prepareBatch("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid, updated_by) VALUES (:p, :m, :o, :k, :q, :u, :by) " +
+                "ON CONFLICT (programme_id, month, outlet_id, sku_id) DO UPDATE SET qty_base = EXCLUDED.qty_base, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
+            campSku.forEach { r -> sb.bind("p", c.campaignIds.getValue(r.programme!!)).bind("m", r.month).bind("o", c.outletIds.getValue(r.outlet!!)).bind("k", c.skuIds.getValue(r.sku!!)).bind("q", r.qty!!).bind("u", uuid).bind("by", p.userId).add() }
+            if (campSku.isNotEmpty()) sb.execute()
             AuditWriter.write(h, p, "route_kpi_target", uuid.toString(), "upload", null, buildJsonObject {
-                put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size); put("total_kpi_alloc_mtk", brand.sumOf { it.alloc!! } + month.sumOf { it.alloc!! })
+                put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size); put("campaign_rows", camp.size); put("campaign_sku_rows", campSku.size); put("total_kpi_alloc_mtk", brand.sumOf { it.alloc!! } + month.sumOf { it.alloc!! })
             }, reason, call.requestId)
-            buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", brand.size + month.size + prog.size); put("replayed", false) }
+            buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", brand.size + month.size + prog.size + camp.size + campSku.size); put("replayed", false) }
         }
     }
 }

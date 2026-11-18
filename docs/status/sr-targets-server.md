@@ -2,8 +2,9 @@
 
 ## HANDOVER (read first; updated each push)
 
-- **State 2026-11-18:** slice N-2 pushed (no migration). `SrTargets` (backend/sync) fills `targets`, `achievement_mtd`, `calendar`; `SkuProgress` in shared/rules; contract 1.22.0 provisional (`docs/requests/contract-sr-targets.md`); D-TKPI-01..04. Local: shared:rules, shared:contract, backend:sync, `SrTargetsBundleTest` green (PG16 via ARON_TEST_PG_URL). Not run locally: full backend:app (CI), oasdiff, redocly.
-- **Next:** N-5, then N-8, then N-3 (migrations from V0230 provisional).
+- **State 2026-11-18 (end of slices):** N-2, N-5, N-8, N-3 all built and pushed (see `docs/requests/contract-sr-targets.md` for the wire, DECISIONS D-TKPI-01..08). Provisional: contract 1.22.0, migrations V0230 (KPI), V0231 (star), V0232 (campaign). Local tests green per slice (shared:rules, shared:contract, backend:sync, masterdata KPI upload, app bundle tests per slice, ContractConformance, AuthzAudit); full backend:app not run locally (CI shards it). Pushes cancel the running lane CI (concurrency), so push once per slice and wait.
+- **NOT DONE (reported to the lead):** the admin web tab for the KPI/programme/campaign uploads (the API and contract exist, no page, rule 4 open); the `dw.v_*` views for the new tables (need a dw view contract bump, contended); CPR achieved, achieved KPI and KPI today (owner definitions Q-F, Q-G); zone (TSO/AMO) bundles are not covered by a test; a fleet-size run of the new bundle queries (pilot queries are indexed month reads).
+- **Next:** wait for the lane CI of the last push; read failures from the log; then the web admin tab if the lead wants it in this lane.
 - **Provisional numbers:** contract 1.22.0 (lead gives the final), migrations from V0230 (lead renumbers; they must not run outside lane CI).
 - **Source branch read for the needs:** `docs/requests/sr-programmes-server-needs.md` on `lane/android-sr-programmes` (items N-2, N-3, N-5, N-8; N-1, N-4, N-6, N-7 are the Loyalty lane's).
 

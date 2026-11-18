@@ -41,5 +41,11 @@ Same no-double-count rule as N-2: figures are through `through_date` (the bundle
 
 Phone recomputation: the same ratios are `shared/rules` `StarProgress` (PADS = STD/EWD, Projection = PADS x WD, Achievement = Projection/Target, LMADS = LMS/LMWD, Growth = PADS/LMADS - 1); the phone may recompute with its local memos on top of `std` only when it keeps the same exact rules; the server snapshot is the oracle. `std` and `lms` are in the programme unit (base units divided by the programme's unit divisor); the phone must add its local sold base quantity divided by the same divisor, which the snapshot does not send (it is in `programme.rules.unit_divisor`; the phone lane can ask for it as a member if it recomputes).
 
-## Later slice (not built yet)
-N-3 `RouteSnapshot.campaigns`, additive and optional, written here when built.
+## Slice N-3 (built): outlet campaign target and sales (screen 21)
+
+| Where | Change | Notes |
+|---|---|---|
+| `RouteSnapshot.campaigns[]` (`RouteCampaign`, optional, absent when none) | New | One per outlet of the route that has a campaign target for the month in an active `campaign` programme (max 2,000): `outlet_id`, `programme_id`, `label_en`, `label_bn`, `month`, `through_date`, `as_of`, `std` and `memo` (`CampaignFigure`: `target`, `achieved`, `remaining`, integers; STD in base units, the STD target rounded half up) and `skus[]` (`CampaignSku`: `sku_id`, `target_qty_base`, `sold_qty_base`, max 100). The phone builds the category totals (cigarette, lighter, match) and the percent from the SKU rows with the SKU category it already has; percent = basis points of the sums, never a mean of row percents. Memo achieved is the distinct memos of the outlet with a campaign-SKU line. |
+| `PUT /v1/admin/route-kpi-targets` | New optional `campaign_rows` (outlet_code, programme_code, month, std_target Decimal3, memo_target) and `campaign_sku_rows` (outlet_code, programme_code, month, sku_code, qty_base) | Active `campaign` programmes only; outlets by code; all or none; same idempotency record. |
+
+Same no-double-count rule: server figures are through `through_date`; the phone adds its own memos of the outlet by UUID.
