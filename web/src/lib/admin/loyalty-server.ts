@@ -66,6 +66,25 @@ const EnrolBody = z.object({
   }).strict()).min(1).max(20_000),
   change_reason: REASON,
 }).strict();
+const AdjBody = z.object({
+  request_uuid: UUID,
+  outlet_id: z.number().int().min(1),
+  points: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0, { message: "zero" }),
+  reason: REASON,
+  expires_on: DAY.nullable().optional(),
+  allow_overdraw: z.boolean().optional(),
+}).strict();
+const AdjBatch = z.object({
+  batch_uuid: UUID,
+  dry_run: z.boolean(),
+  change_reason: REASON,
+  allow_overdraw: z.boolean().optional(),
+  rows: z.array(z.object({
+    outlet_id: z.number().int().min(1),
+    points: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0, { message: "zero" }),
+    expires_on: DAY.nullable().optional(),
+  }).strict()).min(1).max(20_000),
+}).strict();
 const GIFT_COMMON = {
   request_uuid: UUID,
   name_en: z.string().min(1).max(120),
@@ -136,6 +155,26 @@ export async function handleEnrolments(req: NextRequest, id: string): Promise<Ne
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   if (parsed.data.rows.some((r) => r.programme_id !== Number(id))) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows/programme_id", code: "invalid" }] }));
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/enrolments", { params: { path: { id: Number(id) } }, body: parsed.data }))));
+}
+
+/** POST /api/bff/admin/loyalty/{id}/adjustments: postProgrammeAdjustment (one signed ledger row; idempotent by request_uuid). Writers only. */
+export async function handleAdjustPost(req: NextRequest, id: string): Promise<NextResponse> {
+  if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
+  const g = await gate(req, "programme");
+  if (g.res) return g.res;
+  const parsed = AdjBody.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
+}
+
+/** PUT /api/bff/admin/loyalty/{id}/adjustments: putProgrammeAdjustments (dry_run true = preview, nothing written; false = the all-or-nothing apply). */
+export async function handleAdjustPut(req: NextRequest, id: string): Promise<NextResponse> {
+  if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
+  const g = await gate(req, "programme");
+  if (g.res) return g.res;
+  const parsed = AdjBatch.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
 }
 
 /** POST /api/bff/admin/loyalty/gifts: createGift. Super Admin only (Q3 default). */
