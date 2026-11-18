@@ -23,3 +23,18 @@ PendingGiftVerification:
       type: integer
       minimum: 0
       maximum: 50
+    units_captured:
+      type: array
+      maxItems: 50
+      uniqueItems: true
+      items:
+        type: integer
+        minimum: 1
+        maximum: 50
+      description: 'From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending,
+        at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift,
+        from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server
+        that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in
+        neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count:
+        it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone
+        offers exactly the open units. Same bound and snapshot as the rest of the section.'

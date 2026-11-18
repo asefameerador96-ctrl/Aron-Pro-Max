@@ -1,5 +1,6 @@
 // Server-side reads of the loyalty screens (portal-loyalty-web), typed from the generated contract 1.13.0 (a drift fails tsc). Every
 // read goes through the session token; the API derives the reach from it. getProgramme and getGift serve the detail reads.
+import type { Schemas } from "@/contract/types";
 import { apiClient, outcome } from "@/lib/api/client";
 import type { Enrolment, Gift, Programme, ProgrammeVersion } from "./loyalty";
 
@@ -29,4 +30,11 @@ export async function loadEnrolments(token: string, id: number, cursor?: string)
 export async function loadGifts(token: string, programmeId?: number): Promise<Loaded<Gift[]>> {
   const r = await outcome(apiClient(token).GET("/v1/admin/gifts", { params: { query: { programme_id: programmeId } } }));
   return r.ok ? { ok: true, data: r.data.items } : fail(r.status);
+}
+
+export type LedgerEntry = Schemas["LedgerEntry"];
+/** One page of the points ledger of a programme (newest first), cut to the caller's reach by the API; `next` is the cursor of the following page. */
+export async function loadLedger(token: string, id: number, cursor?: string): Promise<Loaded<Page<LedgerEntry>>> {
+  const r = await outcome(apiClient(token).GET("/v1/admin/programmes/{id}/ledger", { params: { path: { id }, query: { limit: PAGE_SIZE, cursor } } }));
+  return r.ok ? { ok: true, data: { items: r.data.items, next: r.data.next_cursor } } : fail(r.status);
 }

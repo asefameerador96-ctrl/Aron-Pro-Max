@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.platform.AsthaQuarter
 import com.aktcl.aron.backend.sync.BundleProgrammes
+import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -179,7 +180,7 @@ class AsthaBundleSectionTest {
 
     @Test
     fun achievementIsServerSideInBaseUnitsAndMilliTakaWithVoidedSupersededAndFreeLinesOut() {
-        val rows = assertNotNull(section(setOf(outletA, outletB)))["astha_targets"]!!.jsonArray.map { it.jsonObject }
+        val rows = assertNotNull(section(setOf(outletA, outletB)))["astha_targets"]!!.jsonArray.map { it.jsonObject }.filter { it.str("month") == today.toString().substring(0, 7) }   // the quarter's other months are read in the quarter test
         val brandRow = rows.single { it.str("outlet_id") == outletA.toString() && it.str("brand_id") == brand.toString() }
         assertEquals("120.500", brandRow.str("std_target")); assertEquals((3 * pack).toString() + ".000", brandRow.str("std_achieved"))
         assertEquals("500000", brandRow.str("value_target_mtk")); assertEquals((3 * pack * 100).toString(), brandRow.str("value_achieved_mtk"))
@@ -299,17 +300,36 @@ class AsthaBundleSectionTest {
     }
 
     @Test
-    fun theBundleCarriesOnlyTheCurrentMonthEnrolledOutletsAndNoAllZeroRow() {
-        val rows = assertNotNull(section(setOf(outletA, outletB, outletC, outletD)))["astha_targets"]!!.jsonArray.map { it.jsonObject }
+    fun theBundleCarriesTheWholeQuarterEnrolledOutletsAndNoAllZeroRow() {
+        val sec = assertNotNull(section(setOf(outletA, outletB, outletC, outletD)))
+        val rows = sec["astha_targets"]!!.jsonArray.map { it.jsonObject }
         assertTrue(rows.none { it.str("outlet_id") == outletD.toString() }, "an outlet with no active enrolment sends no row")
         assertTrue(rows.none { it.str("outlet_id") == "null" || it["outlet_id"] is JsonNull }, "the all-zero route row is cut")
-        assertTrue(rows.all { it.str("month") == today.toString().substring(0, 7) }, "only the month of the business date")
-        assertTrue(rows.none { it.str("memo_target") == "77" })
-        assertEquals("false", assertNotNull(section(setOf(outletA)))["astha_truncated"]!!.toString())
-        // The quarter read (listAsthaTargets) keeps every month and every row.
+        val quarter = AsthaQuarter.of(today, 1).months.map { it.toString().substring(0, 7) }
+        assertTrue(rows.all { it.str("month") in quarter }, "only months of the quarter of the business date")
+        assertTrue(rows.any { it.str("memo_target") == "77" }, "N-1: a row of ANOTHER month of the quarter is sent now (it is the quarter's, enrolled outlet A)")
+        assertEquals(rows.mapNotNull { it.str("month") }.sorted(), rows.mapNotNull { it.str("month") }, "rows come in month order")
+        assertEquals("false", sec["astha_truncated"]!!.toString()); assertEquals("[]", sec["astha_truncated_months"]!!.toString())
+        // The quarter read (listAsthaTargets) keeps every month and every row, including the unenrolled outlet's.
         val q = AsthaQuarter.of(today, 1)
         val all = world.fresh.db.jdbi.withHandle<List<JsonObject>, Exception> { h -> BundleProgrammes.asthaTargets(h, listOf(route), listOf(outletA, outletD), q, java.time.Instant.EPOCH) }
         assertTrue(all.any { it.str("memo_target") == "77" } && all.any { it.str("outlet_id") == outletD.toString() })
+    }
+
+    @Test
+    fun theLoyaltyEntriesCarryTheOutletsTierAndAnInactiveBrandCarriesItsName() {
+        val sec = assertNotNull(section(setOf(outletA, outletB)))
+        val tiers = sec["loyalty"]!!.jsonArray.map { it.jsonObject }.associate { it.str("outlet_id") to it.str("tier_code") }
+        assertEquals("gold", tiers[outletA.toString()]); assertEquals("silver", tiers[outletB.toString()])
+        // an active brand is named by the bundle's product nodes: its rows carry no name (no extra bytes); an INACTIVE brand's row carries it
+        val rowA = sec["astha_targets"]!!.jsonArray.map { it.jsonObject }.first { it.str("outlet_id") == outletA.toString() && it.str("brand_id") == brand.toString() }
+        assertTrue(!rowA.containsKey("brand_name"), "an active brand's row has no name member")
+        val inactive = world.one("INSERT INTO app.product_node (level, parent_id, code, name, name_bn, status) SELECT 'brand', parent_id, 'INACT-BR', 'Retired Brand', 'অবসরপ্রাপ্ত', 'inactive' FROM app.product_node WHERE id = $brand RETURNING id")
+        world.exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '${today.withDayOfMonth(1)}', $route, $outletB, $inactive, 5, 0)")
+        try {
+            val r = assertNotNull(section(setOf(outletB)))["astha_targets"]!!.jsonArray.map { it.jsonObject }.single { it.str("brand_id") == inactive.toString() }
+            assertEquals("Retired Brand", r.str("brand_name")); assertEquals("অবসরপ্রাপ্ত", r.str("brand_name_bn"))
+        } finally { world.exec("DELETE FROM app.astha_target WHERE brand_id = $inactive; DELETE FROM app.product_node WHERE id = $inactive") }
     }
 
     @Test
@@ -361,5 +381,31 @@ class AsthaBundleSectionTest {
         assertEquals("2026-Q1", q("2026-11-12", 11).label); assertEquals("2026-11-01", q("2026-11-12", 11).months.first().toString())
         assertEquals("2027-Q2", q("2027-01-05", 10).label) // an October-start year: Oct-Dec is its Q1, Jan-Mar its Q2, labelled by the year the quarter starts in
         assertEquals(listOf("2026-10-01", "2026-11-01", "2026-12-01"), q("2026-12-31", 1).months.map { it.toString() })
+    }
+
+    /** D-LOY-API-35: a portal points adjustment, posted through the REAL endpoint of the production wiring, is the plain sum in the bundle's `loyalty[].balance_points` (a debit past zero shows `overdrawn`). */
+    @Test
+    fun aPortalPointsAdjustmentIsInTheBundleBalanceAndOverdrawnShowsBelowZero() {
+        fun row(): JsonObject = assertNotNull(section(setOf(outletB)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single()
+        val before = row().str("balance_points")!!.toLong()
+        fun post(points: Int, request: String = java.util.UUID.randomUUID().toString(), allow: Boolean = false) = with(world) {
+            var out: Pair<Int, String>? = null
+            withApi {
+                val r = postWeb("superadmin1001", "/v1/admin/programmes/$programme/adjustments", """{"request_uuid":"$request","outlet_id":$outletB,"points":$points,"allow_overdraw":$allow,"reason":"Opening balance loaded by the office"}""")
+                out = r.status.value to r.bodyAsText()
+            }
+            out!!
+        }
+        val rq = java.util.UUID.randomUUID().toString()
+        assertEquals(201, post(25, rq).first, "first post")
+        assertEquals(before + 25, row().str("balance_points")!!.toLong())
+        assertEquals(200, post(25, rq).first, "a resend is a replay")
+        assertEquals(before + 25, row().str("balance_points")!!.toLong(), "a resend never doubles the points")
+        assertEquals(409, post(-(before.toInt() + 40)).first, "a debit below zero needs allow_overdraw")
+        assertEquals(201, post(-(before.toInt() + 40), allow = true).first)
+        row().also { assertEquals("-15", it.str("balance_points")); assertEquals("true", it.str("overdrawn")) }
+        assertEquals(201, post(15).first)
+        row().also { assertEquals("0", it.str("balance_points")); assertEquals("false", it.str("overdrawn")) }
+        assertEquals(3L, world.one("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND action = 'post' AND entity_id IN (SELECT source_id FROM app.loyalty_ledger WHERE outlet_id = $outletB AND programme_id = $programme)"))
     }
 }
