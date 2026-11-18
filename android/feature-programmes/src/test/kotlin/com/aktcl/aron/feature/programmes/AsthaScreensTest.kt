@@ -34,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null, quarterState: Map<String, QuarterFetch> = emptyMap(), onQuarter: ((String) -> Unit)? = null, startMonth: Int? = 1, unknownOrder: Int = 0) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null, quarterState: Map<String, QuarterFetch> = emptyMap(), onQuarter: ((String) -> Unit)? = null, startMonth: Int? = 1, unknownOrder: Int = 0, heldForReview: Int = 0) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography, quarterState = quarterState, onQuarter = onQuarter, startMonth = startMonth, unknownOrder = unknownOrder) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography, quarterState = quarterState, onQuarter = onQuarter, startMonth = startMonth, unknownOrder = unknownOrder, heldForReview = heldForReview) } } }
         compose.waitForIdle()
     }
 
@@ -306,5 +306,16 @@ class AsthaScreensTest {
         choose("বছর", "2026"); choose("কোয়ার্টার", "Q-1 (Jan-Mar)")
         compose.onNodeWithTag(AsthaTags.month("2026-01")).performClick(); compose.waitForIdle()
         compose.onNodeWithText("এই মাসের তথ্য এখনো এই ফোনে নেই। একবার ইন্টারনেটে যুক্ত হলে নামবে।").assertIsDisplayed()
+    }
+
+    @Test fun countLinesUseTheRightPluralForm() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), awaiting = 1)
+        compose.onNodeWithText("1 memo is awaiting confirmation; the figures update after the next sync.").assertExists()
+    }
+
+    @Test fun theHeldForReviewLineNamesTheMemosThePhoneNeverAdds() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), heldForReview = 2)
+        compose.onNodeWithTag(AsthaTags.HELD_REVIEW).assertIsDisplayed()
+        compose.onNodeWithText("2 memos of this phone are held for review by the server and are not in these figures.").assertExists()
     }
 }

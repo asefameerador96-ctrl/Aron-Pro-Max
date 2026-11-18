@@ -37,6 +37,7 @@ import com.aktcl.aron.core.ui.R as CoreR
 
 object LoyaltyTags {
     const val AWAITING = "loyalty_awaiting"
+    const val HELD = "loyalty_held"
     const val MENU_REDEEM = "loyalty_menu_redeem"
     const val MENU_POINTS = "loyalty_menu_points"
     const val OUTLET = "loyalty_outlet"
@@ -72,6 +73,8 @@ fun OutletPointsScreen(
     balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long = { _, _, b -> b },
     /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them. */
     awaiting: Int = 0,
+    /** The points of this phone's redemptions held for review or unanswered, by outlet and programme: already subtracted from the balance, named so the SR knows the balance may be lower than the true one. */
+    heldPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -83,7 +86,7 @@ fun OutletPointsScreen(
             }
             return@Column
         }
-        if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_redemptions, com.aktcl.aron.rules.Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(LoyaltyTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (awaiting > 0) Text(countText(R.plurals.pg_awaiting_redemptions, awaiting, locale), Modifier.testTag(LoyaltyTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val chosen = withPoints.firstOrNull { it.outletId == outletId }
         AronDropdown(withPoints, chosen, { outletId = it.outletId }, { it.nameLine }, Modifier.testTag(LoyaltyTags.OUTLET), placeholder = stringResource(R.string.pg_loyalty_pick_outlet))
         if (chosen == null) return@Column
@@ -101,6 +104,7 @@ fun OutletPointsScreen(
                     Text(data.title(c, locale), Modifier.weight(1f), style = TextStyle(fontSize = 17.sp, color = look.purple, fontWeight = FontWeight.Bold))
                     Text(LoyaltyModel.pointsText(balance, locale, unit), style = TextStyle(fontSize = 18.sp, color = look.ink, fontWeight = FontWeight.Bold))
                 }
+                heldPointsOf(chosen.outletId, c.programmeId).takeIf { it > 0 }?.let { held -> Text(stringResource(R.string.pg_held_points, LoyaltyModel.pointsText(held, locale, unit)), Modifier.testTag(LoyaltyTags.HELD), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium)) }
                 if (PointsBalance.overdrawn(balance)) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(LoyaltyTags.overdrawn(c.programmeId)), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
                 Line(R.string.pg_loyalty_expiring, LoyaltyModel.pointsText(c.expiringPoints, locale, unit))
                 Line(R.string.pg_loyalty_expiry, LoyaltyModel.dateText(c.expiryDate, locale))

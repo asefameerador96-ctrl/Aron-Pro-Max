@@ -99,8 +99,6 @@ object FigureRuleB {
     fun show(
         server: ServerFigure?, memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?,
         memoIn: (LocalMemo) -> Boolean = { true }, lineIn: (LocalMemoLine) -> Boolean = { true },
-        /** True for the per-SKU `achievement_mtd.memo_count`: a memo counts when it has ANY line of the SKU (a free-only memo gives quantity 0 and count 1); false (brand, campaign): a SALE line of the figure is needed. */
-        countOnAnyLine: Boolean = false,
     ): Shown? {
         server ?: return null
         val d = delta(memos.filter(memoIn), ackedBeforeRequest, month, throughDate)
@@ -110,7 +108,7 @@ object FigureRuleB {
         fun put(m: LocalMemo, sign: Int) {
             if (m.memoKind != "sale") return
             val ls = m.lines.filter { it.lineKind == "sale" && lineIn(it) }
-            if (ls.isEmpty() && !(countOnAnyLine && m.lines.any(lineIn))) return
+            if (ls.isEmpty()) return
             qty += sign * ls.sumOf { it.qtyBase }; mtk += sign * ls.sumOf { it.grossMtk }; count += sign
             ls.groupBy { it.packFactor }.forEach { (f, l) -> packs[f] = ((packs[f] ?: 0L) + sign * l.sumOf { it.qtyBase }).coerceAtLeast(0L) }
         }

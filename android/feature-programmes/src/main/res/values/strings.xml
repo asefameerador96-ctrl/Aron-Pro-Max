@@ -25,11 +25,18 @@
     <string name="pg_month_loading">Loading this month…</string>
     <string name="pg_month_failed">This month could not be loaded. Try again when the connection is better.</string>
     <string name="pg_retry">Try again</string>
-    <string name="pg_order_unknown">%1$s acknowledged memos of this phone are not in these figures until the next full download.</string>
+    <plurals name="pg_order_unknown">
+        <item quantity="one">%1$s acknowledged memo of this phone is not in these figures until the next full download.</item>
+        <item quantity="other">%1$s acknowledged memos of this phone are not in these figures until the next full download.</item>
+    </plurals>
     <string name="pg_quarter_unknown">The quarter start month is not known on this phone, so the months it holds are listed as they are.</string>
     <string name="pg_as_of_open">Data as of %1$s; the month was still open then</string>
-    <string name="pg_held_review">%1$s memos of this phone are held for review by the server and are not in these figures.</string>
+    <plurals name="pg_held_review">
+        <item quantity="one">%1$s memo of this phone is held for review by the server and is not in these figures.</item>
+        <item quantity="other">%1$s memos of this phone are held for review by the server and are not in these figures.</item>
+    </plurals>
     <string name="pg_as_of_unsettled">Data as of %1$s; some memos of this month were not confirmed then</string>
+    <string name="pg_held_points">Held for review: %1$s</string>
     <string name="pg_no_programme">No Astha programme is active for your routes.</string>
     <string name="pg_as_of">Data as of %1$s</string>
     <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>
@@ -118,8 +125,14 @@
     <string name="pg_photo_checking">Checking geofencing…</string>
     <string name="pg_photo_saved">Photo saved on this phone. It uploads compressed, on Wi-Fi first.</string>
     <string name="pg_photo_failed">The photo could not be saved. Try again.</string>
-    <string name="pg_awaiting_memos">%1$s memos are awaiting confirmation; the figures update after the next sync.</string>
-    <string name="pg_awaiting_redemptions">%1$s redemptions are awaiting confirmation; the points update after the next sync.</string>
+    <plurals name="pg_awaiting_memos">
+        <item quantity="one">%1$s memo is awaiting confirmation; the figures update after the next sync.</item>
+        <item quantity="other">%1$s memos are awaiting confirmation; the figures update after the next sync.</item>
+    </plurals>
+    <plurals name="pg_awaiting_redemptions">
+        <item quantity="one">%1$s redemption is awaiting confirmation; the points update after the next sync.</item>
+        <item quantity="other">%1$s redemptions are awaiting confirmation; the points update after the next sync.</item>
+    </plurals>
     <string name="pg_photo_locked">The server has locked this gift, no photo is needed: %1$s</string>
     <string name="pg_campaign_none">No redeemed campaign gift is waiting for a photo.</string>
     <string name="pg_campaign_progress">%1$s of %2$s photos taken</string>

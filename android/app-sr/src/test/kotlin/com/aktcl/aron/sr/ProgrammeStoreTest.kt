@@ -430,6 +430,66 @@ class ProgrammeStoreTest {
         assertEquals(true, store.readSideOf(listOf("2026-10"), 9)["2026-10"]!!.clean) // another route's memos are not this route's
         // acknowledged AFTER the last bundle request: still outstanding for a read
         db.outboxDao().applyAck(p, "acked", null, 3L, "2026-10-06T07:00:00.000Z")
-        assertEquals(2, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.awaiting) // the quarantined one and the one acknowledged after the last bundle request
+        assertEquals(1, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.awaiting) // only the quarantined one: a memo acknowledged before the read was sent is committed and inside the read (never overstated)
+    }
+
+    @Test fun aPendingEditOfAMemoOfTheMonthIsOutstandingEvenWhenItIsDatedInALaterMonth() = runTest {
+        val original = captureMemo("2026-10-05"); db.outboxDao().applyAck(original, "acked", null, 1L, "2026-10-05T06:00:00.000Z")
+        assertEquals(true, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.clean)
+        // the SR edits it on 3 November: the edit is a new memo that supersedes the original, dated in November, still pending
+        val edit = ClientIds.newUuid(); val visit = ClientIds.newUuid(); val line = ClientIds.newUuid()
+        val m = meta.meta(7).copy(businessDate = "2026-11-03", capturedAt = "2026-11-03T05:00:00.000Z")
+        val fix = com.aktcl.aron.core.database.entity.GeoFixEntity(ClientIds.newUuid(), visit, "visit_open", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordVisitOpen(com.aktcl.aron.core.database.entity.VisitEntity(visit, m, "sr_call", 501, "2026-11-03T05:00:00.000Z", 1, true, null, fix.clientUuid, "in_range", 18.4, 100, 50, "master", 23.7, 90.4, "sale_allowed"), fix)
+        val editFix = fix.copy(clientUuid = ClientIds.newUuid(), ownerClientUuid = edit, purpose = "memo_edit")
+        repo.recordSale(com.aktcl.aron.core.database.repo.SaleCapture(
+            com.aktcl.aron.core.database.entity.MemoEntity(edit, m, visit, 501, "sr334001-261103-001", "sale", "2026-11-03T05:05:00.000Z", "2026-11-03", "outlet", 84_000, 0, 0, 0, 0, 84_000, 84_000, 0, false, null, 1, 0, 0, supersedesClientUuid = original, editReasonCode = "wrong_qty", editFixClientUuid = editFix.clientUuid),
+            listOf(com.aktcl.aron.core.database.entity.MemoLineEntity(line, m, edit, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)),
+            editFix = editFix,
+        ))
+        val side = store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!
+        assertEquals(false, side.clean); assertEquals(1, side.awaiting)
+        db.outboxDao().applyAck(edit, "acked", null, 2L, "2026-11-03T06:00:00.000Z") // acknowledged before a LATER read: committed, not outstanding
+        assertEquals(true, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.clean)
+    }
+
+    // ---- a held or unanswered REDEMPTION stays subtracted (conservative), once, with a note ----
+    private suspend fun redemptionOf(points: Int): String { val u = ClientIds.newUuid(); assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(u, points / 200))); return u }
+    private suspend fun balance(bundle: Long) = com.aktcl.aron.feature.programmes.PointsBalance.of(bundle, store.redemptions(), 10, 3, store.ackedBeforeRequest())
+    private suspend fun held() = com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(store.redemptions(), 10, 3, store.ackedBeforeRequest())
+
+    @Test fun aHeldRedemptionIsSubtractedOnceAndNamed() = runTest {
+        val r = redemptionOf(400)
+        db.outboxDao().applyAck(r, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        assertEquals(100L, balance(500)); assertEquals(400L, held()) // no recorded order: still subtracted once
+        sendBundleRequest() // the request leaves while it is held: the bundle may or may not carry its deduction
+        assertEquals(100L, balance(500)); assertEquals(400L, held())
+    }
+
+    @Test fun acceptedOnTheServerBeforeTheBundleButHeardAfterTheRequestIsStillSubtractedOnceNotTwice() = runTest {
+        val r = redemptionOf(400)
+        db.outboxDao().applyAck(r, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        sendBundleRequest()
+        db.outboxDao().applyResolution(r, "acked", "resolved_accepted", "2026-11-18T05:20:00.000Z") // heard after the request
+        assertEquals(100L, balance(500)) // 500 (it may already carry the deduction) minus the held 400, conservative, not 500 - 400 - 400
+        assertEquals(400L, held())
+        // the bundle that follows carries it and the set holds it: nothing subtracted any more
+        sendBundleRequest()
+        assertEquals(500L, balance(500)); assertEquals(0L, held())
+    }
+
+    @Test fun aDiscardedHeldRedemptionGivesItsPointsBack() = runTest {
+        val r = redemptionOf(400)
+        db.outboxDao().applyAck(r, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyResolution(r, "rejected", "resolved_rejected", "2026-11-18T05:20:00.000Z")
+        assertEquals(500L, balance(500)); assertEquals(0L, held())
+    }
+
+    @Test fun aRedemptionSentButUnansweredWhenTheRequestLeftIsSubtractedOnceAndNamed() = runTest {
+        val r = redemptionOf(200)
+        db.outboxDao().applyAck(r, "pending", "transport_timeout", null, "2026-11-18T05:10:00.000Z") // a failed attempt: sent, no answer
+        sendBundleRequest()
+        assertEquals("uncertain", store.redemptions().single().state)
+        assertEquals(300L, balance(500)); assertEquals(200L, held())
     }
 }

@@ -180,14 +180,6 @@ class FigureRuleBTest {
 
     // ---- the server's definitions of a memo count (request file, "Definitions") ----
 
-    @Test fun aFreeOnlyMemoCountsOncePerSkuInAchievementMtdButAddsNoQuantityAndNotInTheBrandCount() {
-        val free = memoOf(Rec("f", "2026-11-05", 0), "pending").copy(lines = listOf(LocalMemoLine(sku, "free", 3, 20, 0)))
-        val perSku = FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(free), emptySet(), month, "2026-11-04", countOnAnyLine = true)!!
-        assertEquals(0L, perSku.qtyBase); assertEquals(1L, perSku.memoCount)
-        val brand = FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(free), emptySet(), month, "2026-11-04")!!
-        assertEquals(0L, brand.memoCount) // brand and campaign counts need a sale line
-    }
-
     @Test fun aBundleOnTheFirstOfTheMonthAddsEveryMemoOfTheMonthWhateverItsAckState() {
         // bundle date 2026-11-01: through_date is 2026-10-31, the server figure of November is empty
         val a = Rec("a", "2026-11-01", 4); val b = Rec("b", "2026-11-01", 6)

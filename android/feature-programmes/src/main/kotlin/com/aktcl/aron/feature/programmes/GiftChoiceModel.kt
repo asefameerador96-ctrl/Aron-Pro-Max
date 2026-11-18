@@ -96,5 +96,5 @@ object GiftChoiceModel {
         PlannedRecord("gift_choice", uuid, uuid, 0, ProgrammePayloads.giftChoice(outletId, giftId, quarter))
 
     /** The Astha quarter key `YYYY-Qn` of a Dhaka business date `YYYY-MM-DD` for a quarter start month (cfg.astha.quarter_start_month): the shared function, the server's own naming. */
-    fun quarterOf(businessDate: String, startMonth: Int = 1): String = AsthaQuarters.of(businessDate, startMonth)?.key ?: businessDate.take(4) + "-Q1"
+    fun quarterOf(businessDate: String, startMonth: Int = 1): String? = AsthaQuarters.of(businessDate, startMonth)?.key // null for a malformed date: the caller refuses the save, never a guessed quarter
 }

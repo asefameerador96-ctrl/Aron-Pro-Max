@@ -124,9 +124,9 @@ fun AsthaTargetScreen(
     var shop by rememberSaveable { mutableStateOf(initialShop) }
     var query by rememberSaveable { mutableStateOf("") }
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_memos, com.aktcl.aron.rules.Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(AsthaTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
-        if (heldForReview > 0) Text(stringResource(R.string.pg_held_review, com.aktcl.aron.rules.Formats.integer(heldForReview.toLong(), locale)), Modifier.testTag(AsthaTags.HELD_REVIEW), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
-        if (unknownOrder > 0) Text(stringResource(R.string.pg_order_unknown, com.aktcl.aron.rules.Formats.integer(unknownOrder.toLong(), locale)), Modifier.testTag(AsthaTags.ORDER_UNKNOWN), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (awaiting > 0) Text(countText(R.plurals.pg_awaiting_memos, awaiting, locale), Modifier.testTag(AsthaTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (heldForReview > 0) Text(countText(R.plurals.pg_held_review, heldForReview, locale), Modifier.testTag(AsthaTags.HELD_REVIEW), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (unknownOrder > 0) Text(countText(R.plurals.pg_order_unknown, unknownOrder, locale), Modifier.testTag(AsthaTags.ORDER_UNKNOWN), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         if (shops != null) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(look.rowAlt).padding(3.dp)) {
                 SegTab(stringResource(R.string.pg_tab_route), tab == 0, { tab = 0 }, Modifier.weight(1f).testTag(AsthaTags.TAB_ROUTE))
@@ -246,7 +246,7 @@ private fun ColumnScope.MonthTables(
     }
     // this phone's own memos of the month that were outstanding when the read was sent: not in the figure, shown until a newer read is stored
     data.fetchedMonths[m]?.awaiting?.takeIf { it > 0 && !data.fetchedMonths.getValue(m).isFinal(m) }?.let { n ->
-        Text(stringResource(R.string.pg_awaiting_memos, com.aktcl.aron.rules.Formats.integer(n.toLong(), locale)), Modifier.testTag(AsthaTags.MONTH_AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        Text(countText(R.plurals.pg_awaiting_memos, n, locale), Modifier.testTag(AsthaTags.MONTH_AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
     }
     if (data.cutShort(m)) Text(stringResource(R.string.pg_truncated), Modifier.testTag(AsthaTags.TRUNCATED), style = small(look.inkMuted))
 }

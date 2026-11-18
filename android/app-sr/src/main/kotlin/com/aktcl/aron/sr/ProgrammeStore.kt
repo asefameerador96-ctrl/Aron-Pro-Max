@@ -185,22 +185,29 @@ class ProgrammeStore(
 
     /**
      * What this phone holds of each of [months] for [routeId] at the moment an online read of the quarter is SENT (call it under the user's sync lock, like the bundle's set): [ReadSide.clean] is
-     * false when it holds a memo of the month that is pending, sent and unanswered, quarantined, or acknowledged after its last bundle request (not in the recorded set; only for months inside
-     * the set's window, older acknowledged memos were certainly committed before any read); [ReadSide.awaiting] counts those sale memos, which are NOT in the read's figure.
+     * false when it holds a memo of the month that is still pending, sent and unanswered, or quarantined, or a pending, unanswered or held EDIT (or void) of a memo of the month, whatever date the edit
+     * carries; a memo ACKNOWLEDGED before the read was sent is committed on the server and so inside the read, it is not outstanding (never overstated). [ReadSide.awaiting] counts those sale memos,
+     * which are NOT in the read's figure.
      */
     suspend fun readSideOf(months: List<String>, routeId: Long): Map<String, ReadSide> = withContext(Dispatchers.IO) {
-        val acked = ackedBeforeRequest()
-        val windowStart = ReferenceRepository(db).businessDate()?.let { runCatching { java.time.LocalDate.parse(it).withDayOfMonth(1).minusMonths(2).toString() }.getOrNull() }
+        val outstandingStates = setOf("pending", "in_flight", "quarantined", "uncertain")
         months.associateWith { m ->
-            val outstanding = memosOfMonth(m).filter { it.voidOf == null && (it.routeId == null || it.routeId == routeId) }.filter {
-                when (it.state) {
-                    "pending", "in_flight", "quarantined", "uncertain" -> true
-                    // acknowledged after the last bundle request (or with no recorded order: unknown, so outstanding) and inside the set's window
-                    "acked" -> (acked == null || it.uuid !in acked) && (windowStart == null || it.businessDate >= windowStart)
-                    else -> false // refused: gone
-                }
-            }
+            val inMonth = memosOfMonth(m).filter { it.voidOf == null && (it.routeId == null || it.routeId == routeId) }
+            val uuids = inMonth.map { it.uuid }.toSet()
+            // an edit of a memo of this month may be dated in a LATER month (a cross-month edit): look at every memo from this month on that supersedes one of them
+            val edits = memosFrom(m).filter { it.supersedes in uuids && (it.routeId == null || it.routeId == routeId) && it.uuid !in uuids }
+            val outstanding = (inMonth + edits).filter { it.state in outstandingStates }.distinctBy { it.uuid }
             ReadSide(clean = outstanding.isEmpty(), awaiting = outstanding.count { it.memoKind == "sale" })
+        }
+    }
+
+    /** Every memo of this phone dated in [month] or later, with its outbox state (used to find edits that carry a later date than the memo they replace). */
+    private suspend fun memosFrom(month: String): List<LocalMemo> = withContext(Dispatchers.IO) {
+        val orderKnown = ackedBeforeRequest() != null
+        val unsure = if (orderKnown) uncertain() else db.outboxDao().sentUnanswered().toSet()
+        db.captureDao().memosBetween("$month-01", "9999-12-31").map { m ->
+            val ob = db.outboxDao().byClientUuid(m.clientUuid)
+            LocalMemo(m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, readState(m.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = true), ob?.ackedAt, emptyList(), m.meta.routeId, m.memoKind)
         }
     }
 

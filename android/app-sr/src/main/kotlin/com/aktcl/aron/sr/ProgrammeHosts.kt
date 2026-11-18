@@ -143,7 +143,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
         RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions))
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) })
     }
 }
 
@@ -163,7 +163,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), cashRateMtk = page.cashRateMtk,
+            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = page.cashRateMtk ?: 0L
@@ -200,13 +200,14 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
             val today = day.programmes.metaFor(0L).businessDate // the trusted clock's Dhaka date, the one the record carries (never the bundle's date)
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.ackedBeforeRequest())
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth).orEmpty(), day.programmes.ackedBeforeRequest()) // an unreadable date gives no quarter: saves are refused, never guessed
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var local by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.local) }
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, ackedBeforeRequest = page.ackedBefore, onSubmit = { outletId, giftId ->
+            if (page.quarter.isEmpty()) return@GiftSelectionScreen SaveOutcome.REFUSED // no readable business date: no quarter to save under
             val shop = page.shops.firstOrNull { it.outletId == outletId }
             val out = day.programmes.saveProgramme(day.programmes.metaFor(shop?.routeId ?: 0L), listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
             when (out) {
@@ -239,7 +240,7 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             val outlets = readShopOutlets(day)
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
-            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftPhotos(), GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, startMonth))
+            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftPhotos(), GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, startMonth).orEmpty())
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
@@ -255,7 +256,7 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             canSubmit = cs.complete && !cs.geoMocked, checking = cs.busy,
             onSubmit = { outletId, giftId, assignmentId ->
                 val photo = cs.photo; val fix = cs.fix
-                if (photo == null || fix == null || !fix.isOk) return@GiftPhotoScreen SaveOutcome.REFUSED
+                if (photo == null || fix == null || !fix.isOk || page.quarter.isEmpty()) return@GiftPhotoScreen SaveOutcome.REFUSED
                 val uuid = day.programmes.giftPhotoAttempt { GiftPhotoModel.asthaUuid(assignmentId, page.quarter, it) }.uuid // fixed by the subject (a retry, a kill or a second tap is one record); a refused record is followed by a new attempt
                 val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
                 val plan = GiftPhotoModel.planAstha(outletId, giftId, assignmentId, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)

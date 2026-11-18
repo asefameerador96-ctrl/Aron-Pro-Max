@@ -36,7 +36,7 @@ class LoyaltyScreensTest {
     private fun show(language: AppLanguage, data: LoyaltyData?, outlet: Long? = null, onRedeem: ((Long) -> Unit)? = null, local: List<LocalRedemption> = emptyList()) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet, balanceOf = PointsBalance.function(local, emptySet())) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet, balanceOf = PointsBalance.function(local, emptySet()), heldPointsOf = { o, pr -> LocalRedeemed.heldPoints(local, o, pr, emptySet()) }) } } }
         compose.waitForIdle()
     }
 
@@ -88,5 +88,17 @@ class LoyaltyScreensTest {
         show(AppLanguage.EN, LoyaltyModel.parse(json), outlet = 10, local = listOf(LocalRedemption(10, 3, 120, "2026-04-17T05:00:00.000Z", "pending")))
         compose.onNodeWithText("-10 Pts").assertExists()
         compose.onNodeWithTag(LoyaltyTags.overdrawn(3)).assertIsDisplayed()
+    }
+
+    @Test fun aHeldRedemptionIsSubtractedAndTheHeldAmountIsNamed() {
+        show(AppLanguage.EN, LoyaltyModel.parse(json), outlet = 10, local = listOf(LocalRedemption(10, 3, 100, "t", "quarantined", uuid = "h")))
+        compose.onNodeWithText("10 Pts").assertExists() // the bundle says 110: 110 - 100 held, subtracted once
+        compose.onNodeWithTag(LoyaltyTags.HELD).assertIsDisplayed()
+        compose.onNodeWithText("Held for review: 100 Pts").assertExists()
+    }
+
+    @Test fun noHeldLineWhenNothingIsHeld() {
+        show(AppLanguage.EN, LoyaltyModel.parse(json), outlet = 10, local = listOf(LocalRedemption(10, 3, 20, "t", "pending", uuid = "p")))
+        assertEquals(0, compose.onAllNodesWithTag(LoyaltyTags.HELD).fetchSemanticsNodes().size)
     }
 }

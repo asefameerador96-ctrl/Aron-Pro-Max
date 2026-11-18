@@ -66,15 +66,21 @@ object LocalRedeemed {
     fun awaiting(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" }
 
     /**
-     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold, by the phone's own ORDER and no clock: [ackedBeforeRequest] is the set of record uuids the
-     * phone had an acknowledgement for when it SENT the request for the held bundle. A redemption the server refused counts for nothing; one in that set is inside the bundle's balance and does
-     * not count; every other one (still on the phone, or acknowledged after the request) counts. With no recorded order every non-refused one counts (the balance is never overstated).
+     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot be known to hold, by the phone's own ORDER and no clock: [ackedBeforeRequest] is the set of record
+     * uuids the phone had an acknowledgement for when it SENT the request for the held bundle. A redemption the server refused counts for nothing (its points come back). One in that set is inside
+     * the bundle's balance and does not count. Every other one counts: still on the phone, acknowledged after the request, and ALSO one the server holds for review or that was unanswered when the
+     * request left: the bundle may or may not already carry its deduction, and the SR must never spend points that may already be spent, so it is subtracted (the shown balance can be LOWER than
+     * the true one while a redemption is held, never higher; [heldPoints] names the amount). With no recorded order every non-refused one counts.
      */
     fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
-        // `uncertain` (sent, answer lost, so the bundle may already hold it) is neither subtracted nor ignored silently: the points page says it is awaiting confirmation
-        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" && it.state != "uncertain" }
+        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" }
             .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }
             .sumOf { it.points }
+
+    /** The points of redemptions the server holds for review or never answered (state `quarantined` or `uncertain`) and that the recorded order does not place inside the bundle: subtracted above, named on the screens. */
+    fun heldPoints(records: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
+        records.filter { it.outletId == outletId && it.programmeId == programmeId && (it.state == "quarantined" || it.state == "uncertain") }
+            .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }.sumOf { it.points }
 }
 
 /**

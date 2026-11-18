@@ -25,11 +25,18 @@
     <string name="pg_month_loading">এই মাসের তথ্য আনা হচ্ছে…</string>
     <string name="pg_month_failed">এই মাসের তথ্য আনা যায়নি। সংযোগ ভালো হলে আবার চেষ্টা করুন।</string>
     <string name="pg_retry">আবার চেষ্টা করুন</string>
-    <string name="pg_order_unknown">এই ফোনের নিশ্চিত হওয়া %1$sটি মেমো পরের সম্পূর্ণ ডাউনলোডের আগে এই হিসাবে নেই।</string>
+    <plurals name="pg_order_unknown">
+        <item quantity="one">এই ফোনের নিশ্চিত হওয়া %1$sটি মেমো পরের সম্পূর্ণ ডাউনলোডের আগে এই হিসাবে নেই।</item>
+        <item quantity="other">এই ফোনের নিশ্চিত হওয়া %1$sটি মেমো পরের সম্পূর্ণ ডাউনলোডের আগে এই হিসাবে নেই।</item>
+    </plurals>
     <string name="pg_quarter_unknown">কোয়ার্টার শুরুর মাস এই ফোনে জানা নেই, তাই ফোনে থাকা মাসগুলো যেমন আছে তেমন দেখানো হচ্ছে।</string>
     <string name="pg_as_of_open">ডেটা: %1$s; তখনো মাসটি শেষ হয়নি</string>
-    <string name="pg_held_review">এই ফোনের %1$sটি মেমো সার্ভারে পর্যালোচনার জন্য আটকে আছে এবং এই হিসাবে নেই।</string>
+    <plurals name="pg_held_review">
+        <item quantity="one">এই ফোনের %1$sটি মেমো সার্ভারে পর্যালোচনার জন্য আটকে আছে এবং এই হিসাবে নেই।</item>
+        <item quantity="other">এই ফোনের %1$sটি মেমো সার্ভারে পর্যালোচনার জন্য আটকে আছে এবং এই হিসাবে নেই।</item>
+    </plurals>
     <string name="pg_as_of_unsettled">ডেটা: %1$s; তখন এই মাসের কিছু মেমো নিশ্চিত হয়নি</string>
+    <string name="pg_held_points">পর্যালোচনার জন্য আটকে আছে: %1$s</string>
     <string name="pg_no_programme">আপনার রুটে কোনো আস্থা কর্মসূচি চালু নেই।</string>
     <string name="pg_as_of">ডেটা: %1$s</string>
     <string name="pg_truncated">এই ফোনে শুধু প্রথম সারিগুলো আছে। বাকিটা দেখতে ওয়াই-ফাইয়ে সিঙ্ক করুন।</string>
@@ -118,8 +125,14 @@
     <string name="pg_photo_checking">জিওফেন্সিং পরীক্ষা করা হচ্ছে</string>
     <string name="pg_photo_saved">ছবি এই ফোনে সংরক্ষিত হয়েছে। সংকুচিত হয়ে, আগে ওয়াই-ফাইয়ে আপলোড হবে।</string>
     <string name="pg_photo_failed">ছবি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
-    <string name="pg_awaiting_memos">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</string>
-    <string name="pg_awaiting_redemptions">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</string>
+    <plurals name="pg_awaiting_memos">
+        <item quantity="one">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</item>
+        <item quantity="other">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</item>
+    </plurals>
+    <plurals name="pg_awaiting_redemptions">
+        <item quantity="one">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
+        <item quantity="other">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
+    </plurals>
     <string name="pg_photo_locked">সার্ভার এই উপহারটি লক করেছে, ছবির প্রয়োজন নেই: %1$s</string>
     <string name="pg_campaign_none">ছবির অপেক্ষায় কোনো রিডিম করা ক্যাম্পেইন উপহার নেই।</string>
     <string name="pg_campaign_progress">%2$sটির মধ্যে %1$sটি ছবি তোলা হয়েছে</string>
