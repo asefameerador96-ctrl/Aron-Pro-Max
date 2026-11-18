@@ -410,3 +410,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 126 built (Android only): gates-2 45178efa + programmes d762c3aa1 + parity-sr-1 b08c3782; D-LEAD-TRAIN-126-01; GO to the integrator. Follow-ups after landing: A-GATE8 fixes the SR outlet-request photo claim before the gate (pre-existing) + Gradle input gaps; A-PROG3 fixes the 3-chain fallback double count; P-SR1b lows round; P-SR2b (7924c154c, 31 goldens changed, 16 conflicts resolved) merges INT again, then my review.
 - T-KPI3: confirming check of bfd2efd1d = 4 blocking (month-end anchor, RouteCalendar text, caches inside the snapshot, two stale doc lines); waiting for its next head.
 - CI note: web summary job failed twice on run 44372290509 with GitHub artifact storage 503 (egress limit); other runs passed; watch on the train run.
+
+## 2026-11-18 20:05 UTC
+
+- **Train 126 LANDED** (Android only): INT 0baf2b4dd. Lane ci 44379713186 green (19 rows, no re-run, no 503), INT ci 44382424499 (#2507) green, deploy #366 skipped by design (nothing deployable changed), health stays on build 2c7ff3c1b. APK aron-release-signed-dev-2507 42,155,997 B (+16,184 B). 13 goldens added, none modified. Size gate: 10 warnings (sr +8.0..8.8 %, amo +9.4..10.5 % vs the 6 Nov baseline; fail line +15 %); growth looks real, not a stale baseline; A-INT3 asked for a breakdown (no baseline change).
+- T-KPI3 third pass on b79247502: 3 blocking (Star last month not cut at through, unclamped anchor text, count tests assert only a sum). L-A13 8e807fd1b: 1 blocking (race latch reads server-wide pg_locks). Both sent.
+- After-landing rounds sent: A-GATE8 (SR outlet-request gate before photo claims + inputs; 7550ce14 fixture clock), A-PROG3 (3-chain fallback double count), P-SR1b (lows), P-SR2b (merge INT, then my review).
+- Not walked on a device: trains 121..126.
