@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * V0203 to V0206 (round 1.20.0, D-SV2-15 and D-SV2-16): `attendance_event.closed_by` and the memo username widening to three characters.
+ * V0201 to V0203 (train 117, D-SV2-15 and D-SV2-18): `attendance_event.closed_by`, the one-check-out-per-day index swap and the validation. The memo username widening to three characters is the master-data train's (V0197, V0198); these tests keep proving it works with this round.
  * The first test migrates a database that holds data to V0191, adds a check-in, a check-out, a 4-character SR and a sale abort, then applies the round and
  * checks that every old row survives with the default and that all five constraints end up validated. The second checks what the new column and the widened CHECKs accept and refuse.
  */
@@ -48,27 +48,37 @@ class CheckoutClosedByV0203Test {
         }
     }
 
-    /** The widened CHECKs are NOT VALID after V0204 (also on the PARTITIONED memo parent) and validated by V0206; the lock scope of each migration is its own tables only. */
+    /**
+     * The constraint states along the way, on a database that holds the master-data train (V0195..V0200) and this round (V0201..V0203): the memo username CHECKs of V0197 are NOT VALID on
+     * app_user and on the PARTITIONED memo parent (and memo_void, sale_abort) until V0198 validates them; this round's closed_by CHECK is NOT VALID after V0201 and validated by V0203.
+     */
     @Test
-    fun theWideningIsNotValidAfterV0204OnThePartitionedMemoTableAndValidAfterV0206() {
+    fun theConstraintsAreNotValidUntilTheirValidateMigrationAndMemoIsPartitioned() {
         val db = TestPostgres.createDatabase()
         try {
-            Flyway.configure().configuration(db.flyway().configuration).target("204").load().migrate()
+            val memoStates = "SELECT string_agg(conrelid::regclass::text || ':' || convalidated::text, ',' ORDER BY conrelid::regclass::text) FROM pg_constraint WHERE conname IN " +
+                "('app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN " +
+                "('app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"
+            val closedBy = "SELECT string_agg(convalidated::text, ',') FROM pg_constraint WHERE conname = 'attendance_event_closed_by_check'"
+            Flyway.configure().configuration(db.flyway().configuration).target("197").load().migrate()
             db.connect().use { c ->
-                val states = "SELECT string_agg(conrelid::regclass::text || ':' || convalidated::text, ',' ORDER BY conrelid::regclass::text) FROM pg_constraint WHERE conname IN " +
-                    "('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN " +
-                    "('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"
-                assertEquals("app.app_user:false,app.attendance_event:false,app.memo:false,app.memo_void:false,app.sale_abort:false", c.scalar(states))
+                assertEquals("app.app_user:false,app.memo:false,app.memo_void:false,app.sale_abort:false", c.scalar(memoStates))
                 assertEquals("true", c.scalar("SELECT (count(*) > 0)::text FROM pg_inherits WHERE inhparent = 'app.memo'::regclass"), "memo is partitioned")
                 assertEquals("true", c.scalar("SELECT (pg_get_constraintdef(oid) LIKE '%{2,31}%')::text FROM pg_constraint WHERE conrelid = 'app.memo'::regclass AND conname = 'memo_memo_no_check'"))
+                assertEquals(null, c.scalar(closedBy), "this round has not run yet")
                 // A NOT VALID check already judges new rows.
                 assertFailsWith<SQLException> { c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('ab', 'QA', 'SR')") }
                 c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('abc', 'QA', 'SR')")
             }
+            Flyway.configure().configuration(db.flyway().configuration).target("201").load().migrate()
+            db.connect().use { c ->
+                assertEquals("false", c.scalar(closedBy), "NOT VALID after V0201")
+                assertEquals("attendance_event_once", c.scalar("SELECT indexname FROM pg_indexes WHERE tablename = 'attendance_event' AND indexname LIKE 'attendance_event_once%'"), "the swap is V0202")
+            }
             db.flyway().migrate()
             db.connect().use { c ->
-                // V0205 (the index swap) is idempotent: run its text again on the migrated database, nothing changes and nothing fails (a hand re-run, a pre-created index).
-                val swap = java.io.File(System.getProperty("aron.migrations"), "V0205__attendance_once_rep_and_phone.sql").readText()
+                // V0202 (the index swap) is idempotent: run its text again on the migrated database, nothing changes and nothing fails (a hand re-run, a pre-created index).
+                val swap = java.io.File(System.getProperty("aron.migrations"), "V0202__attendance_once_rep_and_phone.sql").readText()
                 c.exec(swap); c.exec(swap)
                 assertEquals("attendance_event_once_phone,attendance_event_once_rep", c.scalar("SELECT string_agg(indexname, ',' ORDER BY indexname) FROM pg_indexes WHERE tablename = 'attendance_event' AND indexname LIKE 'attendance_event_once%'"))
                 assertEquals("5", c.scalar("SELECT count(*) FROM pg_constraint WHERE convalidated AND conname IN ('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN ('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"))
@@ -89,7 +99,7 @@ class CheckoutClosedByV0203Test {
                 assertEquals("rep", c.scalar("SELECT closed_by FROM app.attendance_event WHERE kind = 'check_in'"), "the default")
                 c.exec(attendance("check_out", "sr1001", "phone"))
                 assertEquals("phone", c.scalar("SELECT closed_by FROM app.attendance_event WHERE kind = 'check_out'"))
-                // Uniqueness (V0205): one rep row per user, day and kind; one phone close per user and day; a phone close and a rep check-out of the same day coexist.
+                // Uniqueness (V0202): one rep row per user, day and kind; one phone close per user and day; a phone close and a rep check-out of the same day coexist.
                 c.exec(attendance("check_out", "sr1001", "rep"))
                 assertEquals("phone,rep", c.scalar("SELECT string_agg(closed_by, ',' ORDER BY closed_by) FROM app.attendance_event WHERE kind = 'check_out'"))
                 assertFailsWith<SQLException>("a second rep check-out") { c.exec(attendance("check_out", "sr1001", "rep")) }

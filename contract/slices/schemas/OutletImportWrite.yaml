@@ -18,3 +18,17 @@ OutletImportWrite:
       type: boolean
     change_reason:
       $ref: '#/components/schemas/ChangeReason'
+    location_confirmed:
+      type: boolean
+      default: false
+      description: '1.18.0. The owner''s switch at load time: true marks every imported pin inside Bangladesh as
+        confirmed (no first-visit correction); false loads them as the master pin, unconfirmed. A pin outside Bangladesh
+        is never confirmed. A re-run with true confirms pins loaded earlier with false.'
+    on_row_error:
+      type: string
+      enum:
+      - reject_batch
+      - skip_rows
+      default: reject_batch
+      description: 1.18.0. reject_batch (the earlier behaviour) refuses the whole commit on any row error; skip_rows
+        writes the good rows and lists the skipped ones.

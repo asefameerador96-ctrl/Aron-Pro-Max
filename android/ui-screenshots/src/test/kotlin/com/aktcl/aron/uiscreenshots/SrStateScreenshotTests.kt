@@ -156,7 +156,7 @@ class SrStateScreenshotTests {
         HomeContent(
             header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), freshness, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", dayState),
-            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("সিগারেট", 12_000, 9_800, stick), HomeStockLine("লাইটার", 400, 25, piece), HomeStockLine("ম্যাচ", 400, 394, dozen))),
+            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("সিগারেট", 600, 490, com.aktcl.aron.core.ui.entryUnitLabel("packet"), 0, 7, stick), HomeStockLine("লাইটার", 16, 1, com.aktcl.aron.core.ui.entryUnitLabel("box"), 0, 10, piece), HomeStockLine("ম্যাচ", 400, 394, dozen))),
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine("ম্যাচ", Formats.money(141_000, locale)), HomeMoneyLine("লাইটার", Formats.money(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),

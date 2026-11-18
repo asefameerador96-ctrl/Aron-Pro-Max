@@ -99,12 +99,12 @@ class GeoRecheckHandler : RecordHandler {
                    o.location_basis, o.lat, o.lng, o.provisional_lat, o.provisional_lng,
                    (SELECT ordinal FROM app.role_def WHERE role = :role) AS role_ord,
                    hl.lat AS h_lat, hl.lng AS h_lng, hl.basis AS h_basis,
-                   EXISTS (SELECT 1 FROM app.outlet_location_history x WHERE x.outlet_id = o.id) AS has_history
+                   EXISTS (SELECT 1 FROM app.outlet_location_history x WHERE x.outlet_id = o.id AND x.basis <> 'candidate') AS has_history
             FROM app.outlet o
             JOIN app.zone z ON z.id = o.zone_id JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id
             LEFT JOIN app.geo_class_def g ON g.geo_class = o.geo_class
             LEFT JOIN LATERAL (SELECT lat, lng, basis FROM app.outlet_location_history
-                               WHERE outlet_id = o.id AND valid_from <= :at ORDER BY valid_from DESC, id DESC LIMIT 1) hl ON true
+                               WHERE outlet_id = o.id AND valid_from <= :at AND basis <> 'candidate' ORDER BY valid_from DESC, id DESC LIMIT 1) hl ON true
             WHERE o.id = :o
             """.trimIndent(),
         ).bind("o", v.outletId).bind("role", v.role).bind("at", OffsetDateTime.ofInstant(v.capturedAt, ZoneOffset.UTC)).mapToMap().one()
@@ -192,7 +192,7 @@ class GeoRecheckHandler : RecordHandler {
     }
 }
 
-/** Worker job: [GeoRecheckHandler.sweep] every [everyMin] minutes over the last [days] Dhaka business dates. */
+/** Worker job: [GeoRecheckHandler.sweep] (visits) and [GiftPhotoGeoRecheck.sweep] (gift photos) every [everyMin] minutes over the last [days] Dhaka business dates. */
 class GeoRecheckSweepJob(
     private val db: Database,
     private val clock: AronClock = AronClock.SYSTEM,
@@ -202,13 +202,17 @@ class GeoRecheckSweepJob(
 ) {
     private val log = LoggerFactory.getLogger("aron.geo")
     private val handler = GeoRecheckHandler()
+    private val photos = GiftPhotoGeoRecheck(handler)
 
     /** Up to [limit] rows, [BATCH] per short transaction. */
     fun tick(): Int {
         var stored = 0
         repeat(limit / BATCH) {
             val now = clock.now()
-            stored += db.jdbi.inTransaction<Int, Exception> { h -> handler.sweep(h, LocalDate.ofInstant(now, ZoneId.of("Asia/Dhaka")), days, BATCH, now) }
+            stored += db.jdbi.inTransaction<Int, Exception> { h ->
+                val today = LocalDate.ofInstant(now, ZoneId.of("Asia/Dhaka"))
+                handler.sweep(h, today, days, BATCH, now) + photos.sweep(h, today, days, BATCH, now)   // visits, then gift hand-over photos (V0193)
+            }
         }
         return stored
     }

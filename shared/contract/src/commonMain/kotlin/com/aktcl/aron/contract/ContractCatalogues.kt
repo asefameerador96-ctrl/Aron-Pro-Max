@@ -239,6 +239,8 @@ enum class CodeListKey(val wire: String) {
     @SerialName("zero_sale_reason") ZERO_SALE_REASON("zero_sale_reason"),
     /** Contract 1.14.0 (SRM-A-27): why no outlet photo was taken at call start. */
     @SerialName("call_photo_skip") CALL_PHOTO_SKIP("call_photo_skip"),
+    /** Contract 1.18.0 (D-MD-22): the six cluster types of the field, with Bangla labels. */
+    @SerialName("cluster_type") CLUSTER_TYPE("cluster_type"),
 }
 
 /** Why a photo was taken (docs/24 s4.11). */
@@ -349,6 +351,10 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("ticket_state_invalid") TICKET_STATE_INVALID("ticket_state_invalid", AckStatus.REJECTED, false),
     /** Contract 1.10.0 (D-TSO-MAN-19): a ticket whose issue type is not an active ticket_issue_type code on its business date. */
     @SerialName("issue_type_unknown") ISSUE_TYPE_UNKNOWN("issue_type_unknown", AckStatus.REJECTED, false),
+    /** Contract 1.17.0: a gift choice that arrived after the hand-over photo locked the outlet's Astha gift (the phone shows the reason). */
+    @SerialName("gift_locked") GIFT_LOCKED("gift_locked", AckStatus.REJECTED, false),
+    /** Contract 1.17.0: the chosen gift is not for the outlet's tier. */
+    @SerialName("gift_not_for_tier") GIFT_NOT_FOR_TIER("gift_not_for_tier", AckStatus.REJECTED, false),
     /** Contract 1.16.0: a `cluster_create` request whose name repeats a cluster of the zone or another open request of it; the detail names which, the SR uses that cluster instead. */
     @SerialName("cluster_name_exists") CLUSTER_NAME_EXISTS("cluster_name_exists", AckStatus.REJECTED, false),
 }

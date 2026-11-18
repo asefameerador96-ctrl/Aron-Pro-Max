@@ -45,5 +45,7 @@ RecordType:
   - consent_accept
   - support_ticket
   - support_ticket_event
+  - gift_choice
   description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except
-    where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).
+    where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18);
+    `gift_choice` from 1.15.0 (the Astha gift an outlet chose, SRM-B-66).

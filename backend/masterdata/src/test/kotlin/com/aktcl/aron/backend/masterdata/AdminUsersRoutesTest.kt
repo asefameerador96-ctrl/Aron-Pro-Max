@@ -113,6 +113,39 @@ class AdminUsersRoutesTest {
         assertEquals("0", env.sql("SELECT count(*) FROM app.app_user WHERE username = 'newtso2'"))
     }
 
+    /**
+     * B2 (push 1b): the installed app throws on a 3-character memo username, so the server refuses to create an SR/AMO user of fewer than 4 characters (or move
+     * a short-named user into SR/AMO) until cfg.release.short_rep_id_version_code names a release and the minimum app version has reached it.
+     */
+    @Test
+    fun aThreeCharacterRepIdNeedsTheAppReleaseThatAcceptsIt() = env.app {
+        suspend fun post(body: String) = sendA1(HttpMethod.Post, "/admin/users", admin, body)
+        fun setDefault(key: String, json: String) = env.sql("UPDATE app.cfg_key SET default_value = '$json'::jsonb WHERE key = '$key' RETURNING 1")
+        val minBefore = env.sql("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.release.min_version_code'")!!
+        try {
+            val refused = post(userBody("ab1", "SR"))
+            assertEquals(HttpStatusCode.BadRequest, refused.status)
+            assertTrue(refused.bodyAsText().contains("needs_app_release") && refused.bodyAsText().contains("cfg.release.short_rep_id_version_code"), refused.bodyAsText())
+            assertEquals(HttpStatusCode.BadRequest, post(userBody("ab2", "AMO")).status)
+            // a 3-character TSO is not a memo user: allowed; moving it into SR is refused like a create
+            val tso = (post(userBody("ab3", "TSO")).also { assertEquals(HttpStatusCode.Created, it.status) }.objA1()["user"] as JsonObject).lng("id")
+            val v = env.sql("SELECT version FROM app.app_user WHERE id = $tso")!!.toInt()
+            val move = sendA1(HttpMethod.Patch, "/admin/users/$tso", admin, """{"role":"SR","change_reason":"Moved to the sales force"}""", ifMatch = v)
+            assertEquals(HttpStatusCode.BadRequest, move.status, move.bodyAsText())
+            // the release is named but the minimum SR app is older: still refused
+            setDefault("cfg.release.short_rep_id_version_code", "40")
+            setDefault("cfg.release.min_version_code", """{"sr": 39, "amo": 40, "tso": 1}""")
+            assertEquals(HttpStatusCode.BadRequest, post(userBody("ab1", "SR")).status)
+            assertEquals(HttpStatusCode.Created, post(userBody("ab2", "AMO")).status)
+            setDefault("cfg.release.min_version_code", """{"sr": 40, "amo": 40, "tso": 1}""")
+            assertEquals(HttpStatusCode.Created, post(userBody("ab1", "SR")).status)
+            assertEquals(HttpStatusCode.Created, post(userBody("abcd", "SR")).status)
+        } finally {
+            setDefault("cfg.release.short_rep_id_version_code", "0")
+            setDefault("cfg.release.min_version_code", minBefore)
+        }
+    }
+
     @Test
     fun patchUserVersionConflictDisableBumpsScopeVersionAndRevokesFullGrants() = env.app {
         val created = sendA1(HttpMethod.Post, "/admin/users", admin, userBody("patchme1", "SR")).objA1()["user"] as JsonObject
@@ -293,6 +326,24 @@ class AdminUsersRoutesTest {
         assertAboveGrant(sendA1(HttpMethod.Post, "/admin/users/${uid("superadmin1001")}/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_password","reason":"Support reset a superadmin"}"""), "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/admin/users/${uid("admin1001")}/credentials", superadmin, """{"action":"reset_mfa","reason":"Admin lost the authenticator"}""").status)
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/users/$sr/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_mfa","reason":"Support may not reset MFA"}""").status)
+    }
+
+    /** D-MD-03 (M03): the portal API stores a route with no visit plan; the explicit form is kind none with mask 0, and nothing in between. */
+    @Test
+    fun aRouteWithNoVisitPlanIsStoredAsKindNoneWithMaskZero() = env.app {
+        val zid = zone("Z-MIR")
+        val c = sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP1","name":"No plan","zone_id":$zid,"kind":"sr","visit_kind":"none","visit_days_mask":0}""")
+        assertEquals(HttpStatusCode.Created, c.status)
+        val o = c.objA1()
+        assertEquals("none", o.strA1("visit_kind")); assertEquals(0, o.lng("visit_days_mask").toInt())
+        assertEquals("none|0", env.sql("SELECT visit_kind || '|' || visit_days_mask FROM app.route WHERE code = 'RT-NP1'"))
+        for (bad in listOf(""""visit_kind":"none","visit_days_mask":5""", """"visit_kind":"daily","visit_days_mask":0""")) {
+            assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP2","name":"Bad","zone_id":$zid,"kind":"sr",$bad}""").status, bad)
+        }
+        // a mask of 0 without a kind IS the explicit no-plan form
+        val implicit = sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP4","name":"Implicit","zone_id":$zid,"kind":"sr","visit_days_mask":0}""")
+        assertEquals(HttpStatusCode.Created, implicit.status); assertEquals("none", implicit.objA1().strA1("visit_kind"))
+        assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP3","name":"Range","zone_id":$zid,"kind":"sr","visit_days_mask":-1}""").status)
     }
 
     @Test

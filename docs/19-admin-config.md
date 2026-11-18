@@ -912,15 +912,15 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.loyalty.expiry_days` | S | int | none (April league expires 2026-05-07; the rule is unknown) | 0 to 365 | G | P | S | srv | C3 | Nightly expiry ledger row. unknown; confirm | D-41; G-man-040 | 5a |
 | `cfg.loyalty.redemption_requires_photo` | S | bool | true | n/a | G | P | B | both | C1 | "Gift Verify" photo | docs/06 | 5a |
 | `cfg.loyalty.redemption_roles` | S | list<role> | [sr, amo] | subset | G | P | B | both | C1 | | docs/06 | 5a |
-| `cfg.loyalty.negative_balance_policy` | S | enum(accept_and_flag, reject) | accept_and_flag | enum | G | P | B | srv | C2 | Accept when the device's balance was sufficient; reject `insufficient_points` when it knew it was not | D-266 | 5a |
+| `cfg.loyalty.negative_balance_policy` | S | enum(accept_and_flag) (reject refused until built, V0192) | accept_and_flag | enum | G | P | B | srv | C2 | Accept when the device's balance was sufficient; reject `insufficient_points` when it knew it was not | D-266 | 5a |
 | `cfg.loyalty.manual_adjust_max_points` | S | int | 1000 (A) | 0 to 100,000 | G | FIN | B | srv | C2 | Above it an adjustment needs two persons | F-ADM-035 | 5a |
 | `cfg.astha.program_active` | S | bool | true (A) | n/a | G W | P | B | both | C2 | unknown; confirm: Q13 | D-41 | 5a |
 | `cfg.astha.quarter_start_month` | S | int | 1 (Q-4 = Oct to Dec) | 1 to 12 | G | P | S | both | C3 | FD | docs/06 | 5a |
 | `cfg.astha.tier_attribution` | S | enum(enrolment, sale_date) | enrolment (A) | enum | G | P | S | srv | C1 | Which tier a sale counts for when an outlet changes tier mid-quarter; the report shows the choice. Added at the editorial merge from doc 16 s10 | G-16-19; G-analyst-13 | 5a |
-| `cfg.astha.tiers` | S | content(app.sub_channel) | Platinum, Gold, Diamond, Silver | master data | G | P | B | both | C1 | Sub-channels of channel Astha | D-258 | 5a |
+| `cfg.astha.tiers` | S | content(app.sub_channel) | Gold, Diamond, Platinum, Titanium (Silver retired, inactive) | master data | G | P | B | both | C1 | Sub-channels of channel Astha | D-258 | 5a |
 | `cfg.astha.brands_in_scope` | S | list<brand_id> | Maxim, Black Diamond, Abul Bidi Style, Marise, Avon, Supreme, Special Abul Bidi, Abul Bidi Gold | ids exist | G W | P | B | both | C1 | | docs/06 | 5a |
 | `cfg.astha.gift_catalog` | S | content(app.gift_catalog) | Ceiling Fan (56 inch), 24 pcs Dinner Set, 27 pcs Dinner Set, by tier | n/a | G W | P | B | both | C1 | | G-man-047 | 5a |
-| `cfg.astha.gift_choice_roles` | S | list<role> | [tso] | subset | G | P | S | srv | C1 | The web Astha Gift Choice Panel | D-192 | 5a |
+| `cfg.astha.gift_choice_roles` | S | list<role> | [sr, tso] | subset | G | P | S | srv | C1 | The web Astha Gift Choice Panel | D-192 | 5a |
 | `cfg.astha.gift_choice_lock` | S | enum(none, on_sr_photo) | on_sr_photo (A) | enum | G | P | S | srv | C1 | Choice locks once the SR's photo exists. unknown; confirm: MQ-26 | D-192 | 5a |
 | `cfg.astha.one_photo_per_outlet` | S | bool | true | n/a | G | P | B | both | C1 | | docs/06 | 5a |
 | `cfg.astha.target_entry_roles` | S | list<role> | [admin, tso] | subset | G | P | S | srv | C2 | | docs/10 | 5a |
