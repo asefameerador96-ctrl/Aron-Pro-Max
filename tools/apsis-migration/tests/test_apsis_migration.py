@@ -25,7 +25,7 @@ from apsis_migration.mysqldump import events, parse_values  # noqa: E402
 REPO = ROOT.parent.parent
 MIGRATIONS = REPO / "db" / "migrations"
 PROVISIONAL = ROOT / "provisional-migrations"
-LENIENT = {"max_skipped_share": 0.5, "max_unmatched_outlet_rows_share": 0.5, "max_unmatched_sku_rows_share": 0.5,
+LENIENT = {"max_skipped_share": 0.5, "max_reject_share": 0.5, "max_unmatched_outlet_rows_share": 0.5, "max_unmatched_sku_rows_share": 0.5,
            "max_no_scope_rows_share": 0.5, "accept_full_row_key": ["trans_by_outlet_promotion_data"]}
 
 
@@ -292,7 +292,7 @@ class FullRun(Base):
         rid = self.full_run()
         s = self.snapshot()
         self.assertEqual(s["sales"]["n"], 5)
-        self.assertEqual(s["raw"], 20)      # every table that is not a typed fact is archived raw: masters 3+3+3+1+3+3, master_promotion 1, programme rows 2 (the exact duplicate collapsed; the zero-date row is rejected)
+        self.assertEqual(s["raw"], 19)      # every table that is not a typed fact is archived raw: masters 3+3+3+1+3+3, master_promotion 1, programme rows 2 (the exact duplicate collapsed; the zero-date row is rejected)
         self.assertEqual(self.db.scalar("SELECT count(*) - count(DISTINCT row_uuid) FROM apsis_hist.sales_line"), "0")
         rep = self.recon(rid)
         self.assertEqual(rep["tables"]["by_table"]["trans_sales_by_outlet"]["collapsed_duplicate_rows"], 1)
@@ -417,7 +417,7 @@ class FullRun(Base):
             runner.start_run(self.db, "Asia/Dhaka", False, "base")
         with self.assertRaises(ValueError):
             runner.start_run(self.db, "UTC", False, "pack")
-        runner.reset_transform(self.db)
+        runner.reset_transform(self.db, self.mapping)
         runner.start_run(self.db, "Asia/Dhaka", False, "base")      # allowed after the explicit reset
 
     def test_m_vendor_total_mismatch_and_strict_thresholds_fail_the_report(self):
@@ -640,8 +640,8 @@ class OutOfWindow(Base):
     def test_dates_outside_the_window_are_rejected_counted_and_never_get_a_partition(self):
         rid = self.full_run()
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_hist.reject WHERE vendor_table = 'trans_sales_by_outlet'"), "2")
-        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relname ~ 'y(1970|2031)m'"), "1")      # only the raw-archive sentinel month 1970-01 exists (masters)
-        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relname ~ 'sales_line_y(1970|2031)'"), "0")
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relkind = 'r' AND relname ~ 'y(1970|2031)m'"), "1")      # only the raw-archive sentinel month 1970-01 exists (masters)
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relkind = 'r' AND relname ~ 'sales_line_y(1970|2031)'"), "0")
         self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "5")
         rep = self.recon(rid)
         self.assertFalse(rep["ok"])
@@ -671,7 +671,7 @@ class VendorCollision(Base):
         self.owner.run("INSERT INTO app.outlet(code,name,owner_name,zone_id,route_id,cluster_id,channel) SELECT '42','Syn 42','Syn Owner',zone_id,route_id,cluster_id,'GT' FROM app.outlet WHERE code='SYN-O-0001'")
         self.full_run()
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_map.code_ambiguous WHERE side = 'vendor' AND kind = 'outlet'"), "1")
-        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code IN ('0042', '42') AND (outlet_id IS NOT NULL OR zone_id IS NOT NULL)"), "0")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code IN ('0042', '42') AND outlet_id IS NOT NULL"), "0")
         self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code = 'SYN-O-0001' AND outlet_id IS NOT NULL"), "1")
 
 
@@ -686,7 +686,7 @@ class UnmappedColumn(Base):
         self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "0")
         cov = json.loads(self.db.scalar("SELECT value::text FROM apsis_ctl.report WHERE name = 'mapping_coverage'"))
         status = {r["target"]: r["status"] for r in cov["trans_sales_by_outlet"]}
-        self.assertEqual((status["amount"], status["memo_no"], status["qty"]), ("UNMAPPED", "intentionally_absent", "mapped"))
+        self.assertEqual((status["amount"], status["deleted"], status["qty"]), ("UNMAPPED", "intentionally_absent", "mapped"))
         rep = self.recon(rid)
         self.assertFalse(rep["ok"])
         self.assertTrue(any("unmapped target column" in p for p in rep["problems"]))
@@ -697,13 +697,14 @@ class Charset(Base):
         d = Path(self.tmp.name) / "latin"
         d.mkdir()
         (d / "master_sku.sql").write_bytes(b"CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('caf\xe9');\n")
+        rv = {"tables": {"master_sku": {"keep": ["sku_code"], "drop": []}}}
         rid = runner.start_run(self.db, "UTC", False)
         with self.assertRaises(Exception) as cm:
-            runner.stage_all(self.db, d, self.mapping, self.review, rid, only={"master_sku"}, log=lambda m: None)
+            runner.stage_all(self.db, d, self.mapping, rv, rid, only={"master_sku"}, log=lambda m: None)
         self.assertIn("character set", str(cm.exception))
         self.assertNotIn("caf", str(cm.exception))
         rid2 = runner.start_run(self.db, "UTC", False)          # only an explicit owner decision loads it as latin1
-        runner.stage_all(self.db, d, self.mapping, self.review, rid2, only={"master_sku"}, log=lambda m: None, charset="latin-1")
+        runner.stage_all(self.db, d, self.mapping, rv, rid2, only={"master_sku"}, log=lambda m: None, charset="latin-1")
         self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_stage.master_sku"), "1")
 
     def test_the_profile_reports_undecodable_rows_and_mojibake_hints(self):

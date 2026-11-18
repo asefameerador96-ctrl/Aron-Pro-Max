@@ -126,5 +126,5 @@ COMMENT ON TABLE apsis_map.fill_log IS 'The only live-master write of the tool (
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA apsis_ctl, apsis_map TO apsis_migrator;
 GRANT TRUNCATE ON apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous TO apsis_migrator;
-GRANT SELECT ON apsis_ctl.setting TO apsis_migrator;
+REVOKE INSERT, UPDATE, DELETE ON apsis_ctl.setting FROM apsis_migrator;       -- the migrate role owns the settings; the job only reads them
 GRANT EXECUTE ON FUNCTION apsis_map.in_window(date), apsis_map.norm_code(text), apsis_map.mysql_date(text), apsis_map.mysql_ts(text, text), apsis_map.business_date(text, text), apsis_map.num(text) TO apsis_migrator;

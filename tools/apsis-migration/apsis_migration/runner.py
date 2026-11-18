@@ -419,7 +419,7 @@ def metrics_stage(db, table, chunk, mapping, qty_unit, has_date=False):
     extra = ""
     if canon == "sales":
         extra = (", 'qty_base', COALESCE(sum(round(COALESCE(apsis_map.num(qty::text),0) * CASE WHEN :'qu'='pack' THEN COALESCE((SELECT base_per_pack FROM apsis_map.sku_map k "
-                 "WHERE k.code_norm=apsis_map.norm_code(sku_code::text)),1) ELSE 1 END)) FILTER (WHERE apsis_map.in_window(_bd)),0), "
+                 "WHERE k.code_norm=apsis_map.norm_code(x.sku_code::text)),1) ELSE 1 END)) FILTER (WHERE apsis_map.in_window(_bd)),0), "
                  "'gross_mtk', COALESCE(sum(round(COALESCE(apsis_map.num(amount::text),0) * 1000)) FILTER (WHERE apsis_map.in_window(_bd)),0)")
     q = (f"SELECT jsonb_build_object('rows', count(*) FILTER (WHERE apsis_map.in_window(_bd)), 'hash', COALESCE(sum({h}::numeric) FILTER (WHERE apsis_map.in_window(_bd)),0), "
          f"'rejected', count(*) FILTER (WHERE NOT apsis_map.in_window(_bd)){extra}) FROM (SELECT c.*, {dexp} AS _bd FROM (SELECT DISTINCT ON (_row_uuid) * FROM {STAGE}.c_{canon} "
