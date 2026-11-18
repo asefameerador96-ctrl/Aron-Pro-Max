@@ -46,9 +46,9 @@ abstract class TeamPhoneCloseBase(private val phoneCloseIsMock: Boolean) {
         route, cu = java.util.UUID.randomUUID().toString(), secondsAgo = secondsAgo,
     )
 
-    private fun attendance(closedBy: String, lat: Double, mock: Boolean, secondsAgo: Long) = world.exec(
+    private fun attendance(closedBy: String, lat: Double, mock: Boolean, secondsAgo: Long, kind: String = "check_out") = world.exec(
         "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, closed_by) " +
-            "VALUES (gen_random_uuid(), gen_random_uuid(), DATE '${world.today()}', ${sr.userId}, TIMESTAMPTZ '${world.now.get().minusSeconds(secondsAgo)}', 1, 'check_out', 'ok', $lat, 90.36, 10, $mock, '$closedBy')",
+            "VALUES (gen_random_uuid(), gen_random_uuid(), DATE '${world.today()}', ${sr.userId}, TIMESTAMPTZ '${world.now.get().minusSeconds(secondsAgo)}', 1, '$kind', 'ok', $lat, 90.36, 10, $mock, '$closedBy')",
     )
 
     @Test
@@ -76,6 +76,12 @@ abstract class TeamPhoneCloseBase(private val phoneCloseIsMock: Boolean) {
             val b = me()
             assertEquals(1, b["mock_fixes_today"]!!.jsonPrimitive.int, b.toString())
             assertEquals(23.801, b["last_fix"]!!.jsonObject["lat"]!!.jsonPrimitive.double)
+            // POSITIVE CONTROL (lead follow-up): a newer NON-mock fix of the REP's own attendance row (a check-in: the once-per-day rule of V0202 allows one rep check-out per day, and this world has one already) DOES become the last location. Without it the two assertions above could also pass because attendance
+            // fixes were never read at all; with it, "the phone close's fix is not the last location" is proven by the closed_by filter alone.
+            attendance("rep", 23.997, mock = false, secondsAgo = 180, kind = "check_in")
+            val c = me()
+            assertEquals(23.997, c["last_fix"]!!.jsonObject["lat"]!!.jsonPrimitive.double, "a newer non-mock rep attendance fix is the last location: attendance fixes are read")
+            assertEquals(1, c["mock_fixes_today"]!!.jsonPrimitive.int, c.toString())
         }
     }
 }

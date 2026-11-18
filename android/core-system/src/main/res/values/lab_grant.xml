@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- X.509 SubjectPublicKeyInfo (base64) of the server's lab-grant signing key (docs/runbooks/lab-exemption.md). A PUBLIC key, not a secret.
+         Empty (the default): the app can never honour a lab exemption. The matching private key lives only on the server. -->
+    <string name="aron_lab_grant_public_key" translatable="false"></string>
+</resources>

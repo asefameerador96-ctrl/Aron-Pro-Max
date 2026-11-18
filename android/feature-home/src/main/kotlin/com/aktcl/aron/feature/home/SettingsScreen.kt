@@ -153,15 +153,6 @@ fun SettingsContent(
             val tiles = buildList<@Composable (Modifier) -> Unit> {
                 add { m -> LanguageTile(language, onLanguageSelect, m) }
                 onSupport?.let { go -> add { m -> AronTile(stringResource(R.string.set_support), painterResource(CoreR.drawable.aron_art_settings), go, m.testTag(SettingsTags.SUPPORT)) } }
-                onUpdateConfig?.let { run ->
-                    add { m ->
-                        AronTile(
-                            stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(CoreR.drawable.aron_art_settings),
-                            { if (!configBusy) { configRunning = true; scope.launch { try { configResult = run() } finally { configRunning = false } } } },
-                            m.testTag(SettingsTags.UPDATE_CONFIG),
-                        )
-                    }
-                }
                 add { m ->
                     AronTile(
                         stringResource(R.string.set_logout), null,
@@ -173,14 +164,24 @@ fun SettingsContent(
                                 if (pending) submitWarning = true else confirm = true
                             }
                         },
-                        m.testTag(SettingsTags.LOGOUT),
+                        m.testTag(SettingsTags.LOGOUT), glyph = com.aktcl.aron.core.ui.AronIcons.Logout,
                     )
                 }
+                onUpdateConfig?.let { run ->
+                    add { m ->
+                        AronTile(
+                            stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(CoreR.drawable.aron_art_settings),
+                            { if (!configBusy) { configRunning = true; scope.launch { try { configResult = run() } finally { configRunning = false } } } },
+                            m.testTag(SettingsTags.UPDATE_CONFIG),
+                        )
+                    }
+                }
             }
-            tiles.chunked(2).forEach { pair ->
+            // three to a row as the manual's Settings page (63): language, support and log out; the extra update tile wraps to the next row
+            tiles.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pair.forEach { t -> t(Modifier.weight(1f)) }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    row.forEach { t -> t(Modifier.weight(1f)) }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             // display: the sun switch and the photo rule
@@ -256,7 +257,7 @@ private fun LanguageTile(current: AppLanguage, onSelect: (AppLanguage) -> Unit, 
     val bn = stringResource(CoreR.string.core_ui_language_bangla)
     val en = stringResource(CoreR.string.core_ui_language_english)
     Box(modifier) {
-        AronTile(if (current == AppLanguage.BN) bn else en, null, { open = true }, Modifier.fillMaxWidth().testTag(SettingsTags.LANGUAGE))
+        AronTile(if (current == AppLanguage.BN) bn else en, null, { open = true }, Modifier.fillMaxWidth().testTag(SettingsTags.LANGUAGE), glyph = com.aktcl.aron.core.ui.AronIcons.Language)
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(AppLanguage.BN to bn, AppLanguage.EN to en).forEach { (l, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = { open = false; if (l != current) onSelect(l) })

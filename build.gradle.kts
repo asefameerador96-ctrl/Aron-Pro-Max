@@ -3,6 +3,7 @@
 // (docs/24-build-spec.md s2). Module build files only add their plugins and dependencies.
 
 import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.dsl.LibraryExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
@@ -162,6 +163,12 @@ subprojects {
     }
 
     plugins.withId("com.android.application") {
+        // The ONLY variants exempt from the Developer options gate (see the comment in defaultConfig below).
+        extensions.configure<ApplicationAndroidComponentsExtension> {
+            onVariants { variant ->
+                variant.manifestPlaceholders.put("integrityGateExempt", if (variant.buildType == "benchmark" || variant.buildType == "benchmarkProfile") "true" else "false")
+            }
+        }
         extensions.configure<ApplicationExtension> {
             compileSdk = compileSdkVersion
             defaultConfig {
@@ -172,6 +179,8 @@ subprojects {
                 // MAPS_ANDROID_KEY environment variable (a GitHub secret in CI) or ~/.gradle/gradle.properties.
                 manifestPlaceholders["mapsApiKey"] =
                     (System.getenv("MAPS_ANDROID_KEY") ?: (findProperty("aron.mapsAndroidKey") as String?) ?: "")
+                // The Developer options gate (D-OWNER-MDM-02): never exempt by default; ONLY the benchmark build types are (onVariants above).
+                manifestPlaceholders["integrityGateExempt"] = "false"
                 // DEV ONLY pack pictures (android/dev-packshots, PARITY-SPEC s2.6): only the dev-origin CI build passes
                 // -Paron.devPackshots=true; release-app.yml (production) never does, so no production APK carries them.
                 buildConfigField("boolean", "DEV_PACKSHOTS", devPackshots.toString())

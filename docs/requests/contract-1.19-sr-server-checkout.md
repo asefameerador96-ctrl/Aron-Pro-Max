@@ -51,4 +51,6 @@ Create no 3-character SR or AMO login until the fleet runs the android-gates bui
 
 ## After train 117 landed
 
-Follow-up (D-SV2-21): the column comment of `closed_by` is corrected by `V0240__attendance_closed_by_comment.sql` (provisional number; V0201 is never edited). No contract change: only descriptions. A `null` `closed_by` is refused (`schema_invalid`, named reason).
+Follow-up (D-SV2-21): the column comment of `closed_by` is corrected by `V0209__attendance_closed_by_comment.sql` (number V0209 after the integrity train 121 took V0205..V0208; V0201 is never edited). No contract change: only descriptions. A `null` `closed_by` is refused (`schema_invalid`, named reason).
+
+Order of the checks (D-SV2-22): the `closed_by` value check (`schema_invalid`, final) runs AFTER the registry and the business-date window. A known `client_uuid` with another payload stays `payload_conflict`, an out-of-window record stays `business_date_out_of_window` (quarantined, reviewable), and only a fresh in-window record with a bad value is a final reject. Descriptions only; the contract stays 1.21.0.

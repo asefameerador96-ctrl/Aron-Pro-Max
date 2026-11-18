@@ -42,6 +42,8 @@ fun SaleRoute(
     quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
+    /** The way from the "add today's stock first" banner to the Stock screen; null shows the banner without the button. */
+    onOpenStock: (() -> Unit)? = null,
     /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
     entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false, creditAsDialog: Boolean = false, totalsQuantity: Boolean = false,
 ) {
@@ -57,7 +59,7 @@ fun SaleRoute(
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // forward: Entry to Review, and Review into a sub-screen (Credit, QC, Slide); back: a sub-screen returning to Review
-            AronScreenTransition(stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
+            AronScreenTransition(if (quantityPopup && stage == SaleStage.Credit) SaleStage.Review else stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
                 when (s) {
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,
@@ -68,7 +70,7 @@ fun SaleRoute(
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
-                        quantityPopup = quantityPopup, skuStats = skuStats,
+                        quantityPopup = quantityPopup, skuStats = skuStats, onOpenStock = onOpenStock,
                         onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
                         onPreviousSales = onPreviousSales, historyLabel = historyLabel, headerCard = entryHeaderCard, amoSkuCard = amoSkuCard,
@@ -83,7 +85,7 @@ fun SaleRoute(
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { qcOnlyStarted = false; vm.completeQc(); stage = SaleStage.Review },
                         onCancel = { if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review } }, // Cancel discards what was typed since the screen opened
-                        collapsible = draft?.lines.isNullOrEmpty(),
+                        collapsible = draft?.lines.isNullOrEmpty(), twoStep = quantityPopup, // the SR's two steps (manual 25, 26); the AMO keeps the one-scroll screen
                     )
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },
@@ -104,5 +106,11 @@ fun SaleRoute(
             }
         }
     }
-    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished)
+    // the SR's partial payment is a box over the Review (manual 27), not a screen of its own: the same amount rules and the same setPaid
+    if (quantityPopup && stage == SaleStage.Credit && review != null) {
+        CreditDialog(review, { vm.setPaid(it); stage = SaleStage.Review }, onCancel = { vm.setPaid(null); stage = SaleStage.Review })
+    }
+    // a save the transaction refused is worded with the SAME problem texts the review uses (SKU, held figure, unit; or "already edited")
+    val refusalText = ui.refusal.takeIf { it.isNotEmpty() }?.map { problemText(it) }?.joinToString("\n\n")
+    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, refusalText, manual = quantityPopup)
 }

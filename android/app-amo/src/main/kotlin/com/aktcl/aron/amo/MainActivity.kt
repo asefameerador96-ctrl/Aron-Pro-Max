@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.aktcl.aron.core.sync.shell.ShellLogout
@@ -13,7 +14,7 @@ import com.aktcl.aron.core.system.logout.LogoutCheck
 import com.aktcl.aron.core.system.logout.LogoutResult
 import com.aktcl.aron.core.system.logout.UnsentItemsDialog
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import com.aktcl.aron.core.system.integrity.setGatedContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
@@ -114,7 +115,7 @@ class MainActivity : ComponentActivity() {
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
-        setContent {
+        setGatedContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
             androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             var sunlight by remember { mutableStateOf(false) }
@@ -189,7 +190,9 @@ class MainActivity : ComponentActivity() {
                                     s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                     runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
                                 )
-                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
+                                runCatching { d.reload() }
+                                // D-AGATE-15: the day's resume (a forgotten day's close makes one location attempt) never delays the shell: the gate starts closed and follows
+                                launch { runCatching { d.resumeDay() } }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
@@ -198,12 +201,32 @@ class MainActivity : ComponentActivity() {
                             // a bundle is applied and on resume while the numbers are stale or failed; never in the way of the screen. The kept copy (Room, else
                             // the last good values) is held per MONTH inside CachedCallTargets, so a failed read never blanks the cards and never shows another month.
                             var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
+                            val dayScopeForResume = androidx.compose.runtime.rememberCoroutineScope()
                             var targetsStatus by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) }
                             var targetsRetryTick by remember(s.user.userId) { mutableStateOf(0) }
                             // coming back to the foreground: a session left open across Dhaka midnight shows the new date; a stale or failed card set tries again (8 s cap, no polling)
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
+                                // a session left open across Dhaka midnight: yesterday's check-in must not read as today's (rule 1); the AMO had no boundary handling at all
+                                day?.let { d -> dayScopeForResume.launch { runCatching { d.resumeDay() } } }
                                 if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
+                            }
+                            // ONE timer for the next Dhaka midnight (no one-minute tick): the day state refreshes then, as the SR boundary effect does; the resume above covers the rest
+                            var boundaryTick by remember(s.user.userId) { mutableStateOf(0) }
+                            LaunchedEffect(day, boundaryTick) {
+                                val d = day ?: return@LaunchedEffect
+                                kotlinx.coroutines.delay(d.millisToNextMidnight())
+                                runCatching { d.resumeDay() }
+                                boundaryTick++
+                            }
+                            // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
+                            val amoCallOpen = day?.visitSession?.current?.collectAsStateWithLifecycle()?.value != null
+                            val amoEditOpen = day?.sale?.flow?.state?.collectAsStateWithLifecycle()?.value?.let { it.draft?.edit != null && it.committed == null } == true
+                            var amoWasOpen by remember(s.user.userId) { mutableStateOf(false) }
+                            LaunchedEffect(day, amoCallOpen, amoEditOpen) {
+                                val d = day ?: return@LaunchedEffect
+                                if (amoCallOpen || amoEditOpen) { amoWasOpen = true; runCatching { d.refreshDayGate() } }
+                                else if (amoWasOpen) { amoWasOpen = false; runCatching { d.resumeDay() } }
                             }
                             LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
                                 val d = day ?: return@LaunchedEffect
@@ -223,7 +246,7 @@ class MainActivity : ComponentActivity() {
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
                                     AmoScreen.SALES_SUBMIT to { back ->
-                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { AmoSubmitHost(d) }
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { val nav = com.aktcl.aron.feature.amo.LocalAmoNavigate.current; AmoSubmitHost(d, onSupport = { nav(AmoScreen.SUPPORT) }) }
                                     },
                                     AmoScreen.SUPPORT to { back ->
                                         com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.set_support), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_gear) { SupportHost(systemShell, d.userId, versionName) }
@@ -257,16 +280,68 @@ class MainActivity : ComponentActivity() {
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
                                         val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName, stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain))
-                                        com.aktcl.aron.feature.amo.AmoAttendance(
-                                            attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
-                                            onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
-                                            onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
-                                            offline = !d.online(),
-                                            userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
-                                        )
+                                        androidx.compose.foundation.layout.Column {
+                                            // what the phone did after Dhaka midnight: told here and on Home until the rep has seen this screen
+                                            com.aktcl.aron.feature.attendance.rolloverNoticeText(d.rolloverNotice.collectAsStateWithLifecycle().value)?.let { t ->
+                                                com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                                                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { d.dismissRolloverNotice() } }
+                                            }
+                                            // the check-in gate's reason on the Attendance screen, both ways (D-LEAD-PREREQ-04 step 3 S7): check in first, or the day is over after the check-out
+                                            when (d.dayGate.collectAsStateWithLifecycle().value) {
+                                                com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN -> com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                                                com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_out_body), kind = com.aktcl.aron.core.ui.BannerKind.Info)
+                                                else -> Unit
+                                            }
+                                            // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
+                                            attendance.checkOutBlockedBy?.let { w ->
+                                                com.aktcl.aron.core.ui.AronBanner(
+                                                    stringResource(if (w == com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL) com.aktcl.aron.feature.attendance.R.string.att_checkout_open_call else com.aktcl.aron.feature.attendance.R.string.att_checkout_open_edit),
+                                                    kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+                                                )
+                                            }
+                                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                                com.aktcl.aron.feature.amo.AmoAttendance(
+                                                    attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
+                                                    onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
+                                                    onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
+                                                    offline = !d.online(),
+                                                    userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
+                                                )
+                                            }
+                                        }
                                     },
                                 )
                             } ?: emptyMap()
+                            // The UI mirror of the check-in gate (D-OWNER-PREREQ-01 rule 1): the operational screens show "check in first" (or "checked out")
+                            // until the day has an open check-in. The write layer refuses regardless; reading screens and Sales Submit stay open.
+                            val gateNow by (day?.dayGate ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(null) }).collectAsStateWithLifecycle()
+                            val openCallNow by (day?.visitSession?.current ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.outlet.OpenVisit?>(null) }).collectAsStateWithLifecycle()
+                            // D-LEAD-PREREQ-04 (step 3 S7): only the screens that exist to write (stock, sale, the two calls) are closed; the reading screens (outlet, tasks, SR stock, exceptions) stay open before check-in, their writes are refused by the write layer
+                            val gatedScreens = setOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL)
+                            val writeGuardedScreens = setOf(AmoScreen.OUTLET, AmoScreen.TASK_DELEGATION, AmoScreen.SR_STOCK, AmoScreen.EXCEPTIONS)
+                            val gatedScreensMap: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = screens.mapValues { (k, content) ->
+                                // D-AGATE-15 (T4): these screens READ before check-in but also WRITE; every write button refuses with the named reason (never a generic failure afterwards)
+                                if (k in writeGuardedScreens) { back: () -> Unit ->
+                                    val earlierOutletName by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { databases.of(s.user.userId).referenceDao().outlet(id)?.name }.getOrNull() } }
+                                    val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gateNow, earlierOutletName, onCheckIn = { navigate(AmoScreen.ATTENDANCE) }) { content(back) }
+                                } else if (k !in gatedScreens) content else { back: () -> Unit ->
+                                    val why = gateNow
+                                    // D-LEAD-PREREQ-04 ruling 4: an earlier day's open call is the only thing that works; the call's own screens stay open
+                                    val earlierCall = why == com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN
+                                    val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { databases.of(s.user.userId).referenceDao().outlet(id)?.name }.getOrNull() } }
+                                    if (why == null || (earlierCall && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) content(back) else {
+                                        val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
+                                            // D-AGATE-19: the gate with its failure and refusal texts (see AmoCheckInGate)
+                                            AmoCheckInGate(
+                                                day, why, canCloseCall = openCallNow != null && (earlierCall || k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE)),
+                                                earlierOutlet = earlierOutlet, onCheckIn = { navigate(AmoScreen.ATTENDANCE) }, onCallClosed = { back() },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
@@ -293,10 +368,10 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach, screens = screens, targets = targets, targetsStatus = targetsStatus,
+                                reach = reach, screens = gatedScreensMap, gateLocked = if (gateNow != null && gateNow != com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN) gatedScreens else emptySet(), targets = targets, targetsStatus = targetsStatus,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
-                                banners = amoDayLockBanners(day),
+                                banners = amoDayLockBanners(day) + amoRolloverBanners(day),
                             ) }
                             }
                         }

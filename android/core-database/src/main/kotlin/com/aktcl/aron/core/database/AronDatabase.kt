@@ -43,7 +43,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 9,
+    version = 11,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
@@ -54,6 +54,8 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         AutoMigration(from = 6, to = 7), // v7: purged_uuid, the tombstones that stop a replay of a purged record from being captured again
         AutoMigration(from = 7, to = 8), // v8 (PARITY-SPEC s2.6): sku.image_asset_id, the pack picture of the bundle
         AutoMigration(from = 8, to = 9), // v9 (SRM-B-44): cluster_create, the clusters an SR created on the phone (local only until the contract record exists)
+        AutoMigration(from = 9, to = 10, spec = Migration9To10::class), // v10 (D-AGATE-04, -18): outbox.last_message_key, outbox.seen_at (a refused record names its reason and can be marked seen), outbox.parent_uuid (Send again's real parent, backfilled for AMO lines by the spec) and the local phone_mark table
+        AutoMigration(from = 10, to = 11), // v11 (D-OWNER-MDM-02): geo_fix.signals_json, the anti-spoofing signal codes of the fix (contract 1.21.0)
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
@@ -68,6 +70,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         com.aktcl.aron.core.database.entity.SurveyEntity::class, com.aktcl.aron.core.database.entity.SurveyQuestionEntity::class,
         com.aktcl.aron.core.database.entity.ContentViewEntity::class, com.aktcl.aron.core.database.entity.SurveyResponseEntity::class,
         com.aktcl.aron.core.database.entity.AmoRecordEntity::class, com.aktcl.aron.core.database.entity.PurgedUuidEntity::class, com.aktcl.aron.core.database.entity.ClusterCreateEntity::class,
+        com.aktcl.aron.core.database.entity.PhoneMarkEntity::class, // v10 (D-AGATE-18): the local "ended by the phone" markers, never uploaded
     ],
 )
 abstract class AronDatabase : RoomDatabase() {

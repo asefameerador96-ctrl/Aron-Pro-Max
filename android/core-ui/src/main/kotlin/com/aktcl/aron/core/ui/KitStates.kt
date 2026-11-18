@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,8 +57,14 @@ fun AronConfirmDialog(
     dismissLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** The old SR's question box (manual 29, 32): a warning triangle over a centred blue sentence, the question in black, and the green yes then the red no side by side. */
+    manual: Boolean = false,
 ) {
     val c = LocalAronColors.current
+    if (manual) {
+        AronManualDialog(ManualDialogKind.Warning, title, message, confirmLabel, onConfirm, dismissLabel, onDismiss)
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
@@ -65,6 +72,50 @@ fun AronConfirmDialog(
         text = { Text(message) },
         confirmButton = { AronYesButton(confirmLabel, onConfirm) },    // yes is green, no is red (owner 2026-10-17)
         dismissButton = { AronNoButton(dismissLabel, onDismiss) },
+    )
+}
+
+/** True inside the SR app: shared pieces that exist in two looks (the printer-connected sentence) wear the old SR's; AMO and TSO leave it false. */
+val LocalSrManualLook = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** The icon over the sentence of the old SR's boxes: the yellow triangle (sure?), the blue "i" (question) or the green tick (done), manual 28 and 29. */
+enum class ManualDialogKind { Warning, Info, Success }
+
+/**
+ * The old SR's dialog (manual 19, 28, 29, 32): a white rounded box, the kind's icon, a centred blue sentence, an optional black line under it, and
+ * the green yes then the red no (or the single green ওকে) at the right. [dismissLabel] null makes it a one-button box; [dismissable] false
+ * answers only through the buttons (a tap outside never answers a save or print question).
+ */
+@Composable
+fun AronManualDialog(
+    kind: ManualDialogKind,
+    title: String?,
+    message: String?,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    dismissLabel: String? = null,
+    onDismiss: () -> Unit = {},
+    dismissable: Boolean = true,
+) {
+    val c = LocalAronColors.current
+    val look = LocalAronLook.current
+    val (icon, tint) = when (kind) {
+        ManualDialogKind.Warning -> AronIcons.Warning to look.amber
+        ManualDialogKind.Info -> AronIcons.Info to c.accent
+        ManualDialogKind.Success -> AronIcons.CheckCircle to c.success
+    }
+    AlertDialog(
+        onDismissRequest = if (dismissable) onDismiss else ({}),
+        containerColor = c.surfaceSolid, titleContentColor = c.accentOnContainer, textContentColor = c.textPrimary,
+        icon = { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(40.dp)) },
+        title = title?.let { { Text(it, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) } },
+        text = message?.let { { Text(it, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) } },
+        confirmButton = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                AronYesButton(confirmLabel, onConfirm)
+                if (dismissLabel != null) AronNoButton(dismissLabel, onDismiss)
+            }
+        },
     )
 }
 

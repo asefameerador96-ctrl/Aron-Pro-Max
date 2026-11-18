@@ -6,6 +6,8 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.AuditLog
+import com.aktcl.aron.backend.platform.QuarantineWaiting
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
@@ -22,6 +24,8 @@ import kotlinx.datetime.toJavaLocalDate
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
@@ -403,82 +407,95 @@ class IngestService(
                     throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's outlet_id", errors = listOf(FieldError("/fixed_record/payload/outlet_id", "invalid_value")))
                 }
             }
-            // B7: released unchanged, the registry keeps the hash of the record AS SENT (the stored copy may have lost a device's anchor_clock), so the phone's resend answers duplicate, not payload_conflict.
-            val rec = Rec(0, fixedRecord ?: item.payload, if (fixedRecord == null) item.payloadSha else null)
-            // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
-            val children = heldChildren(h, item.clientUuid, item.code)
-            val family = listOf(rec.json) + children.map { it.payload }
-            val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
-            val fps = MemoChecks.memoFingerprints(family)
-            val packs = MemoChecks.packFactorHolds(h, family)
-            // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
-            // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
-            // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
-            val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
-            fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
-                val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
-                val same = it.userId == item.userId && it.deviceId == item.deviceId
-                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps; c.packHeld = packs }
-            }
-            val ctx = ctxOf(item)
-            val up = ctx.up
-
-            val outcome = release(h, ctx, rec)
-            if (outcome.status != "accepted" && outcome.status != "duplicate") {
-                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the record is still not stored: ${outcome.status} ${outcome.code?.wire ?: ""}".trim())
-            }
-            closeItem(h, item.id, if (fixedRecord != null) "accepted_with_fix" else "accepted", fixedRecord, resolverUserId, reason, now)
-            // C-R4: released in dependency order (header, lines, photos; the sort is stable, so a memo's own order stands), so a photo never meets a line of its
-            // redemption that is still open. A photo that came back held on a sibling line released LATER in this same loop is run again once the loop is done (below).
-            val reheld = ArrayList<HeldItem>()
-            for (child in children.sortedBy { childRank(it) }) {
-                val sp = "release_${child.id}"
-                h.savepoint(sp)
-                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
-                when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
-                    ChildEnd.HELD_ON_SIBLING -> { h.release(sp); reheld += child }
-                    ChildEnd.SETTLED -> h.release(sp)
-                    ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid) }
-                    ChildEnd.STAYS -> {
-                        // Held for a reason of its own (or a failure): it stays open for its own review.
-                        h.rollbackToSavepoint(sp)
-                        log.info("held child stays quarantined client_uuid=${child.clientUuid} parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
-                    }
-                }
-            }
-            // Photos re-held onto a line that this loop then released: run them again until nothing changes (each pass needs a sibling's item to have closed, so it ends within reheld.size + 1).
-            var pass = 0
-            while (reheld.isNotEmpty() && pass++ <= children.size) {
-                var changed = false
-                for (child in reheld.toList()) {
-                    val on = heldOn(h, child.id)
-                    if (on != null && h.createQuery("SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status = 'open')").bind("u", on).mapTo(Boolean::class.java).one()) continue   // its line is still open
-                    val sp = "rerelease_${child.id}_$pass"
-                    h.savepoint(sp)
-                    val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
-                    when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
-                        ChildEnd.HELD_ON_SIBLING -> { h.release(sp); if (heldOn(h, child.id) != on) changed = true }
-                        ChildEnd.SETTLED -> { h.release(sp); reheld.remove(child); changed = true }
-                        ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid); reheld.remove(child); changed = true }
-                        ChildEnd.STAYS -> { h.rollbackToSavepoint(sp); reheld.remove(child) }
-                    }
-                }
-                if (!changed) break
-            }
-            // Day states follow but never decide the outcome (as after a batch).
-            DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
-            h.savepoint("release_day")
-            try {
-                ctxs.values.forEach { c -> DayStates.afterBatch(h, c.up.userId, c.touched, now) }
-                h.release("release_day")
-            } catch (e: Exception) {
-                if (isTransientDbFailure(e)) throw e
-                h.rollbackToSavepoint("release_day")
-                log.error("day states failed quarantine_id=$quarantineId", e)
-            }
+            releaseHeld(h, item, fixedRecord, resolverUserId, reason, now, override = code, sweep = false)
         }
         // Inside the caller's transaction this runs before its commit; the handlers' after-commit work is notification only.
         log.info("quarantine accepted id=$quarantineId resolver=$resolverUserId fix=${fixedRecord != null}")
+    }
+
+    /**
+     * The release of one held item and of the children held with it (the body of a reviewer's accept, and of the sweep's automatic release of a waiting child), in the caller's
+     * transaction. [override] is the check this release waives (only checks that raised that code, only for children of the same uploader and device as the item): the item's own
+     * code for a reviewer's accept; for the sweep exactly what the reviewer's accept carried for that child at that time (`waiting_release_code`, null for a child of another
+     * uploader or device), never more. Returns the item's own outcome (stored: the item is closed and its children followed); a not-stored outcome throws 409 for an accept and is
+     * returned to the caller for [sweep].
+     */
+    private fun releaseHeld(h: Handle, item: HeldItem, fixedRecord: JsonObject?, resolverUserId: Long, reason: String, now: Instant, override: RecordOutcomeCode?, sweep: Boolean): Outcome {
+        // B7: released unchanged, the registry keeps the hash of the record AS SENT (the stored copy may have lost a device's anchor_clock), so the phone's resend answers duplicate, not payload_conflict.
+        val rec = Rec(0, fixedRecord ?: item.payload, if (fixedRecord == null) item.payloadSha else null)
+        // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
+        val children = heldChildren(h, item.clientUuid, item.code)
+        val family = listOf(rec.json) + children.map { it.payload }
+        val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
+        val fps = MemoChecks.memoFingerprints(family)
+        val packs = MemoChecks.packFactorHolds(h, family)
+        // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
+        // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
+        // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
+        val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
+        fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
+            val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
+            val same = it.userId == item.userId && it.deviceId == item.deviceId
+            Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = override.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps; c.packHeld = packs }
+        }
+        val ctx = ctxOf(item)
+        val up = ctx.up
+
+        val outcome = release(h, ctx, rec)
+        if (outcome.status != "accepted" && outcome.status != "duplicate") {
+            if (sweep) return outcome   // the sweep judges what a failed re-run means (it never throws and never waives anything itself)
+            throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the record is still not stored: ${outcome.status} ${outcome.code?.wire ?: ""}".trim())
+        }
+        closeItem(h, item.id, if (fixedRecord != null) "accepted_with_fix" else "accepted", fixedRecord, resolverUserId, reason, now)
+        // C-R4: released in dependency order (header, lines, photos; the sort is stable, so a memo's own order stands), so a photo never meets a line of its
+        // redemption that is still open. A photo that came back held on a sibling line released LATER in this same loop is run again once the loop is done (below).
+        val reheld = ArrayList<HeldItem>()
+        for (child in children.sortedBy { childRank(it) }) {
+            val sp = "release_${child.id}"
+            h.savepoint(sp)
+            val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+            when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
+                ChildEnd.HELD_ON_SIBLING -> { h.release(sp); reheld += child }
+                ChildEnd.SETTLED -> h.release(sp)
+                ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid, ctxOf(child).release) }
+                ChildEnd.STAYS -> {
+                    // Held for a reason of its own (or a failure): it stays open for its own review.
+                    h.rollbackToSavepoint(sp)
+                    log.info("held child stays quarantined client_uuid=${child.clientUuid} parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                }
+            }
+        }
+        // Photos re-held onto a line that this loop then released: run them again until nothing changes (each pass needs a sibling's item to have closed, so it ends within reheld.size + 1).
+        var pass = 0
+        while (reheld.isNotEmpty() && pass++ <= children.size) {
+            var changed = false
+            for (child in reheld.toList()) {
+                val on = heldOn(h, child.id)
+                if (on != null && h.createQuery("SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status = 'open')").bind("u", on).mapTo(Boolean::class.java).one()) continue   // its line is still open
+                val sp = "rerelease_${child.id}_$pass"
+                h.savepoint(sp)
+                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
+                    ChildEnd.HELD_ON_SIBLING -> { h.release(sp); if (heldOn(h, child.id) != on) changed = true }
+                    ChildEnd.SETTLED -> { h.release(sp); reheld.remove(child); changed = true }
+                    ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid, ctxOf(child).release); reheld.remove(child); changed = true }
+                    ChildEnd.STAYS -> { h.rollbackToSavepoint(sp); reheld.remove(child) }
+                }
+            }
+            if (!changed) break
+        }
+        // Day states follow but never decide the outcome (as after a batch).
+        DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
+        h.savepoint("release_day")
+        try {
+            ctxs.values.forEach { c -> DayStates.afterBatch(h, c.up.userId, c.touched, now) }
+            h.release("release_day")
+        } catch (e: Exception) {
+            if (isTransientDbFailure(e)) throw e
+            h.rollbackToSavepoint("release_day")
+            log.error("day states failed quarantine_id=${item.id}", e)
+        }
+        return outcome
     }
 
     /**
@@ -510,11 +527,183 @@ class IngestService(
 
     private enum class ChildEnd { SETTLED, HELD_ON_SIBLING, STAYS, WAITS }
 
-    /** The item of a child that waits for another parent keeps its code (the reviewer's accept waives that check) and says what it waits for; it no longer names the accepted parent. */
-    private fun markWaiting(h: Handle, child: HeldItem, o: Outcome?, acceptedParent: String) {
-        val what = (o?.detail ?: "another parent").take(300)
-        h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", "waits for another parent: $what (parent $acceptedParent was accepted)".take(1000)).bind("id", child.id).execute()
-        log.info("held child waits for another parent client_uuid=${child.clientUuid} accepted_parent=$acceptedParent")
+    /**
+     * The item of a child that waits for another parent keeps its code (the reviewer's accept waives that check) and says what it waits for ([QuarantineWaiting]); it no longer names the accepted parent.
+     * D-LOY-API-30: the wait is a TYPED marker (columns `waiting_since`, `awaited_uuid`, `accepted_parent_uuid`), [releaseCode] is the override the reviewer's accept carried for THIS child at that
+     * time (null for a child of another uploader or device), which the sweep will carry again and nothing more. A child whose awaited parent cannot be named is NOT marked waiting: it stays an
+     * ordinary held item with a plain reason (the sweep would never find what it waits for).
+     */
+    private fun markWaiting(h: Handle, child: HeldItem, o: Outcome?, acceptedParent: String, releaseCode: RecordOutcomeCode?) {
+        val type = child.payload.str("type") ?: ""
+        val awaited = awaitedOf(child.payload, type, o?.detail)
+        if (awaited == null) {
+            h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", QuarantineWaiting.heldDetail(acceptedParent, o?.code?.wire)).bind("id", child.id).execute()
+            log.info("held child stays held, no awaited parent named client_uuid=${child.clientUuid} accepted_parent=$acceptedParent")
+            return
+        }
+        val refused = awaitedState(h, type, awaited.first, awaited.second) == Awaited.REFUSED
+        h.createUpdate(
+            """
+            UPDATE app.sync_quarantine SET detail = :d, waiting_since = now(), awaited_field = :af, awaited_uuid = CAST(:a AS uuid), accepted_parent_uuid = CAST(:p AS uuid), waiting_release_code = :rc,
+                   awaited_refused = :r, waiting_checked_at = NULL
+            WHERE id = :id AND status = 'open'
+            """.trimIndent(),
+        ).bind("d", QuarantineWaiting.detail(awaited.first, awaited.second, acceptedParent, refused, type == "gift_photo")).bind("af", awaited.first).bind("a", awaited.second).bind("p", acceptedParent)
+            .bind("rc", releaseCode?.wire).bind("r", refused).bind("id", child.id).execute()
+        log.info("held child waits for another parent client_uuid=${child.clientUuid} accepted_parent=$acceptedParent refused=$refused waiver=${releaseCode != null}")
+    }
+
+    /** An item is an ordinary held item again (its own code and reason): the typed wait is cleared. */
+    private fun clearWaiting(h: Handle, id: Long, code: String?, detail: String) {
+        h.createUpdate(
+            """
+            UPDATE app.sync_quarantine SET code = COALESCE(:c, code), detail = :d, waiting_since = NULL, awaited_uuid = NULL, awaited_field = NULL, accepted_parent_uuid = NULL, waiting_release_code = NULL,
+                   awaited_refused = false, waiting_checked_at = NULL
+            WHERE id = :id AND status = 'open'
+            """.trimIndent(),
+        ).bind("c", code).bind("d", detail.take(1000)).bind("id", id).execute()
+    }
+
+    private enum class Awaited { STORED, REFUSED, HELD, MISSING }
+
+    /** (field, uuid) of the parent a refused release was waiting for: a gift photo awaits its redemption (and its lines); any other child the `<field> <uuid>` of the park detail. */
+    private fun awaitedOf(payload: JsonObject, type: String, parkDetail: String?): Pair<String, String>? {
+        if (type == "gift_photo") return (payload["payload"] as? JsonObject)?.str("redemption_client_uuid")?.takeIf { UUID_V4.matches(it) }?.let { "redemption_client_uuid" to it }
+        return parkDetail?.let { PARK_DETAIL.matchEntire(it) }?.let { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    /** What became of the awaited parent: stored (the child can be released), refused or discarded (never released here), held in review, or not synced yet. */
+    private fun awaitedState(h: Handle, type: String, field: String, uuid: String): Awaited {
+        if (type == "gift_photo" && field == "redemption_client_uuid") {
+            val v = GiftParents.state(h, uuid, "redemption")
+            if (v.state.isRefused) return Awaited.REFUSED
+            if (v.state == GiftParents.State.OPEN) return Awaited.HELD
+            if (v.state == GiftParents.State.MISSING) return Awaited.MISSING
+            val row = h.createQuery("SELECT family_uuid::text, line_count > (SELECT count(*) FROM app.redemption_line l WHERE l.redemption_client_uuid = r.client_uuid) FROM app.redemption r WHERE r.client_uuid = CAST(:u AS uuid)").bind("u", uuid)
+                .map { rs, _ -> rs.getString(1) to rs.getBoolean(2) }.findOne().orElse(null) ?: return Awaited.MISSING
+            if (!row.second) return Awaited.STORED
+            val lines = GiftParents.missingLines(h, row.first).state
+            return if (lines.isRefused) Awaited.REFUSED else if (lines == GiftParents.State.OPEN) Awaited.HELD else Awaited.MISSING
+        }
+        val reg = h.createQuery("SELECT status FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid)").bind("p", uuid).mapTo(String::class.java).findOne().orElse(null)
+        if (reg == "accepted" || reg == "voided") return Awaited.STORED
+        if (PARENT_TABLES[field]?.let { t -> h.createQuery("SELECT EXISTS (SELECT 1 FROM app.$t WHERE client_uuid = CAST(:p AS uuid))").bind("p", uuid).mapTo(Boolean::class.java).one() } == true) return Awaited.STORED
+        return when (reg) {
+            "rejected" -> Awaited.REFUSED
+            "quarantined" -> {
+                val q = h.createQuery("SELECT status, COALESCE(resolution_note, '') FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) ORDER BY id DESC LIMIT 1").bind("u", uuid)
+                    .map { rs, _ -> rs.getString(1) to rs.getString(2) }.findOne().orElse(null)
+                when {
+                    q == null -> Awaited.MISSING
+                    q.first == "open" -> Awaited.HELD
+                    q.first == "discarded" && !q.second.startsWith("return_to_device") -> Awaited.REFUSED
+                    q.first.startsWith("accepted") -> Awaited.STORED
+                    else -> Awaited.MISSING
+                }
+            }
+            else -> Awaited.MISSING
+        }
+    }
+
+    /** What one pass of [sweepWaiting] did (counts only: no uuid, no personal data). */
+    data class WaitingSweep(val waiting: Int, val released: Int, val hinted: Int, val stillWaiting: Int, val failed: Int, val skippedByCap: Int = 0, val heldOwn: Int = 0)
+
+    /**
+     * D-LOY-API-30 (and -28/-29): the sweep of WAITING items, run by the API process with the API role ([WaitingChildSweepJob]): a child released with an accepted parent whose other parent was
+     * not stored ([markWaiting]). Items are taken least recently examined first (`waiting_checked_at`, then id), at most [limit] per pass, so items that cannot be released never keep the head
+     * of the queue; a larger backlog is worked off over several passes and the skipped count is logged. Per item, in its own transaction, the uuid advisory lock first and then the item row
+     * `FOR UPDATE SKIP LOCKED` (the lock a reviewer's resolve holds; never a wait in a cycle):
+     *  - the awaited parent is STORED: the child is released EXACTLY as the reviewer's accept would have released it at that time ([releaseHeld] with the override stored at the wait: none for a child
+     *    of another uploader or device), every check that had not yet run runs now, and nothing is waived by the job itself. Stored: the item is closed by the system actor and a hash-chained
+     *    audit row (via job) is written in the same transaction. Not stored for a reason of its own (a check that had not run fails, a new hold): the item becomes an ORDINARY held item with its own
+     *    code and reason, visible to the reviewer as not waiting; still `parent_missing`: it keeps waiting;
+     *  - the awaited parent was REFUSED or DISCARDED: nothing is released or finalised; the flag and the hint say so and the reviewer's discard is the way out;
+     *  - held in review or not synced yet: nothing.
+     */
+    fun sweepWaiting(limit: Int = 200): WaitingSweep {
+        val (total, rows) = db.jdbi.withHandle<Pair<Int, List<Long>>, Exception> { h ->
+            val n = h.createQuery("SELECT count(*) FROM app.sync_quarantine WHERE status = 'open' AND waiting_since IS NOT NULL").mapTo(Int::class.java).one()
+            n to h.createQuery("SELECT id FROM app.sync_quarantine WHERE status = 'open' AND waiting_since IS NOT NULL ORDER BY waiting_checked_at NULLS FIRST, id LIMIT :n").bind("n", limit).mapTo(Long::class.java).list()
+        }
+        var released = 0; var hinted = 0; var still = 0; var failed = 0; var heldOwn = 0
+        for (id in rows) {
+            try {
+                when (db.jdbi.inTransaction<Int, Exception> { h -> sweepOne(h, id) }) { 1 -> released++; 2 -> hinted++; 3 -> heldOwn++; else -> still++ }
+            } catch (e: Exception) {
+                failed++
+                log.warn("waiting-item sweep failed for one item quarantine_id=$id: ${e.javaClass.simpleName}")
+                // a poison item must not keep the head of the order: stamp it in its own small transaction (the failed one rolled back)
+                runCatching { db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL lock_timeout = '2s'"); h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now() WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).execute() } }
+                    .onFailure { log.warn("waiting-item sweep: could not stamp quarantine_id=$id: ${it.javaClass.simpleName}") }   // a short lock timeout: a reviewer holding the row must not stall the sweep thread (one log line, item id and exception class only)
+            }
+        }
+        val skipped = (total - rows.size).coerceAtLeast(0)
+        if (skipped > 0) log.warn("waiting-item sweep: backlog, $skipped of $total waiting items were not examined this pass (cap $limit)")
+        return WaitingSweep(total, released, hinted, still, failed, skipped, heldOwn)
+    }
+
+    private class WaitingRow(val detail: String, val type: String, val payload: JsonObject, val awaited: String, val awaitedField: String?, val acceptedParent: String?, val releaseCode: String?, val refusedFlag: Boolean)
+
+    /** 1 = released, 2 = the refused flag or hint changed, 3 = became an ordinary held item, 0 = nothing to do (still waiting). */
+    private fun sweepOne(h: Handle, id: Long): Int {
+        // Lock order of the sync path: the record's uuid advisory lock first, then the item row; the row is taken SKIP LOCKED, so a reviewer (who holds the row and takes the advisory lock inside the release) is never waited for in a cycle.
+        val uuid = h.createQuery("SELECT client_uuid::text FROM app.sync_quarantine WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).mapTo(String::class.java).findOne().orElse(null) ?: return 0
+        h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", uuid)
+        val w = h.createQuery(
+            "SELECT detail, record_type, payload::text, awaited_uuid::text, awaited_field, accepted_parent_uuid::text, waiting_release_code, awaited_refused FROM app.sync_quarantine WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL FOR UPDATE SKIP LOCKED",
+        ).bind("id", id).map { rs, _ -> WaitingRow(rs.getString(1) ?: "", rs.getString(2), ResponseJson.parseToJsonElement(rs.getString(3)) as JsonObject, rs.getString(4) ?: "", rs.getString(5), rs.getString(6), rs.getString(7), rs.getBoolean(8)) }
+            .findOne().orElse(null) ?: return 0
+        val field = if (w.type == "gift_photo") "redemption_client_uuid" else w.awaitedField ?: QuarantineWaiting.field(w.detail) ?: ""
+        val state = if (w.awaited.isEmpty()) Awaited.MISSING else awaitedState(h, w.type, field, w.awaited)
+        val refused = state == Awaited.REFUSED
+        fun touch(newDetail: String? = null) {
+            h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now(), awaited_refused = :r, detail = COALESCE(:d, detail) WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL")
+                .bind("r", refused).bind("d", newDetail?.take(1000)).bind("id", id).execute()
+        }
+        if (state != Awaited.STORED) {
+            val changed = refused != w.refusedFlag || QuarantineWaiting.hinted(w.detail) != refused
+            touch(if (changed) QuarantineWaiting.withHint(w.detail, refused) else null)
+            return if (changed) 2 else 0   // REFUSED: no release and no finalising, ever, from here
+        }
+        val item = heldItem(h, "id = :id", id) ?: return 0
+        val resolver = h.createQuery("SELECT id FROM app.app_user WHERE username = 'aron.system'").mapTo(Long::class.java).findOne().orElse(null)
+        if (resolver == null) { log.error("waiting-item sweep: the system user aron.system is missing; nothing released"); return 0 }
+        val override = w.releaseCode?.let { c -> RecordOutcomeCode.entries.firstOrNull { it.wire == c } }
+        val now = clock.now()
+        val note = "released by the waiting-item sweep (job): the awaited parent ${w.awaited} is stored; first parent ${w.acceptedParent ?: "unknown"}"
+        h.savepoint("sweep_waiting")
+        val outcome = try { releaseHeld(h, item, null, resolver, note, now, override, sweep = true) } catch (e: ApiProblem) { h.rollbackToSavepoint("sweep_waiting"); throw e }
+        if (outcome.status == "accepted" || outcome.status == "duplicate") {
+            // the same transaction: a hash-chained audit row by the job (the item row is mutable, this one is not); no payload, no personal data
+            AuditLog.write(
+                h, null, "quarantine", id.toString(), "accept",
+                buildJsonObject { put("status", "open"); put("code", item.code); put("client_uuid", item.clientUuid) },
+                buildJsonObject { put("status", "accepted"); put("action", "sweep_release"); put("by", "waiting_sweep"); put("awaited", w.awaited); put("first_parent", w.acceptedParent ?: ""); put("override", override?.wire ?: "none") },
+                note, null, via = "job",
+            )
+            h.release("sweep_waiting")
+            return 1
+        }
+        // The release did not store it. A child that is still only missing a parent keeps waiting; anything else is its OWN hold or refusal: an ordinary held item for a reviewer, with its own code and reason.
+        if (outcome.code == RecordOutcomeCode.PARENT_MISSING && outcome.retryable == true) {
+            h.rollbackToSavepoint("sweep_waiting"); touch()
+            // the awaited parent is stored but ANOTHER one is still missing: the item now waits for that one (the queue and the next pass must not look at a parent that is already stored)
+            val next = awaitedOf(w.payload, w.type, outcome.detail)
+            if (next != null && (next.second != w.awaited || next.first != field)) {
+                h.createUpdate("UPDATE app.sync_quarantine SET awaited_uuid = CAST(:a AS uuid), awaited_field = :f, detail = :d WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL")
+                    .bind("a", next.second).bind("f", next.first).bind("d", QuarantineWaiting.detail(next.first, next.second, w.acceptedParent ?: "unknown", false, w.type == "gift_photo").take(1000)).bind("id", id).execute()
+            }
+            return 0
+        }
+        if (outcome.status == "quarantined" && outcome.code != null) {
+            h.release("sweep_waiting")   // the attempt registered the fresh hold; the item takes its code and reason
+            clearWaiting(h, id, outcome.code.wire, if (outcome.detail != null && HELD_ON.containsMatchIn(outcome.detail)) outcome.detail else QuarantineWaiting.ownHoldDetail(outcome.detail, outcome.code.wire))   // held with another open parent: keep the `parent <uuid> is quarantined (...)` form so that parent's accept finds and releases it
+        } else {
+            h.rollbackToSavepoint("sweep_waiting")
+            clearWaiting(h, id, null, QuarantineWaiting.ownHoldDetail(null, outcome.code?.wire ?: outcome.status))
+        }
+        log.info("waiting child became an ordinary held item client_uuid=${item.clientUuid} outcome=${outcome.status} ${outcome.code?.wire}")
+        return 3
     }
 
     /** Dependency order of a released family: the header and anything else first, then a redemption's lines, then its photos (C-R4). */
@@ -661,6 +850,8 @@ class IngestService(
                     h.release(sp); released += child.clientUuid
                 } else {
                     h.rollbackToSavepoint(sp); kept += child.clientUuid
+                    // D-LOY-API-28: a collection whose OTHER parent (its visit) is not stored yet waits, with the same detail as after an accept; the sweep releases it when that parent is stored.
+                    if (o?.code == RecordOutcomeCode.PARENT_MISSING && o.retryable == true) markWaiting(h, child, o, item.clientUuid, null)
                     log.info("held record stays quarantined client_uuid=${child.clientUuid} memo=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
                 }
             }
@@ -974,8 +1165,6 @@ class IngestService(
         // the registry keeps the phone's own hash, so its resends stay duplicates.
         val env = memoAlias(h, r.type, r.json)
         val payload = env["payload"] as JsonObject
-        // `closed_by` (contract 1.19.0) is judged here with a NAMED reason, not left to the database CHECK alone.
-        closedByProblem(r.type, payload)?.let { return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, it) }
         val bd = LocalDate.parse(env.str("business_date")!!)
 
         // 2. Registry: one uniqueness point for every device record. A transaction-scoped advisory lock on the uuid
@@ -1030,6 +1219,11 @@ class IngestService(
             // Stored in app.ingest_registry.flags on the accepted row (V0056, db-resync-late-flag-answer.md); the log line stays.
             log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
+
+        // 3a. `closed_by` (contract 1.19.0) is judged with a NAMED reason, not left to the database CHECK alone. It is judged HERE, after the registry (so a resend of a known
+        // client_uuid is a duplicate, and the same uuid with another payload stays `payload_conflict`) and after the business-date window (so an out-of-window record stays
+        // `business_date_out_of_window`, quarantined and reviewable, never dropped as a schema error): a record that is not a fresh in-window record is judged by those rules first.
+        closedByProblem(r.type, payload)?.let { return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, it) }
 
         // 3b. A check-out before cfg.day.checkout_earliest_time on its business date (Dhaka, by the user's role and home
         // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
@@ -1905,6 +2099,8 @@ class IngestService(
                 if ((payload["is_zero_sale"] as? JsonPrimitive)?.booleanOrNull != true) return "zero_sale_reason_code is allowed only when is_zero_sale is true"
             }
         }
+        // Contract 1.19.0: the phone's own anti-spoofing evidence is stored as sent, so its contents are checked here (never trusted as structure later).
+        PhoneEvidenceShape.error(r.type, shape, payload)?.let { return it }
         return null
     }
 
@@ -2186,6 +2382,7 @@ class IngestService(
         const val LATE_POLICY_KEY = "cfg.day.late_sync_after_final_policy"
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         /** A held item whose detail names the parent it waits for: `parent <uuid> is quarantined (<code>)`. */
+        private val PARK_DETAIL = Regex("^(\\w+) ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
         val HELD_ON = Regex("^parent ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) is quarantined \\(")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

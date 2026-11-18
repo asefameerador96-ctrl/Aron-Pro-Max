@@ -25,7 +25,7 @@ Reps already defeat the current geofence with fake-GPS apps. Assume the fix is h
 - **Mock-location flag:** read Android's mock-location signal (`geolocator` exposes `isMocked`) and store `mock_location` on every fix. A mocked fix can never be `geo_validated`.
 - **Plausibility checks (server-side):** implausible speed between consecutive fixes (teleport), fixes with impossibly perfect accuracy, zero jitter across a whole route, or every outlet on a route hit from one coordinate → flag the visit/route.
 - **Integrity signals:** optionally record developer-options/rooted hints and a Play Integrity verdict at login (don't hard-block solely on these; weight them).
-- **Report, don't just block.** Surface a "suspicious location" count to the AMO/TSO and in the dashboard. A silent hard block teaches reps to find the next workaround; a visible flag that supervisors act on changes behaviour. (Keep a configurable hard-block for mock locations if the business wants it.)
+- **Report, don't just block.** Surface a "suspicious location" count to the AMO/TSO and in the dashboard. A silent hard block teaches reps to find the next workaround; a visible flag that supervisors act on changes behaviour. (**Owner directive D-OWNER-MDM-02, 2026-11-13: the phone now ALWAYS refuses a geo-validated action on a mock location, a selected mock app or a test provider, whatever `cfg.geo.mock_policy` says: it ignores `warn_rep` and `silent_flag`; the setting still drives the server re-check.** The text below is the earlier idea.) Keep a configurable hard-block for mock locations if the business wants it.)
 - **Audit trail:** because raw fixes are stored on every visit, spoofing shows up as a pattern over time even when a single fix looks clean.
 
 ## Battery note

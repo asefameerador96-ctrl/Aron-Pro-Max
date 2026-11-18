@@ -3354,3 +3354,14 @@
 - INT 951292a48 (train 116) live; health ok. Train 116a (CI: web e2e split, map test) lane/lead-train116a 3c1c195ce: GO given.
 - Waiting: SV6 final head for train 117 (merge, drop username widening, renumber from V0201, 1.19.0). Reviews running: android-gates step 5 (abfa1ef4). Pending checks: P-AMO3 slices 10-15 after its merge "checked"; P-SR1b Sale-page batch after its merge; P-TSO bfea7197 after its ci; L-A11 fix round; A-INT3 lab part 2.
 - P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 06:47 UTC
+- INT 39db6c734 (train 117) live; health ok, build 39db6c734. Trains 116a and 117 landed in this window; migrate console read: 0200 -> 0203, no errors.
+- Next: train 118 = Loyalty sweep (V0204, 1.20.0; L-A11 landing push awaited, head still d88b751b) + AMO e7a2f572. Final pass running on android-gates bc38c0ad9. A-INT3 at 817906b1 (renumbered to V0204..V0207 / 1.20.0 before my change reached it; told to shift to V0205..V0208 / 1.21.0).
+- New lanes: A-PROG1 (SR programme screens, slices 1-3 pushed, bb607ed7), T-KPI1 (targets server, d8f7c124). P-SR1b: one blocking (printer bar) in fix. P-TSO c834414e (slice 2 in progress). SV6 follow-ups not yet pushed. P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 08:47 UTC
+- Dev health ok, build 39db6c734 (train 117; train 118 was Android-only, deploy skipped by design). Integration branch is 4d310d8c0 = train 119 pushed (Loyalty sweep, V0204, contract 1.20.0); its ci and real deploy are in progress; integrator's report awaited.
+- Passed final review, waiting to land: android-integrity (31647f49: comment clean-up push; merges after 'Loyalty landed'). SV6 follow-ups (after integrity, V0209).
+- In fix rounds: A-PROG2 (274dac72; single-flight double count, edit chain, gift tier), P-SR1b (e017b2d7; QC locked-Cancel crash and stale state). A-GATE8 fd6825d4 (7 of 10 done, push 3 pending). T-KPI2 on the admin tab (6af9be04). P-TSO fd8625c8 pushed 07:31, 'checked' not yet received (nudge at the next check if still silent). L-A11: push (B) not yet pushed. P-AMO3 ff9fb511.
+- Usage: seven_day 'allowed_warning' seen on L-A11 at 08:07 (not rejected).

@@ -24,20 +24,40 @@ object StockSaving {
      * today's totals at [nowMs], [StockMessage.SAVED]. Refused by the route-day: nothing is stored, the same values may be
      * saved again once the day reopens, and the result carries why. Any other failure: [StockMessage.SAVE_FAILED], as before.
      */
-    suspend fun save(load: StockLoad, nowMs: () -> Long, meta: CaptureMeta, record: suspend (List<StockMovementEntity>) -> Unit): StockSaveResult =
+    suspend fun save(
+        load: StockLoad, nowMs: () -> Long, meta: CaptureMeta,
+        /** Which of these client UUIDs the repository already holds (an attempt that landed before a process kill); default none. */
+        storedAlready: (suspend (List<String>) -> Set<String>)? = null,
+        record: suspend (List<StockMovementEntity>) -> Unit,
+    ): StockSaveResult =
         when (val out = load.save(nowMs(), meta)) {
             is SaveOutcome.Refused -> StockSaveResult(if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES)
             is SaveOutcome.Saved -> try {
+                val ids = out.movements.map { it.clientUuid }
+                val already = storedAlready?.invoke(ids) ?: emptySet()
                 record(out.movements)
-                load.committed(out, nowMs())
-                StockSaveResult(StockMessage.SAVED)
+                // what the repository REALLY holds now: a UUID it dropped (the purge already forgot an acked copy) adds nothing to the loaded figure
+                val added = if (storedAlready == null) ids.toSet() - already else storedAlready(ids) - already
+                load.committed(out, nowMs(), ids.toSet() - added)
+                // nothing was added: every line was on the phone before this tap (or is one the purge forgot): the earlier Save landed
+                StockSaveResult(if (added.isEmpty()) StockMessage.ALREADY_SAVED else StockMessage.SAVED)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 load.commitFailed()
                 throw e
             } catch (e: Exception) {
                 load.commitFailed()
                 val why = DayRefusal.of(e)
-                StockSaveResult(if (why == null) StockMessage.SAVE_FAILED else null, why)
+                // D-LEAD-PREREQ-04 ruling 4: the check-in gate refused: the rep is told so, never the generic "could not save"
+                val gate = (e as? com.aktcl.aron.core.database.repo.AttendanceRefusedException)?.why
+                StockSaveResult(
+                    when {
+                        why != null -> null
+                        gate == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> StockMessage.CHECKED_OUT
+                        gate != null -> StockMessage.NOT_CHECKED_IN
+                        else -> StockMessage.SAVE_FAILED
+                    },
+                    why,
+                )
             }
         }
 }

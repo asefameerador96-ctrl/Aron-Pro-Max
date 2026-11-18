@@ -58,7 +58,23 @@ sealed interface ReviewProblem {
     data class OverStock(
         val skuId: Long, val skuName: String, val requestedBase: Long, val heldBase: Long,
         val requestedEntry: Long, val heldEntry: Long, val unitKey: String,
+        /** The Bangla name where the master has one: a Bangla screen words the SKU in Bangla. */
+        val skuNameBn: String? = null,
     ) : ReviewProblem
+    /** The memo this edit would replace was already replaced by another edit: the rep opens the latest version. Raised by the save, never by the review. */
+    data object EditTargetSuperseded : ReviewProblem
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 4 (step 3 S4): the check-in gate refused the save (no check-in on the memo's date, or the date is checked out); the rep is told what happened
+     * and what to do, never the generic "save failed". Raised by the save, never by the review.
+     */
+    data class AttendanceRefused(val why: com.aktcl.aron.core.database.repo.AttendanceRefusal) : ReviewProblem
+
+    /** The call this NEW sale belongs to was already closed (by the phone at its limit, or by the rep) before the Save: nothing was saved. Raised by the save, never by the review. */
+    data object CallClosed : ReviewProblem
+
+    /** The phone's clock was set back after the memo was opened, so an edit cannot carry its own date: nothing was saved (never the generic text). */
+    data object ClockMovedBack : ReviewProblem
 }
 
 data class SaleReview(
@@ -116,7 +132,7 @@ object SaleReviewCalculator {
         val over = requestedBySku.filter { (id, q) -> q > 0 && q > (catalog[id]?.stockBase ?: 0L) }
         over.forEach { (id, q) ->
             val sku = catalog.getValue(id)
-            problems += ReviewProblem.OverStock(id, sku.name, q, sku.stockBase, sku.entry.fromBase(q), sku.entry.fromBase(sku.stockBase), sku.entryLabelKey)
+            problems += ReviewProblem.OverStock(id, sku.name, q, sku.stockBase, sku.entry.fromBase(q), sku.entry.fromBase(sku.stockBase), sku.entryLabelKey, sku.nameBn)
         }
         val lines = rawLines.map { if (it.sku.skuId in over) it.copy(exceedsStock = true) else it }
 

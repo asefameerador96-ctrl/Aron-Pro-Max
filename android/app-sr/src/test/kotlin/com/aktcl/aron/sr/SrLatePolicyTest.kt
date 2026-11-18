@@ -184,7 +184,7 @@ class SrLatePolicyTest {
             runBlocking { f.day.restoreOpenVisit() }
             assertEquals("restored after a relaunch", v.visitUuid, f.day.visitSession.current.value?.visitUuid)
             // leaving the call writes its close: the guard and the write agree
-            assertNull(runBlocking { f.day.closeVisitAbandoned() })
+            assertNull(runBlocking { f.day.sale.closeCall() })
             assertEquals(listOf(v.visitUuid), runBlocking { f.db.captureDao().visitClosesOn(f.date) }.map { it.visitClientUuid })
             assertEquals(1, queued(f, "visit_close"))
             assertEquals(listOf<Throwable>(), crashes.toList())

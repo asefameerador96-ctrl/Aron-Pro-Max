@@ -236,13 +236,13 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
 }
 
 /** Test tags of the sale screens. */
-object SaleTags { const val QC_ONLY = "sale_qc_only"; const val PRINT_LATER = "sale_print_later" }
+object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first"; const val PRINT_LATER = "sale_print_later" }
 
 /**
  * Sale, step 2: the product list (F-SR-023, sr/stock.webp layout with the sale quantity). One kit [PackCard] per SKU: packshot with the
  * packs badge, the SKU name, the red minus, the underlined sale quantity (tap to type), the purple plus and the stock figure; under it
  * the "price / unit · in stock" caption (the unit and price stay visible on every row), and, once a quantity is entered, the packs
- * equivalent with the line total and the over-stock warning (a warning, never a block). Quantities are in the SKU's own unit.
+ * equivalent with the line total and the stock stop (the quantity cannot go above what is held, D-OWNER-PREREQ-01 rule 2). Quantities are in the SKU's own unit.
  * A filter row (search, All, one pill per category) leads the list. The purple bottom panel carries the running total and the
  * gradient Proceed button. Stateless: the caller owns the quantities ([SaleFlow]) and passes the current review.
  */
@@ -275,6 +275,8 @@ fun SaleEntryScreen(
      */
     quantityPopup: Boolean = false,
     skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
+    /** The way to the Stock screen from the one "add today's stock first" banner; null (tests) shows the banner without the button. */
+    onOpenStock: (() -> Unit)? = null,
     /** The AMO host's header card (owner screenshots 23 and 24: shop icon, "রুট:" and "খুচরা বিক্রেতাঃ" lines); non-null replaces the retailer pill. SR passes null. */
     headerCard: (@Composable () -> Unit)? = null,
     /** The AMO host (D-PAR-AMO-07): the old SKU card with the rate / discount / stock column and the round badge. SR passes false and keeps the PackCard. */
@@ -288,15 +290,24 @@ fun SaleEntryScreen(
     // a recent SKU is listed first, once: it leaves its category order (one row, one control set, per SKU); the list has no filter row
     val ordered = skus.sortedWith(compareBy({ it.skuId !in recentSkuIds }, { categoryRank(it.categoryCode) }))
     val hasLines = review?.lines?.isNotEmpty() == true
+    // the free reward packs of the draft come out of the same stock as the line: the row's stop and its words use the net figure, as SaleFlow.setQuantity does
+    val rewardBySku = review?.drp.orEmpty().groupBy { it.skuId }.mapValues { (_, r) -> r.sumOf { it.rewardQtyBase } }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (headerCard != null) headerCard()
-            else if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S))
+            else if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S), softCorners = quantityPopup)
             if (onPreviousSales != null) GreenButton(historyLabel ?: stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S))
             if (onQcOnly != null && !hasLines && skus.isNotEmpty()) LinkText(stringResource(R.string.sale_qc_only), onQcOnly, Modifier.testTag(SaleTags.QC_ONLY))
             when {
                 skus.isEmpty() || review == null -> AronEmptyState(stringResource(R.string.sale_empty), icon = AronIcons.Sale)
                 else -> {
+                    // no stock at all today: ONE banner with the way to the Stock screen; the rows stay quiet (a "No stock of X" line on every row is noise)
+                    if (skus.all { it.stockBase <= 0L }) {
+                        AronBanner(
+                            stringResource(R.string.sale_stock_first), Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S).testTag(SaleTags.STOCK_FIRST), kind = BannerKind.Warning,
+                            actionLabel = onOpenStock?.let { stringResource(R.string.sale_stock_first_action) }, onAction = onOpenStock,
+                        )
+                    }
                     PackListHeader(
                         sku = stringResource(R.string.sale_col_sku), quantity = stringResource(R.string.sale_col_sale), stock = stringResource(R.string.sale_col_stock),
                     )
@@ -304,7 +315,7 @@ fun SaleEntryScreen(
                         Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity, onOpen = if (quantityPopup) ({ popupSkuId = sku.skuId }) else null, amoCard = amoSkuCard) }
+                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity, rewardBase = rewardBySku[sku.skuId] ?: 0L, onOpen = if (quantityPopup) ({ popupSkuId = sku.skuId }) else null, amoCard = amoSkuCard) }
                     }
                 }
             }
@@ -327,6 +338,7 @@ fun SaleEntryScreen(
             stringResource(R.string.sale_zero_confirm_title), stringResource(R.string.sale_zero_confirm_message),
             stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
             onConfirm = { askZero = false; if (onZeroSaleReason != null) askReason = true else onZeroSaleConfirmed() }, onDismiss = { askZero = false },
+            manual = onZeroSaleReason != null, // the SR's box of the manual (32); the AMO keeps the plain kit dialog
         )
     }
     popupSkuId?.let { id ->
@@ -368,13 +380,14 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
  * Each control carries its own TalkBack label with the SKU name (minus, the quantity field, plus).
  */
 @Composable
-private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit, onOpen: (() -> Unit)? = null, amoCard: Boolean = false) {
+private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit, rewardBase: Long = 0L, onOpen: (() -> Unit)? = null, amoCard: Boolean = false) {
     val look = LocalAronLook.current
     val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
     val entry = sku.entry
     // hard stop at line entry (D-OWNER-PREREQ-01 rule 2): the quantity cannot go above what is held, in this SKU's entry unit
-    val max = minOf(MaxLineQty, entry.fromBase(sku.stockBase.coerceAtLeast(0L)))
+    val freeBase = (sku.stockBase - rewardBase).coerceAtLeast(0L) // held less the SKU's own reward packs (the same figure SaleFlow.setQuantity stops at)
+    val max = minOf(MaxLineQty, entry.fromBase(freeBase))
     Column {
         // the label is the hyphenated SKU code on one line (sr/stock.webp); nothing is printed between the cards
         if (amoCard) AmoSkuCard(
@@ -394,7 +407,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             skuId = sku.skuId.toString(), skuCode = sku.code,
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
-            stock = entryStockText(entry, sku.stockBase),
+            stock = entryStockText(entry, freeBase),
             caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it, if (it % 10L == 0L) 2 else 3), unit) },
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
@@ -403,10 +416,11 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             minusEnabled = qty > 0, plusEnabled = qty < max, onOpen = onOpen,
         )
         // the stock stop is said in words, not only by a dead plus: how many are held, or that none are (rule 2)
-        if (qty >= max) {
-            val held = entryStockText(entry, sku.stockBase)
+        // a SKU with nothing held says nothing here: the screen's one banner says "add today's stock first"
+        if (qty >= max && max > 0L) {
+            val held = entryStockText(entry, freeBase)
             Text(
-                if (max <= 0L) stringResource(R.string.sale_no_stock, sku.name) else localizedDigits(stringResource(R.string.sale_stock_warning, held, sku.name, unit)),
+                localizedDigits(stringResource(R.string.sale_stock_warning, held, name, unit)),
                 color = if (line?.exceedsStock == true) look.red else look.inkMuted, fontSize = 13.sp,
                 modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
@@ -557,11 +571,19 @@ internal fun moneyGlued(mtk: Long): String = moneyBare(mtk) + "৳"
 private fun negMoney(moneyText: String): String = "− $moneyText"
 
 @Composable
-private fun problemText(p: ReviewProblem): String = when (p) {
+internal fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.TooManyLines -> localizedDigits(stringResource(R.string.review_problem_too_many_lines, p.max.toString(), p.count.toString()))
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
     is ReviewProblem.QtyTooLarge -> stringResource(R.string.review_problem_qty_large, p.skuId.toString())
-    is ReviewProblem.OverStock -> localizedDigits(stringResource(R.string.review_problem_over_stock, p.skuName, p.heldEntry.toString(), entryUnitLabel(p.unitKey), p.requestedEntry.toString()))
+    ReviewProblem.EditTargetSuperseded -> stringResource(R.string.review_problem_edit_superseded)
+    ReviewProblem.CallClosed -> stringResource(R.string.review_problem_call_closed)
+    is ReviewProblem.AttendanceRefused -> stringResource(when (p.why) {
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN -> R.string.review_problem_not_checked_in
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> R.string.review_problem_checked_out
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> R.string.review_problem_not_checked_in
+    })
+    ReviewProblem.ClockMovedBack -> stringResource(R.string.review_problem_clock_back)
+    is ReviewProblem.OverStock -> localizedDigits(stringResource(R.string.review_problem_over_stock, if (LocalAppLanguage.current == AppLanguage.BN) (p.skuNameBn ?: p.skuName) else p.skuName, p.heldEntry.toString(), entryUnitLabel(p.unitKey), p.requestedEntry.toString()))
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
     is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)

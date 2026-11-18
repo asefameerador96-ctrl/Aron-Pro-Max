@@ -9,7 +9,9 @@ import kotlinx.datetime.LocalDate
 /** Who numbers memos on this phone (from the login: username, `bind_ordinal`, `memo_seq_block_size`). */
 data class MemoNumbering(val username: String, val bindOrdinal: Int, val blockSize: Int = 500) {
     init {
-        require(Regex("^[a-z][a-z0-9]{3,31}$").matches(username)) { "memo usernames are lower-case, 4 to 32 characters, no hyphen" }
+        // lead 2026-11-13: three characters are allowed (a letter, then 2 to 31 letters or digits). The SERVER's checks still say 4 to 32
+        // (docs/requests/android-gates.md s5): until that is relaxed there, a 3-character login's memos are refused by the server (memo_no_invalid).
+        require(Regex("^[a-z][a-z0-9]{2,31}$").matches(username)) { "memo usernames are lower-case, 3 to 32 characters, no hyphen" }
         require(bindOrdinal in 0..3) { "bind_ordinal is 0..3" }
         require(blockSize in 1..999) { "block size must keep blocks below the overflow range" }
     }

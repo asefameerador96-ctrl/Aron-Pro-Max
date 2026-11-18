@@ -1,0 +1,117 @@
+package com.aktcl.aron.backend.analytics.devices
+
+import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.Database
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Duration
+import java.time.Instant
+import java.util.Base64
+
+/**
+ * Signs lab grants (D-OWNER-MDM-02 iii). Token: `base64url(payload).base64url(signature)`, payload `{"v":1,"d":"<device uuid>","a":"<api host>","iat":<ms>,"exp":<ms>}`,
+ * ECDSA P-256 / SHA-256 (DER), verified offline by the phone with the matching PUBLIC key (an Android resource). `a` is the audience: the host of the API the phone
+ * talks to, so a grant signed by the test account's server never verifies on a phone built for the final account even if one key pair were shared by mistake (the runbook
+ * still says one key pair per environment). The private key (PKCS#8, base64) is read from the environment by the caller and never logged or stored; with no key, or a
+ * key that is not an EC P-256 private key, the signer is not [configured] and signs nothing.
+ */
+class LabGrantSigner(privateKeyPkcs8Base64: String?) {
+    private val key = privateKeyPkcs8Base64?.trim()?.takeIf { it.isNotEmpty() }?.let {
+        runCatching { KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(it))) }.getOrNull()
+    }?.takeIf { isP256(it) }
+    val configured: Boolean get() = key != null
+
+    /** True when something was supplied as the key (set, even if unreadable): lets the start-up and the 409 tell "no key" from "unreadable key". */
+    val supplied: Boolean = !privateKeyPkcs8Base64.isNullOrBlank()
+
+    fun sign(deviceUuid: String, audience: String, iat: Instant, exp: Instant): String {
+        val k = key ?: error("lab grant signing key is not configured")
+        require(audience.isNotBlank() && audience.none { it == '"' || it == '\\' || it.code < 0x20 }) { "audience must be a plain host name" }
+        val payload = """{"v":1,"d":"$deviceUuid","a":"$audience","iat":${iat.toEpochMilli()},"exp":${exp.toEpochMilli()}}""".toByteArray(Charsets.UTF_8)
+        val sig = Signature.getInstance("SHA256withECDSA").apply { initSign(k); update(payload) }.sign()
+        val e = Base64.getUrlEncoder().withoutPadding()
+        return e.encodeToString(payload) + "." + e.encodeToString(sig)
+    }
+
+    private companion object {
+        /** True for an EC key on the NIST P-256 curve (secp256r1): the curve the phone's verifier demands. */
+        fun isP256(k: java.security.Key): Boolean {
+            val params = (k as? java.security.interfaces.ECKey)?.params ?: return false
+            val p256 = java.security.AlgorithmParameters.getInstance("EC").apply { init(java.security.spec.ECGenParameterSpec("secp256r1")) }
+                .getParameterSpec(java.security.spec.ECParameterSpec::class.java)
+            return params.curve == p256.curve && params.generator == p256.generator && params.order == p256.order && params.cofactor == p256.cofactor
+        }
+    }
+}
+
+/** The phone is unknown or no longer usable (revoked or replaced). */
+class NoUsableDevice : IllegalArgumentException("no usable device")
+
+/** One lab exemption as the portal sees it (never the signed token). */
+data class LabExemptionRow(val deviceId: Long, val grantedBy: Long, val grantedAt: Instant, val expiresAt: Instant, val note: String?)
+
+/**
+ * The server record of lab exemptions (`app.device_lab_exemption`) and the signed grant. At most [MAX_DAYS] days; a new grant replaces the row.
+ * The grant is signed ONCE, when it is made, and stored with the row: the bundle that carries it is versioned and ETagged by content, so a grant
+ * signed afresh on every request (ECDSA signatures differ each time) would change the bundle on every fetch. The bundle reads the stored token
+ * (`BundleService.labGrant`); a grant is withdrawn by [revoke] (deleting the row), not by removing the key, because the token already issued
+ * stays valid on the phone until its expiry or the next bundle without it.
+ */
+class LabExemptionService(private val db: Database, private val signer: LabGrantSigner, private val audience: String, private val clock: AronClock = AronClock.SYSTEM) {
+    /** True when the server can sign (the environment secret is set): the portal shows the action only then. */
+    val canGrant: Boolean get() = signer.configured && audience.isNotBlank()
+
+    /** Why [canGrant] is false (the operator's next step), or null. Never mentions a key value. */
+    val unavailableReason: String? get() = when {
+        !signer.supplied -> "the server has no lab-grant signing key (secret ARON_LAB_GRANT_KEY)"
+        !signer.configured -> "the lab-grant signing key is set but is not a readable EC P-256 PKCS#8 base64 key"
+        audience.isBlank() -> "the public API URL (ARON_PUBLIC_API_URL) is missing or has no host, so a grant has no audience"
+        else -> null
+    }
+
+    /** Records the exemption and returns its expiry. Needs a configured signer: a grant nobody can sign would only mislead the portal. */
+    fun grant(deviceId: Long, grantedBy: Long, days: Int, note: String?): Instant = grantRow(deviceId, grantedBy, days, note).expiresAt
+
+    /** [alsoInTx] runs in the same transaction (the audit row), so a grant is never recorded without it. */
+    fun grantRow(deviceId: Long, grantedBy: Long, days: Int, note: String?, alsoInTx: (org.jdbi.v3.core.Handle, LabExemptionRow) -> Unit = { _, _ -> }): LabExemptionRow {
+        require(canGrant) { "lab grant signing key or audience is not configured" }
+        require(days in 1..MAX_DAYS) { "days must be 1..$MAX_DAYS" }
+        require(note == null || note.length <= 300) { "note too long" }
+        // Whole milliseconds, so the stored column and the signed payload name the same instants.
+        val now = Instant.ofEpochMilli(clock.now().toEpochMilli()); val exp = now.plus(Duration.ofDays(days.toLong()))
+        val row = LabExemptionRow(deviceId, grantedBy, now, exp, note)
+        db.jdbi.useTransaction<Exception> { h ->
+            val uuid = h.createQuery("SELECT device_uuid::text FROM app.device WHERE id = :d AND status NOT IN ('revoked','replaced')").bind("d", deviceId).mapTo(String::class.java).findOne().orElse(null)
+                ?: throw NoUsableDevice()
+            val token = signer.sign(uuid, audience, now, exp)
+            h.createUpdate(
+                "INSERT INTO app.device_lab_exemption (device_id, granted_by, granted_at, expires_at, note, grant_token) VALUES (:d, :u, :g, :e, :n, :t) " +
+                    "ON CONFLICT (device_id) DO UPDATE SET granted_by = EXCLUDED.granted_by, granted_at = EXCLUDED.granted_at, expires_at = EXCLUDED.expires_at, note = EXCLUDED.note, grant_token = EXCLUDED.grant_token",
+            ).bind("d", deviceId).bind("u", grantedBy).bind("g", java.sql.Timestamp.from(now)).bind("e", java.sql.Timestamp.from(exp)).bind("n", note).bind("t", token).execute()
+            alsoInTx(h, row)
+        }
+        return row
+    }
+
+    fun revoke(deviceId: Long, alsoInTx: (org.jdbi.v3.core.Handle, LabExemptionRow?) -> Unit = { _, _ -> }): Boolean = db.jdbi.inTransaction<Boolean, Exception> { h ->
+        val before = h.createQuery("SELECT device_id, granted_by, granted_at, expires_at, note FROM app.device_lab_exemption WHERE device_id = :d").bind("d", deviceId)
+            .map { rs, _ -> LabExemptionRow(rs.getLong(1), rs.getLong(2), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), rs.getString(5)) }.findOne().orElse(null)
+        val gone = h.createUpdate("DELETE FROM app.device_lab_exemption WHERE device_id = :d").bind("d", deviceId).execute() > 0
+        if (gone) alsoInTx(h, before)
+        gone
+    }
+
+    /** The unexpired exemption of [deviceId], or null. */
+    fun current(deviceId: Long): LabExemptionRow? = db.jdbi.withHandle<LabExemptionRow?, Exception> { h -> current(h, deviceId, clock.now()) }
+
+    companion object {
+        const val MAX_DAYS = 14
+
+        /** Used by the portal's device list too (same handle, one read). */
+        fun current(h: org.jdbi.v3.core.Handle, deviceId: Long, now: Instant): LabExemptionRow? =
+            h.createQuery("SELECT device_id, granted_by, granted_at, expires_at, note FROM app.device_lab_exemption WHERE device_id = :d AND expires_at > :n")
+                .bind("d", deviceId).bind("n", java.sql.Timestamp.from(now))
+                .map { rs, _ -> LabExemptionRow(rs.getLong(1), rs.getLong(2), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), rs.getString(5)) }.findOne().orElse(null)
+    }
+}

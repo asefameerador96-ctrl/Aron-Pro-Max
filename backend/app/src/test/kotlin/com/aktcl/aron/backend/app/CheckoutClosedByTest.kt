@@ -167,4 +167,32 @@ class CheckoutClosedByTest : NightSyncHarness() {
         assertTrue(reason(asNumber)!!.contains("closed_by must be the text rep or phone"), reason(asNumber))
         assertEquals(0, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid IN (CAST('${cu(badValue)}' AS uuid), CAST('${cu(checkIn)}' AS uuid), CAST('${cu(asNull)}' AS uuid), CAST('${cu(asNumber)}' AS uuid))"))
     }
+
+    @Test
+    @Order(7)
+    fun theClosedByCheckComesAfterTheRegistryAndTheWindowSoTheirOutcomesStay() = testApplication {
+        application { aronApi(wiring) }
+        val t = client.token("sr1001", phone)
+        fun reason(r: JsonObject) = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT detail FROM app.sync_rejected WHERE client_uuid = CAST('${cu(r)}' AS uuid)").mapTo(String::class.java).findOne().orElse(null) }
+        fun with(r: JsonObject, v: kotlinx.serialization.json.JsonElement) = JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("closed_by" to v))))
+        // (a) The same client_uuid with another payload stays `payload_conflict` (quarantined, nothing stored for the second copy), even when the second copy also has a bad closed_by.
+        val d = "2026-12-27"
+        val first = checkOut(d, "2026-12-27T12:00:00Z", "rep")
+        assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(first)))
+        val conflicting = with(first, JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:payload_conflict"), client.send(t, phone, listOf(conflicting)), "known uuid, different payload: the registry rule wins over the closed_by check")
+        assertEquals(null, reason(conflicting), "not a final reject: the first copy stands and no schema_invalid row exists")
+        assertEquals("rep", closedBy(first))
+        // (b) A record outside the business-date window stays `business_date_out_of_window` (quarantined, reviewable), never a schema error, even with a bad closed_by.
+        val old = with(checkOut("2026-10-01", "2026-10-01T12:00:00Z", "rep"), JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:business_date_out_of_window"), client.send(t, phone, listOf(old)), "out of window: the window rule wins over the closed_by check")
+        assertEquals(null, reason(old))
+        val future = with(checkOut("2027-02-01", "2027-02-01T12:00:00Z", "rep"), JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:business_date_out_of_window"), client.send(t, phone, listOf(future)))
+        // (c) A fresh in-window record with a bad closed_by is still a final reject with its named reason (test 5), and a resend of it is the same final outcome.
+        val bad = checkOut("2026-12-29", "2026-12-29T13:07:00Z", "server")
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(bad)))
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(bad)), "the resend repeats the stored final outcome")
+        assertTrue(reason(bad)!!.contains("closed_by must be rep or phone, got 'server'"), reason(bad))
+    }
 }

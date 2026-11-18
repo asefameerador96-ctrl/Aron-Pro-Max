@@ -65,4 +65,7 @@
     <string name="sr_content_close_x">× বন্ধ করুন</string>
     <string name="sr_glyph_dropdown">▾</string>
     <string name="sr_journey_load_failed">বিক্রয় যাত্রা লোড করা যায়নি</string>
+    <string name="sr_call_ended_title">কলটি ফোনে শেষ করা হয়েছে</string>
+    <string name="sr_call_ended_final">এই কলের দিনটি ফাইনাল সাবমিটে আগেই বন্ধ হয়ে গেছে, তাই কলের সমাপ্তি লেখা হয়নি। কলটি ফোনে শেষ করা হয়েছে।</string>
+    <string name="sr_call_ended_submit">এই কলের দিনের বিক্রি আগেই জমা দেওয়া হয়েছে, তাই কলের সমাপ্তি লেখা হয়নি। কলটি ফোনে শেষ করা হয়েছে।</string>
 </resources>

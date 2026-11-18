@@ -28,7 +28,12 @@
     <string name="sale_unit_pack">প্যাকেট</string>
     <string name="sale_pack_badge">= %1$s প্যাকেট + %2$s</string>
     <string name="sale_stock_warning">%2$s এর স্টক আছে মাত্র %1$s %3$s।</string>
-    <string name="sale_no_stock">%1$s এর স্টক নেই। আগে স্টক স্ক্রিনে স্টক যোগ করুন।</string>
+    <string name="sale_stock_first">আজকের স্টক এন্ট্রি করা নেই। আগে আজকের স্টক যোগ করুন, তারপর বিক্রি করুন।</string>
+    <string name="sale_stock_first_action">স্টক খুলুন</string>
+    <string name="review_problem_edit_superseded">এই মেমো আগেই সম্পাদনা করা হয়েছে। মেমো স্ক্রিন থেকে মেমোর সর্বশেষ সংস্করণটি খুলে সেটি সম্পাদনা করুন। কিছু সেভ হয়নি।</string>
+    <string name="review_problem_not_checked_in">এই দিনের জন্য আপনি হাজিরা দেননি, তাই কিছু সংরক্ষণ হয়নি। হাজিরা খুলে হাজিরা দিন, তারপর আবার সংরক্ষণ করুন।</string>
+    <string name="review_problem_checked_out">এই দিনের জন্য আপনি আগেই চেক-আউট করেছেন, তাই কিছু সংরক্ষণ হয়নি। চেক-আউটের সাথে বিক্রি বন্ধ হয়ে যায়।</string>
+    <string name="review_problem_clock_back">মেমো খোলার পরে ফোনের ঘড়ি পিছনে দেওয়া হয়েছে, তাই এটি নিজের তারিখে সংরক্ষণ করা যাবে না। কিছু সংরক্ষণ হয়নি। তারিখ ও সময় স্বয়ংক্রিয় করে মেমোটি আবার খুলুন।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
     <string name="sale_zero_confirm_title">বিক্রয়ের জন্য কোনও SKU নির্বাচন করা হয় নি</string>
     <string name="sale_zero_confirm_message">আপনি কি জিরো (০) বিক্রয় করতে চান?</string>
@@ -99,6 +104,7 @@
     <string name="edit_reason_wrong_sku">ভুল SKU নির্বাচিত।</string>
     <string name="edit_reason_wrong_quantity">ভুল পরিমাণ</string>
     <string name="edit_reason_wrong_price_type">ভুল মূল্যের ধরন</string>
+    <string name="edit_denied_mock">নকল লোকেশন ধরা পড়েছে, তাই এই বিক্রয় এডিট করা যাবে না। নকল-জিপিএস অ্যাপ বন্ধ করে আনইনস্টল করুন, তারপর ফিরে গিয়ে আবার চেষ্টা করুন।</string>
     <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
     <string name="edit_denied_qc">এই আউটলেটে QC সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
     <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>
@@ -147,8 +153,20 @@
     <string name="edit_reason_cancel">বাতিল</string>
     <string name="edit_reason_submit">জমা দিন</string>
     <string name="edit_reason_glyph_dropdown">▾</string>
+    <string name="edit_denied_checkin">আগে হাজিরা দিন: আজ হাজিরা দেওয়ার পরেই বিক্রয় এডিট করা যায়।</string>
+    <string name="edit_denied_day_closed">ওই দিনের বিক্রয় জমা হয়ে গেছে, তাই এই মেমো এডিট করা যায় না। আপনার টিএসও বা এএমওকে জানান।</string>
     <string name="sale_amo_rate">রেট</string>
     <string name="sale_amo_discount">ডিসকাউন্ট</string>
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">পরিমাণ</string>
+    <string name="qc_col_fault">ফল্ট টাইপ</string>
+    <string name="qc_col_type">প্রকার</string>
+    <string name="qc_col_qty">পরিমাণ</string>
+    <string name="qc_fault_mfc">MFC Fault</string>
+    <string name="qc_fault_mkt">MKT Fault</string>
+    <string name="qc_col_qctype">QC টাইপ</string>
+    <string name="review_problem_call_closed">এই কলটি আগেই শেষ হয়েছে, তাই বিক্রিটি সংরক্ষণ হয়নি। এর জন্য কিছুই লেখা হয়নি।</string>
+    <string name="qc_discard_message">QC তে যা লিখেছেন সব বাদ দিতে চান?</string>
+    <string name="qc_summary_none">QC করার জন্য কোন পণ্য নেই</string>
+    <string name="qc_entry_title">QC এন্ট্রি</string>
 </resources>

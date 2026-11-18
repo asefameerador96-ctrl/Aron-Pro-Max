@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import com.aktcl.aron.core.system.integrity.setGatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,7 +49,7 @@ class OutletMapActivity : ComponentActivity() {
         val outlet = LatLng(intent.getDoubleExtra(LAT, 0.0), intent.getDoubleExtra(LNG, 0.0))
         val radius = intent.getIntExtra(RADIUS, 100)
         val phone = if (intent.hasExtra(PHONE_LAT)) LatLng(intent.getDoubleExtra(PHONE_LAT, 0.0), intent.getDoubleExtra(PHONE_LNG, 0.0)) else null
-        setContent {
+        setGatedContent {
             AronTheme(AppLocale.current(this)) {
                 OutletMapScreen(name, outlet, radius, phone, online, onBack = { finish() })
             }

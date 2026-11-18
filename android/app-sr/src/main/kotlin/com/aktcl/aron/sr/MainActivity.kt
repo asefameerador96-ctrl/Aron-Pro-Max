@@ -3,7 +3,7 @@ package com.aktcl.aron.sr
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import com.aktcl.aron.core.system.integrity.setGatedContent
 import androidx.compose.foundation.layout.fillMaxSize
 
 import com.aktcl.aron.core.ui.aronPageBackground
@@ -130,9 +130,13 @@ class MainActivity : ComponentActivity() {
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
-        setContent {
+        setGatedContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
-            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider,
+                com.aktcl.aron.core.system.permission.LocalManualPermissionLook provides true,
+                com.aktcl.aron.core.ui.LocalSrManualLook provides true,
+            ) {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
                 // The page (tokens s2.1): the calm gradient and glows behind every screen; no Surface colour may paint over it.

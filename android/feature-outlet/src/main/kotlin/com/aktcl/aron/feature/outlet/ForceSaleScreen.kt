@@ -20,6 +20,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -88,8 +91,24 @@ fun ForceSaleContent(
     onShutter: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The SR's page of the manual (31): before a reason is chosen only the warning, the question and the two reason buttons show; the photo and the bar follow the tap. */
+    manual: Boolean = false,
 ) {
     val look = LocalAronLook.current
+    if (manual && selected == null && !noOutletLocation) {
+        Column(
+            modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.L),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+        ) {
+            Icon(AronIcons.Warning, contentDescription = null, tint = look.red, modifier = Modifier.size(40.dp))
+            Text(stringResource(R.string.out_force_reason), color = look.purple, fontSize = 18.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = AronTokens.Space.S))
+            listOf(ForceReason.INTERNET_PROBLEM to R.string.out_reason_internet_problem, ForceReason.LOCATION_CHANGE to R.string.out_reason_location_change).forEach { (r, label) ->
+                AronPrimaryButton(stringResource(label), { onReason(r) }, Modifier.fillMaxWidth().testTag(ForceSaleTags.reason(r)))
+            }
+            if (ForceSaleMissing.REASON in missing) FormError(stringResource(R.string.out_err_reason))
+        }
+        return
+    }
     Column(modifier.fillMaxSize().background(look.page)) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),

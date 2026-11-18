@@ -31,6 +31,16 @@ class SettingsTest {
     }
 
     @Test
+    fun theLabGrantSigningKeyIsASecretThatIsNeverPrintedAndAbsentByDefault() {
+        assertEquals(null, Settings.load(mapOf("ARON_ROLE" to "migrate")).labGrantKey)
+        val s = Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_LAB_GRANT_KEY" to "throwaway-lab-key-value"))
+        assertEquals("throwaway-lab-key-value", s.labGrantKey!!.reveal())
+        assertFalse(s.toString().contains("throwaway-lab-key-value"))
+        val f = File.createTempFile("aron-lab", ".txt").apply { writeText("from-file\n"); deleteOnExit() }
+        assertEquals("from-file", Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_LAB_GRANT_KEY_FILE" to f.absolutePath)).labGrantKey!!.reveal())
+    }
+
+    @Test
     fun badValuesAreRefused() {
         assertFailsWith<SettingsException> { Settings.load(mapOf("ARON_ROLE" to "web")) }
         assertFailsWith<SettingsException> { Settings.load(mapOf("ARON_ROLE" to "migrate", "PORT" to "-1")) }

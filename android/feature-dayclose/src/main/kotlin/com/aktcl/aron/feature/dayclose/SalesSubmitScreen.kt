@@ -103,6 +103,12 @@ object SalesSubmitTags {
 
     /** D-SRFIX-03: the closed list of old refused non-money records. */
     const val DISMISSED = "submit_dismissed"
+    const val READ_FAILED = "submit_read_failed"
+    const val SHOW_MORE = "submit_show_more"
+    const val SUPPORT = "submit_support"
+    const val UNSEEN_BUTTON = "submit_unseen_button"
+    const val SEEN_BUTTON = "submit_seen_button"
+    const val SEND_AGAIN = "submit_send_again"
 }
 
 /** The least width of the count columns of the reconciliation table on a 328 dp content width (screens-sr s11); a wider count grows its column. */
@@ -147,6 +153,23 @@ fun SalesSubmitScreen(
     rejected: List<RejectedRow> = emptyList(),
     /** D-SRFIX-03: old refused non-money records, behind a link under the list. */
     dismissed: List<RejectedRow> = emptyList(),
+    /** D-AGATE-04: records the rep marked as seen (out of the count, still listed under a closed link). */
+    seen: List<RejectedRow> = emptyList(),
+    /** D-AGATE-04: the read of the refused records failed: say so and offer [onRetryRead]; never show a quiet zero. */
+    rejectedReadFailed: Boolean = false,
+    onRetryRead: () -> Unit = {},
+    /** D-AGATE-04: "seen" and "send again" for a listed record; null hides the button (a host that cannot act). */
+    onMarkSeen: ((String) -> Unit)? = null,
+    onSendAgain: ((String) -> Unit)? = null,
+    /** D-AGATE-04 round 2: undo of "seen". */
+    onMarkUnseen: ((String) -> Unit)? = null,
+    /** D-AGATE-04 round 2: one tap from a refused entry to the support file (the host opens Support, whose file already carries the refused records). */
+    onSupport: (() -> Unit)? = null,
+    /** D-AGATE-04 round 2: refused rows beyond the page the list reads, and the button that reads more. */
+    refusedNotShown: Int = 0,
+    onShowMore: (() -> Unit)? = null,
+    /** D-AGATE-04: the phone's true send state, for one status line. */
+    outbox: OutboxStates? = null,
     /** A digest has answered for the date; null infers it from the counts (a known server column). Before it: "Nothing to compare yet". */
     serverKnown: Boolean? = null,
     /** The business date on screen; a listed row of another date shows its date. */
@@ -213,9 +236,27 @@ fun SalesSubmitScreen(
                     )
                 }
                 // D-NIGHT-DAYCLOSE-01 (b): the rows themselves, not a bare count, whether or not a digest has run
-                if (rejected.isNotEmpty()) RejectedList(rejected, wordLabel, bn, today)
+                if (rejectedReadFailed) {
+                    AronNoticeCard(
+                        stringResource(R.string.submit_read_failed), action = stringResource(R.string.submit_read_retry), onAction = onRetryRead,
+                        modifier = Modifier.testTag(SalesSubmitTags.READ_FAILED),
+                    )
+                    // the rep is never left without a way to report it: the Support screen sends the phone's file
+                    if (onSupport != null) androidx.compose.material3.TextButton(onClick = { onSupport.invoke() }, modifier = Modifier.testTag(SalesSubmitTags.SUPPORT)) {
+                        Text(stringResource(R.string.submit_send_to_support), color = look.purple)
+                    }
+                } else if (rejected.isNotEmpty()) RejectedList(rejected, wordLabel, bn, today, onMarkSeen, onSendAgain, onSupport)
                 else gate.notes.forEach { n -> NoticeCard(blockText(n, shownLabel), Notice.Info) }
-                if (dismissed.isNotEmpty()) DismissedList(dismissed, wordLabel, today)
+                if (dismissed.isNotEmpty()) DismissedList(dismissed, wordLabel, today, R.string.submit_dismissed_title, null, onSendAgain)
+                if (seen.isNotEmpty()) DismissedList(seen, wordLabel, today, R.string.submit_seen_title, onMarkUnseen, onSendAgain)
+                // the list is paged: say how many refused records are not shown yet (the banner count already includes them)
+                if (refusedNotShown > 0 && onShowMore != null) {
+                    androidx.compose.material3.TextButton(onClick = onShowMore, modifier = Modifier.testTag(SalesSubmitTags.SHOW_MORE)) {
+                        Text(stringResource(R.string.submit_show_more, localizedNumber(refusedNotShown.toLong())), color = look.purple)
+                    }
+                }
+                // the phone's true send state in one line (the table's server column is hidden until the server compares)
+                outbox?.let { o -> if (o.total > 0) NoticeCard(stringResource(R.string.submit_send_state, localizedNumber(o.acked.toLong()), localizedNumber((o.pending + o.inFlight).toLong()), localizedNumber((o.rejected + o.quarantined).toLong())), Notice.Info) }
                 // (a): a server count above the phone's is information (other phones, earlier installs of this login), never a mismatch
                 val extras = counts.filter { it.serverExtra > 0 }
                 if (extras.isNotEmpty()) {
@@ -431,7 +472,7 @@ private fun recordTypeLabels(): Map<String, String> = mapOf(
 
 /** D-NIGHT-DAYCLOSE-01 (b): one card listing each refused, held or retry row: what it is, why, and what happens to it. */
 @Composable
-private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String, bn: Boolean, today: String?) {
+private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String, bn: Boolean, today: String?, onMarkSeen: ((String) -> Unit)?, onSendAgain: ((String) -> Unit)?, onSupport: (() -> Unit)?) {
     val look = LocalAronLook.current
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L).testTag(SalesSubmitTags.REJECTED),
@@ -443,9 +484,25 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                 val which = r.memoNo ?: r.outletName
                 val date = r.businessDate.takeIf { today != null && it != today }?.let { localizedDigits(it) }
                 val elsewhere = if (r.fromThisPhone) null else stringResource(R.string.submit_rejected_other_phone)
-                Text(listOfNotNull(typeLabel(r.recordType), which, date, elsewhere).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = look.ink)
-                val reason = (if (bn) r.reasonBn ?: r.reasonEn else r.reasonEn ?: r.reasonBn) ?: r.code?.let { stringResource(R.string.submit_rejected_code, it) }
+                // a memo with its lines and QC is ONE entry: "Sale · sr1001-261024-003 · 8 records of this sale"
+                val family = if (r.familySize > 1) stringResource(R.string.submit_family_more, localizedNumber(r.familySize.toLong())) else null
+                Text(listOfNotNull(typeLabel(r.recordType), which, date, elsewhere, family).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+                // the bundle's own text in the rep's language, else the phone's text for the code (every known code has Bangla and English); never a raw code
+                val reason = (if (bn) r.reasonBn ?: r.reasonEn else r.reasonEn ?: r.reasonBn) ?: reasonOfCode(r.code)
                 if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
+                // D-AGATE-06: the day's own submit (the check-out sends it for the rep) was refused or held: say it, and the way out
+                if (r.recordType == "day_submit" && r.fromThisPhone) {
+                    // after the check-out the text names only actions that exist in that state (D-LEAD-PREREQ-04 ruling 6): Send again exists only for a submit the phone gave up on
+                    val daySubmitText = when {
+                        !r.afterCheckOut -> R.string.submit_day_submit_refused
+                        r.outcome == RejectedOutcome.PHONE_GAVE_UP -> R.string.submit_day_submit_gave_up_after_checkout
+                        r.outcome == RejectedOutcome.STORED_FLAGGED -> R.string.submit_day_submit_held_after_checkout
+                        // D-AGATE-15 (T3): still being retried (waiting for the network or the server): the check-out is HELD, nothing is refused and there is nothing to press
+                        r.outcome == RejectedOutcome.RETRY -> R.string.submit_day_submit_retry_after_checkout
+                        else -> R.string.submit_day_submit_refused_after_checkout
+                    }
+                    Text(stringResource(daySubmitText), style = MaterialTheme.typography.bodySmall, color = WarnInk)
+                }
                 Text(
                     stringResource(
                         when (r.outcome) {
@@ -453,10 +510,30 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                             RejectedOutcome.DROPPED -> R.string.submit_rejected_dropped
                             RejectedOutcome.RETRY -> R.string.submit_rejected_retry
                             RejectedOutcome.WAITING_ELSEWHERE -> R.string.submit_rejected_elsewhere
+                            RejectedOutcome.PHONE_GAVE_UP -> R.string.submit_rejected_gave_up
                         },
                     ),
-                    style = MaterialTheme.typography.bodySmall, color = if (r.outcome == RejectedOutcome.RETRY) WarnInk else OkInk,
+                    style = MaterialTheme.typography.bodySmall, color = if (r.outcome == RejectedOutcome.RETRY || r.outcome == RejectedOutcome.PHONE_GAVE_UP) WarnInk else OkInk,
                 )
+                val canExport = onSupport != null && r.fromThisPhone && r.outcome != RejectedOutcome.RETRY
+                if ((r.canSendAgain && onSendAgain != null) || (r.canMarkSeen && onMarkSeen != null) || canExport) Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    if (r.canSendAgain && onSendAgain != null) {
+                        androidx.compose.material3.TextButton(onClick = { onSendAgain(r.clientUuid) }, modifier = Modifier.testTag(SalesSubmitTags.SEND_AGAIN)) {
+                            Text(stringResource(R.string.submit_send_again), color = look.purple)
+                        }
+                    }
+                    if (r.canMarkSeen && onMarkSeen != null) {
+                        androidx.compose.material3.TextButton(onClick = { onMarkSeen(r.clientUuid) }, modifier = Modifier.testTag(SalesSubmitTags.SEEN_BUTTON)) {
+                            Text(stringResource(R.string.submit_mark_seen), color = look.purple)
+                        }
+                    }
+                    // one tap to the support file: it already carries every refused record with its code (D-AGATE-04 round 2)
+                    if (canExport) {
+                        androidx.compose.material3.TextButton(onClick = { onSupport?.invoke() }, modifier = Modifier.testTag(SalesSubmitTags.SUPPORT)) {
+                            Text(stringResource(R.string.submit_send_to_support), color = look.purple)
+                        }
+                    }
+                }
             }
         }
     }
@@ -464,7 +541,7 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
 
 /** D-SRFIX-03: refused non-money records past their listing days: closed by default, one tap to read them. */
 @Composable
-private fun DismissedList(rows: List<RejectedRow>, typeLabel: (String) -> String, today: String?) {
+private fun DismissedList(rows: List<RejectedRow>, typeLabel: (String) -> String, today: String?, titleRes: Int, onUndo: ((String) -> Unit)?, onSendAgain: ((String) -> Unit)?) {
     val look = LocalAronLook.current
     var open by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     Column(
@@ -472,22 +549,43 @@ private fun DismissedList(rows: List<RejectedRow>, typeLabel: (String) -> String
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
         androidx.compose.material3.TextButton(onClick = { open = !open }) {
-            Text(stringResource(R.string.submit_dismissed_title, localizedNumber(rows.size.toLong())), style = MaterialTheme.typography.titleSmall, color = look.ink)
+            Text(stringResource(titleRes, localizedNumber(rows.size.toLong())), style = MaterialTheme.typography.titleSmall, color = look.ink)
         }
         if (open) {
-            Text(stringResource(R.string.submit_dismissed_note, localizedNumber(RejectedDismissal.KEEP_DAYS)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+            if (titleRes == R.string.submit_dismissed_title) Text(stringResource(R.string.submit_dismissed_note, localizedNumber(RejectedDismissal.KEEP_DAYS)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
             rows.forEach { r ->
-                Text(listOf(typeLabel(r.recordType), localizedDigits(r.businessDate)).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = look.ink)
+                Column {
+                    Text(listOfNotNull(typeLabel(r.recordType), r.memoNo ?: r.outletName, localizedDigits(r.businessDate)).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = look.ink)
+                    reasonOfCode(r.code)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                        // a record the phone gave up on is NEVER only "seen": Send again stays reachable here too (a row marked by an older build)
+                        if (r.canSendAgain && onSendAgain != null) androidx.compose.material3.TextButton(onClick = { onSendAgain(r.clientUuid) }, modifier = Modifier.testTag(SalesSubmitTags.SEND_AGAIN)) {
+                            Text(stringResource(R.string.submit_send_again), color = look.purple)
+                        }
+                        if (r.seen && onUndo != null) androidx.compose.material3.TextButton(onClick = { onUndo(r.clientUuid) }, modifier = Modifier.testTag(SalesSubmitTags.UNSEEN_BUTTON)) {
+                            Text(stringResource(R.string.submit_show_again), color = look.purple)
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+/**
+ * The phone's own words for a refused record's code (D-AGATE-04): one Bangla and English text per known code, from the static
+ * [OutcomeCodeTexts] table (the whole [com.aktcl.aron.contract.RecordOutcomeCode] catalogue, the codes the phone sets itself and the
+ * transport codes); anything else reads as a plain sentence. A raw code is never shown.
+ */
+@Composable
+internal fun reasonOfCode(code: String?): String? = code?.let { stringResource(OutcomeCodeTexts.of(it)) }
 
 @Composable
 private fun blockText(b: SubmitBlock, typeLabel: (String) -> String): String = when (b) {
     is SubmitBlock.Unsynced -> stringResource(R.string.submit_blocked_unsynced, localizedNumber((b.pending + b.inFlight).toLong()))
     is SubmitBlock.CountMismatch -> stringResource(R.string.submit_blocked_mismatch, typeLabel(b.recordType), localizedNumber(b.device.toLong()), b.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank))
     SubmitBlock.AlreadySubmitted -> stringResource(R.string.submit_blocked_done)
+    SubmitBlock.Unreadable -> stringResource(R.string.submit_blocked_unreadable)
     is SubmitBlock.Rejected -> stringResource(R.string.submit_note_rejected, localizedNumber(b.count.toLong()))
     is SubmitBlock.Quarantined -> stringResource(R.string.submit_note_quarantined, localizedNumber(b.count.toLong()))
 }
@@ -523,12 +621,22 @@ private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeL
         BusinessKey.QC -> qty(t.qc, unitWord)
         BusinessKey.PROMOTION -> money(t.promotionMtk)
     }
+    // D-AGATE-04: until the server's figures exist there is nothing to compare, so the server column and its "Waiting" / "-" are hidden
+    // (they said "waiting" even for records the server had already accepted); the phone's own send state is the status line above
+    if (server == null) {
+        AronDataTable(
+            headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device)),
+            weights = listOf(1.4f, 2.0f),
+            rows = BusinessKey.entries.map { key -> listOf(typeLabel(key.recordKey), text(device, key)) },
+        )
+        return
+    }
     AronDataTable(
         headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
         weights = listOf(1.2f, 1.4f, 1.4f),
         rows = BusinessKey.entries.map { key ->
-            val word = when (BusinessCompare.matches(key, device, server)) { null -> if (server == null) waiting else null; false -> mismatch; true -> null }
-            listOf(listOfNotNull(typeLabel(key.recordKey), word).joinToString("\n"), text(device, key), server?.let { text(it, key) } ?: blank)
+            val word = when (BusinessCompare.matches(key, device, server)) { null -> null; false -> mismatch; true -> null }
+            listOf(listOfNotNull(typeLabel(key.recordKey), word).joinToString("\n"), text(device, key), text(server, key))
         },
     )
 }
