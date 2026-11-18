@@ -48,8 +48,8 @@ class SrBundleStabilityTest {
     private val principal get() = AronPrincipal(sr, "sr1001", Role.SR, 0, "api", null, null, "sr", emptyList(), false, emptyList(), "j", clock.now().plusSeconds(600))
     private fun build() = service.bundle(principal, day, "1.0.0+1")
 
-    /** What an idle aggregation worker pass does: the REAL `DashboardSummaries.touchFreshness` (the worker's own code) rewrites the freshness rows to now() for every table. */
-    private fun idleWorkerPass() = fresh.db.jdbi.useHandle<Exception> { h -> com.aktcl.aron.backend.analytics.DashboardSummaries.touchFreshness(h, Instant.now()) }
+    /** What an idle aggregation worker pass does: the REAL `AggregationWorker` pass (its own `touchFreshness`, wall clock) rewrites the freshness rows to now() for every table. */
+    private fun idleWorkerPass() { com.aktcl.aron.backend.analytics.AggregationWorker(fresh.db, AronClock { Instant.now() }).runUntilIdle() }
 
     @BeforeAll
     fun setUp() {
