@@ -51,6 +51,12 @@
     <string name="att_gate_out_body">Stock, sales and visits are closed for today. They open again after tomorrow\'s check-in. You can still read your memos, the summary and the sales submit.</string>
     <string name="att_gate_close_call">Close the open call</string>
     <string name="att_gate_notice">Check in first. Stock, sales and visits open after you check in.</string>
+    <string name="att_gate_earlier_title">Finish yesterday\'s call first</string>
+    <string name="att_gate_earlier_body">A call from an earlier day is still open. Finish it, or tap Close the open call. Until then only that call can be used; stock, other outlets, tasks and requests wait.</string>
+    <string name="att_gate_earlier_body_at">A call from an earlier day is still open at %1$s. Finish it, or tap Close the open call. Until then only that call can be used; stock, other outlets, tasks and requests wait.</string>
+    <string name="att_rollover_closed">Your day of %1$s was still open, so this phone closed it for you and submitted its sales. Check in to start today.</string>
+    <string name="att_rollover_abandoned">A call from %1$s was still open at 04:00 the next day, so this phone ended it. Sales you had saved were kept.</string>
+    <string name="att_rollover_draft">A sale you had not saved was dropped with it.</string>
     <string name="att_checkout_open_call">A call is still open. Close it (finish the sale or end the call) before you check out: check-out also submits your sales for the day.</string>
     <string name="att_checkout_open_edit">A memo edit is still open. Save or cancel it before you check out: check-out also submits your sales for the day.</string>
 </resources>

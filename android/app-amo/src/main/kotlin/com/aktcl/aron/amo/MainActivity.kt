@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.aktcl.aron.core.sync.shell.ShellLogout
@@ -278,6 +279,11 @@ class MainActivity : ComponentActivity() {
                                         // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
                                         val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName, stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain))
                                         androidx.compose.foundation.layout.Column {
+                                            // what the phone did after Dhaka midnight: told here and on Home until the rep has seen this screen
+                                            com.aktcl.aron.feature.attendance.rolloverNoticeText(d.rolloverNotice.collectAsStateWithLifecycle().value)?.let { t ->
+                                                com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                                                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { d.dismissRolloverNotice() } }
+                                            }
                                             // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
                                             attendance.checkOutBlockedBy?.let { w ->
                                                 com.aktcl.aron.core.ui.AronBanner(
@@ -306,12 +312,16 @@ class MainActivity : ComponentActivity() {
                             val gatedScreensMap: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = screens.mapValues { (k, content) ->
                                 if (k !in gatedScreens) content else { back: () -> Unit ->
                                     val why = gateNow
-                                    if (why == null) content(back) else {
+                                    // D-LEAD-PREREQ-04 ruling 4: an earlier day's open call is the only thing that works; the call's own screens stay open
+                                    val earlierCall = why == com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN
+                                    val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { databases.of(s.user.userId).referenceDao().outlet(id)?.name }.getOrNull() } }
+                                    if (why == null || (earlierCall && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) content(back) else {
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
                                             com.aktcl.aron.feature.attendance.CheckInFirst(
                                                 why, onCheckIn = { navigate(AmoScreen.ATTENDANCE) },
-                                                onCloseCall = if (openCallNow != null && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL)) { { dayScope.launch { day?.closeVisit(); back() } } } else null,
+                                                onCloseCall = if (openCallNow != null && (earlierCall || k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) { { dayScope.launch { day?.closeVisit(); back() } } } else null,
+                                                earlierCallOutlet = earlierOutlet,
                                             )
                                         }
                                     }
@@ -343,10 +353,10 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach, screens = gatedScreensMap, gateLocked = if (gateNow != null) gatedScreens else emptySet(), targets = targets, targetsStatus = targetsStatus,
+                                reach = reach, screens = gatedScreensMap, gateLocked = if (gateNow != null && gateNow != com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN) gatedScreens else emptySet(), targets = targets, targetsStatus = targetsStatus,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
-                                banners = amoDayLockBanners(day),
+                                banners = amoDayLockBanners(day) + amoRolloverBanners(day),
                             ) }
                             }
                         }

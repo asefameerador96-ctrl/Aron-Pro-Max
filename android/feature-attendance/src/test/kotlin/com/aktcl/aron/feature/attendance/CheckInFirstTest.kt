@@ -58,4 +58,36 @@ class CheckInFirstTest {
         compose.onNodeWithTag(CheckInFirstTags.CLOSE_CALL).performClick()
         assertEquals(1, closed)
     }
+
+    /** D-LEAD-PREREQ-04 ruling 4 (step 3 S4): an earlier day's call is still open: the reason is named (with the outlet), the way out is closing that call, no check-in button. */
+    @Test fun anEarlierDaysOpenCallIsNamedAndTheWayOutIsClosingIt() {
+        var closed = 0
+        compose.setContent { Lang(AppLanguage.EN) { CheckInFirst(AttendanceRefusal.EARLIER_CALL_OPEN, onCheckIn = {}, onCloseCall = { closed++ }, earlierCallOutlet = "Rahim Store") } }
+        compose.onNodeWithText("Finish yesterday's call first").assertExists()
+        compose.onNodeWithText("A call from an earlier day is still open at Rahim Store.", substring = true).assertExists()
+        compose.onNodeWithTag(CheckInFirstTags.GO).assertDoesNotExist()
+        compose.onNodeWithTag(CheckInFirstTags.CLOSE_CALL).performClick()
+        assertEquals(1, closed)
+    }
+
+    @Test fun theEarlierCallReasonReadsInBanglaToo() {
+        compose.setContent { Lang(AppLanguage.BN) { CheckInFirst(AttendanceRefusal.EARLIER_CALL_OPEN, onCheckIn = {}, onCloseCall = {}) } }
+        compose.onNodeWithText("আগে গতকালের কলটি শেষ করুন").assertExists()
+        compose.onNodeWithText("খোলা কলটি বন্ধ করুন").assertExists()
+    }
+
+    /** What the phone did after midnight is told in words, both languages: the closed day, the ended call, the dropped draft. */
+    @Test fun theRolloverNoticeTellsTheRepWhatThePhoneDid() {
+        val n = RolloverNotice(closedDates = listOf("2026-11-17"), abandonedOutletId = 5, abandonedDate = "2026-11-17", draftDropped = true)
+        compose.setContent { Lang(AppLanguage.EN) { androidx.compose.material3.Text(rolloverNoticeText(n).orEmpty()) } }
+        compose.onNodeWithText("this phone closed it for you", substring = true).assertExists()
+        compose.onNodeWithText("this phone ended it", substring = true).assertExists()
+        compose.onNodeWithText("A sale you had not saved was dropped", substring = true).assertExists()
+    }
+
+    @Test fun theRolloverNoticeReadsInBanglaAndIsEmptyWhenNothingHappened() {
+        compose.setContent { Lang(AppLanguage.BN) { androidx.compose.material3.Text(rolloverNoticeText(RolloverNotice(closedDates = listOf("2026-11-17"))).orEmpty()) } }
+        compose.onNodeWithText("এই ফোন আপনার হয়ে সেটি বন্ধ করেছে", substring = true).assertExists()
+        assertEquals(false, RolloverNotice().any)
+    }
 }

@@ -39,6 +39,8 @@ fun CheckInFirst(
     onCheckIn: () -> Unit,
     modifier: Modifier = Modifier,
     onCloseCall: (() -> Unit)? = null,
+    /** D-LEAD-PREREQ-04 ruling 4: the outlet of the earlier day's call that is still open, named in the reason (only for [AttendanceRefusal.EARLIER_CALL_OPEN]). */
+    earlierCallOutlet: String? = null,
 ) {
     AronScreen(modifier.fillMaxSize()) {
         Column(
@@ -46,9 +48,11 @@ fun CheckInFirst(
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            val earlier = why == AttendanceRefusal.EARLIER_CALL_OPEN
             AronEmptyState(
-                stringResource(if (why == AttendanceRefusal.NOT_CHECKED_IN) R.string.att_gate_title else R.string.att_gate_out_title),
-                hint = stringResource(if (why == AttendanceRefusal.NOT_CHECKED_IN) R.string.att_gate_body else R.string.att_gate_out_body),
+                stringResource(when (why) { AttendanceRefusal.NOT_CHECKED_IN -> R.string.att_gate_title; AttendanceRefusal.CHECKED_OUT -> R.string.att_gate_out_title; AttendanceRefusal.EARLIER_CALL_OPEN -> R.string.att_gate_earlier_title }),
+                hint = if (earlier) { if (earlierCallOutlet != null) stringResource(R.string.att_gate_earlier_body_at, earlierCallOutlet) else stringResource(R.string.att_gate_earlier_body) }
+                else stringResource(if (why == AttendanceRefusal.NOT_CHECKED_IN) R.string.att_gate_body else R.string.att_gate_out_body),
                 icon = AronIcons.Lock,
             )
             if (why == AttendanceRefusal.NOT_CHECKED_IN) {
@@ -59,4 +63,18 @@ fun CheckInFirst(
             }
         }
     }
+}
+
+/**
+ * What the phone did for the rep after Dhaka midnight, as ONE text in the app's language (D-LEAD-PREREQ-04 rulings 2 and 3): the day it closed for him, the earlier call it ended,
+ * the unsaved sale draft it dropped; null when nothing happened. A host shows it as a banner until the rep has seen it.
+ */
+@Composable
+fun rolloverNoticeText(n: RolloverNotice): String? {
+    if (!n.any) return null
+    val parts = ArrayList<String>()
+    n.abandonedDate?.let { parts += stringResource(R.string.att_rollover_abandoned, com.aktcl.aron.core.ui.localizedDigits(it)) }
+    if (n.draftDropped) parts += stringResource(R.string.att_rollover_draft)
+    if (n.closedDates.isNotEmpty()) parts += stringResource(R.string.att_rollover_closed, n.closedDates.map { com.aktcl.aron.core.ui.localizedDigits(it) }.joinToString(", "))
+    return parts.joinToString("\n")
 }

@@ -437,7 +437,7 @@ class AmoDay(
         // same when the AMO's supervisor-day Sales Submit stands. The answer says why the call ended without a close (the
         // host shows the matching text), or null when a close was queued.
         AmoCallLock.endedBy(capture, visitSession, callMeta(v))?.let { routeId = null; return@withLock it }
-        val date = businessDate()
+        val date = visitDate(v) // the call's memo carries the VISIT's date, also after Dhaka midnight (D-LEAD-PREREQ-04 ruling 5): today's date would not find it and classify a sold call as abandoned
         val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
         val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
         val live = memo.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
@@ -921,6 +921,14 @@ fun amoDayLockBanners(day: AmoDay?): List<com.aktcl.aron.feature.home.RoleBanner
         com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { d.refreshLock() }
     }
     return AmoDayLockWords.banners(amoDayLockText(lock)) // tso-manual X4a: the same words, checked by AmoDayLockWordsTest
+}
+
+/** D-LEAD-PREREQ-04: what the phone did after Dhaka midnight, as a Warning banner on the AMO Home (none when nothing happened). */
+@androidx.compose.runtime.Composable
+fun amoRolloverBanners(day: AmoDay?): List<com.aktcl.aron.feature.home.RoleBanner> {
+    val d = day ?: return emptyList()
+    val text = com.aktcl.aron.feature.attendance.rolloverNoticeText(d.rolloverNotice.collectAsState().value) ?: return emptyList()
+    return listOf(com.aktcl.aron.feature.home.RoleBanner(text, com.aktcl.aron.core.ui.BannerKind.Warning))
 }
 
 /** The words of [lock] as one text: the title (when a route is closed), then each line; null when nothing applies. */

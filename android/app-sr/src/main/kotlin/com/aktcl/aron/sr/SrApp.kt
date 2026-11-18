@@ -24,7 +24,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -357,16 +359,21 @@ fun SrApp(
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(stockAttempt, onAnswer = day::answerStockPrint, onClose = day::closeStockAttempt)
     val dayGate by day.dayGate.collectAsState()
+    val rollover by day.rolloverNotice.collectAsState()
     val openCallNow by day.visitSession.current.collectAsState()
     var checkInNotice by remember { mutableStateOf(false) }
     AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
         // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content
         val closed = dayGate
-        if (closed != null && s in SR_CHECKIN_GATED) {
-            SrFrame(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), goBack, sync, openSync) {
+        // D-LEAD-PREREQ-04 ruling 4: while an earlier day's call is open only THAT call's screens work; every other gated screen names the reason and offers to close the call
+        val earlierCall = closed == com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN
+        if (closed != null && s in SR_CHECKIN_GATED && !(earlierCall && s in SR_CALL_SCREENS)) {
+            val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { day.database.referenceDao().outlet(id)?.name }.getOrNull() } }
+            SrFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), goBack, sync, openSync) {
                 com.aktcl.aron.feature.attendance.CheckInFirst(
                     closed, onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE },
-                    onCloseCall = if (openCallNow != null && s in SR_CALL_SCREENS) { { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } } } else null,
+                    onCloseCall = if (openCallNow != null && (earlierCall || s in SR_CALL_SCREENS)) { { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } } } else null,
+                    earlierCallOutlet = earlierOutlet,
                 )
             }
             return@AronScreenTransition
@@ -405,10 +412,11 @@ fun SrApp(
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
             HomeContent(
-                header, HomeTiles.resolve(enabledTiles, tasks.openCount, locked = if (dayGate != null) HomeTiles.OPERATIONAL else emptySet()), data.freshness, user.offline, health ?: deviceHealth,
+                header, HomeTiles.resolve(enabledTiles, tasks.openCount, locked = when (dayGate) { null -> emptySet(); com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> HomeTiles.OPERATIONAL - HomeTile.SALE; else -> HomeTiles.OPERATIONAL }), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
                     // check-in gate (rule 1): a locked tile leads straight to check-in, with the reason, never a dead end
-                    if (dayGate != null && t in HomeTiles.OPERATIONAL) { checkInNotice = true; screen = SrScreen.ATTENDANCE; return@HomeContent }
+                    // an earlier day's open call (EARLIER_CALL_OPEN) is not a check-in matter: the tile opens its screen, which names the reason
+                    if (dayGate != null && dayGate != com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN && t in HomeTiles.OPERATIONAL) { checkInNotice = true; screen = SrScreen.ATTENDANCE; return@HomeContent }
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
                         HomeTile.STOCK -> { day.forgetStock(); screen = SrScreen.STOCK }
@@ -429,7 +437,7 @@ fun SrApp(
                 },
                 onSettings = { screen = SrScreen.SETTINGS },
                 // tso-manual X4a (R-W-11, A3 ask 1): the download first, else the day lock after the zone's Final Submit (null while open)
-                banner = srHomeBanner(data.downloading) { srDayLockBannerText(day) },
+                banner = srHomeBanner(data.downloading) { com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover) ?: srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
                 sync = sync, onSync = openSync,
@@ -445,6 +453,11 @@ fun SrApp(
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
                 androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+                    // what the phone did after Dhaka midnight (closed the day, ended a call): told here and on Home until the rep has seen the Attendance screen
+                    com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover)?.let { t ->
+                        com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                        DisposableEffect(Unit) { onDispose { day.dismissRolloverNotice() } }
+                    }
                     // arrived from a locked tile: say why (rule 1); gone once the rep has checked in
                     if (checkInNotice && dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN) {
                         com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
