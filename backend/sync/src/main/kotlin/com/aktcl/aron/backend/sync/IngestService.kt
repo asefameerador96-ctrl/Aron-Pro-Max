@@ -1221,8 +1221,8 @@ class IngestService(
                 }
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
-                outOfBounds(h, ctx, r, rule, payload, bd, routeId)
-                if (!isPhoneClose(r.type, payload)) gnssConsistency(h, ctx, r, rule, payload, bd, routeId)
+                // A phone close is no location reading of the rep: neither geo risk rule judges its fix (out of bounds, GNSS consistency).
+                if (!isPhoneClose(r.type, payload)) { outOfBounds(h, ctx, r, rule, payload, bd, routeId); gnssConsistency(h, ctx, r, rule, payload, bd, routeId) }
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }

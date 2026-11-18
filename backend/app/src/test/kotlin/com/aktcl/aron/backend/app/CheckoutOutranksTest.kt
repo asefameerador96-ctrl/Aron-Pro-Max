@@ -45,6 +45,9 @@ class CheckoutOutranksTest : NightSyncHarness() {
         h.createQuery("SELECT status || ' ' || evidence::text FROM app.risk_signal WHERE code = 'CHECKOUT_WITHOUT_SUBMIT' AND user_id = $srId AND business_date = DATE '$date'").mapTo(String::class.java).findOne().orElse(null)
     }
 
+    /** The worker rules run as the real worker database role (the API role may not update risk_signal). */
+    private fun worker(block: (org.jdbi.v3.core.Handle) -> Int): Int = fresh.db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL ROLE worker_rw"); block(h) }
+
     private val evaluator by lazy { RiskSignalEvaluator(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock)) }
 
     @Test
@@ -109,21 +112,39 @@ class CheckoutOutranksTest : NightSyncHarness() {
         val submit = daySubmit(d)
         assertTrue(client.send(t, phone, listOf(submit)).single().startsWith("accepted"))
         assertTrue(signal(d)!!.startsWith("open "), "the API role never touches the signal")
-        assertEquals(1, evaluator.withdrawCheckoutWithoutSubmit(today))
+        assertEquals(1, worker { evaluator.withdrawCheckoutWithoutSubmit(it, today) })
         val s = signal(d)!!
         assertTrue(s.startsWith("dismissed ") && s.contains(cu(submit)) && s.contains("\"withdrawn_by\": \"day_submit\"") && s.contains("\"day_submit_found\": false"), s)
-        assertEquals(0, evaluator.withdrawCheckoutWithoutSubmit(today))
+        assertEquals(0, worker { evaluator.withdrawCheckoutWithoutSubmit(it, today) })
 
-        // The mirror: a rep check-out on a day with no captures raises nothing at the ingest; a capture registered later makes the worker raise it.
+        // The mirror: a rep check-out on a day with no captures raises nothing at the ingest; a capture registered later makes the worker raise it, but only after the grace period.
         val d2 = "2027-01-02"
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(attendance("check_out", d2))))
         assertEquals(null, signal(d2))
         seedCapture(d2)
-        assertEquals(1, evaluator.raiseCheckoutWithoutSubmit(today))
+        val soon = java.time.Instant.now()
+        assertEquals(0, worker { evaluator.raiseCheckoutWithoutSubmit(it, today, soon) }, "the check-out is younger than the settle window: its captures and submit may still be on the way")
+        assertEquals(null, signal(d2))
+        val later = java.time.Instant.now().plusSeconds(3600)
+        assertEquals(1, worker { evaluator.raiseCheckoutWithoutSubmit(it, today, later) })
         assertTrue(signal(d2)!!.startsWith("open ") && signal(d2)!!.contains("\"raised_by\": \"worker\""), signal(d2))
         assertTrue(client.send(t, phone, listOf(daySubmit(d2))).single().startsWith("accepted"))
-        assertEquals(1, evaluator.withdrawCheckoutWithoutSubmit(today))
+        assertEquals(1, worker { evaluator.withdrawCheckoutWithoutSubmit(it, today) })
         assertTrue(signal(d2)!!.startsWith("dismissed "))
+
+        // A day whose submit was accepted and LATER data-voided by an admin is never raised by the worker (the rep did submit; the void log is the trail).
+        val d3 = "2026-12-31"
+        assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(attendance("check_out", d3))))
+        seedCapture(d3, "memo") // registered after the check-out, so the ingest raised nothing
+        val sub3 = daySubmit(d3)
+        assertTrue(client.send(t, phone, listOf(sub3)).single().startsWith("accepted"))
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("ALTER TABLE app.route_day_event DISABLE TRIGGER route_day_event_immutable")
+            h.execute("UPDATE app.route_day_event SET voided_at = now() WHERE client_uuid = '${cu(sub3)}'")
+            h.execute("ALTER TABLE app.route_day_event ENABLE TRIGGER route_day_event_immutable")
+        }
+        assertEquals(0, worker { evaluator.raiseCheckoutWithoutSubmit(it, today, later) })
+        assertEquals(null, signal(d3), "no late signal for a day that had a submit, even a voided one")
     }
 
     @Test

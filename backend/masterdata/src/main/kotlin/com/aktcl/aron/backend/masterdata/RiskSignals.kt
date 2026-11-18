@@ -130,12 +130,12 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
      * original evidence (`day_submit_found: false` keeps saying what the ingest saw); the status set has no `withdrawn`, and the dashboards count only `open` and `confirmed`.
      * The user's route-day aggregates are marked dirty, so the dashboards' suspicious counts stop counting it (the reviewer path in `RiskSignalApi` has the same old gap and is not
      * changed here). A submit voided or superseded AFTER the withdrawal does not re-raise the signal: the day stays withdrawn; the void trail shows it.
-     * Idempotent (a second run finds nothing open); returns how many moved. Looks back the ingest registry's retention (it exceeds the sync backdate window).
+     * Idempotent (a second run finds nothing open); returns how many moved. Looks back [lookbackDays] business dates.
      */
     fun withdrawCheckoutWithoutSubmit(today: LocalDate): Int =
         db.jdbi.inTransaction<Int, Exception> { h -> withdrawCheckoutWithoutSubmit(h, today) }
 
-    internal fun withdrawCheckoutWithoutSubmit(h: Handle, today: LocalDate): Int {
+    fun withdrawCheckoutWithoutSubmit(h: Handle, today: LocalDate): Int {
         val moved = h.createQuery(
             """
             WITH found AS (
@@ -158,35 +158,42 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
 
     /**
      * The mirror of the withdrawal, so the rule is complete in both directions (lead review of 2f5922ee, low 4): a REAL check-out (`closed_by = 'rep'`) of an SR or AMO whose
-     * user-day has route captures in the ingest registry ([ROUTE_CAPTURE_TYPES]) but no effective Sales Submit, and has no `CHECKOUT_WITHOUT_SUBMIT` signal yet, raises it. The ingest
-     * judges only at the moment the check-out is stored, so captures first registered in a later batch were never judged; this catches them. An existing row of any status (open,
-     * withdrawn, reviewed) is left alone (`ON CONFLICT DO NOTHING`). The evidence says `raised_by: worker`. Returns how many were raised.
+     * user-day has route captures in the ingest registry ([ROUTE_CAPTURE_TYPES]) but NO Sales Submit at all, and has no `CHECKOUT_WITHOUT_SUBMIT` signal yet, raises it. The ingest
+     * judges only at the moment the check-out is stored, so captures first registered in a later batch were never judged; this catches them. Decisions (lead review of ee82e904):
+     * (a) GRACE: a check-out received less than `cfg.day.submit_settle_timeout_min` (30) minutes before [now] is not judged yet, so a rep whose captures and submit arrive in a later batch is
+     * not flagged and then withdrawn; (b) a day with ANY `day_submit` record (even one an admin later data-voided) is not raised: the rep did submit, the void is the admin's act and its
+     * trail is the void log (the ingest's own judgement at check-out time still counts a voided submit as none, as before); (c) the scan looks back `cfg.sync.max_backdate_days` + 1
+     * business dates only (a record cannot arrive later than the sync window, so older days cannot change); (d) the signal carries the check-out's `route_id` like the ingest raise. An existing
+     * row of any status (open, withdrawn, reviewed) is left alone (`ON CONFLICT DO NOTHING`). The evidence says `raised_by: worker`. Returns how many were raised.
      */
-    fun raiseCheckoutWithoutSubmit(today: LocalDate): Int =
-        db.jdbi.inTransaction<Int, Exception> { h -> raiseCheckoutWithoutSubmit(h, today) }
+    fun raiseCheckoutWithoutSubmit(today: LocalDate, now: Instant = Instant.now()): Int =
+        db.jdbi.inTransaction<Int, Exception> { h -> raiseCheckoutWithoutSubmit(h, today, now) }
 
-    internal fun raiseCheckoutWithoutSubmit(h: Handle, today: LocalDate): Int {
+    fun raiseCheckoutWithoutSubmit(h: Handle, today: LocalDate, now: Instant = Instant.now()): Int {
         val weight = runCatching { (config.value("cfg.geo.integrity_weight") as JsonObject)["CHECKOUT_WITHOUT_SUBMIT"]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 20.0
+        val graceMin = runCatching { config.int("cfg.day.submit_settle_timeout_min") }.getOrDefault(30).coerceIn(5, 240)
         val raised = h.createQuery(
             """
-            INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, evidence, config_version)
-            SELECT 'CHECKOUT_WITHOUT_SUBMIT', 2, e.business_date, 'user', e.user_id::text, e.user_id, :score,
+            INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+            SELECT 'CHECKOUT_WITHOUT_SUBMIT', 2, e.business_date, 'user', e.user_id::text, e.user_id, e.route_id, :score,
                    jsonb_build_object('checkout_client_uuid', e.client_uuid::text, 'checked_out_at', to_char(e.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                                       'day_submit_found', false, 'raised_by', 'worker'), :cv
               FROM app.attendance_event e JOIN app.app_user u ON u.id = e.user_id AND u.role IN ('SR', 'AMO')
-             WHERE e.kind = 'check_out' AND e.closed_by = 'rep' AND e.voided_at IS NULL AND e.business_date >= :since
+             WHERE e.kind = 'check_out' AND e.closed_by = 'rep' AND e.voided_at IS NULL AND e.business_date >= :since AND e.received_at <= :cutoff
                AND EXISTS (SELECT 1 FROM app.ingest_registry r WHERE r.user_id = e.user_id AND r.business_date = e.business_date AND r.record_type = ANY(:types))
-               AND NOT EXISTS (SELECT 1 ${effectiveSubmit("x")} AND x.user_id = e.user_id AND x.business_date = e.business_date)
+               AND NOT EXISTS (SELECT 1 FROM app.route_day_event x WHERE x.kind = 'day_submit' AND x.user_id = e.user_id AND x.business_date = e.business_date)
             ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
             RETURNING user_id, business_date
             """.trimIndent(),
-        ).bind("since", today.minusDays(lookbackDays().toLong())).bind("score", weight.coerceIn(0.0, 300.0)).bind("cv", config.configVersion())
+        ).bind("since", today.minusDays(lookbackDays().toLong())).bind("cutoff", java.time.OffsetDateTime.ofInstant(now.minusSeconds(graceMin * 60L), java.time.ZoneOffset.UTC))
+            .bind("score", weight.coerceIn(0.0, 300.0)).bind("cv", config.configVersion())
             .bindArray("types", String::class.java, ROUTE_CAPTURE_TYPES.toList()).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
         raised.forEach { (user, date) -> markUserRoutesDirty(h, user, date, "risk_signal_raised") }
         return raised.size
     }
 
-    private fun lookbackDays(): Int = runCatching { config.int("cfg.retention.ingest_registry_days") }.getOrDefault(45).coerceIn(30, 400)
+    /** How far back the two rules look: the sync backdate window plus one day (a record cannot reach the server later, so an older day cannot change). Default 7 + 1. */
+    private fun lookbackDays(): Int = (runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7) + 1).coerceIn(2, 31)
 
     /** The suspicious counts of the aggregates are per user and day across the user's routes: every route the user held that day (assignment or stand-in) is rebuilt. */
     private fun markUserRoutesDirty(h: Handle, userId: Long, date: LocalDate, why: String) {
@@ -264,7 +271,7 @@ class RiskSignalJob(private val evaluator: RiskSignalEvaluator, private val cloc
                 .onFailure { it.exitIfFatal(log, "risk signals"); log.error("risk signal evaluation failed", it) }
             runCatching { evaluator.withdrawCheckoutWithoutSubmit(today).let { if (it > 0) log.info("checkout-without-submit signals withdrawn: {}", it) } }
                 .onFailure { it.exitIfFatal(log, "risk signal withdrawal"); log.error("checkout-without-submit withdrawal failed", it) }
-            runCatching { evaluator.raiseCheckoutWithoutSubmit(today).let { if (it > 0) log.info("checkout-without-submit signals raised late: {}", it) } }
+            runCatching { evaluator.raiseCheckoutWithoutSubmit(today, clock.now()).let { if (it > 0) log.info("checkout-without-submit signals raised late: {}", it) } }
                 .onFailure { it.exitIfFatal(log, "risk signal late raise"); log.error("checkout-without-submit late raise failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }

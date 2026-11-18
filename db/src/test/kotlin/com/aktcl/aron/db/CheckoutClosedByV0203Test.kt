@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * V0203 to V0205 (round 1.20.0, D-SV2-15 and D-SV2-16): `attendance_event.closed_by` and the memo username widening to three characters.
+ * V0203 to V0206 (round 1.20.0, D-SV2-15 and D-SV2-16): `attendance_event.closed_by` and the memo username widening to three characters.
  * The first test migrates a database that holds data to V0191, adds a check-in, a check-out, a 4-character SR and a sale abort, then applies the round and
  * checks that every old row survives with the default and that all five constraints end up validated. The second checks what the new column and the widened CHECKs accept and refuse.
  */
@@ -48,9 +48,9 @@ class CheckoutClosedByV0203Test {
         }
     }
 
-    /** The widened CHECKs are NOT VALID after V0204 (also on the PARTITIONED memo parent) and validated by V0205; the lock scope of each migration is its own tables only. */
+    /** The widened CHECKs are NOT VALID after V0204 (also on the PARTITIONED memo parent) and validated by V0206; the lock scope of each migration is its own tables only. */
     @Test
-    fun theWideningIsNotValidAfterV0204OnThePartitionedMemoTableAndValidAfterV0205() {
+    fun theWideningIsNotValidAfterV0204OnThePartitionedMemoTableAndValidAfterV0206() {
         val db = TestPostgres.createDatabase()
         try {
             Flyway.configure().configuration(db.flyway().configuration).target("204").load().migrate()
@@ -67,6 +67,10 @@ class CheckoutClosedByV0203Test {
             }
             db.flyway().migrate()
             db.connect().use { c ->
+                // V0205 (the index swap) is idempotent: run its text again on the migrated database, nothing changes and nothing fails (a hand re-run, a pre-created index).
+                val swap = java.io.File(System.getProperty("aron.migrations"), "V0205__attendance_once_rep_and_phone.sql").readText()
+                c.exec(swap); c.exec(swap)
+                assertEquals("attendance_event_once_phone,attendance_event_once_rep", c.scalar("SELECT string_agg(indexname, ',' ORDER BY indexname) FROM pg_indexes WHERE tablename = 'attendance_event' AND indexname LIKE 'attendance_event_once%'"))
                 assertEquals("5", c.scalar("SELECT count(*) FROM pg_constraint WHERE convalidated AND conname IN ('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN ('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"))
             }
         } finally {

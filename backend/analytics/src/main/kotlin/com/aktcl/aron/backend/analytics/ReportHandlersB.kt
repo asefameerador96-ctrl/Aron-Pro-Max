@@ -116,7 +116,7 @@ object GigoReport : ReportHandler {
                round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
                (array_agg(ev.fix_status ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS check_in_fix,
                (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep'))[1] AS check_out_fix,
-               bool_or(coalesce(ev.fix_is_mock, false)) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address,
+               coalesce(bool_or(coalesce(ev.fix_is_mock, false)) FILTER (WHERE ev.closed_by = 'rep'), false) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address,
                CASE WHEN bool_or(ev.kind = 'check_out' AND ev.closed_by = 'phone') AND NOT bool_or(ev.kind = 'check_out' AND ev.closed_by = 'rep')
                     THEN 'no check-out (closed by the phone)' END AS check_out_note
           FROM ev JOIN app.app_user u ON u.id = ev.user_id LEFT JOIN dw.dim_geo g ON g.route_id = ev.route_id

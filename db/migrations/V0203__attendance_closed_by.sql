@@ -1,7 +1,7 @@
 -- V0203 sr-server round 1.20.0 (D-SV2-15; D-LEAD-PREREQ-03 ruling 6): who closed a check-out. `closed_by` is `rep` (the rep pressed check-out) or `phone` (the phone closed a
 -- forgotten day at a later start, no location read). A phone close is stored and acknowledged, but every reader treats it as "no check-out" (no time, no hours, no
 -- supervisor_day.checked_out_at, never checkout_too_early). Old phones never send the member: the column default is `rep`. A fast default (PG 11+), no table rewrite.
--- The CHECK is NOT VALID here and validated by V0205 (squawk rule), which also splits the one-check-out-per-day unique index so a rep check-out outranks a phone close. Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0189 pattern).
+-- The CHECK is NOT VALID here and validated by V0206 (squawk rule); V0205 splits the one-check-out-per-day unique index so a rep check-out outranks a phone close. Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0189 pattern).
 SET lock_timeout = '5s';
 
 DO $$

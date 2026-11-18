@@ -1,7 +1,7 @@
 -- V0204 sr-server round 1.20.0 (D-SV2-16; android-gates request section 5, lead 2026-11-13): memo usernames of three characters. The phone accepts
 -- ^[a-z][a-z0-9]{2,31}$ (3 to 32 characters); the database said {3,31} (4 to 32) in app_user_memo_username and in the memo_no CHECK of memo, memo_void and sale_abort,
 -- so every memo of a 3-character login would be refused memo_no_invalid. Widening only: a row that satisfied the old pattern satisfies the new one, so nothing here can
--- raise on data (no pre-flight mirror needed, docs/30 4a). Each widened CHECK is NOT VALID here and validated by V0205 (squawk rule).
+-- raise on data (no pre-flight mirror needed, docs/30 4a). Each widened CHECK is NOT VALID here and validated by V0206 (squawk rule).
 -- Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0189 pattern); LOCK on the partitioned memo parent also locks its partitions.
 SET lock_timeout = '5s';
 
