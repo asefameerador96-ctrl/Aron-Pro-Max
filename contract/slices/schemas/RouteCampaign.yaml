@@ -41,6 +41,6 @@ RouteCampaign:
       $ref: '#/components/schemas/CampaignFigure'
     skus:
       type: array
-      maxItems: 100
+      maxItems: 20
       items:
         $ref: '#/components/schemas/CampaignSku'

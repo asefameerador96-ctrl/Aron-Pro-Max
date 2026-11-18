@@ -43,6 +43,20 @@ export default async function KpiTargetsPage({ searchParams }: { searchParams: P
     { key: "programme", header: t(locale, "kt.col.programme_code"), render: (r) => `${r.programme_code} · ${r.programme_name}` },
     { key: "qty", header: t(locale, "kt.col.target_qty"), align: "right", render: (r) => r.target_qty },
   ];
+  const campCols: Column<NonNullable<KpiTargetList["campaign_rows"]>[number]>[] = [
+    { key: "outlet", header: t(locale, "kt.col.outlet_code"), render: (r) => r.outlet_code },
+    { key: "programme", header: t(locale, "kt.col.programme_code"), render: (r) => `${r.programme_code} · ${r.programme_name}` },
+    { key: "std", header: t(locale, "kt.col.std_target"), align: "right", render: (r) => r.std_target },
+    { key: "memo", header: t(locale, "kt.col.memo_target"), align: "right", render: (r) => formatNumber(locale, r.memo_target) },
+  ];
+  const campSkuCols: Column<NonNullable<KpiTargetList["campaign_sku_rows"]>[number]>[] = [
+    { key: "outlet", header: t(locale, "kt.col.outlet_code"), render: (r) => r.outlet_code },
+    { key: "programme", header: t(locale, "kt.col.programme_code"), render: (r) => r.programme_code },
+    { key: "sku", header: t(locale, "kt.col.sku_code"), render: (r) => r.sku_code },
+    { key: "qty", header: t(locale, "kt.col.qty_base"), align: "right", render: (r) => formatNumber(locale, r.qty_base) },
+  ];
+  const campaigns = data?.campaign_rows ?? [];
+  const campaignSkus = data?.campaign_sku_rows ?? [];
   const mr = data?.month_row ?? null;
   const none = t(locale, "kt.stored_cpr_none");
   return (
@@ -79,7 +93,7 @@ export default async function KpiTargetsPage({ searchParams }: { searchParams: P
         </FilterBar>
         {routeParam && !route ? <p role="alert" className="text-sm text-red-800">{t(locale, "kt.route_bad")}</p> : null}
         {data ? (
-          data.brand_rows.length === 0 && data.programme_rows.length === 0 && !mr ? (
+          data.brand_rows.length === 0 && data.programme_rows.length === 0 && campaigns.length === 0 && campaignSkus.length === 0 && !mr ? (
             <p data-testid="kt-stored-empty" className="text-sm text-slate-600">{t(locale, "kt.stored_none")}</p>
           ) : (
             <div className="space-y-4" data-testid="kt-stored">
@@ -102,6 +116,14 @@ export default async function KpiTargetsPage({ searchParams }: { searchParams: P
               <section>
                 <h3 className="mb-1 text-sm font-semibold">{t(locale, "kt.stored_programmes")}</h3>
                 <DataTable columns={progCols} rows={data.programme_rows} rowKey={(r) => r.programme_code} empty={t(locale, "kt.stored_empty_programmes")} caption={t(locale, "kt.stored_programmes")} />
+              </section>
+              <section>
+                <h3 className="mb-1 text-sm font-semibold">{t(locale, "kt.stored_campaigns")}</h3>
+                <DataTable columns={campCols} rows={campaigns} rowKey={(r) => `${r.outlet_code}|${r.programme_code}`} empty={t(locale, "kt.stored_empty_campaigns")} caption={t(locale, "kt.stored_campaigns")} />
+              </section>
+              <section>
+                <h3 className="mb-1 text-sm font-semibold">{t(locale, "kt.stored_campaign_skus")}</h3>
+                <DataTable columns={campSkuCols} rows={campaignSkus} rowKey={(r) => `${r.outlet_code}|${r.programme_code}|${r.sku_code}`} empty={t(locale, "kt.stored_empty_campaign_skus")} caption={t(locale, "kt.stored_campaign_skus")} />
               </section>
             </div>
           )

@@ -206,6 +206,24 @@ describe("preview and commit through the proxy", () => {
     expect([k.month.length, k.programme.length, k.campaign.length, k.campaignSku.length]).toEqual([1, 1, 1, 1]);
     expect(k.programme[0]).toMatchObject({ target_qty: "20.000" }); // a decimal stays a string
   });
+  it("an orphan SKU target is refused until its campaign row is in the batch or stored; a blank column keeps the stored value", async () => {
+    const c = await madmin();
+    const sku = { outlet_code: "DHK-334-001", programme_code: "CAMP-NOV", month: NEXT, sku_code: "MaxR-20S", qty_base: 140 };
+    const camp = { outlet_code: "DHK-334-001", programme_code: "CAMP-NOV", month: NEXT, std_target: "140.000", memo_target: 8 };
+    const orphan = await (await op(c, { op: "kpi-targets.validate", body: { batch_uuid: B1, campaign_sku_rows: [sku], dry_run: true } })).json();
+    expect(orphan.data.errors).toEqual([{ section: "campaign_sku_rows", row: 1, column: "outlet_code", code: "campaign_row_missing" }]);
+    // the proxy takes one section per request: store the campaign row, then the SKU row is no orphan
+    expect((await op(c, { op: "kpi-targets.commit", body: { batch_uuid: crypto.randomUUID(), campaign_rows: [camp], dry_run: false }, reason: REASON })).status).toBe(200);
+    const stored = await (await op(c, { op: "kpi-targets.validate", body: { batch_uuid: B1, campaign_sku_rows: [sku], dry_run: true } })).json();
+    expect(stored.data.errors).toEqual([]);
+    // brand allocation: stored 5,700 taka, then a re-upload that leaves the column out keeps it
+    const withAlloc = [{ route_code: "R-334-01", brand_code: "MAXR", month: NEXT, memo_target: 119, kpi_alloc_mtk: 5_700_000 }];
+    await op(c, { op: "kpi-targets.commit", body: { batch_uuid: B2, brand_rows: withAlloc, dry_run: false }, reason: REASON });
+    const without = [{ route_code: "R-334-01", brand_code: "MAXR", month: NEXT, memo_target: 130 }];
+    await op(c, { op: "kpi-targets.commit", body: { batch_uuid: crypto.randomUUID(), brand_rows: without, dry_run: false }, reason: REASON });
+    expect(h.mock.state.custom.kpi.brand).toHaveLength(1);
+    expect(h.mock.state.custom.kpi.brand[0]).toMatchObject({ memo_target: 130, kpi_alloc_mtk: 5_700_000 });
+  });
   it("SUPPORT cannot validate or commit", async () => {
     const c = await support();
     for (const o of ["kpi-targets.validate", "kpi-targets.commit"]) expect((await op(c, { op: o, body: { batch_uuid: B1, brand_rows: brand0(), dry_run: o.endsWith("validate") }, reason: REASON })).status).toBe(403);

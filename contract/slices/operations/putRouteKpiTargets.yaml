@@ -9,9 +9,11 @@ operation:
   description: 'Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false`
     needs `change_reason`, commits all rows or none, is idempotent by `batch_uuid` (same content replays, other
     content or user is 409; the idempotency record is shared with the route target upload) and never rewrites a
-    past Dhaka month. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is
-    integer milli-taka; CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity
-    `route_kpi_target`.'
+    past Dhaka month. A member left OUT of a row keeps the stored value (`kpi_alloc_mtk` of a brand row, `cpr_target_bp`
+    and `cpr_alloc_mtk` of a month row; a new row gets 0 or null); an explicit null clears a CPR value. A `campaign_sku_rows`
+    row needs its campaign row (outlet, programme and month) in the same batch or already stored, else `campaign_row_missing`.
+    Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka;
+    CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.'
   requestBody:
     required: true
     content:

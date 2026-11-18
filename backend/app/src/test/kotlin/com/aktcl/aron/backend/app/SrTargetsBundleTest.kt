@@ -75,6 +75,7 @@ class SrTargetsBundleTest {
         agg("2026-12-31", route, skuA, 7, 1)        // last month: out
         agg("2027-01-02", otherRoute, skuA, 5000, 4) // another route: out
         x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '$asOf', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
+        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
     }
 
     @AfterAll fun tearDown() = fresh.close()

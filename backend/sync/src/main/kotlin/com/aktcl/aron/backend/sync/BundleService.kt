@@ -508,10 +508,12 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
-        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config) else emptyMap()
-        val kpi = if (zoneIds == null) SrKpi.load(h, plans.map { it.routeId }, date) else emptyMap()
-        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date) else emptyMap()
-        val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date) else emptyMap()
+        // One as_of per route (B1, D-TKPI-10): the newest rewrite of the route's own aggregate rows, so an idle worker pass never changes a bundle's version.
+        val asOfs = if (zoneIds == null) SrTargets.asOfByRoute(h, plans.map { it.routeId }, date) else emptyMap()
+        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, asOfs) else emptyMap()
+        val kpi = if (zoneIds == null) SrKpi.load(h, plans.map { it.routeId }, date, asOfs) else emptyMap()
+        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date, asOfs) else emptyMap()
+        val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, asOfs) else emptyMap()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
             val target = if (zoneIds != null) 0 else day?.target ?: r.targetOutlets
@@ -522,7 +524,7 @@ class BundleService(
                 assignment_kind = r.assignmentKind, acting_for_user_id = if (zoneIds == null && r.assignmentKind == "cover") primaries[r.routeId]?.takeIf { it != userId } else null,
                 planned_today = r.plannedToday, target_outlets = target, outlets = routeOutlets,
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
-                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar, kpi = kpi[r.routeId], star = star[r.routeId], campaigns = campaigns[r.routeId]?.takeIf { it.isNotEmpty() },
+                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar?.takeIf { sr[r.routeId]!!.hasFigures || kpi[r.routeId] != null || star[r.routeId] != null || campaigns[r.routeId]?.rows.orEmpty().isNotEmpty() }, kpi = kpi[r.routeId], star = star[r.routeId], campaigns = campaigns[r.routeId]?.rows?.takeIf { it.isNotEmpty() }, campaigns_truncated = campaigns[r.routeId]?.truncated?.takeIf { it },
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
                 sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )

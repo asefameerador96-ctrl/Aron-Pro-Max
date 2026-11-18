@@ -11,6 +11,7 @@ KpiBrand:
   - memo_bp
   - kpi_alloc_mtk
   - kpi_today_mtk
+  - by_pack
   additionalProperties: false
   properties:
     brand_id:
@@ -56,3 +57,11 @@ KpiBrand:
       format: int64
       minimum: 0
       description: Null until the owner defines it.
+    by_pack:
+      type: array
+      maxItems: 20
+      description: Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor,
+        only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule
+        5). The entries add up to volume_target and volume_achieved.
+      items:
+        $ref: '#/components/schemas/KpiPackFigure'

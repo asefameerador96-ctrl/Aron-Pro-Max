@@ -129,6 +129,37 @@ class RouteKpiTargetsTest {
     }
 
     @Test
+    fun anOrphanSkuTargetIsRefusedAndAMemberLeftOutKeepsTheStoredValue() = env.app {
+        val admin = env.tok("admin1001"); val mo = next.plusMonths(5)
+        env.exec("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSL-O', 'Super Star Orphan', date '$mo-01', date '$mo-28', 'active')")
+        val outlet = env.scalar("SELECT code FROM app.outlet WHERE status = 'active' ORDER BY id LIMIT 1")!!
+        fun k(sku: String, qty: Any) = """{"outlet_code":"$outlet","programme_code":"SSL-O","month":"$mo","sku_code":"$sku","qty_base":$qty}"""
+        fun sb(rows: List<String>, dry: Boolean) = """{"batch_uuid":"${UUID.randomUUID()}","campaign_sku_rows":[${rows.joinToString(",")}],"dry_run":$dry${if (!dry) ""","change_reason":"$reason"""" else ""}}"""
+        val pv = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, sb(listOf(k("MaxR-20S", 5)), true))
+        val e = pv.objA3().getValue("errors").jsonArray.map { it.jsonObject }.single()
+        assertEquals("campaign_sku_rows" + "1" + "outlet_code" + "campaign_row_missing", e.strA3("section") + e.strA3("row") + e.strA3("column") + e.strA3("code"), "a SKU target needs its campaign row")
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, sb(listOf(k("MaxR-20S", 5)), false)).status)
+        assertEquals(0, env.count("SELECT count(*) FROM app.outlet_campaign_sku_target WHERE month = date '$mo-01'"), "nothing orphaned is stored")
+        // the campaign row first (stored), then the SKU row is no orphan
+        val camp = """{"batch_uuid":"${UUID.randomUUID()}","campaign_rows":[{"outlet_code":"$outlet","programme_code":"SSL-O","month":"$mo","std_target":"140.000","memo_target":8}],"dry_run":false,"change_reason":"$reason"}"""
+        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, camp).status)
+        assertEquals(0, sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, sb(listOf(k("MaxR-20S", 5)), true)).objA3().getValue("errors").jsonArray.size)
+        // a re-upload that leaves a member out keeps the stored value; an explicit null clears a CPR value
+        val mo2 = next.plusMonths(6)
+        fun full(alloc: String) = if (alloc.isEmpty()) """{"route_code":"MIR-SR-D","brand_code":"Maxim","month":"$mo2","memo_target":10}""" else """{"route_code":"MIR-SR-D","brand_code":"Maxim","month":"$mo2","memo_target":10,"kpi_alloc_mtk":$alloc}"""
+        fun send(brand: List<String>, month: List<String>) = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, body(brand, month, false, UUID.randomUUID(), reason)).status
+        assertEquals(HttpStatusCode.OK, send(listOf(full("2000000")), listOf(m("MIR-SR-D", mo2, 5_700_000, "5000", "600000"))))
+        assertEquals(HttpStatusCode.OK, send(listOf(full("")), listOf("""{"route_code":"MIR-SR-D","month":"$mo2","kpi_alloc_mtk":6000000}""")))
+        assertEquals(1, env.count("SELECT count(*) FROM app.route_brand_kpi_target t JOIN app.route r ON r.id = t.route_id WHERE r.code = 'MIR-SR-D' AND t.month = date '$mo2-01' AND t.kpi_alloc_mtk = 2000000"), "the allocation survives a row without it")
+        assertEquals(1, env.count("SELECT count(*) FROM app.route_kpi_month t JOIN app.route r ON r.id = t.route_id WHERE r.code = 'MIR-SR-D' AND t.month = date '$mo2-01' AND t.kpi_alloc_mtk = 6000000 AND t.cpr_target_bp = 5000 AND t.cpr_alloc_mtk = 600000"), "the CPR values survive a row without them")
+        assertEquals(HttpStatusCode.OK, send(emptyList(), listOf(m("MIR-SR-D", mo2, 6_000_000, "null", "null"))))
+        assertEquals(1, env.count("SELECT count(*) FROM app.route_kpi_month t JOIN app.route r ON r.id = t.route_id WHERE r.code = 'MIR-SR-D' AND t.month = date '$mo2-01' AND t.cpr_target_bp IS NULL AND t.cpr_alloc_mtk IS NULL"), "an explicit null clears")
+        // the read lists the route's campaign rows
+        val l = sendA3(HttpMethod.Get, "/v1/admin/route-kpi-targets?route_code=${env.scalar("SELECT r.code FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE o.code = '$outlet'")}&month=$mo", admin).objA3()
+        assertEquals(1, l.getValue("campaign_rows").jsonArray.size); assertEquals(0, l.getValue("campaign_sku_rows").jsonArray.size)
+    }
+
+    @Test
     fun aBadRowRefusesTheWholeBatchAndTheRoleMatrixHolds() = env.app {
         val admin = env.tok("admin1001"); val u = UUID.randomUUID()
         val before = env.count("SELECT count(*) FROM app.route_brand_kpi_target")

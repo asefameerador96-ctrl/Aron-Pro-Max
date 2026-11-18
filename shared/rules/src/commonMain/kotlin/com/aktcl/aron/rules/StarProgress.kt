@@ -27,10 +27,20 @@ object StarProgress {
 
     private fun big(v: Long) = BigInteger.valueOf(v)
 
+    // BigInteger.TWO is Java 9 and reaches Android only at API 33; the apps have minSdk 26 (B2 of the lead review, D-TKPI-10). Only API of Java 8 here:
+    // JdkApiLevelTest forbids a newer java.* member in this module's commonMain.
+    private val TWO: BigInteger = BigInteger.valueOf(2)
+
+    /** The value as a Long, or null when it does not fit: a percentage of an absurd input (a tiny target with huge sales) is "not representable", never a wrapped number. */
+    private fun BigInteger.fit(): Long? = if (bitLength() <= 63) toLong() else null
+
+    /** Like Java's longValueExact (which Android has only from API 31, so not used): throws instead of wrapping around. */
+    private fun BigInteger.fitOrThrow(): Long = fit() ?: throw ArithmeticException("BigInteger out of Long range")
+
     /** round(n / d) half away from zero; d > 0. */
     fun roundDiv(n: BigInteger, d: BigInteger): BigInteger {
         require(d.signum() > 0) { "divisor must be positive" }
-        val two = BigInteger.TWO
+        val two = TWO
         val a = n.abs().multiply(two).add(d).divide(d.multiply(two))
         return if (n.signum() < 0) a.negate() else a
     }
@@ -49,15 +59,15 @@ object StarProgress {
         val projDen = dv.multiply(ewd)
         val proj = if (i.ewd == 0) null else roundDiv(projNum, projDen)
         // Achievement bp = projection / target = (stdBase*1000*wd*10000) / (divisor*ewd*targetMilli)
-        val ach = if (i.ewd == 0 || i.targetMilli == 0L) null else roundDiv(projNum.multiply(big(10_000)), projDen.multiply(tgt)).toLong()
-        val actual = if (i.targetMilli == 0L) null else roundDiv(big(i.stdBase).multiply(big(1000)).multiply(big(10_000)), dv.multiply(tgt)).toLong()
+        val ach = if (i.ewd == 0 || i.targetMilli == 0L) null else roundDiv(projNum.multiply(big(10_000)), projDen.multiply(tgt)).fit()
+        val actual = if (i.targetMilli == 0L) null else roundDiv(big(i.stdBase).multiply(big(1000)).multiply(big(10_000)), dv.multiply(tgt)).fit()
         val lmads = if (i.lmwd == 0) null else roundDiv(big(i.lmsBase).multiply(big(1000)), dv.multiply(lmwd))
         // Growth bp = (PADS / LMADS - 1) x 10000 = (stdBase*lmwd / (ewd*lmsBase) - 1) x 10000
         val growth = if (i.ewd == 0 || i.lmwd == 0 || i.lmsBase == 0L) null else {
             val num = big(i.stdBase).multiply(lmwd); val den = ewd.multiply(big(i.lmsBase))
-            roundDiv(num.subtract(den).multiply(big(10_000)), den).toLong()
+            roundDiv(num.subtract(den).multiply(big(10_000)), den).fit()
         }
-        return Result(i.targetMilli, std.toLong(), proj?.toLong(), ach, actual, lms.toLong(), lmads?.toLong(), pads?.toLong(), growth)
+        return Result(i.targetMilli, std.fitOrThrow(), proj?.fit(), ach, actual, lms.fitOrThrow(), lmads?.fit(), pads?.fit(), growth)
     }
 
     /** One slab rung of `programme.rules.slabs`: reached when the percentage in basis points is at least [minBp]. */

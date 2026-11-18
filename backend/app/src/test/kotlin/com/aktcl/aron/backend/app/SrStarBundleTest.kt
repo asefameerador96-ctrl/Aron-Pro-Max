@@ -75,6 +75,7 @@ class SrStarBundleTest {
         agg("2026-12-10", route, 12000); agg("2026-12-31", route, 250)  // LMS 12250 base = 12.250
         agg("2026-11-30", route, 55555)                                  // two months ago: out
         x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '2027-01-03T01:00:00Z', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
+        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
     }
 
     @AfterAll fun tearDown() = fresh.close()
@@ -117,5 +118,32 @@ class SrStarBundleTest {
         x("UPDATE app.programme SET active_from = DATE '2027-01-04' WHERE id = $programme")
         try { assertNull(star(), "a programme that starts after the bundle date has no snapshot") } finally { x("UPDATE app.programme SET active_from = DATE '2026-12-01' WHERE id = $programme") }
         assertNotNull(star())
+    }
+
+    @Test
+    fun theBundlesOwnCalendarGivesTheScreenshotsEwdUnderEachConvention() {
+        // Screenshot 62 is dated 2026-11-11 (EWD 10, WD 26). The bundle's own calendar numbers and star for that date: the default convention (K-13, working days
+        // BEFORE the date) gives 9, the through-today convention (the date counts when it is a working day) gives 10: the owner's screenshot is reproduced under
+        // THROUGH_TODAY and the one-line switch is SkuProgress.dayCounts (question Q-A).
+        val date = LocalDate.parse("2026-11-11")
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0e1', decode(repeat('ab', 32), 'hex'), 1, $sr)")
+        val p = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('superstar', 'MBLS-NOV', 'Match Box Lifting Star (November)', DATE '2026-11-01', DATE '2026-11-30', 'active') RETURNING id")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($p, $route, DATE '2026-11-01', 20.000, '00000000-0000-4000-8000-00000000b0e1')")
+        try {
+            val zone = q("SELECT zone_id FROM app.route WHERE id = $route")
+            val (snap, star) = fresh.db.jdbi.withHandle<Pair<com.aktcl.aron.backend.sync.SrTargets.Snapshot, JsonObject?>, Exception> { h ->
+                val s = com.aktcl.aron.backend.sync.SrTargets.load(h, mapOf(route to zone), date, clock.now(), null).getValue(route)
+                s to com.aktcl.aron.backend.sync.SrStar.load(h, mapOf(route to com.aktcl.aron.backend.sync.SrStar.RouteInfo("Route", null, null, s.calendar)), date)[route]
+            }
+            val c = snap.calendar
+            assertEquals(26, c.working_days, "WD of the screenshot"); assertEquals(true, c.today_is_working)
+            val cal = com.aktcl.aron.rules.SkuProgress.Calendar(c.elapsed_working_days_before_today, c.remaining_working_days_after_today, c.today_is_working)
+            assertEquals(9, com.aktcl.aron.rules.SkuProgress.dayCounts(cal, com.aktcl.aron.rules.SkuProgress.DayConvention.BEFORE_TODAY).elapsed)
+            assertEquals(10, com.aktcl.aron.rules.SkuProgress.dayCounts(cal, com.aktcl.aron.rules.SkuProgress.DayConvention.THROUGH_TODAY).elapsed, "EWD of the screenshot")
+            assertEquals("9", assertNotNull(star).s("ewd"), "the default convention the star is built with (Q-A, D-TKPI-03)")
+            assertEquals(26, c.last_month_working_days, "LMWD of the screenshot (October 2026)")
+        } finally {
+            x("DELETE FROM app.route_programme_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p")
+        }
     }
 }

@@ -33,6 +33,6 @@ AchievementRow:
       $ref: '#/components/schemas/Timestamp'
     through_date:
       $ref: '#/components/schemas/BusinessDate'
-      description: 'Last Dhaka business date the figure covers (the bundle date minus one day). Today''s memos are
-        never in a server figure: the phone adds every local memo dated after this date, and every older local memo
-        the server has not acknowledged, de-duplicated by memo UUID. Contract 1.22.0, optional.'
+      description: Last Dhaka business date the figure covers (the bundle date minus one day). Today's memos are
+        never in a server figure. What the phone adds on top (and that this DIFFERS from the Astha rule) is stated
+        once, in the description of `RouteSnapshot`. Contract 1.22.0, optional.

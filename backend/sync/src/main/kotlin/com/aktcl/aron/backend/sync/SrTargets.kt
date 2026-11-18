@@ -21,20 +21,25 @@ import java.time.YearMonth
  * - `achievement_mtd`: `dw.agg_daily_route_sku.sold_qty_base` (sale lines only, like Target Status) of the business dates from the
  *   1st up to and including `through_date` = the bundle date minus one day. TODAY IS NEVER IN A SERVER FIGURE: the phone adds its
  *   own memos dated after `through_date`, and older unacknowledged ones, de-duplicated by memo UUID, so nothing is counted twice.
- *   `as_of` is the projector time of the aggregate (`dw.summary_freshness`), never the request time; no row means the epoch.
+ *   `as_of` is the newest rewrite time of the route's own aggregate rows ([asOfByRoute]), never the request time or the worker's clock; no row means the epoch.
  * - `calendar`: the working days at the route's zone path (division and wing weekend and holidays honoured).
  */
 object SrTargets {
-    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto, val kpi: JsonObject? = null)
+    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto, val kpi: JsonObject? = null) {
+        /** True when the route has target or achievement rows; a route with none (and no KPI, star or campaign) carries no `calendar` either (B1: nothing to show, nothing to resend). */
+        val hasFigures: Boolean get() = targets.isNotEmpty() || achievement.isNotEmpty()
+    }
 
     private const val MAX_ROWS = 500
 
-    fun load(h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?): Map<Long, Snapshot> {
+    fun load(
+        h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?,
+        asOf: Map<Long, Instant> = asOfByRoute(h, routes.keys, date),
+    ): Map<Long, Snapshot> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date)
         val first = month.atDay(1)
         val through = date.minusDays(1)
-        val asOf = asOf(h)
         val routeIds = routes.keys.toList()
 
         val targets = h.createQuery(
@@ -60,7 +65,7 @@ object SrTargets {
             .groupBy({ it.first }, { buildJsonObject {
                 put("scope_type", "route"); put("scope_id", it.first); put("month", month.toString()); put("product_level", "sku")
                 put("product_id", it.second); put("achieved_qty_base", it.third.first); put("memo_count", it.third.second)
-                put("as_of", asOf.wire()); put("through_date", through.toString())
+                put("as_of", (asOf[it.first] ?: Instant.EPOCH).wire()); put("through_date", through.toString())
             } })
 
         val cals = WorkingCalendarRepo.load(h, month, now, config)
@@ -80,15 +85,27 @@ object SrTargets {
                 RouteCalendarDto(
                     month = month.toString(), working_days = cals.workingDays(path), elapsed_working_days_before_today = before,
                     remaining_working_days_after_today = after, today_is_working = cal.isWorking(date.toKotlinLocalDate()),
-                    last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = asOf.wire(),
+                    last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (asOf[routeId] ?: Instant.EPOCH).wire(),
                 ),
             )
         }
     }
 
-    /** The projector time of the route aggregates; the epoch when the projector has not run (the figure then claims nothing). */
-    fun asOf(h: Handle): Instant = h.createQuery("SELECT last_updated_at FROM dw.summary_freshness WHERE table_name = 'agg_daily_route_sku'")
-        .map { rs, _ -> rs.getTimestamp(1).toInstant() }.findOne().orElse(Instant.EPOCH)
+    /**
+     * The `as_of` of a route's figures (B1 of the lead review, D-TKPI-10): the newest `updated_at` among the route's own aggregate rows that the figures
+     * are built from (business dates of the previous month up to `through_date`), the epoch when there are none. It moves ONLY when the projector rewrote
+     * one of those rows, i.e. when the figures can have changed; it is never the projector's wall clock (`dw.summary_freshness` is rewritten about every
+     * 5 seconds by an idle worker, which made every bundle a new version). It never claims more than the figure holds: a memo accepted but not yet
+     * aggregated has no row rewrite yet, so `as_of` stays below its acceptance time.
+     */
+    fun asOfByRoute(h: Handle, routeIds: Collection<Long>, date: LocalDate): Map<Long, Instant> {
+        if (routeIds.isEmpty()) return emptyMap()
+        val through = date.minusDays(1)
+        val from = YearMonth.from(date).minusMonths(1).atDay(1)
+        return h.createQuery("SELECT route_id, max(updated_at) FROM dw.agg_daily_route_sku WHERE route_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY route_id")
+            .bindArray("r", Long::class.javaObjectType, routeIds.toList()).bind("f", from).bind("t", through)
+            .map { rs, _ -> rs.getLong(1) to rs.getTimestamp(2).toInstant() }.list().toMap()
+    }
 
     /** A base quantity as the contract's exact Decimal3 string: "500.000". */
     fun decimal3(q: Long): String = java.math.BigDecimal.valueOf(q, 0).setScale(3).toPlainString()

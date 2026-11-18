@@ -55,6 +55,61 @@ RouteKpiTargetList:
             maxLength: 120
           target_qty:
             $ref: '#/components/schemas/Decimal3'
+    campaign_rows:
+      type: array
+      maxItems: 500
+      description: Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code),
+        so an operator can verify a campaign upload. Contract 1.22.0, optional.
+      items:
+        type: object
+        required:
+        - outlet_code
+        - programme_code
+        - programme_name
+        - std_target
+        - memo_target
+        additionalProperties: false
+        properties:
+          outlet_code:
+            type: string
+            maxLength: 40
+          programme_code:
+            type: string
+            maxLength: 40
+          programme_name:
+            type: string
+            maxLength: 120
+          std_target:
+            $ref: '#/components/schemas/Decimal3'
+          memo_target:
+            type: integer
+            minimum: 0
+    campaign_sku_rows:
+      type: array
+      maxItems: 500
+      description: SKU targets (base units) of those outlets for the month (at most 500). Contract 1.22.0, optional.
+      items:
+        type: object
+        required:
+        - outlet_code
+        - programme_code
+        - sku_code
+        - qty_base
+        additionalProperties: false
+        properties:
+          outlet_code:
+            type: string
+            maxLength: 40
+          programme_code:
+            type: string
+            maxLength: 40
+          sku_code:
+            type: string
+            maxLength: 40
+          qty_base:
+            type: integer
+            format: int64
+            minimum: 0
     month_row:
       oneOf:
       - type: 'null'

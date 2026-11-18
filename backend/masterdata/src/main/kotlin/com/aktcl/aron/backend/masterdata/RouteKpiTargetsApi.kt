@@ -52,8 +52,8 @@ fun Route.routeKpiTargetRoutes(d: RouteTargetDeps) {
     }
 }
 
-private class BrandRow(val i: Int, val route: String?, val brand: String?, val month: LocalDate?, val memo: Long?, val alloc: Long?)
-private class MonthRow(val i: Int, val route: String?, val month: LocalDate?, val alloc: Long?, val cprBp: Long?, val cprAlloc: Long?, val cprBpSet: Boolean, val cprAllocSet: Boolean)
+private class BrandRow(val i: Int, val route: String?, val brand: String?, val month: LocalDate?, val memo: Long?, val alloc: Long?, val allocSet: Boolean)
+private class MonthRow(val i: Int, val route: String?, val month: LocalDate?, val alloc: Long?, val cprBp: Long?, val cprAlloc: Long?, val cprBpSet: Boolean, val cprAllocSet: Boolean, val cprBpPresent: Boolean, val cprAllocPresent: Boolean)
 private class ProgRow(val i: Int, val route: String?, val programme: String?, val month: LocalDate?, val qty: java.math.BigDecimal?)
 private class CampRow(val i: Int, val outlet: String?, val programme: String?, val month: LocalDate?, val std: java.math.BigDecimal?, val memo: Long?)
 private class CampSkuRow(val i: Int, val outlet: String?, val programme: String?, val month: LocalDate?, val sku: String?, val qty: Long?)
@@ -67,14 +67,14 @@ private fun kMonth(o: JsonObject): LocalDate? = (o["month"] as? JsonPrimitive)?.
 private fun parseBrand(arr: JsonArray) = arr.mapIndexed { i, el ->
     val o = el as? JsonObject ?: bad("body.brand_rows/$i", "invalid_type")
     o.keys.firstOrNull { it !in setOf("route_code", "brand_code", "month", "memo_target", "kpi_alloc_mtk") }?.let { bad("body.brand_rows/$i/$it", "unknown_member") }
-    BrandRow(i, kText(o, "route_code"), kText(o, "brand_code"), kMonth(o), kInt(o, "memo_target", 1_000_000), if (o.containsKey("kpi_alloc_mtk")) kInt(o, "kpi_alloc_mtk", KPI_MAX_MTK) else 0L)
+    BrandRow(i, kText(o, "route_code"), kText(o, "brand_code"), kMonth(o), kInt(o, "memo_target", 1_000_000), if (o.containsKey("kpi_alloc_mtk")) kInt(o, "kpi_alloc_mtk", KPI_MAX_MTK) else 0L, o.containsKey("kpi_alloc_mtk"))
 }
 
 private fun parseMonth(arr: JsonArray) = arr.mapIndexed { i, el ->
     val o = el as? JsonObject ?: bad("body.month_rows/$i", "invalid_type")
     o.keys.firstOrNull { it !in setOf("route_code", "month", "kpi_alloc_mtk", "cpr_target_bp", "cpr_alloc_mtk") }?.let { bad("body.month_rows/$i/$it", "unknown_member") }
     MonthRow(i, kText(o, "route_code"), kMonth(o), kInt(o, "kpi_alloc_mtk", KPI_MAX_MTK), kInt(o, "cpr_target_bp", 10_000), kInt(o, "cpr_alloc_mtk", KPI_MAX_MTK),
-        o["cpr_target_bp"].let { it != null && it !is JsonNull }, o["cpr_alloc_mtk"].let { it != null && it !is JsonNull })
+        o["cpr_target_bp"].let { it != null && it !is JsonNull }, o["cpr_alloc_mtk"].let { it != null && it !is JsonNull }, o.containsKey("cpr_target_bp"), o.containsKey("cpr_alloc_mtk"))
 }
 
 private fun parseProg(arr: JsonArray) = arr.mapIndexed { i, el ->
@@ -176,6 +176,14 @@ private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog
         if (r.memo == null) errors += KErr("campaign_rows", r.i, "memo_target", "invalid_quantity")
         if (errors.size == n0 && !seenC.add(Triple(r.outlet!!, r.programme!!, r.month!!))) errors += KErr("campaign_rows", r.i, "outlet_code", "duplicate_row")
     }
+    // A SKU target needs its campaign row (outlet, programme, month): in this batch or already stored; an orphan would be stored and never shown (review B-round, D-TKPI-10).
+    val inBatch = camp.filter { it.outlet != null && it.programme != null && it.month != null }.map { Triple(it.outlet!!, it.programme!!, it.month!!) }.toHashSet()
+    val stored = HashSet<Triple<String, String, LocalDate>>()
+    val wantKeys = campSku.filter { it.outlet != null && it.programme != null && it.month != null && Triple(it.outlet, it.programme, it.month) !in inBatch }
+    if (wantKeys.isNotEmpty()) h.createQuery(
+        "SELECT o.code, g.code, t.month FROM app.outlet_campaign_target t JOIN app.outlet o ON o.id = t.outlet_id JOIN app.programme g ON g.id = t.programme_id WHERE o.code = ANY(:o) AND g.code = ANY(:g) AND t.month = ANY(CAST(:m AS date[]))",
+    ).bindArray("o", String::class.java, wantKeys.map { it.outlet!! }.distinct()).bindArray("g", String::class.java, wantKeys.map { it.programme!! }.distinct()).bindArray("m", String::class.java, wantKeys.map { it.month!!.toString() }.distinct())
+        .map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getDate(3).toLocalDate()) }.list().forEach { stored += it }
     for (r in campSku) {
         val n0 = errors.size
         if (r.outlet == null || outlets[r.outlet] == null) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "unknown_outlet")
@@ -183,6 +191,7 @@ private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog
         if (r.sku == null || skus[r.sku] == null) errors += KErr("campaign_sku_rows", r.i, "sku_code", "unknown_sku")
         monthOk("campaign_sku_rows", r.i, r.month)
         if (r.qty == null) errors += KErr("campaign_sku_rows", r.i, "qty_base", "invalid_quantity")
+        if (errors.size == n0 && Triple(r.outlet!!, r.programme!!, r.month!!) !in inBatch && Triple(r.outlet, r.programme, r.month) !in stored) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "campaign_row_missing")
         if (errors.size == n0 && !seenCS.add(listOf(r.outlet!!, r.programme!!, r.month!!, r.sku!!))) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "duplicate_row")
     }
     return KChecked(errors, routes.mapValues { it.value.first }, brands, programmes, campaigns, outlets, skus)
@@ -236,12 +245,12 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
             h.createUpdate("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES (:u, :h, :n, :by)")
                 .bind("u", uuid).bind("h", sha).bind("n", brand.size + month.size + prog.size + camp.size + campSku.size).bind("by", p.userId).execute()
             val bb = h.prepareBatch("INSERT INTO app.route_brand_kpi_target (route_id, brand_id, month, memo_target, kpi_alloc_mtk, batch_uuid, updated_by) VALUES (:r, :b, :m, :t, :a, :u, :by) " +
-                "ON CONFLICT (route_id, brand_id, month) DO UPDATE SET memo_target = EXCLUDED.memo_target, kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
-            brand.forEach { r -> bb.bind("r", c.routeIds.getValue(r.route!!)).bind("b", c.brandIds.getValue(r.brand!!)).bind("m", r.month).bind("t", r.memo!!.toInt()).bind("a", r.alloc!!).bind("u", uuid).bind("by", p.userId).add() }
+                "ON CONFLICT (route_id, brand_id, month) DO UPDATE SET memo_target = EXCLUDED.memo_target, kpi_alloc_mtk = CASE WHEN :aset THEN EXCLUDED.kpi_alloc_mtk ELSE app.route_brand_kpi_target.kpi_alloc_mtk END, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
+            brand.forEach { r -> bb.bind("r", c.routeIds.getValue(r.route!!)).bind("b", c.brandIds.getValue(r.brand!!)).bind("m", r.month).bind("t", r.memo!!.toInt()).bind("a", r.alloc!!).bind("aset", r.allocSet).bind("u", uuid).bind("by", p.userId).add() }
             if (brand.isNotEmpty()) bb.execute()
             val mb = h.prepareBatch("INSERT INTO app.route_kpi_month (route_id, month, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk, batch_uuid, updated_by) VALUES (:r, :m, :a, :c, :ca, :u, :by) " +
-                "ON CONFLICT (route_id, month) DO UPDATE SET kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, cpr_target_bp = EXCLUDED.cpr_target_bp, cpr_alloc_mtk = EXCLUDED.cpr_alloc_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
-            month.forEach { r -> mb.bind("r", c.routeIds.getValue(r.route!!)).bind("m", r.month).bind("a", r.alloc!!).bind("c", r.cprBp?.toInt()).bind("ca", r.cprAlloc).bind("u", uuid).bind("by", p.userId).add() }
+                "ON CONFLICT (route_id, month) DO UPDATE SET kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, cpr_target_bp = CASE WHEN :bpp THEN EXCLUDED.cpr_target_bp ELSE app.route_kpi_month.cpr_target_bp END, cpr_alloc_mtk = CASE WHEN :cap THEN EXCLUDED.cpr_alloc_mtk ELSE app.route_kpi_month.cpr_alloc_mtk END, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
+            month.forEach { r -> mb.bind("r", c.routeIds.getValue(r.route!!)).bind("m", r.month).bind("a", r.alloc!!).bind("c", r.cprBp?.toInt()).bind("ca", r.cprAlloc).bind("bpp", r.cprBpPresent).bind("cap", r.cprAllocPresent).bind("u", uuid).bind("by", p.userId).add() }
             if (month.isNotEmpty()) mb.execute()
             val pb = h.prepareBatch("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid, updated_by) VALUES (:p, :r, :m, :q, :u, :by) " +
                 "ON CONFLICT (programme_id, route_id, month) DO UPDATE SET target_qty = EXCLUDED.target_qty, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
@@ -277,8 +286,19 @@ private fun kpiList(call: ApplicationCall, d: RouteTargetDeps): JsonElement {
             .bind("c", routeCode).bind("m", month).map { rs, _ -> Triple(rs.getLong(1), rs.getObject(2) as Int?, rs.getObject(3) as Long?) }.findOne().orElse(null)
         val progs = h.createQuery("SELECT g.code, g.name_en, t.target_qty FROM app.route_programme_target t JOIN app.route r ON r.id = t.route_id JOIN app.programme g ON g.id = t.programme_id WHERE r.code = :c AND t.month = :m ORDER BY g.code")
             .bind("c", routeCode).bind("m", month).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getBigDecimal(3).setScale(3).toPlainString()) }.list()
+        // The route's outlets with an outlet campaign target for the month, and their SKU targets (capped, so the page is bounded; at most 500 rows each).
+        val camps = h.createQuery(
+            "SELECT o.code, g.code, g.name_en, t.std_target, t.memo_target FROM app.outlet_campaign_target t JOIN app.outlet o ON o.id = t.outlet_id JOIN app.route r ON r.id = o.route_id JOIN app.programme g ON g.id = t.programme_id " +
+                "WHERE r.code = :c AND t.month = :m ORDER BY o.code COLLATE \"C\", g.code LIMIT 500",
+        ).bind("c", routeCode).bind("m", month).map { rs, _ -> listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getBigDecimal(4).setScale(3).toPlainString(), rs.getInt(5)) }.list()
+        val campSkus = h.createQuery(
+            "SELECT o.code, g.code, s.code, t.qty_base FROM app.outlet_campaign_sku_target t JOIN app.outlet o ON o.id = t.outlet_id JOIN app.route r ON r.id = o.route_id JOIN app.programme g ON g.id = t.programme_id JOIN app.sku s ON s.id = t.sku_id " +
+                "WHERE r.code = :c AND t.month = :m ORDER BY o.code COLLATE \"C\", g.code, s.code COLLATE \"C\" LIMIT 500",
+        ).bind("c", routeCode).bind("m", month).map { rs, _ -> listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
         buildJsonObject {
             put("route_code", routeCode); put("month", YearMonth.from(month).toString())
+            put("campaign_rows", buildJsonArray { camps.forEach { c -> add(buildJsonObject { put("outlet_code", c[0] as String); put("programme_code", c[1] as String); put("programme_name", c[2] as String); put("std_target", c[3] as String); put("memo_target", c[4] as Int) }) } })
+            put("campaign_sku_rows", buildJsonArray { campSkus.forEach { c -> add(buildJsonObject { put("outlet_code", c[0] as String); put("programme_code", c[1] as String); put("sku_code", c[2] as String); put("qty_base", c[3] as Long) }) } })
             put("programme_rows", buildJsonArray { progs.forEach { g -> add(buildJsonObject { put("programme_code", g.first); put("programme_name", g.second); put("target_qty", g.third) }) } })
             put("brand_rows", buildJsonArray { brands.forEach { b -> add(buildJsonObject { put("brand_code", b[0] as String); put("brand_name", b[1] as String); put("memo_target", b[2] as Long); put("kpi_alloc_mtk", b[3] as Long) }) } })
             if (m == null) put("month_row", JsonNull) else put("month_row", buildJsonObject {

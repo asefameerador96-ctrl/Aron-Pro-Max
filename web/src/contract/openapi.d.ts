@@ -3736,7 +3736,7 @@ export interface paths {
         get: operations["listRouteKpiTargets"];
         /**
          * Validate (dry_run) or commit KPI targets (brand memo targets and allocated KPI, month allocation and CPR), upsert by route, brand and month.
-         * @description Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never rewrites a past Dhaka month. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
+         * @description Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never rewrites a past Dhaka month. A member left OUT of a row keeps the stored value (`kpi_alloc_mtk` of a brand row, `cpr_target_bp` and `cpr_alloc_mtk` of a month row; a new row gets 0 or null); an explicit null clears a CPR value. A `campaign_sku_rows` row needs its campaign row (outlet, programme and month) in the same batch or already stored, else `campaign_row_missing`. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
          */
         put: operations["putRouteKpiTargets"];
         post?: never;
@@ -6768,7 +6768,7 @@ export interface components {
             achieved_qty_base: number;
             memo_count: number;
             as_of: components["schemas"]["Timestamp"];
-            /** @description Last Dhaka business date the figure covers (the bundle date minus one day). Today's memos are never in a server figure: the phone adds every local memo dated after this date, and every older local memo the server has not acknowledged, de-duplicated by memo UUID. Contract 1.22.0, optional. */
+            /** @description Last Dhaka business date the figure covers (the bundle date minus one day). Today's memos are never in a server figure. What the phone adds on top (and that this DIFFERS from the Astha rule) is stated once, in the description of `RouteSnapshot`. Contract 1.22.0, optional. */
             through_date?: components["schemas"]["BusinessDate"];
         };
         /** @description Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0. */
@@ -6868,6 +6868,22 @@ export interface components {
                 programme_name: string;
                 target_qty: components["schemas"]["Decimal3"];
             }[];
+            /** @description Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code), so an operator can verify a campaign upload. Contract 1.22.0, optional. */
+            campaign_rows?: {
+                outlet_code: string;
+                programme_code: string;
+                programme_name: string;
+                std_target: components["schemas"]["Decimal3"];
+                memo_target: number;
+            }[];
+            /** @description SKU targets (base units) of those outlets for the month (at most 500). Contract 1.22.0, optional. */
+            campaign_sku_rows?: {
+                outlet_code: string;
+                programme_code: string;
+                sku_code: string;
+                /** Format: int64 */
+                qty_base: number;
+            }[];
             month_row: null | {
                 /** Format: int64 */
                 kpi_alloc_mtk: number;
@@ -6931,6 +6947,8 @@ export interface components {
              * @description Null until the owner defines it.
              */
             kpi_today_mtk: number | null;
+            /** @description Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved. */
+            by_pack: components["schemas"]["KpiPackFigure"][];
         };
         /** @description Volume of a category row (BLM, match and lighter). */
         KpiCategory: {
@@ -6942,6 +6960,16 @@ export interface components {
             volume_achieved: number;
             /** Format: int64 */
             volume_bp: number | null;
+            /** @description Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved. */
+            by_pack: components["schemas"]["KpiPackFigure"][];
+        };
+        KpiPackFigure: {
+            /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
+            pack_factor: number;
+            /** Format: int64 */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
         };
         /** @description CPR (call productivity) block; achieved is null until the owner defines the source. */
         KpiCpr: {
@@ -7026,7 +7054,7 @@ export interface components {
             /** Format: int64 */
             projected_amount_mtk: number | null;
         };
-        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. */
+        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. PHONE RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract 1.22.0; the ONE place this rule is stated). It DIFFERS from the Astha achievement rule of `ProgrammesSection` (there the server figure is a live snapshot and the phone adds only the memos not yet acknowledged when it sent the request). Here every server figure is cut at `through_date` (the bundle date minus one day) and comes from the asynchronous projector, so the phone adds (a) EVERY local memo with a business date after `through_date`, acknowledged or not, because the server figure never holds them, and (b) every local memo dated from the 1st of the bundle `month` up to `through_date` that the server figure may not hold yet: not acknowledged, or acknowledged but accepted after the `as_of` of the newest bundle the phone has. It always de-duplicates by memo UUID and only counts business dates inside the bundle `month` (a phone still holding last month's bundle adds nothing dated in the new month). `as_of` moves only when the server rewrote the route's figures, never with the worker's clock. Day counts when today's local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when `calendar.today_is_working` (numerator and denominator then cover the same days; this is the SkuProgress through-today convention, a default until the owner answers question Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero. `star` carries through-`through_date` figures only (the phone cannot add to it). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes. */
         RouteSnapshot: {
             route_id: components["schemas"]["Id"];
             route_snapshot_version: number;
@@ -7048,8 +7076,10 @@ export interface components {
             calendar?: components["schemas"]["RouteCalendar"] | null;
             /** @description Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional. */
             kpi?: components["schemas"]["RouteKpi"] | null;
-            /** @description Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. Contract 1.22.0, optional. */
+            /** @description Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.22.0, optional. */
             campaigns?: components["schemas"]["RouteCampaign"][] | null;
+            /** @description True when the route had more campaign outlets (over 150) or an outlet more campaign SKUs (over 20) than were sent; never silent. Contract 1.22.0, optional. */
+            campaigns_truncated?: boolean | null;
             /** @description Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional. */
             star?: components["schemas"]["RouteStar"] | null;
             /**

@@ -10,6 +10,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.jdbi.v3.core.Handle
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -19,14 +20,19 @@ import java.time.YearMonth
  * STD and memo targets, the SKU targets, and the achievement from `dw.fact_memo_line` (sale lines, not voided, active memos) through the last closed day;
  * today is never in a server figure (same rule as [SrTargets]). STD achieved = base quantity sold of the outlet's campaign SKUs (owner question Q-H);
  * memo achieved = distinct memos with a campaign-SKU line, never a sum of SKU memo counts; remaining = max(target - achieved, 0). The STD target is rounded
- * half up to a whole base unit on the wire. Only outlets with a target appear; at most 2,000 outlets and 100 SKUs each.
+ * half up to a whole base unit on the wire. Only outlets with a target appear; at most 150 outlets and 20 SKUs each.
  */
 object SrCampaigns {
-    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate): Map<Long, List<JsonObject>> {
+    /** Caps of the section (docs/04 budget: 70 outlets x 20 SKUs at most 120 KB raw and 20 KB gzip); contract `RouteSnapshot.campaigns` maxItems and `RouteCampaign.skus` maxItems say the same. */
+    const val MAX_SKUS = 20
+    const val MAX_OUTLETS = 150
+
+    /** The campaign outlets of one route in outlet-id order; [truncated] when more than the outlet cap or an outlet with more than the SKU cap existed (never silent). */
+    class Result(val rows: List<JsonObject>, val truncated: Boolean)
+    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, outletsByRoute.keys, date), maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
         val all = outletsByRoute.values.flatten().distinct()
         if (all.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
-        val asOf = SrTargets.asOf(h)
         class Camp(val programmeId: Long, val en: String, val bn: String?, val std: java.math.BigDecimal, val memo: Int)
         val camps = h.createQuery(
             """
@@ -37,46 +43,53 @@ object SrCampaigns {
             .map { rs, _ -> rs.getLong(1) to Camp(rs.getLong(2), rs.getString(3), rs.getString(4), rs.getBigDecimal(5), rs.getInt(6)) }.list()
             .groupBy({ it.first }, { it.second }).mapValues { it.value.first() } // one campaign per outlet: the lowest programme id
         if (camps.isEmpty()) return emptyMap()
-        val outletIds = camps.keys.toList()
+        // At most MAX_OUTLETS campaign outlets per route (lowest id first): the cut happens BEFORE any figure is read.
+        val chosen = outletsByRoute.mapValues { (_, ids) -> ids.filter { it in camps }.sorted() }
+        val outletIds = chosen.values.flatMap { it.take(maxOutlets) }.distinct()
         val skuTargets = h.createQuery("SELECT outlet_id, programme_id, sku_id, qty_base FROM app.outlet_campaign_sku_target WHERE outlet_id = ANY(:o) AND month = :m ORDER BY outlet_id, sku_id")
             .bindArray("o", Long::class.javaObjectType, outletIds).bind("m", first)
             .map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list()
             .filter { camps[it[0]]?.programmeId == it[1] }.groupBy { it[0] }
+        // The SKUs shown per outlet (the campaign's own, cut at 100) are the ONLY SKUs read, so the memo figure can never count memos of a SKU the table does not
+        // show (another campaign of the outlet, or a SKU past the cut): the (outlet, SKU) pairs go into the query, matched by a join (review, D-TKPI-10).
+        val shown = skuTargets.mapValues { it.value.take(maxSkus) }
+        val pairs = shown.flatMap { (o, rows) -> rows.map { o to it[2] } }
         val sold = HashMap<Pair<Long, Long>, Long>(); val memos = HashMap<Long, Long>()
-        if (!through.isBefore(first)) {
+        if (!through.isBefore(first) && pairs.isNotEmpty()) {
+            val po = pairs.map { it.first }; val pk = pairs.map { it.second }
             h.createQuery(
                 """
-                SELECT l.outlet_id, l.sku_id, sum(l.qty_base) FROM dw.fact_memo_line l
-                 WHERE l.outlet_id = ANY(:o) AND l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
-                   AND EXISTS (SELECT 1 FROM app.outlet_campaign_sku_target k WHERE k.outlet_id = l.outlet_id AND k.sku_id = l.sku_id AND k.month = :m)
+                SELECT l.outlet_id, l.sku_id, sum(l.qty_base) FROM dw.fact_memo_line l JOIN unnest(CAST(:po AS bigint[]), CAST(:pk AS bigint[])) AS t(outlet_id, sku_id) ON t.outlet_id = l.outlet_id AND t.sku_id = l.sku_id
+                 WHERE l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
                  GROUP BY l.outlet_id, l.sku_id
                 """,
-            ).bindArray("o", Long::class.javaObjectType, outletIds).bind("f", first).bind("t", through).bind("m", first)
+            ).bindArray("po", Long::class.javaObjectType, po).bindArray("pk", Long::class.javaObjectType, pk).bind("f", first).bind("t", through)
                 .map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.list().forEach { sold[it.first to it.second] = it.third }
             h.createQuery(
                 """
-                SELECT l.outlet_id, count(DISTINCT l.memo_client_uuid) FROM dw.fact_memo_line l
-                 WHERE l.outlet_id = ANY(:o) AND l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
-                   AND EXISTS (SELECT 1 FROM app.outlet_campaign_sku_target k WHERE k.outlet_id = l.outlet_id AND k.sku_id = l.sku_id AND k.month = :m)
+                SELECT l.outlet_id, count(DISTINCT l.memo_client_uuid) FROM dw.fact_memo_line l JOIN unnest(CAST(:po AS bigint[]), CAST(:pk AS bigint[])) AS t(outlet_id, sku_id) ON t.outlet_id = l.outlet_id AND t.sku_id = l.sku_id
+                 WHERE l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
                  GROUP BY l.outlet_id
                 """,
-            ).bindArray("o", Long::class.javaObjectType, outletIds).bind("f", first).bind("t", through).bind("m", first)
+            ).bindArray("po", Long::class.javaObjectType, po).bindArray("pk", Long::class.javaObjectType, pk).bind("f", first).bind("t", through)
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().forEach { memos[it.first] = it.second }
         }
         fun figure(target: Long, achieved: Long) = buildJsonObject { put("target", target); put("achieved", achieved); put("remaining", Targets.remaining(target, achieved)) }
-        return outletsByRoute.mapValues { (_, ids) ->
-            ids.filter { it in camps }.take(2000).map { oid ->
+        return outletsByRoute.mapValues { (routeId, _) ->
+            val ids = chosen[routeId].orEmpty()
+            val rows = ids.take(maxOutlets).map { oid ->
                 val c = camps.getValue(oid)
-                val skus = skuTargets[oid].orEmpty().take(100)
+                val skus = shown[oid].orEmpty()
                 val achievedStd = skus.sumOf { sold[oid to it[2]] ?: 0L }
                 buildJsonObject {
                     put("outlet_id", oid); put("programme_id", c.programmeId); put("label_en", c.en); put("label_bn", c.bn?.let { JsonPrimitive(it) } ?: JsonNull)
-                    put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOf.wire())
+                    put("month", month.toString()); put("through_date", through.toString()); put("as_of", (asOf[routeId] ?: Instant.EPOCH).wire())
                     put("std", figure(c.std.setScale(0, java.math.RoundingMode.HALF_UP).toLong(), achievedStd))
                     put("memo", figure(c.memo.toLong(), memos[oid] ?: 0L))
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })
                 }
             }
+            Result(rows, ids.size > maxOutlets || ids.take(maxOutlets).any { (skuTargets[it]?.size ?: 0) > maxSkus })
         }
     }
 }

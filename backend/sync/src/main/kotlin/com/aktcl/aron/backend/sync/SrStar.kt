@@ -13,6 +13,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import org.jdbi.v3.core.Handle
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -29,11 +30,10 @@ import java.time.YearMonth
 object SrStar {
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
-    fun load(h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate): Map<Long, JsonObject> {
+    fun load(h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, routes.keys, date)): Map<Long, JsonObject> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
         val last = month.minusMonths(1)
-        val asOf = SrTargets.asOf(h)
         val progs = h.createQuery(
             """
             SELECT g.id, g.code, g.name_en, g.name_bn, g.rules::text, t.route_id, t.target_qty FROM app.route_programme_target t JOIN app.programme g ON g.id = t.programme_id
@@ -76,7 +76,7 @@ object SrStar {
             fun l(v: Long?) = v?.let { JsonPrimitive(it) } ?: JsonNull
             buildJsonObject {
                 put("programme_id", p.id); put("programme_code", p.code); put("name_en", p.nameEn); put("name_bn", p.nameBn?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOf.wire())
+                put("month", month.toString()); put("through_date", through.toString()); put("as_of", (asOf[routeId] ?: Instant.EPOCH).wire())
                 put("sr_name", info.srName?.let { JsonPrimitive(it) } ?: JsonNull); put("sr_code", info.srUserId?.let { users[it] }?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("route_name", info.routeName)
                 put("lmwd", c.last_month_working_days); put("wd", c.working_days); put("ewd", days.elapsed)

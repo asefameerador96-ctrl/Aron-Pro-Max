@@ -140,6 +140,8 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       if (!route || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
       const brands = st.tables.product!.filter((n) => n.level === "brand");
       const brandName = (code: string) => String(brands.find((b) => b.code === code)?.name ?? code);
+      const routeRow = st.tables.routes!.find((x) => x.code === route);
+      const ofRoute = new Set((st.tables.outlets ?? []).filter((o) => routeRow && o.route_id === routeRow.id).map((o) => String(o.code))); // outlets of the route
       const mine = (rows: Record<string, unknown>[]) => rows.filter((r) => r.route_code === route && r.month === month);
       const mrow = mine(st.kpi.month)[0];
       return ctx.send(res, 200, {
@@ -147,6 +149,8 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
         month,
         brand_rows: mine(st.kpi.brand).map((r) => ({ brand_code: r.brand_code, brand_name: brandName(String(r.brand_code)), memo_target: r.memo_target, kpi_alloc_mtk: r.kpi_alloc_mtk ?? 0 })),
         programme_rows: mine(st.kpi.programme).map((r) => ({ programme_code: r.programme_code, programme_name: programmes[String(r.programme_code)]?.name ?? String(r.programme_code), target_qty: r.target_qty })),
+        campaign_rows: st.kpi.campaign.filter((r) => ofRoute.has(String(r.outlet_code)) && r.month === month).map((r) => ({ outlet_code: r.outlet_code, programme_code: r.programme_code, programme_name: programmes[String(r.programme_code)]?.name ?? String(r.programme_code), std_target: r.std_target, memo_target: r.memo_target })),
+        campaign_sku_rows: st.kpi.campaignSku.filter((r) => ofRoute.has(String(r.outlet_code)) && r.month === month).map((r) => ({ outlet_code: r.outlet_code, programme_code: r.programme_code, sku_code: r.sku_code, qty_base: r.qty_base })),
         month_row: mrow ? { kpi_alloc_mtk: mrow.kpi_alloc_mtk, cpr_target_bp: mrow.cpr_target_bp ?? null, cpr_alloc_mtk: mrow.cpr_alloc_mtk ?? null } : null,
       }), true;
     }
@@ -207,6 +211,10 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
         checkMonth("campaign_sku_rows", i, r);
         dup("campaign_sku_rows", i, `${r.outlet_code}|${r.programme_code}|${r.month}|${r.sku_code}`, "outlet_code");
       });
+      rowsOf("campaign_sku_rows").forEach((r, i) => {
+        const has = rowsOf("campaign_rows").some((c) => c.outlet_code === r.outlet_code && c.programme_code === r.programme_code && c.month === r.month) || st.kpi.campaign.some((c) => c.outlet_code === r.outlet_code && c.programme_code === r.programme_code && c.month === r.month);
+        if (!has && !errors.some((e) => e.section === "campaign_sku_rows" && e.row === i + 1)) err("campaign_sku_rows", i, "outlet_code", "campaign_row_missing");
+      });
       const counts = { brand_rows: rowsOf("brand_rows").length, month_rows: rowsOf("month_rows").length, programme_rows: rowsOf("programme_rows").length, campaign_rows: rowsOf("campaign_rows").length, campaign_sku_rows: rowsOf("campaign_sku_rows").length };
       if (b.dry_run) return ctx.send(res, 200, { batch_uuid: b.batch_uuid, ...counts, errors, errors_truncated: false }), true;
       if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.${e.section}/${e.row - 1}/${e.column}`, code: e.code })) })), true;
@@ -220,7 +228,7 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
         if (cur) Object.assign(cur, r);
         else store.push({ ...r });
       };
-      rowsOf("brand_rows").forEach((r) => upsert(st.kpi.brand, ["route_code", "brand_code", "month"], { kpi_alloc_mtk: 0, ...r }));
+      rowsOf("brand_rows").forEach((r) => upsert(st.kpi.brand, ["route_code", "brand_code", "month"], { ...(st.kpi.brand.some((x) => x.route_code === r.route_code && x.brand_code === r.brand_code && x.month === r.month) ? {} : { kpi_alloc_mtk: 0 }), ...r })); // a member left out keeps the stored value
       rowsOf("month_rows").forEach((r) => upsert(st.kpi.month, ["route_code", "month"], r));
       rowsOf("programme_rows").forEach((r) => upsert(st.kpi.programme, ["route_code", "programme_code", "month"], r));
       rowsOf("campaign_rows").forEach((r) => upsert(st.kpi.campaign, ["outlet_code", "programme_code", "month"], r));

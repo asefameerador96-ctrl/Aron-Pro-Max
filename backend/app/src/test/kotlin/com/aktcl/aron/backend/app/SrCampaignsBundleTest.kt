@@ -89,6 +89,8 @@ class SrCampaignsBundleTest {
         line("2026-12-31", memo(), o1, skuA, 5000)                                         // last month: out
         line("2027-01-02", memo(), o2, skuA, 5000)                                         // another outlet (no campaign row): out
         x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '2027-01-03T01:00:00Z', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
+        x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) SELECT DATE '2027-01-02', $route, (SELECT min(id) FROM app.sku), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM dw.agg_daily_route_sku WHERE route_id = $route)") // a projector row of the route gives its as_of (no figure)
+        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
     }
 
     @AfterAll fun tearDown() = fresh.close()
@@ -116,5 +118,53 @@ class SrCampaignsBundleTest {
         try { assertTrue(campaigns().isEmpty()) } finally { x("UPDATE app.programme SET active_to = DATE '2027-01-31' WHERE id = $programme") }
         assertNotNull(campaigns().singleOrNull())
         assertTrue(bundle().full.routes.single { it.route_id == route }.campaigns!!.none { it["outlet_id"]!!.let { v -> v !is JsonNull && v.jsonPrimitive.content.toLong() != o1 } })
+    }
+
+    @Test
+    fun aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne() {
+        // another campaign programme of the same outlet and month owns SKU C; the memo of SKU C (the "a SKU without a campaign target" line of the set-up) must stay out of campaign 1
+        val p2 = q("INSERT INTO app.programme (kind, code, name_en, name_bn, active_from, active_to, status) VALUES ('campaign', 'SSL2', 'Second campaign', NULL, DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id")
+        val b = "'00000000-0000-4000-8000-00000000b004'"
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($p2, DATE '2027-01-01', $o1, 100, 5, $b)")
+        x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($p2, DATE '2027-01-01', $o1, $skuC, 100, $b)")
+        try {
+            val c = campaigns().single()
+            assertEquals(programme, c.l("programme_id"), "the lowest programme id is the shown one")
+            assertEquals(7, c["memo"]!!.jsonObject.l("achieved"), "the memo of SKU C belongs to the other campaign: still 7, not 8")
+            assertEquals(390, c["std"]!!.jsonObject.l("achieved"))
+        } finally {
+            x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p2"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p2"); x("DELETE FROM app.programme WHERE id = $p2")
+        }
+    }
+
+    @Test
+    fun capsAreStatedNeverSilentAndTheCutHappensBeforeTheFiguresAreRead() {
+        val asOf = mapOf(route to Instant.parse("2027-01-03T01:00:00Z"))
+        val got = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h ->
+            com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, asOf, maxOutlets = 1, maxSkus = 1)
+        }
+        val r = got.getValue(route)
+        assertTrue(r.truncated, "outlet o1 has two SKU targets and the cap is 1: truncated says so")
+        assertEquals(1, r.rows.single()["skus"]!!.jsonArray.size)
+        val whole = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, asOf) }
+        assertEquals(false, whole.getValue(route).truncated)
+        assertEquals(150, com.aktcl.aron.backend.sync.SrCampaigns.MAX_OUTLETS); assertEquals(20, com.aktcl.aron.backend.sync.SrCampaigns.MAX_SKUS)
+    }
+
+    @Test
+    fun theCampaignSectionStaysInItsSizeBudgetAtTheDenseWorstCase() {
+        // docs/04: 70 outlets x 20 SKUs (dense) at most 120 KB raw and 20 KB gzip. Built from the real row of the bundle with realistic six-digit figures.
+        val real = campaigns().single()
+        val rows = (1..70).map { i ->
+            kotlinx.serialization.json.buildJsonObject {
+                real.forEach { (k, v) -> if (k != "skus" && k != "outlet_id") put(k, v) }
+                put("outlet_id", 100_000L + i)
+                put("skus", kotlinx.serialization.json.buildJsonArray { for (j in 1..20) add(kotlinx.serialization.json.buildJsonObject { put("sku_id", 1_000L + j); put("target_qty_base", 123_456L); put("sold_qty_base", 98_765L) }) })
+            }
+        }
+        val raw = kotlinx.serialization.json.JsonArray(rows).toString().toByteArray()
+        val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(raw) } }.size()
+        assertTrue(raw.size <= 120 * 1024, "campaigns raw ${raw.size} bytes over the 120 KB budget")
+        assertTrue(gz <= 20 * 1024, "campaigns gzip $gz bytes over the 20 KB budget")
     }
 }

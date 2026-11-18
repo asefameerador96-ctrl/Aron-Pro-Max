@@ -220,6 +220,7 @@ data class RouteSnapshot(
     @SerialName("kpi") val kpi: JsonElement? = null,
     @SerialName("star") val star: JsonElement? = null,
     @SerialName("campaigns") val campaigns: List<JsonElement>? = null,
+    @SerialName("campaigns_truncated") val campaignsTruncated: Boolean? = null,
     @SerialName("sr_user_id") val srUserId: Long? = null,
     @SerialName("sr_name") val srName: String? = null,
 )

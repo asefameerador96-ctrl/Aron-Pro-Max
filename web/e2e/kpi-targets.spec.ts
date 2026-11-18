@@ -73,6 +73,10 @@ test("kpi targets: each of the other sections takes a sheet through preview and 
     await expect(page.getByTestId("form-ok")).toBeVisible();
     expect((await stateOf()).custom.kpi[c.member]).toHaveLength(1);
   }
+  // the read panel lists the outlet campaign rows of the route too (DHK-334-001 belongs to R-334-01)
+  await page.goto(`/admin/kpi-targets?route_code=R-334-01&month=${m}`);
+  await expect(page.getByTestId("kt-stored")).toContainText("DHK-334-001");
+  await expect(page.getByTestId("kt-stored")).toContainText("MaxR-20S");
 });
 
 test("kpi targets: a wrong file type is refused, the template downloads, an unknown route reads as empty", async ({ page }) => {

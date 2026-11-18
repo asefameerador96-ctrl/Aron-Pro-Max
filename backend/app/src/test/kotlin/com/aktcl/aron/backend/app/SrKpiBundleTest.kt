@@ -82,6 +82,8 @@ class SrKpiBundleTest {
         agg("2026-12-31", route, rows[1][0], 5555, 55)   // last month: out
         agg("2027-01-02", route, rows[2][0], 40, 3)      // sells, no target: shown with null percentages
         x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '2027-01-03T01:00:00Z', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
+        x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) SELECT DATE '2027-01-02', $route, (SELECT min(id) FROM app.sku), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM dw.agg_daily_route_sku WHERE route_id = $route)") // a projector row of the route gives its as_of (no figure)
+        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
     }
 
     @AfterAll fun tearDown() = fresh.close()

@@ -48,4 +48,17 @@ class StarProgressTest {
         assertEquals("Keep Pushing", StarProgress.status(emptyList(), 3_683).en); assertEquals("On Track", StarProgress.status(emptyList(), 10_000).en)
         assertEquals("Keep Pushing", StarProgress.status(emptyList(), null).en)
     }
+
+    @Test fun anAbsurdPercentageIsNullNeverAWrappedNumber() {
+        // target 0.001 against huge sales: the basis points do not fit a Long. Null (not representable), never the wrapped value of BigInteger.toLong().
+        val r = StarProgress.compute(StarProgress.Input(targetMilli = 1, stdBase = Long.MAX_VALUE / 2_000, lmsBase = 10, unitDivisor = 1, ewd = 1, wd = 26, lmwd = 26))
+        assertNull(r.achievementBp); assertNull(r.growthBp)
+    }
+
+    @Test fun twoIsHalfARoundingStepOnTheOldestSupportedApi() {
+        // roundDiv uses BigInteger.valueOf(2) (BigInteger.TWO does not exist on Android below API 33): half away from zero still holds
+        assertEquals(java.math.BigInteger.valueOf(3), StarProgress.roundDiv(java.math.BigInteger.valueOf(5), java.math.BigInteger.valueOf(2)))
+        assertEquals(java.math.BigInteger.valueOf(-3), StarProgress.roundDiv(java.math.BigInteger.valueOf(-5), java.math.BigInteger.valueOf(2)))
+        assertEquals(java.math.BigInteger.valueOf(1), StarProgress.roundDiv(java.math.BigInteger.valueOf(4), java.math.BigInteger.valueOf(3)))
+    }
 }
