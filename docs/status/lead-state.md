@@ -298,3 +298,8 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - The one finding (generic-api-key, infra/tests/check_infra.py:859, commit 41df7f4d) was a made-up test sample that was briefly the tip of lane/ops-diagnose-api; the train's whole-history scan covers all refs fetched and ran one second after that push. Not reachable from a9d83d774; no remote ref holds it now (SV6 force-pushed it away before being told not to). SV6's scan with the pinned gitleaks: a9d83d774 history and all current refs clean. Integrator told to re-run the failed job once and continue.
 - CI weakness to fix (give to F-INFRA1): the whole-history secret scan of a branch run includes every other branch's tip, so one lane's flagged commit can fail an unrelated train; scan the checked-out commit's own history (and keep a separate all-refs scan as its own job).
 - T-KPI2 6af9be045: admin tab built, ci green; Opus pass on the whole targets-server branch running.
+
+## 2026-11-18 11:30
+- Train 121: INT ce6792f67, ci success (run 44289497108), deploy in progress (run 44293328876). Dev health still build 4d310d8c0.
+- apsis-migration 8a637747: FAIL (12 blocking) sent to M-APSIS1 as a ten-item fix round incl. opening balances at cutover.
+- infra-final 2f13c5bc3: lead review running (wf_5a2f731f-e97).
