@@ -740,3 +740,57 @@ LOWS (shortened):
 - In whole-database mode, a refusal caused by a line between sections is reported under the table read just before it, even when that table's data was complete. Every table from that point on is reported as missing.
 - profile-values only finds per-table files (files[table] by file stem), so it cannot be used on a column of a table that exists only inside a whole-database file.
 - Throughput extrapolation: 3.4 MB/s for narrow rows gives about 4.3 h for 52 GB here, on one thread. Not measured: a slower container vCPU, and reference checks with real 1.5 M-key master sets, which add hashing per row.
+
+
+## Phase 1 profile fifth and final review of the hand-written reader at eabd24fbb, 2026-11-18
+
+Result: SAFE (no leak found in any run, fail-closed, linear time) but NOT COMPLETE (some standard mysqldump shapes are still refused). Per the lead's ruling the reader is not extended further.
+
+### state-machine-attacks verdict=fail
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: MySQL 8.0 view stand-in (multi-line CREATE VIEW ... AS SELECT / 1 AS `col`) is refused
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py lines 219-224 (_STANDIN_START, _VIEW_BODY) and the fall-through refusal at line 551
+WHY: As far as I know, the 8.0 mysqldump writes a view's stand-in as a view, not a MyISAM table, spread over several lines. The first line is the 50001 versioned comment opening 'CREATE VIEW `v` AS SELECT ' with a trailing space. Each column follows on its own line as ' 1 AS `c`,'. The last line ends with '*/;'. The reader only knows the 5.7 'CREATE TABLE `v` (' stand-in and a one-line 'VIEW `v` AS ... */;', so the first stand-in line falls to 'a line the reader does not recognise'. The lane's test only covers the 5.7 stand-in.
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: RANGE COLUMNS / LIST COLUMNS partition clauses as MySQL prints them (two spaces before COLUMNS) are refused
+WHERE: mysqldump.py line 232 (_PHEAD: '(?: COLUMNS)?' allows exactly one space) via _partition_line line 263
+WHY: To my knowledge SHOW CREATE TABLE, and so mysqldump, writes '/*!50500 PARTITION BY RANGE  COLUMNS(`d`)' and 'LIST  COLUMNS(...)' with two spaces. With two spaces _PHEAD fails to match and the clause is refused as 'a partition clause outside the recognised grammar'. The one-space form, which I believe MySQL never prints, is accepted. Date-range partitioning by COLUMNS is a likely layout for the 122 M-row sales table.
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: Multi-line subpartition clauses are refused
+WHERE: mysqldump.py _partition_line lines 262-276: a continuation line (first=False, heads=0) cannot start with SUBPARTITION BY, and nested '(SUBPARTITION s0 ENGINE = InnoDB,' lines fail _PTOK
+WHY: SHOW CREATE TABLE puts 'SUBPARTITION BY HASH (to_days(`d`))' and 'SUBPARTITIONS 2' on their own lines after the PARTITION BY line. Explicitly named subpartitions are written as nested ' (SUBPARTITION s0 ENGINE = InnoDB,' lines. Only the one-line form (all of it on the PARTITION BY line) is accepted, and as far as I know MySQL does not print that form.
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: ALTER DATABASE ... CHARACTER SET ... COLLATE ... ; lines that mysqldump writes around triggers and routines are refused
+WHERE: mysqldump.py line 551 (no rule consumes ALTER DATABASE)
+WHY: As far as I know, mysqldump's switch_db_collation / restore_db_collation write 'ALTER DATABASE `db` CHARACTER SET x COLLATE y ;' before and after each trigger or routine whose stored database collation differs from the current default. This is common after a 5.x latin1/utf8 database was converted to utf8mb4, or upgraded to 8.0. It only happens when the collations differ, so it is not in every dump.
+
+LOWS (shortened):
+- Block-scanner desync from genuine but rare content: the trigger and event bodies sit inside a versioned comment, so a '*/' inside a string or line comment in the body ends the comment early and flips quote tracking. Then
+- In whole-database mode the first refusal ends the whole file. Every allowed table after it appears only under 'tables_missing', not as refused or unread. Exit is non-zero, but the owner may look for a missing table inste
+- '--add-drop-database' output (a 40000 versioned 'DROP DATABASE IF EXISTS `db`' line) is refused, because _DROPX has no DATABASE alternative. This is an optional flag, so it is not blocking.
+- 'PARTITION BY KEY ALGORITHM = 2 (`id`)' (50611, written only when the algorithm was set explicitly) is refused.
+- Forged input only, wrong count, no leak: _ROCKSDB ('SET @rocksdb_x = ...'), _VIEW_BODY, _VIEW_DEFINER and the DELIMITER-block content accept arbitrary text that MySQL would execute on restore. For example, a 50717 versio
+- The rocksdb preamble regex cannot be checked offline. Oracle MySQL 5.7/8.0 never writes these lines, so for an Oracle dump the regex only accepts lines that do not occur, which is harmless. If the dump came from Percona 
+- _GTID_CONT also accepts empty lines and hex-only lines inside an open GTID_PURGED. This is harmless (no INSERT can match it) and an unclosed GTID still refuses at end of file.
+- Not verified: real mysqldump 5.7/8.0, Percona or MariaDB binaries; the profile-values command; the phase-2 refusals; the DB suite.
+
+### genuine-dumps-end-to-end verdict=fail
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: The real 5.7/8.0 view stand-in form is refused, so (b) and (c) are refused for any schema with a view, and the refusal is pinned on the wrong table
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py:221-226 (_STANDIN_START expects the old MyISAM form) and :553 (the generic refusal); profiler.py:318 (the remedy text)
+WHY: mysqldump 8.0 (and, I believe, later 5.7 releases) writes the temporary view stand-in as a CREATE VIEW AS SELECT 1 AS <col> over several lines. The reader only knows the 5.6/MariaDB 'CREATE TABLE ... ENGINE=MyISAM */;' stand-in. The previous review (docs/reviews/apsis-migration-2026-11-18.md, line 716) named exactly this 8.0 form, and this round did not add it. The new test fixture uses the MyISAM form, yet the status file calls the fixtures copies of the exact 5.7/8.0 layouts. mysqldump writes views by default and has no --skip-views option.
+
+#### REFUSED STANDARD SHAPE / BLOCKING upheld=3/3: A table partitioned by RANGE COLUMNS on a date is refused even in per-table mode (a)
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py:234 (_PHEAD allows exactly one space before COLUMNS)
+WHY: MySQL's SHOW CREATE TABLE, which mysqldump copies verbatim, writes '/*!50500 PARTITION BY RANGE  COLUMNS(col)' with two spaces (likewise LIST  COLUMNS). The grammar only accepts 'RANGE COLUMNS' with one space. RANGE COLUMNS on a DATE column is one of the two standard ways to range-partition by date. A refusal of (a) is blocking under the review rules.
+
+LOWS (shortened):
+- The runbook's split remedy (docs/runbooks/apsis-history-migration.md step 3) fails on line 1 of any real dump: the awk command prints to an empty file name before the first CREATE TABLE ('cannot open "" for output', exit
+- docs/status/apsis-migration.md (round-4 bullet) says view stand-in tables are consumed unread. That is true only for the 5.6/MariaDB MyISAM form. The same file says the last 12 tests use fixtures copied from the exact 5.
+- Speed: docs/requests/apsis-profile-via-mysql.md section 4 states 3.4 MB/s (4 to 5 hours for 52 GB). Here I measured 2.06 MB/s (300 MB in 146 s), so about 7 hours for 52 GB. Memory was fine: 32 MB peak RSS.
+- The refusal remedy in a whole-database file is always 'mysqldump --skip-triggers db table > table.sql', whatever the cause. It says nothing about views or partition syntax.
+- MySQL-restore alternative, the parts that are sound: no egress, --skip-networking, event_scheduler=OFF, local_infile=0, DELIMITER blocks (triggers, routines, events) stripped before load, no general or slow query log, PA
+- MySQL-restore alternative, value leak via error output: the doc does not cover the mysql client's error output during the restore. Messages such as 'Duplicate entry ... for key', 'Incorrect string value' and 'Data trunca
+- MySQL-restore alternative, privileges: the doc says to load with a local root, and in the same breath says the user has no SUPER, EVENT or TRIGGER privilege. These contradict each other. Separately, neutralising DEFINER 
+- MySQL-restore alternative, --all-databases: such a dump would also restore the vendor's mysql system schema and replace the throwaway server's grant tables; the doc does not say to exclude it.
+- MySQL-restore alternative, other omissions: no plan for the GTID_PURGED and SQL_LOG_BIN header lines, which need admin privileges and can fail the load; secure_file_priv is not mentioned.

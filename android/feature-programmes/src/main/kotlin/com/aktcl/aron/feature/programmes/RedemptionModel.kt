@@ -4,7 +4,9 @@ import com.aktcl.aron.core.database.record.ProgrammePayloads
 import kotlinx.serialization.json.JsonObject
 
 /** A redemption this phone already holds (from the stored `redemption` record and its outbox state). */
-data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String, val ackedAt: String? = null, val uuid: String = "")
+data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String, val ackedAt: String? = null, val uuid: String = "",
+    /** The phone itself stopped sending it (state `uncertain`): it is NOT promised to confirm after a sync; the rep sends it again from Sales Submit. */
+    val gaveUp: Boolean = false)
 
 /** One gift of the basket with its quantity. */
 data class BasketLine(val gift: LoyaltyGift, val qty: Int)
@@ -63,7 +65,10 @@ data class Basket(val outletId: Long, val programmeId: Long, val balance: Long, 
 
 object LocalRedeemed {
     /** Redemptions sent but unanswered when the held snapshot was requested. */
-    fun awaiting(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" }
+    fun awaiting(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" && !it.gaveUp }
+
+    /** Redemptions this phone gave up sending: shown with a pointer to Sales Submit (refused items, Send again), never with a promise of an update after the next sync. */
+    fun givenUp(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" && it.gaveUp }
 
     /**
      * Points this phone redeemed for the outlet and programme that the bundle's balance cannot be known to hold, by the phone's own ORDER and no clock: [ackedBeforeRequest] is the set of record
