@@ -760,71 +760,115 @@ class Workflows(unittest.TestCase):
         self.assertIn("set -uo pipefail", sh)
 
     def test_diagnose_reads_the_worker_console_log_and_keeps_statements_out(self):
-        # D-OPS-DIAGNOSE-WORKER-01: the worker app's console log (severity and job-run lines, cut at 200 characters, no
-        # SQL/parameter/secret words) and the anchored statement exclusion on the server-log query.
+        # D-OPS-DIAGNOSE-WORKER-01, now under the default-deny shape (D-OPS-DIAGNOSE-API-06): the worker's console is read through the shared structured query (level, logger,
+        # exception class, SQLSTATE, ms, a fixed kind label such as the job-run lines); the anchored statement exclusion stays on the PostgreSQL server-log query.
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
-        i = sh.index("console log of $WORKER_APP in the window")
-        w = sh[i:sh.index('section "worker app $WORKER_APP"')]
-        self.assertIn("ContainerAppConsoleLogs_CL", w)
-        self.assertIn("where app == '$WORKER_APP'", w)
-        self.assertNotIn("substring(", w, "the whole message is fetched, redacted, then cut in the shell (redact before cut)")
-        self.assertIn("gettype(j) == 'dictionary'", w, "a JSON line with no formattedMessage never falls back to the raw JSON")
-        self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
-        self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
-        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
-        pg = sh[sh.index("PostgreSQLLogs'"):sh.index("section \"Log Analytics: console log of $WORKER_APP")]
+        self.assertIn('console_section "$WORKER_APP" "$WORKER_APP"', sh)
+        c = sh[sh.index("KQL_CONSOLE="):sh.index("console_section() {")]
+        self.assertIn("ContainerAppConsoleLogs_CL", c)
+        self.assertIn("parse_json(line)", c, "the JSON console line is parsed, not printed raw")
+        self.assertIn("bundle|lapsed", c, "job-run lines (bundle pre-generation, outlet request lapse) get a fixed kind label")
+        self.assertIn("gettype(j) == 'dictionary'", c, "a JSON line with no message never falls back to the raw JSON")
+        self.assertNotIn("substring(", c, "the whole text is fetched, redacted and only then cut in the shell")
+        cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
+        self.assertIn("where app == '$app'", cs)
+        pg = sh[sh.index("PostgreSQLLogs'"):sh.index('console_section "$WORKER_APP" "$WORKER_APP"')]
         self.assertIn("where not(msg matches regex @'-LOG:\\s+(execute|statement|parse|bind)')", pg,
                       "anchored: a statement record is dropped even when log_statement is turned on")
 
     def test_diagnose_reads_the_api_console_and_preflight_with_redaction(self):
-        # D-OPS-DIAGNOSE-API-01 (and the lead's review of 46c6ef49): the API app's console and system log (newest first, capped), the migrate job's
-        # pre-flight lines, the exclusion on the PRINTED text with its count, request lines out of the cap, redact before cut, every section redacted.
+        # D-OPS-DIAGNOSE-API-06 (round 5): DEFAULT-DENY for free text. Every query projects named structured columns only unless include_messages is true;
+        # the message passes the redactor in strict mode; request lines stay out of the cap; redact before cut; every section redacted.
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
         w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
         self.assertIn('API_APP="${5:-ca-aron-dev-api}"', sh)
-        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP"', w)
+        self.assertIn('INCLUDE_MESSAGES="${6:-false}"', sh)
+        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP" "$INCLUDE_MESSAGES"', w)
         self.assertIn("API_APP: ${{ inputs.api_app }}", w)
-        i = sh.index("console log of $API_APP in the window")
-        a = sh[i:sh.index('section "worker app $WORKER_APP"')]
-        self.assertIn("where app == '$API_APP'", a)
-        self.assertGreaterEqual(a.count("top 150 by TimeGenerated desc") + a.count("top 100 by TimeGenerated desc"), 3, "console, system log and pre-flight are capped")
-        self.assertIn("where not(lg startswith 'aron.request')", a, "request lines cannot push start-up lines and errors out of the cap")
-        self.assertIn("waiting-item sweep", a, "the sweep start-up line is kept")
-        self.assertIn("pre-?flight", a)
-        # The exclusion works on the projected text, not on the raw line (whose stack trace names org.jdbi.v3.core.statement / PgStatement).
-        console = a[:a.index("system log of $API_APP")]
-        self.assertIn("extend held = text matches regex", console)
-        self.assertIn("where not(held)", console, "the hold-back is done in KQL")
-        self.assertIn("summarize held = countif(held), shown = countif(not(held))", console, "the count is done in KQL")
-        self.assertNotIn('== "true"', console, "az prints a KQL bool as True/False; the shell never compares it")
-        self.assertNotIn("awk", console, "no column split of az output in the shell (a message may hold a tab or a newline)")
-        self.assertIn("replace_regex(", console, "one row is one line")
-        self.assertNotIn("where not(line matches regex", console, "no exclusion on the raw JSON line")
-        self.assertNotIn("statement|parameters|bind", console, "the broad word list that dropped stack traces is gone")
-        self.assertIn("| held_note", console, "the count of held-back lines is printed")
-        self.assertIn("gettype(j) == 'dictionary'", console, "a JSON line with an empty message never prints the raw JSON")
-        # The pre-flight query prints the message, not the raw line.
-        pre = a[a.index("pre-flight lines"):]
-        self.assertIn("tostring(j.formattedMessage)", pre)
-        self.assertIn("gettype(j) == 'dictionary'", pre)
-        self.assertNotIn("project TimeGenerated, exec, line", pre)
-        # Redact before cut: no query output is cut before it is redacted, and every query result goes through show (redact, then cut).
+        self.assertIn("include_messages:", w); self.assertIn("default: false", w[w.index("include_messages:"):])
+        self.assertIn("INCLUDE_MESSAGES: ${{ inputs.include_messages }}", w)
+        self.assertIn('valid include-messages "$INCLUDE_MESSAGES" \'^(true|false)$\'', sh)
+        self.assertIn('console_section "$API_APP" "$API_APP"', sh)
+        cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
+        self.assertIn("where not(lg startswith 'aron.request')", cs, "request lines cannot push start-up lines and errors out of the cap")
+        self.assertIn("top 150 by TimeGenerated desc", cs)
+        # The default branch projects the structured columns and never msg/line/st; the message column exists only in the include_messages branch.
+        default_q = cs[cs.index("else\n    echo \"(columns:"):]
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind\"", default_q)
+        for col in (", msg", ", line", ", st"):
+            self.assertNotIn(col, default_q.split("qc=")[0], f"the default query must not project {col.strip(', ')}")
+        msg_q = cs[:cs.index("else\n    echo \"(columns:")]
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg", msg_q)
+        self.assertIn("$KQL_HELD", msg_q); self.assertIn("| held_note", msg_q)
+        self.assertIn("extend held = msg matches regex", sh)
+        self.assertNotIn("where not(line matches regex", cs, "no exclusion on the raw JSON line")
+        c = sh[sh.index("KQL_CONSOLE="):sh.index("KQL_HELD=")]
+        self.assertIn("gettype(j) == 'dictionary'", c); self.assertIn("(no message)", c)
+        self.assertIn("replace_regex(", c, "one row is one line")
+        self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed kind label")
+        self.assertIn("pre-flight: nothing to do", c)
+        self.assertIn("exc = extract(", c); self.assertIn("cause = extract(", c); self.assertIn("sqlstate = ", c)
+        # The other sections: system log, job console, PG log, pre-flight: structured by default, text only with include_messages.
+        for needle in ("project TimeGenerated, who, typ, reason | take 200", "project TimeGenerated, exec, lvl, kind, sqlstate, script | take 400",
+                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, kind\"", "project TimeGenerated, typ, reason\""):
+            self.assertIn(needle, sh, needle)
+        pre = sh[sh.index('section "Log Analytics: migrate job pre-flight lines'):sh.index('section "worker app $WORKER_APP"')]
+        self.assertIn("kind startswith 'pre-flight'", pre)
+        dflt = pre[pre.index("  else\n"):pre.index("  fi\n")]
+        self.assertIn("project TimeGenerated, exec, kind\"", dflt)
+        self.assertNotIn("msg", dflt.replace("--analytics-query", ""), "the default pre-flight query prints the kind label, not the message")
+        # Redact before cut: no query output is cut before it is redacted, and every query result goes through la()/show/showm.
         self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
         for line in sh.splitlines():
-            if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "analytics-query" in line and "-o tsv" in line:
-                self.assertTrue("| show " in line or "| held_note" in line or "$out" in line or 'out="$(' in line, line)
+            if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "-o tsv" in line:
+                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line, line)
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("substring(", code.replace("substring(sha256", ""), "no KQL substring before redaction")
         self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
         self.assertNotIn("substr($0", code, "no byte-based awk cut")
         self.assertIn("exec > >(redact)", sh, "everything printed, the older sections too, passes the net")
-        # All five inputs have fixed patterns, in the script and in the workflow before login.
-        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app"):
+        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app", "include-messages"):
             self.assertIn('valid ' + name + ' ', sh, name)
         self.assertLess(w.index("Validate the inputs"), w.index("azure/login@"), "inputs are validated before the Azure login")
         self.assertIn("set -o pipefail", w)
         self.assertIn("grep -q '^diagnose: done (read-only)$' diagnose.txt", w, "a dead filter or an early stop turns the step red")
         self.assertIn("free-text names", sh.lower().replace("FREE-TEXT", "free-text"), "the comment says honestly what is not caught")
+        self.assertIn("messages are OFF by default in a public log", sh)
+
+    def test_diagnose_runs_with_a_stub_az_in_both_modes(self):
+        # Runs the whole script against a fake `az`: default mode never sends a message column to the query; message mode does, behind the strict filter, and still ends with the final line.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+if [ "$1 $2 $3" = "monitor log-analytics workspace" ]; then echo ws-id; exit 0; fi
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; cols=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; --query) cols="$2";; esac; shift; done
+  printf '%s\n---\n' "$q" >> "$STUB_LOG"
+  case "$cols" in "[0].[held, shown]") printf '2\t9\n';; "[0].[plain, total]") printf '3\t40\n';;
+    *) printf 'T0\tERROR\tcom.x.Y\tjava.lang.IllegalStateException\t\t57014\t\tunhandled error\nT1\tINFO\taron.sync\tsession abc123def456 opened for 01712345678\n';; esac; exit 0; fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            for mode in ("false", "true"):
+                open(log, "w").close()
+                env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}
+                r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "caj-aron-dev-migrate", "ca-aron-dev-worker", "ca-aron-dev-api", mode], capture_output=True, text=True, env=env)
+                self.assertEqual(0, r.returncode, r.stderr)
+                self.assertTrue(r.stdout.rstrip().endswith("diagnose: done (read-only)"), r.stdout[-200:])
+                self.assertIn(f"include_messages={mode}", r.stdout)
+                self.assertNotIn("01712345678", r.stdout)
+                queries = open(log).read()
+                if mode == "false":
+                    self.assertNotIn(", msg\n", queries); self.assertNotIn("txt", queries.split("replace_regex(tostring")[-1].split("| where")[-1] if False else "")
+                    self.assertNotRegex(queries, r"project [^\n|]*\bmsg\b")
+                    self.assertNotRegex(queries, r"project [^\n|]*\btxt\b")
+                    self.assertNotRegex(queries, r"project [^\n|]*\bline\b")
+                else:
+                    self.assertRegex(queries, r"project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg")
+                    self.assertIn("[redacted-line]", r.stdout, "strict mode replaced the line that still holds a key-like word and a mixed value")
+                    self.assertIn("unhandled error", r.stdout)
 
     def test_diagnose_redaction_behaviour(self):
         # D-OPS-DIAGNOSE-API-01: pipe sample lines through the real net (diagnose.sh --redact) and assert nothing sensitive survives.
@@ -873,7 +917,7 @@ class Workflows(unittest.TestCase):
         self.assertEqual(ids[0], ids[1], "the same request id gives the same text")
         self.assertNotEqual(ids[0], ids[2])
         sha = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d"
-        for line in (f"build {sha} started", f"commit={sha}", f"image sha {sha}", f"health ok {sha}", "version 1.20.3.4 ready", "build 1.20.3.4", "exp=1731234567 iat=1731230000"):
+        for line in (f"build {sha} started", f"commit={sha}", f"health ok {sha}", "version 1.20.3.4 ready", "build 1.20.3.4", "exp=1731234567 iat=1731230000"):
             self.assertEqual(line + "\n", run(line + "\n"), line)
         self.assertNotIn(sha, run(f"token blob {sha}\n"), "a 40-hex run with no build/commit/sha context is still redacted")
         # B2: a Bangla line cut in the middle of a character, and bytes that are not UTF-8 at all, never kill the filter: every later line still appears.
@@ -891,7 +935,7 @@ class Workflows(unittest.TestCase):
         self.assertEqual("ok-1", lines[0]); self.assertEqual("ok-5", lines[4]); self.assertNotIn("1712", lines[2])
         # B1: the held-back count reads the two numbers whatever az prints (tab, newline, capitalised or not).
         for sample in ("3\t12\n", "3\n12\n", "3 12", "3,12"):
-            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 not held; the list below is capped at the newest 150)\n", run_note(sample), sample)
+            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 not held; the list above is capped at the newest 150)\n", run_note(sample), sample)
         self.assertEqual("(held-back count unavailable)\n", run_note("True\tFalse\n"))
         self.assertEqual("(held-back count unavailable)\n", run_note(""))
         # Ordinary diagnostics text survives: a timestamp, a level, a class name, a count.
@@ -986,18 +1030,62 @@ class Workflows(unittest.TestCase):
         self.assertNotIn("481516", run("481516 " + "x" * 50 + " verification\n"))
         keep = "verification " + "x" * 30 + " took 18400 ms, 1500 retries and 20000 bytes"
         self.assertEqual(keep + "\n", run(keep + "\n"))
-        # (4) a 40- or 64-hex is kept only after an image/digest/sha256/build/commit word or in an image reference on a registry-looking host
+        # (4) a 40- or 64-hex is kept only after the WHOLE words image/digest/commit/build, or in an image reference on a fixed registry host (ACR, ghcr.io, docker.io, mcr.microsoft.com)
         h40, h64 = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d", "ab12" * 16
-        for line in (f"image acr.example.io/aron/api:{h40} ready", f"pulled acr.example.io:5000/aron/api@sha256:{h64}", f"localhost/aron/api:{h40}", f"digest {h64} ok",
-                     f"sha256:{h64}", f"commit {h40}", f"build {h40}"):
+        for line in (f"image acr1234.azurecr.io/aron/api:{h40} ready", f"pulled acr1234.azurecr.io:5000/aron/api@sha256:{h64}", f"ghcr.io/aron/api:{h40}", f"docker.io/a/b@sha256:{h64}",
+                     f"mcr.microsoft.com/a/b:{h40}", f"digest {h64} ok", f"digest sha256:{h64}", f"commit {h40}", f"build {h40}", f"image {h40}"):
             self.assertEqual(line + "\n", run(line + "\n"), line)
-        for line in (f"path a/b:{h40}", f"x/y/z:{h40}", f"value {h40}", f"cache a/b@{h64}"):
+        for line in (f"path a/b:{h40}", f"x/y/z:{h40}", f"value {h40}", f"cache a/b@{h64}", f"localhost/aron/api:{h40}", f"acr.example.io/aron/api:{h40}", f"evil.example.io/a/b:{h40}",
+                     f"sha256:{h64}", f"x-signature: sha256={h64}", f"signature sha256={h64}", f"sha1 {h40}", f"revision {h40}", f"gitsha {h40}", f"builder {h40}", f"imagex {h40}"):
             out = run(line + "\n")
             self.assertNotIn(h40, out, line); self.assertNotIn(h64, out, line)
         # still linear with the wider bounds
         n = 100000
         for name, blob in {"letters": "a" * n, "segments": "a_" * (n // 2), "dots": "a." * (n // 2), "email": "a" * n + "@", "tabs after key": "api" "_key" + "\t" * n, "otp far": "otp " + "x" * n}.items():
             t0 = time.time(); out = run(blob + "\nlast\n"); dt = time.time() - t0
+            self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+
+    def test_diagnose_round5_forms_and_strict_mode(self):
+        # Round 5 of the review: OTP joined to a key name, Authorization with any scheme, command-line / tab / XML / URL-encoded / YAML forms, more stems, repeated-stem speed,
+        # and the STRICT line check of message mode.
+        import subprocess, time
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text, strict=False):
+            env = {"PATH": "/usr/bin:/bin"}
+            if strict: env["REDACT_STRICT"] = "1"
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env=env, check=True).stdout.decode("utf-8")
+        forms = {"sms_code=" "481516": "481516", "verificationCode=" "481516": "481516", "verifyCode: " "481516": "481516", "SmsCode: " "481516": "481516",
+                 '{"verification_code":"' "481516" '"}': "481516", "code=" "481516": "481516", "login_code=" "481516": "481516", "confirmationCode=" "481516": "481516",
+                 "Authorization: Token " "abcDEF123xyz": "abcDEF123xyz", "Authorization: ApiKey " "abcDEF123xyz": "abcDEF123xyz", "Authorization: Digest username=x, nonce=abc": "nonce=abc",
+                 "authorization: SharedAccessSignature sr=x&sig=y": "sig=y", '"authorization":"Token two words"': "two words",
+                 "curl --pass" "word hunter22": "hunter22", "run -p " "hunter22": "hunter22", "tool --token " "abcdef": "abcdef", "pass" "word" + "\t" + "hunter22": "hunter22",
+                 "<pass" "word>hunter22</pass" "word>": "hunter22", '<apiToken kind="x">hunter22</apiToken>': "hunter22",
+                 "x?api_key" "%3D" "hunter22&y=1": "hunter22", "{%22pass" "word%22%3A%22hunter22%22}": "hunter22", "pass" "word" "%3D" "hunter22": "hunter22",
+                 "hmac=" "abcd1234": "abcd1234", "signature=" "abcd1234": "abcd1234", "nonce=" "abcd1234": "abcd1234", "salt=" "abcd1234": "abcd1234"}
+        for text, secret in forms.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # a YAML block value on the next line(s) after a secret key that ends its line; the line after the block is untouched
+        yaml = "db:\n  pass" "word:\n    hunter22 more\n    lines\nnext: ok\n"
+        out = run(yaml)
+        self.assertNotIn("hunter22", out); self.assertNotIn("lines", out); self.assertIn("next: ok", out)
+        self.assertEqual("[redacted-line]", run("secret: |\n  hunter22\n").splitlines()[1])
+        # ordinary codes stay readable
+        for keep in ("error code=17 status_code=500", "exit code: 1", "SQLState 57014 elapsed 1500 ms"):
+            self.assertEqual(keep + "\n", run(keep + "\n"), keep)
+        # STRICT mode (message mode): a key-like word followed by a 6+ character value with letters and digits replaces the whole line; timestamps, durations, versions stay
+        for bad in ("session opened for user a1a1a1a1", "tok" "en issued x1x1x1x1", "handset=b1b1b1b1 pairing done", "client c1c1c1c1c1 accepted"):
+            self.assertEqual("[redacted-line]\n", run(bad + "\n", strict=True), bad)
+            self.assertNotEqual("[redacted-line]\n", run(bad + "\n"), "only message mode replaces whole lines: " + bad)
+        for ok in ("2026-11-18T10:26:02Z ERROR aron.sync waiting-item sweep failed", "took 18400ms at 2026-11-18T10:26:02Z", "build 1.20.3.4 started", "pre-flight: nothing to do (checks: V0191-cluster-names=clean)",
+                   "waiting-item sweep enabled (interval 60 s, batch 50)", "[uuid:ab12cd34] start", "unhandled error"):
+            self.assertEqual(ok + "\n", run(ok + "\n", strict=True), ok)
+        # repeated stems stay fast (the key patterns start at the stem, with no variable-length prefix)
+        n = 100000
+        for name, blob in {"password": "pass" "word" * (n // 8), "token": "tok" "en" * (n // 5), "secret": "secret" * (n // 6), "key=": "key=" * (n // 4), "camel": "aKey" * (n // 4),
+                           "yaml": "pass" "word:\n" * (n // 10), "strict mix": "key a1b2c3 " * (n // 11)}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n", strict=(name == "strict mix")); dt = time.time() - t0
             self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
             self.assertTrue(out.endswith("last\n"), name)
 
