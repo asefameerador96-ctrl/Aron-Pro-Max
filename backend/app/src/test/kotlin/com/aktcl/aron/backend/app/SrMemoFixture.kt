@@ -11,7 +11,7 @@ class SrMemoFixture(private val exec: (String) -> Unit, private val userId: Long
 
     fun memo(
         uuid: String, route: Long, outlet: Long, date: String, lines: List<L>, receivedAt: String = "now()", supersedes: String? = null, emit: Boolean = false,
-        memoNo: String? = null, manualBy: Long? = null,
+        memoNo: String? = null, manualBy: Long? = null, storeLines: Boolean = true,
     ) {
         val no = memoNo ?: "sr1001-${date.substring(2).replace("-", "")}-${"%03d".format(++seq)}"
         val gross = lines.filter { it.kind == "sale" }.sumOf { it.qty.toLong() * 100 }
@@ -25,7 +25,7 @@ class SrMemoFixture(private val exec: (String) -> Unit, private val userId: Long
                     ${supersedes?.let { "CAST('$it' AS uuid)" } ?: "NULL"}, ${if (supersedes != null) "'wrong_quantity'" else "NULL"}, $receivedAt, ${if (manualBy != null) "'manual'" else "'device'"}, ${manualBy ?: "NULL"})
             """.trimIndent(),
         )
-        lines.forEachIndexed { i, l ->
+        if (storeLines) lines.forEachIndexed { i, l ->
             exec(
                 """
                 INSERT INTO app.memo_line (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, memo_client_uuid, line_no, sku_id, line_kind, qty_entered, unit_entered,

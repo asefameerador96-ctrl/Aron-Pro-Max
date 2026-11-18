@@ -24,3 +24,11 @@ FigureProbeEntry:
       - 'null'
       description: True when the phone has voided or superseded the memo; the answer then lists the stored lines
         to subtract.
+    removal_client_uuid:
+      type:
+      - string
+      - 'null'
+      format: uuid
+      description: 'With `removed_locally`: the uuid of the removing record (the memo_void, or the edit memo that
+        supersedes it). When that record is REFUSED (listed in `refused`) the phone stops subtracting the old memo,
+        which stays a live sale.'

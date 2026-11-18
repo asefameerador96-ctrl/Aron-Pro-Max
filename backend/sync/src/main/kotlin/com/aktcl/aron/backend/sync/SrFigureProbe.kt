@@ -23,9 +23,9 @@ import java.util.UUID
 object SrFigureProbe {
     const val MAX = 300
 
-    class Probe(val uuid: UUID, val memoNo: String?, val date: LocalDate, val removedLocally: Boolean = false)
+    class Probe(val uuid: UUID, val memoNo: String?, val date: LocalDate, val removedLocally: Boolean = false, val removalUuid: UUID? = null)
     class Line(val skuId: Long, val qtyBase: Long, val kind: String)
-    class Answer(val through: LocalDate, val inFigure: Map<UUID, Int>, val voided: Set<UUID>, val removedLines: Map<UUID, List<Line>>, val twinAmbiguous: Set<UUID> = emptySet()) {
+    class Answer(val through: LocalDate, val inFigure: Map<UUID, Int>, val voided: Set<UUID>, val removedLines: Map<UUID, List<Line>>, val twinAmbiguous: Set<UUID> = emptySet(), val refused: Set<UUID> = emptySet()) {
         companion object { fun empty(through: LocalDate) = Answer(through, emptyMap(), emptySet(), emptyMap()) }
     }
 
@@ -50,23 +50,42 @@ object SrFigureProbe {
         // (memo_no, business_date) is unique over ALL memos (index memo_no_unique), so at most one candidate exists; if two ever did, the answer is NOT IN and a flag, never a guess
         val ambiguous = list.filter { it.uuid !in byUuid && (twins[it.memoNo to it.date]?.size ?: 0) > 1 }.map { it.uuid }.toSet()
         val matched = list.mapNotNull { p -> (byUuid[p.uuid] ?: twins[p.memoNo to p.date]?.singleOrNull())?.let { p to it } }
-        if (matched.isEmpty()) return Answer(through, emptyMap(), emptySet(), emptyMap(), ambiguous)
-        // stored, non-voided lines per memo
+        if (matched.isEmpty()) return Answer(through, emptyMap(), emptySet(), emptyMap(), ambiguous, refusedOf(h, userId, (list.filter { it.uuid !in byUuid }.map { it.uuid } + list.mapNotNull { it.removalUuid }).distinct()))
+        // every stored line per memo, voided ones marked: a memo whose lines are not stored yet has none (NOT IN), one whose stored lines are all voided is gone for good
+        class StoredLine(val line: Line, val voided: Boolean)
         val lineRows = h.createQuery(
-            "SELECT memo_client_uuid, sku_id, qty_base, line_kind FROM app.memo_line WHERE memo_client_uuid = ANY(:c) AND business_date = ANY(:d) AND voided_at IS NULL",
+            "SELECT memo_client_uuid, sku_id, qty_base, line_kind, voided_at IS NOT NULL FROM app.memo_line WHERE memo_client_uuid = ANY(:c) AND business_date = ANY(:d)",
         ).bindArray("c", UUID::class.java, matched.map { it.second.uuid }.distinct()).bindArray("d", LocalDate::class.java, matched.map { it.second.date }.distinct())
-            .map { rs, _ -> rs.getObject(1, UUID::class.java) to Line(rs.getLong(2), rs.getLong(3), rs.getString(4)) }.list().groupBy({ it.first }, { it.second })
+            .map { rs, _ -> rs.getObject(1, UUID::class.java) to StoredLine(Line(rs.getLong(2), rs.getLong(3), rs.getString(4)), rs.getBoolean(5)) }.list().groupBy({ it.first }, { it.second })
         val inFigure = HashMap<UUID, Int>(); val voided = HashSet<UUID>(); val removed = HashMap<UUID, List<Line>>()
         for ((p, m) in matched) {
-            val lines = lineRows[m.uuid].orEmpty()
+            val stored = lineRows[m.uuid].orEmpty(); val live = stored.filter { !it.voided }.map { it.line }
             when {
-                m.voided || m.status != "active" || lines.isEmpty() -> voided += p.uuid
-                m.lineCount > 0 && !m.date.isBefore(first) && !m.date.isAfter(through) -> {
-                    inFigure[p.uuid] = lines.size
-                    if (p.removedLocally) removed[p.uuid] = lines
+                m.voided || m.status != "active" -> voided += p.uuid                                   // voided, superseded, admin-voided: gone for good
+                live.isNotEmpty() && m.lineCount > 0 && !m.date.isBefore(first) && !m.date.isAfter(through) -> {
+                    inFigure[p.uuid] = live.size
+                    if (p.removedLocally) removed[p.uuid] = live
                 }
+                stored.isNotEmpty() && live.isEmpty() -> voided += p.uuid                              // every stored line is voided: gone for good
+                // else: active with no stored line yet (lines still held), or dated after through_date: NOT IN
             }
         }
-        return Answer(through, inFigure, voided, removed, ambiguous)
+        // REFUSED: the caller's OWN records the server will never store, and removing records the phone names that are refused
+        val askedRefused = (list.filter { it.uuid !in inFigure && it.uuid !in voided && !(byUuid.containsKey(it.uuid)) }.map { it.uuid } + list.mapNotNull { it.removalUuid }).distinct()
+        val refused = refusedOf(h, userId, askedRefused)
+        return Answer(through, inFigure, voided, removed, ambiguous, refused)
+    }
+
+    /** The asked uuids that are REFUSED for the caller: final registry rejects and reviewer discards (not return-to-device). */
+    private fun refusedOf(h: Handle, userId: Long, asked: List<UUID>): Set<UUID> {
+        if (asked.isEmpty()) return emptySet()
+        val finals = com.aktcl.aron.contract.RecordOutcomeCode.entries.filter { it.status == com.aktcl.aron.contract.AckStatus.REJECTED && it.retryable == false }.map { it.wire }
+        return h.createQuery(
+            """
+            SELECT client_uuid FROM app.ingest_registry WHERE client_uuid = ANY(:u) AND user_id = :user AND status = 'rejected' AND outcome_code = ANY(:f)
+            UNION
+            SELECT client_uuid FROM app.sync_quarantine WHERE client_uuid = ANY(:u) AND user_id = :user AND status = 'discarded' AND coalesce(resolution_note, '') NOT LIKE 'return_to_device%'
+            """.trimIndent(),
+        ).bindArray("u", UUID::class.java, asked).bindArray("f", String::class.java, finals).bind("user", userId).map { rs, _ -> rs.getObject(1, UUID::class.java) }.list().toSet()
     }
 }

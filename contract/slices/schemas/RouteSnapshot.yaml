@@ -17,21 +17,23 @@ RouteSnapshot:
     SR''s sales at a shared outlet are in the figure; that SR''s unsynced and today''s memos are not). HOW THE PHONE
     MERGES: BY IDENTITY, not by inference. With `POST /v1/sync/figures` the phone sends the uuids of its own memos
     whose status in the figure it does not know and the server answers, in the SAME snapshot as the figures, EXACTLY
-    one of three states for each: IN the figure (with the stored line count, and the stored lines when `removed_locally`),
-    VOIDED (gone for good), or NOT IN (everything else, listed nowhere). For each own memo of the month: dated after
-    `through_date`: ADD it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of
-    today, drops it). Dated up to `through_date` and live on the phone: IN means add nothing (remember it as confirmed
-    and do not probe it again until the phone itself voids or edits it; a memo dated after the current `through_date`
-    is probed on every request), VOIDED means drop it, NOT IN means ADD it. Dated up to `through_date` and voided
-    or superseded on the phone: IN means SUBTRACT the stored lines the answer lists, otherwise nothing. A memo confirmed
-    IN earlier and untouched that the office later voids leaves the figure by itself and the phone adds nothing
-    for it. A memo whose line the server refused for good is IN with fewer `lines` than the phone sent: the figure
-    holds what the server stored and the phone adds nothing more (server-authoritative). The memo the office keyed
-    from paper is answered through the printed `memo_no` and date (unique per date), so the phone''s own copy is
-    IN when the paper memo is. There are no acknowledgements, resolutions, quarantine states, clocks or single-flight
-    requirements in this rule. When more than 300 memos are unconfirmed the phone cannot get an exact total in one
-    call and shows that it is still syncing until uploads and confirmations bring it under the cap. `as_of` is INFORMATIONAL
-    only (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. OLD-PHONE
+    one of four states for each: IN the figure (with the stored line count, and the stored lines when `removed_locally`),
+    VOIDED (gone for good), REFUSED (the server will never store the record: the phone drops the memo; a refused
+    removal means the phone stops subtracting), or NOT IN (everything else, listed nowhere; NOT IN answers of different
+    requests are never combined into one total). For each own memo of the month: dated after `through_date`: ADD
+    it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of today, drops it).
+    Dated up to `through_date` and live on the phone: IN means add nothing (remember it as confirmed and do not
+    probe it again until the phone itself voids or edits it; a memo dated after the current `through_date` is probed
+    on every request), VOIDED means drop it, NOT IN means ADD it. Dated up to `through_date` and voided or superseded
+    on the phone: IN means SUBTRACT the stored lines the answer lists, otherwise nothing. A memo confirmed IN earlier
+    and untouched that the office later voids leaves the figure by itself and the phone adds nothing for it. A memo
+    whose line the server refused for good is IN with fewer `lines` than the phone sent: the figure holds what the
+    server stored and the phone adds nothing more (server-authoritative). The memo the office keyed from paper is
+    answered through the printed `memo_no` and date (unique per date), so the phone''s own copy is IN when the paper
+    memo is. There are no acknowledgements, resolutions, quarantine states, clocks or single-flight requirements
+    in this rule. When more than 300 memos are unconfirmed the phone cannot get an exact total in one call and shows
+    that it is still syncing until uploads and confirmations bring it under the cap. `as_of` is INFORMATIONAL only
+    (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. OLD-PHONE
     FALLBACK (the only other case): a phone that has no `/figures` answer uses the bundle''s figures, shows them
     with their as-of label, adds only memos dated after `through_date` and its never-sent pending memos. The phone
     uses the newest `/figures` answer it has, else the bundle''s figures. Day counts when today''s local memos are

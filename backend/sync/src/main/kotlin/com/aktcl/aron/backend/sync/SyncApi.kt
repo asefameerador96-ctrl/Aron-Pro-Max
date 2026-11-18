@@ -309,6 +309,7 @@ private suspend fun postFigures(call: ApplicationCall, d: SyncDeps) {
             e.memo_no?.take(64),
             runCatching { LocalDate.parse(e.business_date) }.getOrNull()?.takeIf { _ -> DATE.matches(e.business_date) } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD", errors = listOf(FieldError("body.probe.$i.business_date", "invalid_value"))),
             e.removed_locally == true,
+            e.removal_client_uuid?.let { r -> runCatching { java.util.UUID.fromString(r) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "removal_client_uuid is not a uuid", errors = listOf(FieldError("body.probe.$i.removal_client_uuid", "invalid_value"))) },
         )
     }
     val r = withContext(Dispatchers.IO) { d.bundles.figures(p, forDate, probe, req.include_astha == true) }
@@ -318,6 +319,7 @@ private suspend fun postFigures(call: ApplicationCall, d: SyncDeps) {
             figure_probe = FigureProbeAnswer(
                 in_figure = r.probe.inFigure.map { (u, n) -> FigureInMemo(u.toString(), n, r.probe.removedLines[u]?.map { FigureStoredLine(it.skuId, it.qtyBase, it.kind) }) },
                 voided = r.probe.voided.map { it.toString() }, twin_ambiguous = r.probe.twinAmbiguous.map { it.toString() }.takeIf { it.isNotEmpty() },
+                refused = r.probe.refused.map { it.toString() }.takeIf { it.isNotEmpty() },
             ),
             astha = r.astha,
         ),

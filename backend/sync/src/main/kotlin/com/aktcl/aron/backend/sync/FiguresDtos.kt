@@ -17,6 +17,8 @@ data class FigureProbeEntry(
     val business_date: String,
     /** True when the phone has voided or superseded the memo locally: the answer then lists the stored lines the phone must subtract. */
     val removed_locally: Boolean? = null,
+    /** With `removed_locally`: the uuid of the removing record (the memo_void, or the edit memo that supersedes it). When that record is REFUSED the answer lists it in `refused` and the phone stops subtracting the old memo. */
+    val removal_client_uuid: String? = null,
 )
 
 @Serializable
@@ -46,6 +48,8 @@ data class FigureProbeAnswer(
     val voided: List<String>,
     /** An unknown uuid whose memo number matched more than one own paper memo: answered NOT IN, never a guess. Absent when none. */
     val twin_ambiguous: List<String>? = null,
+    /** REFUSED: the caller's OWN records the server will never store (a final reject, a reviewer's discard) and the removing records named in the probe that are refused. Absent when none. */
+    val refused: List<String>? = null,
 )
 
 @Serializable

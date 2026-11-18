@@ -1,11 +1,15 @@
 FigureProbeAnswer:
   type: object
-  description: 'EXACTLY three states per probed uuid. IN (`in_figure`): the memo is stored, active, not voided,
-    has at least one non-voided line and is dated from the 1st of the month up to `through_date`. VOIDED (`voided`):
-    the server holds it and it is gone for good (voided, superseded, admin data void, every line voided). NOT IN:
-    every other uuid, listed nowhere (never uploaded, in flight and not committed in the snapshot, held for review,
-    refused, or stored but dated after `through_date`); a uuid that is not the caller''s own is NOT IN and nothing
-    more.'
+  description: 'EXACTLY four states per probed uuid. IN (`in_figure`): the memo is stored, active, not voided, has
+    at least one non-voided line and is dated from the 1st of the month up to `through_date`. VOIDED (`voided`):
+    the server holds it and it is gone for good (voided, superseded, admin data void, every line voided); an active
+    memo whose lines are not stored yet is NOT IN, never VOIDED. REFUSED (`refused`): the server will never store
+    the caller''s OWN record with that uuid (a final reject such as `voided_by_admin`, or a reviewer''s discard
+    of a held record; a return to the device is not final); the phone drops a refused memo, and a refused REMOVAL
+    (`removal_client_uuid`) means the phone stops subtracting the old memo. NOT IN: every other uuid, listed nowhere
+    (never uploaded, in flight and not committed in the snapshot, held for review, or stored but dated after `through_date`);
+    a uuid that is not the caller''s own is NOT IN and nothing more. NOT IN answers from different requests must
+    never be combined into one total: a total uses ONE answer.'
   required:
   - in_figure
   - voided
@@ -22,6 +26,16 @@ FigureProbeAnswer:
       items:
         type: string
         format: uuid
+    refused:
+      type:
+      - array
+      - 'null'
+      maxItems: 600
+      items:
+        type: string
+        format: uuid
+      description: REFUSED, the fourth state (see the description of this object). Includes the removal uuids named
+        in the probe that are refused. Absent when none.
     twin_ambiguous:
       type:
       - array

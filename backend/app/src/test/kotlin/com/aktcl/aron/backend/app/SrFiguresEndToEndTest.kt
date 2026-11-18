@@ -19,6 +19,7 @@ import io.ktor.http.contentType
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
@@ -42,6 +43,7 @@ import java.util.UUID
 import java.util.zip.GZIPOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -66,6 +68,7 @@ class SrFiguresEndToEndTest {
     private var outletId = 0L
     private var otherOutletId = 0L
     private val skus = mutableListOf<Pair<Long, Long>>() // sku id to outlet price
+    private var brand0 = 0L; private var sameBrand = false; private var cat0 = ""; private var sameCat = false
     private val memoSeq = java.util.concurrent.atomic.AtomicInteger(100)
     private val captureSeq = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -88,6 +91,20 @@ class SrFiguresEndToEndTest {
             otherOutletId = h.createQuery("SELECT id FROM app.outlet WHERE code = 'OTH-1'").mapTo(Long::class.java).one()
             skus += h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 2")
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
+            // every merged component on the wire: a route target, a brand KPI target, a Star programme and a campaign at the SR's outlet for the first SKU
+            fun brandOf(sku: Long) = h.createQuery("SELECT v.parent_id FROM app.sku s JOIN app.product_node v ON v.id = s.variant_id WHERE s.id = :s").bind("s", sku).mapTo(Long::class.java).one()
+            fun catOf(sku: Long) = h.createQuery("SELECT category_code FROM app.sku WHERE id = :s").bind("s", sku).mapTo(String::class.java).one()
+            brand0 = brandOf(skus[0].first); sameBrand = brandOf(skus[1].first) == brand0; cat0 = catOf(skus[0].first); sameCat = catOf(skus[1].first) == cat0
+            val sr = h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr1001'").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000e5e1', decode(repeat('ab', 32), 'hex'), 1, $sr)")
+            val b = "'00000000-0000-4000-8000-00000000e5e1'"
+            h.execute("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($routeId, ${skus[0].first}, DATE '2027-01-01', 5000, $b), ($routeId, ${skus[1].first}, DATE '2027-01-01', 5000, $b)")
+            h.execute("INSERT INTO app.route_brand_kpi_target (route_id, brand_id, month, memo_target, kpi_alloc_mtk, batch_uuid) VALUES ($routeId, $brand0, DATE '2027-01-01', 50, 1000000, $b)")
+            val star = h.createQuery("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status, rules) VALUES ('superstar', 'MBLS-E', 'Star', DATE '2026-12-01', DATE '2027-01-31', 'active', '{\"sku_category\":\"$cat0\",\"unit_divisor\":1}') RETURNING id").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($star, $routeId, DATE '2027-01-01', 500.000, $b)")
+            val camp = h.createQuery("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSL-E', 'Campaign', DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($camp, DATE '2027-01-01', $outletId, 1000, 50, $b)")
+            h.execute("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($camp, DATE '2027-01-01', $outletId, ${skus[0].first}, 1000, $b)")
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test rl' FROM app.cfg_version")
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: no MFA' FROM app.cfg_version")
         }
@@ -96,7 +113,8 @@ class SrFiguresEndToEndTest {
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
-        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)
+        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)        // log both users in once under the fixed clock: the gate tests move their own clock forward, and a token issued then is 'not yet valid' for this wiring
+        testApplication { application { aronApi(wiring) }; client.token(); client.token("admin1001") }
     }
 
     @AfterAll
@@ -219,57 +237,83 @@ class SrFiguresEndToEndTest {
 
     // ---------------------------------------------------------------- the real /figures and the identity phone
 
-    private class PM(val uuid: String, val date: String, val qty: Long = 20, val memoNo: String? = null) {
+    private class PM(val uuid: String, val date: String, val qty: Long = 20, val memoNo: String? = null, val removalUuid: String? = null, val atCampaign: Boolean = true, val single: Boolean = false) {
         var removed = false; var confirmed = false; var dropped = false
     }
 
-    private class FigureReply(val qty: Long, val memos: Long, val inFig: Map<String, Int>, val inLines: Map<String, List<Triple<Long, Long, String>>>, val voided: Set<String>, val raw: JsonObject)
+    /** The eight merged figures of the route (achievement qty and memos of the first SKU; brand qty and memos; Star STD in milli; the campaign's STD and memo count at the SR's outlet). */
+    private data class Fig(val achQty: Long = 0, val achMemos: Long = 0, val brandQty: Long = 0, val brandMemos: Long = 0, val starMilli: Long = 0, val campStd: Long = 0, val campMemos: Long = 0) {
+        operator fun plus(o: Fig) = Fig(achQty + o.achQty, achMemos + o.achMemos, brandQty + o.brandQty, brandMemos + o.brandMemos, starMilli + o.starMilli, campStd + o.campStd, campMemos + o.campMemos)
+        operator fun minus(o: Fig) = Fig(achQty - o.achQty, achMemos - o.achMemos, brandQty - o.brandQty, brandMemos - o.brandMemos, starMilli - o.starMilli, campStd - o.campStd, campMemos - o.campMemos)
+    }
+
+    /** What sale lines (sku, base qty) contribute to each merged figure: the definitions of the contract, applied to the phone's own lines. */
+    private fun contrib(lines: List<Pair<Long, Long>>): Fig {
+        val first = lines.filter { it.first == skus[0].first }; val brandLines = lines.filter { it.first == skus[0].first || (sameBrand && it.first == skus[1].first) }
+        val catLines = lines.filter { it.first == skus[0].first || (sameCat && it.first == skus[1].first) }
+        return Fig(first.sumOf { it.second }, if (first.isNotEmpty()) 1 else 0, brandLines.sumOf { it.second }, if (brandLines.isNotEmpty()) 1 else 0, catLines.sumOf { it.second } * 1000,
+            first.sumOf { it.second }, if (first.isNotEmpty()) 1 else 0)
+    }
+    /** [PM.single]: the office's paper memo holds only the first line; [PM.atCampaign]: false for a memo at an outlet that has no campaign. */
+    private fun contrib(m: PM) = contrib(if (m.single) listOf(skus[0].first to m.qty) else listOf(skus[0].first to m.qty, skus[1].first to 10L)).let { if (m.atCampaign) it else it.copy(campStd = 0, campMemos = 0) }
+
+    private class FigureReply(val fig: Fig, val inFig: Map<String, Int>, val inLines: Map<String, List<Triple<Long, Long, String>>>, val voided: Set<String>, val refused: Set<String>, val raw: JsonObject) {
+        val qty get() = fig.achQty; val memos get() = fig.achMemos
+    }
 
     private suspend fun HttpClient.figures(forDate: String, probe: List<PM>): FigureReply {
         val body = buildJsonObject {
             put("for", forDate)
-            put("probe", kotlinx.serialization.json.JsonArray(probe.map { m -> buildJsonObject { put("memo_client_uuid", m.uuid); m.memoNo?.let { put("memo_no", it) }; put("business_date", m.date); if (m.removed) put("removed_locally", true) } }))
+            put("probe", kotlinx.serialization.json.JsonArray(probe.map { m -> buildJsonObject { put("memo_client_uuid", m.uuid); m.memoNo?.let { put("memo_no", it) }; put("business_date", m.date); if (m.removed) { put("removed_locally", true); m.removalUuid?.let { put("removal_client_uuid", it) } } } }))
         }.toString()
-        val r = post("/v1/sync/figures") { bearerAuth(token()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json); setBody(body) }
+        val r = rawFigures(body)
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         val j = json(r.bodyAsText())
         val route = j["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.long == routeId }
-        val row = route["achievement_mtd"]!!.jsonArray.map { it.jsonObject }.singleOrNull { it["product_id"]!!.jsonPrimitive.long == skus[0].first }
+        fun JsonObject.l(k: String) = this[k]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.long ?: 0L
+        val a = route["achievement_mtd"]!!.jsonArray.map { it.jsonObject }.singleOrNull { it["product_id"]!!.jsonPrimitive.long == skus[0].first }
+        val kpi = route["kpi"]?.takeIf { it is JsonObject }?.jsonObject
+        val brand = kpi?.get("brands")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it["brand_id"]!!.jsonPrimitive.long == brand0 }
+        val star = route["star"]?.takeIf { it is JsonObject }?.jsonObject?.get("std")?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content?.let { java.math.BigDecimal(it).movePointRight(3).toLong() } ?: 0L
+        val camp = (route["campaigns"] as? JsonArray).orEmpty().map { it.jsonObject }.singleOrNull { it["outlet_id"]!!.jsonPrimitive.long == outletId }
+        val fig = Fig(a?.l("achieved_qty_base") ?: 0, a?.l("memo_count") ?: 0, brand?.l("volume_achieved") ?: 0, brand?.l("memo_achieved") ?: 0, star,
+            camp?.get("std")?.jsonObject?.l("achieved") ?: 0, camp?.get("memo")?.jsonObject?.l("achieved") ?: 0)
         val fp = j["figure_probe"]!!.jsonObject
         val inMemos = fp["in_figure"]!!.jsonArray.map { it.jsonObject }
+        fun strs(k: String) = (fp[k] as? JsonArray).orEmpty().map { it.jsonPrimitive.content }.toSet()
         return FigureReply(
-            row?.get("achieved_qty_base")?.jsonPrimitive?.long ?: 0L, row?.get("memo_count")?.jsonPrimitive?.long ?: 0L,
-            inMemos.associate { it["memo_client_uuid"]!!.jsonPrimitive.content to it["lines"]!!.jsonPrimitive.int },
-            inMemos.filter { it["stored_lines"] is kotlinx.serialization.json.JsonArray }.associate { m -> m["memo_client_uuid"]!!.jsonPrimitive.content to m["stored_lines"]!!.jsonArray.map { l -> Triple(l.jsonObject["sku_id"]!!.jsonPrimitive.long, l.jsonObject["qty_base"]!!.jsonPrimitive.long, l.jsonObject["line_kind"]!!.jsonPrimitive.content) } },
-            fp["voided"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(), j,
+            fig, inMemos.associate { it["memo_client_uuid"]!!.jsonPrimitive.content to it["lines"]!!.jsonPrimitive.int },
+            inMemos.filter { it["stored_lines"] is JsonArray }.associate { m -> m["memo_client_uuid"]!!.jsonPrimitive.content to m["stored_lines"]!!.jsonArray.map { l -> Triple(l.jsonObject["sku_id"]!!.jsonPrimitive.long, l.jsonObject["qty_base"]!!.jsonPrimitive.long, l.jsonObject["line_kind"]!!.jsonPrimitive.content) } },
+            strs("voided"), strs("refused"), j,
         )
     }
 
-    /** What the phone shows for the first SKU (quantity, memo count) as a delta over [base], by the identity rule, and what is true. */
-    private suspend fun HttpClient.shows(base: FigureReply, forDate: String, phone: List<PM>): Pair<Long, Long> {
+    /** What the phone shows (every merged figure) as a delta over [base], by the identity rule with ONE answer. */
+    private suspend fun HttpClient.shows(base: FigureReply, forDate: String, phone: List<PM>): Fig {
         val through = java.time.LocalDate.parse(forDate).minusDays(1).toString()
         val probes = phone.filter { !it.dropped && (!it.confirmed || it.removed || it.date > through) && !(it.removed && it.date > through) }
         val a = figures(forDate, probes)
-        var qty = a.qty - base.qty; var memos = a.memos - base.memos
+        var shown = a.fig - base.fig
         for (m in phone) {
             if (m.dropped || (m.confirmed && !m.removed && m.date <= through)) continue
+            if (m.removed && m.removalUuid != null && m.removalUuid in a.refused) m.removed = false      // the removal was refused for good: the old memo stays a live sale
+            if (m.uuid in a.refused && !m.removed) { m.dropped = true; continue }                        // the memo itself was refused for good
             val voided = m.uuid in a.voided; val inFig = m.uuid in a.inFig
             if (!m.removed) {
                 if (voided) m.dropped = true
-                else if (m.date > through) { qty += m.qty; memos += 1 }
+                else if (m.date > through) shown += contrib(m)
                 else if (inFig) m.confirmed = true
-                else { qty += m.qty; memos += 1 }
+                else shown += contrib(m)
             } else if (m.date <= through && inFig) {
-                val lines = a.inLines.getValue(m.uuid).filter { it.first == skus[0].first && it.third == "sale" }
-                qty -= lines.sumOf { it.second }; if (lines.isNotEmpty()) memos -= 1
+                shown -= contrib(a.inLines.getValue(m.uuid).filter { it.third == "sale" }.map { it.first to it.second })
             }
         }
-        return qty to memos
+        return shown
     }
-    private fun truth(phone: List<PM>) = phone.filter { !it.removed && !it.dropped }.let { l -> l.sumOf { it.qty } to l.size.toLong() }
+    private fun truth(phone: List<PM>) = phone.filter { !it.removed && !it.dropped }.fold(Fig()) { acc, m -> acc + contrib(m) }
     private suspend fun HttpClient.baseline(forDate: String = "2027-01-04") = figures(forDate, emptyList())
     private suspend fun HttpClient.assertShows(base: FigureReply, forDate: String, phone: List<PM>, what: String) {
-        val shown = shows(base, forDate, phone); assertEquals(truth(phone), shown, "by identity the phone shows exactly the true total: $what")
+        val shown = shows(base, forDate, phone); assertEquals(truth(phone), shown, "by identity the phone shows exactly the true total of EVERY merged figure: $what")
     }
     private suspend fun HttpClient.sendOk(fam: List<JsonObject>, expect: String = "accepted"): List<String> =
         statuses(json(send(token(), batch(fam)).bodyAsText())).also { st -> assertEquals(List(fam.size) { expect }, st) }
@@ -281,21 +325,21 @@ class SrFiguresEndToEndTest {
         client.assertShows(base, "2027-01-04", phone, "nothing uploaded yet: NOT IN, added")
         client.send(client.token(), batch(fam))                  // committed; the phone never hears the answer
         client.assertShows(base, "2027-01-04", phone, "committed and the response lost: IN, nothing added (no acknowledgement, no single flight)")
-        assertEquals(20L to 1L, client.figures("2027-01-04", emptyList()).let { (it.qty - base.qty) to (it.memos - base.memos) })
+        assertEquals(20L to 1L, client.figures("2027-01-04", emptyList()).let { (it.qty - base.qty) to (it.memos - base.memos) }, "the dashboard-side figure holds the committed memo once")
     }
 
     @Test
     fun aHeldMemoReleasedByTheReviewerIsExactBeforeDuringAndAfterTheRelease() = testApplication {
         app()
         val base = client.baseline(); val fam = saleFamily(outlet = otherOutletId); val (visit, memo) = fam.map { cu(it) }
-        val phone = listOf(PM(memo, day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content))
+        val phone = listOf(PM(memo, day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content, atCampaign = false))
         assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
         client.assertShows(base, "2027-01-04", phone, "held (not stored): NOT IN, the phone adds it")
         assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
         assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
         client.assertShows(base, "2027-01-04", phone, "released before the phone hears: IN, nothing added")
-        client.assertShows(client.baseline("2027-01-03"), "2027-01-03", listOf(PM(memo, day, memoNo = phone[0].memoNo)), "the same memo seen from today's bundle (after through_date): added, not in the figure")
+        client.assertShows(client.baseline("2027-01-03"), "2027-01-03", listOf(PM(memo, day, memoNo = phone[0].memoNo, atCampaign = false)), "the same memo seen from today's bundle (after through_date): added, not in the figure")
     }
 
     @Test
@@ -337,7 +381,8 @@ class SrFiguresEndToEndTest {
             val phone = listOf(PM(memo, day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content))
             val a = client.figures("2027-01-04", phone)
             assertEquals(1, a.inFig[memo], "IN with the stored line count 1 (the phone sent 2)")
-            repeat(2) { client.assertShows(base, "2027-01-04", phone, "bundle ${it + 1}: IN, the phone adds nothing: the total is the server's, never added on every bundle") }
+            // server-authoritative: the figure holds what the server stored (the priced line only), the phone adds nothing, on every bundle
+            repeat(2) { assertEquals(contrib(listOf(skus[0].first to 20L)), client.shows(base, "2027-01-04", phone), "bundle ${it + 1}: IN, the phone adds nothing: never added on every bundle") }
         } finally { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.sku_price SET amount_mtk = ? WHERE sku_id = ? AND price_type = 'outlet'", skus[1].second, skus[1].first) } }
     }
 
@@ -497,7 +542,7 @@ class SrFiguresEndToEndTest {
         assertTrue(acks.any { it == "duplicate" || it == "quarantined" }, "the phone's own copy is held or answered as a memo number duplicate: $acks")
         assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${p.uuid}'"), "the phone's copy is not stored under its own uuid")
         client.assertShows(client.baseline("2027-01-03"), "2027-01-03", listOf(p), "today's bundle: the paper memo is cut by through_date, the phone's copy is added once (the twin is not IN for a figure that does not hold it)")
-        client.assertShows(base, "2027-01-04", listOf(PM(p.uuid, day, 20, no)), "tomorrow's bundle: the paper memo is in the figure and the phone's held copy is IN through the memo number: counted once, not twice")
+        client.assertShows(base, "2027-01-04", listOf(PM(p.uuid, day, 20, no, single = true)), "tomorrow's bundle: the paper memo is in the figure and the phone's held copy is IN through the memo number: counted once, not twice")
     }
 
     @Test @org.junit.jupiter.api.Order(Int.MAX_VALUE)   // last (unannotated tests default to MAX_VALUE/2): a data void tombstones the route-day and refuses every later upload of it
@@ -515,6 +560,14 @@ class SrFiguresEndToEndTest {
         assertEquals(HttpStatusCode.OK, v.status, v.bodyAsText())
         client.assertShows(base, "2027-01-03", listOf(m), "the office voided today's route-day: VOIDED, the phone drops it (the total is no longer above the truth)")
         assertTrue(m.dropped)
+        // a LATE upload of the same route-day is refused for good (`voided_by_admin`): REFUSED, the phone drops it too (it would otherwise be added on every bundle)
+        val late = saleFamily(); val l = PM(cu(late[1]), day, 20, late[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        val acks = statuses(json(client.send(client.token(), batch(late)).bodyAsText()))
+        assertTrue(acks.none { it == "accepted" }, "the late upload is not stored: $acks")
+        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${l.uuid}'"))
+        assertTrue(l.uuid in client.figures("2027-01-03", listOf(l)).refused, "REFUSED: the registry holds a final reject for the late memo")
+        client.assertShows(base, "2027-01-03", listOf(m, l), "the refused late memo is dropped, the total is the truth (nothing)")
+        assertTrue(l.dropped)
     }
 
     @Test
@@ -528,9 +581,86 @@ class SrFiguresEndToEndTest {
             setBody("""{"client_uuid":"${uuid()}","memo_no":"$no","business_date":"2027-01-02","user_id":$srId,"route_id":$routeId,"outlet_id":$outletId,"lines":[{"sku_id":${skus[0].first},"qty_base":20,"line_kind":"sale"}],"paid_mtk":0,"reason":"phone died, keyed from the printed memo"}""")
         }
         assertEquals(HttpStatusCode.OK, paper.status, paper.bodyAsText())
-        val phoneCopy = PM(uuid(), "2027-01-02", 20, no)
+        val phoneCopy = PM(uuid(), "2027-01-02", 20, no, single = true)
         client.assertShows(base, "2027-01-04", listOf(phoneCopy), "the paper memo is in the figure and the phone's own copy (another uuid, not uploaded) is IN through the memo number: 20, not 40")
         assertTrue(phoneCopy.confirmed)
+    }
+
+    // ---- REFUSED: the server will never store the caller's own record (a reviewer's discard) ----------------------------------------------------------------------------------------
+
+    /** A phone not enrolled with the device gate: its sale family is held for review, a reviewer then discards the memo. */
+    private fun withGate(body: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) {
+        val w2 = gateWiring()
+        try { testApplication { application { aronApi(w2) }; body() } } finally { w2.database?.close() }
+    }
+
+    @Test
+    fun aHeldMemoThatTheReviewerDiscardsIsRefusedAndThePhoneDropsIt() = withGate {
+        val base = client.baseline()
+        requireEnrolled(true)
+        try {
+            val f = saleFamily(); val m = PM(cu(f[1]), day, 20, f[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+            assertTrue(statuses(json(client.send(client.token(), batch(f)).bodyAsText())).contains("quarantined"))
+            client.assertShows(base, "2027-01-04", listOf(m), "held: not stored, NOT IN: the phone adds it")
+            assertEquals(HttpStatusCode.OK, client.resolve(item(m.uuid).first, "discard").status)
+            assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${m.uuid}'"))
+            assertTrue(m.uuid in client.figures("2027-01-04", listOf(m)).refused, "REFUSED: a reviewer discarded it")
+            client.assertShows(base, "2027-01-04", listOf(m), "refused for good: the phone drops the memo, nothing is added (it is not a sale the office accepted)")
+            assertTrue(m.dropped)
+        } finally { requireEnrolled(false) }
+    }
+
+    @Test
+    fun aHeldVoidThatTheReviewerDiscardsKeepsTheOldMemoAsALiveSale() = withGate {
+        val base = client.baseline()
+        val f1 = saleFamily(); val m1 = PM(cu(f1[1]), day, 20, f1[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        client.sendOk(f1)
+        requireEnrolled(true)
+        try {
+            val vu = uuid()
+            val voidRec = envelope("memo_void", vu, vu, 0, Json.parseToJsonElement(
+                """{"memo_client_uuid":"${m1.uuid}","memo_no":"${m1.memoNo}","reason_code":"retailer_cancelled","retailer_ack":true,"fix":{"purpose":"memo_void","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,"device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+            ).jsonObject)
+            val m1v = PM(m1.uuid, day, 20, m1.memoNo, removalUuid = vu); m1v.removed = true
+            assertEquals(listOf("quarantined"), statuses(json(client.send(client.token(), batch(listOf(voidRec))).bodyAsText())))
+            client.assertShows(base, "2027-01-04", listOf(m1v), "void held: M is IN, its lines are subtracted, the truth is nothing")
+            val m1w = PM(m1.uuid, day, 20, m1.memoNo, removalUuid = vu); m1w.removed = true
+            assertEquals(HttpStatusCode.OK, client.resolve(item(vu).first, "discard").status)
+            assertTrue(vu in client.figures("2027-01-04", listOf(m1w)).refused, "the removal is REFUSED")
+            client.assertShows(base, "2027-01-04", listOf(m1w), "the removal was discarded: the phone stops subtracting, the old memo stays a live sale (the total is M)")
+            assertFalse(m1w.removed); assertEquals("active", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.memo WHERE client_uuid = CAST(:c AS uuid)").bind("c", m1.uuid).mapTo(String::class.java).one() })
+        } finally { requireEnrolled(false) }
+    }
+
+    @Test
+    fun aHeldEditThatTheReviewerDiscardsKeepsTheOldMemoAndDropsTheEdit() = withGate {
+        val base = client.baseline()
+        val f1 = saleFamily(); val m1 = PM(cu(f1[1]), day, 20, f1[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        client.sendOk(f1)
+        requireEnrolled(true)
+        try {
+            val f2 = saleFamily(qty1 = 15, supersedes = m1.uuid); val e = PM(cu(f2[1]), day, 15, f2[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+            m1.removed = false
+            val m1x = PM(m1.uuid, day, 20, m1.memoNo, removalUuid = e.uuid); m1x.removed = true
+            assertTrue(statuses(json(client.send(client.token(), batch(f2)).bodyAsText())).contains("quarantined"), "the edit is held")
+            client.assertShows(base, "2027-01-04", listOf(m1x, PM(e.uuid, day, 15, e.memoNo)), "edit held: M's lines subtracted, E added: the truth is E")
+            val m1y = PM(m1.uuid, day, 20, m1.memoNo, removalUuid = e.uuid); m1y.removed = true; val ey = PM(e.uuid, day, 15, e.memoNo)
+            assertEquals(HttpStatusCode.OK, client.resolve(item(e.uuid).first, "discard").status)
+            client.assertShows(base, "2027-01-04", listOf(m1y, ey), "the edit memo was discarded: E is REFUSED and dropped, M stays a live sale: the total is M")
+            assertTrue(ey.dropped); assertFalse(m1y.removed)
+        } finally { requireEnrolled(false) }
+    }
+
+    @Test
+    fun anActiveMemoWhoseLinesAreNotStoredYetIsNotInAndNeverVoided() = testApplication {
+        app()
+        val srId = count("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+        val fx = SrMemoFixture({ q -> fresh.db.jdbi.useHandle<Exception> { it.execute(q) } }, srId, 700)
+        val u = uuid(); fx.memo(u, routeId, outletId, "2027-01-02", listOf(SrMemoFixture.L(skus[0].first, 20)), storeLines = false)
+        val a = client.figures("2027-01-04", listOf(PM(u, "2027-01-02", 20)))
+        assertTrue(u !in a.voided && u !in a.inFig && u !in a.refused, "header stored, lines held back: NOT IN (the phone adds it), never VOIDED: a VOIDED answer would drop a sale that is about to be stored")
+        fx.void(u, "2027-01-02")
+        assertTrue(u in client.figures("2027-01-04", listOf(PM(u, "2027-01-02", 20))).voided, "a memo the office voided is VOIDED")
     }
 
     private fun note(s: String) = println("NOTE SrFiguresEndToEndTest: $s")
