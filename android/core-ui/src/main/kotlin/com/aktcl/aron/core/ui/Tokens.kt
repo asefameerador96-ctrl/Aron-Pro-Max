@@ -464,6 +464,10 @@ object AronLook {
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
     val CardRadius: Dp = 12.dp
     val ButtonRadius: Dp = 8.dp
+    /** The charcoal button fill of the old SR (manual 19 "না", 30 "রিফ্রেশ"); white on it is above 10:1. */
+    val DarkButtonFill: Color = hex(0x3A3A3A)
+    /** The lavender of the old SR's boxes and panels (quantity pop-up, partial payment, today's target, Sale History total band); ink on it is 7:1 (CreditDialogContrastTest). */
+    val LavenderPanel: Color = hex(0xEDE7F6)
     val StepRadius: Dp = 8.dp
     val Step: Dp = 36.dp
     val Touch: Dp = 48.dp

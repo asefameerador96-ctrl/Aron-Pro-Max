@@ -1,6 +1,9 @@
 package com.aktcl.aron.core.printing.bt
 
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
@@ -28,11 +31,15 @@ import kotlin.coroutines.CoroutineContext
  * blocked BluetoothSocket.connect() needs, and its timeout then fires at once in virtual time. Assertions are unchanged.
  */
 class SppConnectorTest {
-    /** Inline for ordinary sockets; a real thread while [onThread] is set (the hanging socket's create sets it). */
+    /**
+     * Inline for ordinary sockets, a real thread for a hanging one. The choice is made PER ATTEMPT, in order: the socket's create queues it
+     * ([plan]) and the connector's one dispatch per attempt takes it, so no flag is shared and overwritten between attempts (the old race).
+     */
     private class TestIo : CoroutineDispatcher() {
-        @Volatile var onThread = false
+        private val queue = java.util.concurrent.ConcurrentLinkedQueue<Boolean>()
         private val pool = Executors.newCachedThreadPool { r -> Thread(r, "spp-test-io").apply { isDaemon = true } }
-        override fun isDispatchNeeded(context: CoroutineContext) = onThread
+        fun plan(onThread: Boolean) { queue.add(onThread) }
+        override fun isDispatchNeeded(context: CoroutineContext) = queue.poll() ?: false
         override fun dispatch(context: CoroutineContext, block: Runnable) = pool.execute(block)
         fun close() { pool.shutdownNow() }
     }
@@ -42,9 +49,12 @@ class SppConnectorTest {
     /** A socket whose connect fails with [error], succeeds, or (hang) blocks until closed, like BluetoothSocket. */
     private class FakeSocket(val method: SppMethod, val error: String? = null, val hang: Boolean = false) : SppSocket {
         val released = CountDownLatch(1)
+        /** Counted down at the start of a hanging connect: the test waits for it, so the timeout is only advanced once the thread is really blocked. */
+        val entered = CountDownLatch(1)
         @Volatile var closed = false
         override fun connect() {
             if (hang) {
+                entered.countDown()
                 released.await(30, TimeUnit.SECONDS)
                 throw IOException("socket closed")
             }
@@ -99,7 +109,11 @@ class SppConnectorTest {
     @Test fun aHangingConnectIsClosedAtTheTimeoutAndTheNextMethodIsTried() = runTest {
         val made = ArrayList<FakeSocket>()
         val t0 = System.nanoTime()
-        val r = connector.connect("AA:BB:CC:DD:EE:05") { m -> FakeSocket(m, hang = m == SppMethod.SECURE).also { made.add(it); io.onThread = it.hang } }
+        val call = async { connector.connect("AA:BB:CC:DD:EE:05") { m -> FakeSocket(m, hang = m == SppMethod.SECURE).also { made.add(it); io.plan(it.hang) } } }
+        runCurrent() // the first attempt is now on its own thread
+        assertTrue("the hanging connect started", made[0].entered.await(10, TimeUnit.SECONDS)) // a real wait until the thread is blocked in connect()
+        advanceTimeBy(301) // only now does the 300 ms bound pass
+        val r = call.await()
         val ms = (System.nanoTime() - t0) / 1_000_000
         assertTrue("took $ms ms", ms < 5_000)
         assertTrue(made[0].closed)
@@ -110,9 +124,12 @@ class SppConnectorTest {
     @Test fun cancellingTheCallerClosesTheSocketAtOnce() = runTest {
         val s = FakeSocket(SppMethod.SECURE, hang = true)
         val slow = SppConnector(attemptTimeoutMs = 60_000, pauseMs = 1, ioContext = io)
-        io.onThread = true
         val t0 = System.nanoTime()
-        val r = withTimeoutOrNull(200) { slow.connect("AA:BB:CC:DD:EE:06", listOf(SppMethod.SECURE)) { s } }
+        val call = async { withTimeoutOrNull(200) { slow.connect("AA:BB:CC:DD:EE:06", listOf(SppMethod.SECURE)) { io.plan(true); s } } }
+        runCurrent()
+        assertTrue("the hanging connect started", s.entered.await(10, TimeUnit.SECONDS))
+        advanceTimeBy(201) // the caller's own 200 ms bound
+        val r = call.await()
         val ms = (System.nanoTime() - t0) / 1_000_000
         assertNull(r)
         assertTrue(s.closed)
