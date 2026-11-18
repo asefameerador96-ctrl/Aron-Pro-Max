@@ -76,4 +76,51 @@ class QcLockedFlowTest {
         f.restoreQc(emptyList())
         assertEquals(emptyList<QcEntry>(), f.state.value.draft!!.qc)
     }
+
+    // ---- the lead's locked-sale crash: a screen that is back on the entry list (rotation, relaunch) still sends quantity and slide changes ----
+    @Test fun aQuantityChangeOnALockedSaleIsRefusedWithANoticeAndNothingThrows() = runTest {
+        val f = lockedFlow(); val before = f.state.value.draft
+        val set = f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(before, f.state.value.draft)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+        assertEquals("the figure the screen shows is the draft's, not the refused one", 20L, f.state.value.draft!!.lines.single().qtyEntered)
+        assertEquals(5L, set) // the refused call reports what it was asked to set; the draft above is the truth
+    }
+
+    @Test fun aSlideChangeOnALockedSaleIsRefusedWithANotice() = runTest {
+        val f = lockedFlow(); val before = f.state.value.draft
+        f.setSlide(100, 3)
+        assertEquals(before, f.state.value.draft)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anAcceptedChangeClearsTheNotice() = runTest {
+        val f = flow(LockMemStore()); f.start(visit())
+        f.setQuantity(100, 20, QtyUnit.STICK); f.noteRefusal()
+        assertEquals(SaleNotice.Refused, f.state.value.notice)
+        f.setQuantity(100, 21, QtyUnit.STICK)
+        assertEquals(null, f.state.value.notice)
+    }
+
+    @Test fun aRefusalThatReachesTheViewModelNetIsLockedOnALockedDraftAndRefusedOtherwise() = runTest {
+        val f = lockedFlow(); f.noteRefusal()
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun typedQcThatWasNeverSubmittedIsDroppedAtStartWithANotice() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc)
+        val b = flow(store); b.start(v)
+        assertEquals(emptyList<QcEntry>(), b.state.value.draft!!.qc)
+        assertEquals(SaleNotice.QcDropped, b.state.value.notice)
+        b.start(v) // a second start (a rotation) keeps the same notice until the next change
+        assertEquals(SaleNotice.QcDropped, b.state.value.notice)
+    }
+
+    @Test fun noNoticeWhenNothingWasDropped() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc); a.completeQc()
+        val b = flow(store); b.start(v)
+        assertEquals(null, b.state.value.notice)
+    }
 }

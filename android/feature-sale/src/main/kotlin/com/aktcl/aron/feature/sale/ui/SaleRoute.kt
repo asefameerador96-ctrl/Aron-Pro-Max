@@ -11,7 +11,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.feature.sale.R
+import com.aktcl.aron.feature.sale.domain.SaleNotice
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
@@ -55,11 +64,20 @@ fun SaleRoute(
     val review = ui.review
     val skus = ui.catalog.values.toList()
     HoldPrinter(printer, assist = printerAssist)
+    // QC submitted: the sale cannot change, so the entry and slide lists are never shown again (after a rotation or a relaunch the stage is back on Entry): Review opens instead
+    val locked = draft?.qcCompleted == true
+    val shown = if (locked && (stage == SaleStage.Entry || stage == SaleStage.Slide)) SaleStage.Review else stage
     Column(modifier.fillMaxSize()) {
+        ui.notice?.let { n ->
+            AronBanner(
+                stringResource(when (n) { SaleNotice.Locked -> R.string.qc_locked; SaleNotice.QcDropped -> R.string.qc_dropped_notice; SaleNotice.Refused -> R.string.sale_change_refused }),
+                Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S).testTag(SaleTags.NOTICE), kind = BannerKind.Info,
+            )
+        }
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // forward: Entry to Review, and Review into a sub-screen (Credit, QC, Slide); back: a sub-screen returning to Review
-            AronScreenTransition(if (quantityPopup && stage == SaleStage.Credit) SaleStage.Review else stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
+            AronScreenTransition(if (quantityPopup && shown == SaleStage.Credit) SaleStage.Review else shown, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
                 when (s) {
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,

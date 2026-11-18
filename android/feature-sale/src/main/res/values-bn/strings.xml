@@ -161,6 +161,8 @@
     <string name="qc_col_fault">ফল্ট টাইপ</string>
     <string name="qc_col_type">প্রকার</string>
     <string name="qc_col_qty">পরিমাণ</string>
+    <string name="qc_dropped_notice">আপনার টাইপ করা QC জমা দেওয়া হয়নি, তাই মুছে গেছে। আবার QC খুলে দিন।</string>
+    <string name="sale_change_refused">এই পরিবর্তন গ্রহণ করা হয়নি। কিছুই বদলায়নি।</string>
     <string name="qc_fault_mfc">MFC Fault</string>
     <string name="qc_fault_mkt">MKT Fault</string>
     <string name="qc_col_qctype">QC টাইপ</string>
