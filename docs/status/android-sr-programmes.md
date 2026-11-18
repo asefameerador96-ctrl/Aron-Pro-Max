@@ -24,6 +24,11 @@
 - N-1: not built yet; months without downloaded rows show "not downloaded", never zero (done in slice 2 follow-up).
 - Lesson: run `:android:core-ui:testDebugUnitTest --tests '*HardcodedStringScanTest'` before every push (visible text must live in resources); the first CI run failed on it.
 
+## Coming from the Loyalty lane (lead ruling, 2026-11-18; not landed, build behind a null check)
+- Bundle `astha_targets` will carry the whole current quarter within one bound of 1,000 rows; `astha_truncated_months` lists months that did not fit; `loyalty[].tier_code`; an Astha row of an inactive brand carries `brand_name` and `brand_name_bn`.
+- Months in `astha_truncated_months` are read online with `listAsthaTargets` when connected and then KEPT on the phone; a month never fetched shows "not downloaded, connect once" (Bangla and English), never zero. Storage choice: raw `bundle_section` cannot hold fetched months without a schema change, so until the Room 12 step an **app-private file cache keyed by route and month** is used (decision when built).
+- A redemption at balance 0 is accepted by the server and the balance goes negative (`overdrawn` true): the screen shows the balance and the overdrawn state plainly and does not block on the phone.
+
 ## Screen table
 Legend: WIRE = data is in the bundle today. LOCAL = a write that goes through the outbox. SCHEMA = needs a new Room table (not before the lead gives a version).
 
