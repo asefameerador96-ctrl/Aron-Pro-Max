@@ -67,6 +67,8 @@ class BundleService(
         val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0,
         /** The route-days the bundle carries (F-SYS-025 download log); none for a pre-fetch. */
         val routeIds: List<Long> = emptyList(), val date: LocalDate? = null,
+        /** The identity answer of the phone's probe (SrFigureProbe), computed in the snapshot of the figures; never part of the bundle or its version. */
+        val probe: SrFigureProbe.Answer? = null,
     )
 
     private data class UserRow(
@@ -105,7 +107,7 @@ class BundleService(
     }
 
     /** [prebuild] (the worker's pre-generation) never records a download: it only creates the day's rows and the snapshot, like a pre-fetch. */
-    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false): Result {
+    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false, probe: List<SrFigureProbe.Probe> = emptyList()): Result {
         val now = clock.now()
         val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
         val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
@@ -140,8 +142,9 @@ class BundleService(
         }
 
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
+        val probeOut = arrayOfNulls<SrFigureProbe.Answer>(1)
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
-            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal, probe = probe, probeOut = probeOut)
             // F-AMO-044: the AMO (and the TSO) also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
             val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
@@ -209,7 +212,7 @@ class BundleService(
             cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
         )
         val result = Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
-            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
+            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date, probeOut[0])
         if (paged.isNotEmpty()) cachePages(p, result, now)
         return result
     }
@@ -505,11 +508,15 @@ class BundleService(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
         /** F-AMO-044: non-null builds the AMO's and TSO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
         zoneIds: List<Long>? = null,
+        /** The phone's identity probe (SrFigureProbe): answered in THIS snapshot, so figure and answer can never disagree. */
+        probe: List<SrFigureProbe.Probe> = emptyList(), probeOut: Array<SrFigureProbe.Answer?>? = null,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()
         return h.inTransaction<List<RouteSnapshot>, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
             th.execute("SET TRANSACTION READ ONLY")
-            routeSnapshotsIn(th, userId, plans, date, states, cfg, roleOrdinal, zoneIds)
+            val snaps = routeSnapshotsIn(th, userId, plans, date, states, cfg, roleOrdinal, zoneIds)
+            if (zoneIds == null && probeOut != null) probeOut[0] = SrFigureProbe.answer(th, userId, probe, YearMonth.from(date).atDay(1), date.minusDays(1))
+            snaps
         }
     }
 

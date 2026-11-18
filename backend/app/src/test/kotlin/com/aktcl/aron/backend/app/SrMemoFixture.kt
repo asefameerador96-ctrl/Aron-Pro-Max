@@ -11,17 +11,18 @@ class SrMemoFixture(private val exec: (String) -> Unit, private val userId: Long
 
     fun memo(
         uuid: String, route: Long, outlet: Long, date: String, lines: List<L>, receivedAt: String = "now()", supersedes: String? = null, emit: Boolean = false,
+        memoNo: String? = null, manualBy: Long? = null,
     ) {
-        val no = "sr1001-${date.substring(2).replace("-", "")}-${"%03d".format(++seq)}"
+        val no = memoNo ?: "sr1001-${date.substring(2).replace("-", "")}-${"%03d".format(++seq)}"
         val gross = lines.filter { it.kind == "sale" }.sumOf { it.qty.toLong() * 100 }
         exec(
             """
             INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_client_uuid, outlet_id, memo_no, memo_kind, committed_at,
                                   price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit,
-                                  line_count, discount_line_count, qc_line_count, status, supersedes_client_uuid, edit_reason_code, received_at)
+                                  line_count, discount_line_count, qc_line_count, status, supersedes_client_uuid, edit_reason_code, received_at, entry_source, entered_by_user_id)
             VALUES (CAST('$uuid' AS uuid), CAST('$uuid' AS uuid), DATE '$date', $userId, $route, TIMESTAMPTZ '$date 10:05:00+06', 0, gen_random_uuid(), $outlet, '$no', 'sale',
                     TIMESTAMPTZ '$date 10:05:00+06', DATE '$date', 'outlet', $gross, 0, 0, 0, 0, $gross, $gross, 0, false, ${lines.size}, 0, 0, 'active',
-                    ${supersedes?.let { "CAST('$it' AS uuid)" } ?: "NULL"}, ${if (supersedes != null) "'wrong_quantity'" else "NULL"}, $receivedAt)
+                    ${supersedes?.let { "CAST('$it' AS uuid)" } ?: "NULL"}, ${if (supersedes != null) "'wrong_quantity'" else "NULL"}, $receivedAt, ${if (manualBy != null) "'manual'" else "'device'"}, ${manualBy ?: "NULL"})
             """.trimIndent(),
         )
         lines.forEachIndexed { i, l ->

@@ -11,6 +11,7 @@ import com.aktcl.aron.backend.platform.DbServerConfig
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.backend.sync.BundleService
+import com.aktcl.aron.backend.sync.SrFigureProbe
 import com.aktcl.aron.contract.Role
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -94,8 +95,10 @@ class SrPhoneWouldShowTest {
     private fun JsonObject.l(k: String) = this[k]!!.jsonPrimitive.content.toLong()
 
     /** Reads the figures off a bundle (the server's side). */
-    private fun serverFigures(date: LocalDate = day, routeId: Long = route, outletId: Long = outlet): Pair<Fig, String> {
-        val r = service.bundle(principal, date, "1.0.0+1").full.routes.single { it.route_id == routeId }
+    private fun serverFigures(date: LocalDate = day, routeId: Long = route, outletId: Long = outlet): Pair<Fig, String> = figuresOf(service.bundle(principal, date, "1.0.0+1"), date, routeId, outletId)
+
+    private fun figuresOf(res: BundleService.Result, date: LocalDate, routeId: Long = route, outletId: Long = outlet): Pair<Fig, String> {
+        val r = res.full.routes.single { it.route_id == routeId }
         val a = r.achievement_mtd.map { it.jsonObject }.singleOrNull { it.l("product_id") == skuC }
         val k = r.kpi?.jsonObject
         val brand = k?.get("brands")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it.l("brand_id") == brandC }
@@ -418,6 +421,155 @@ class SrPhoneWouldShowTest {
         assertEquals(p.truth(r2), p.requestBundle(day, r2, o2), "route 2: its acknowledged memo from the server, its local memo added")
         assertEquals(40L, serverFigures(day, route, outlet).first.achQty, "route 1's figure never holds route 2's memos")
         assertEquals(25L, serverFigures(day, r2, o2).first.achQty)
+    }
+
+    // ---------------------------------------------------------------- EXACT BY IDENTITY (spike, D-TKPI-14): the phone sends the uuids of its memos, the server answers IN / VOIDED / NOT IN in the figures' snapshot
+
+    private inner class IdMemo(val id: String, val date: String, val qC: Int, val qM: Int = 0, val memoNo: String? = null, val routeId: Long = route, val outletId: Long = outlet) {
+        var removed = false          // voided or superseded on the phone
+        var confirmedIn = false      // an earlier bundle answered IN and the phone has not touched the memo since: not probed again
+        var droppedByServer = false  // the server says VOIDED: the phone drops it
+        val fig get() = Fig(qC.toLong(), if (qC > 0) 1 else 0, qC.toLong(), if (qC > 0) 1 else 0, qM.toLong(), qM * 1000L, qC.toLong(), if (qC > 0) 1 else 0)
+    }
+
+    /** What the phone applies from the server's answer: no acknowledgements, resolutions, quarantine states, clocks or single flight. */
+    private inner class IdPhone {
+        val memos = ArrayList<IdMemo>()
+        fun sell(id: String, date: String, qC: Int, qM: Int = 0, memoNo: String? = null) = IdMemo(id, date, qC, qM, memoNo).also { memos += it }
+        fun truth(): Fig = memos.filter { !it.removed && !it.droppedByServer }.fold(Fig()) { t, m -> t + m.fig }
+
+        fun request(date: LocalDate = day): Fig {
+            val through = date.minusDays(1).toString()
+            val probes = memos.filter { !it.droppedByServer && (!it.confirmedIn || it.removed) && !(it.removed && it.date > through) }
+                .map { SrFigureProbe.Probe(java.util.UUID.fromString(it.id), it.memoNo, LocalDate.parse(it.date), it.removed) }
+            val res = service.bundle(principal, date, "1.0.0+1", probe = probes)
+            val ans = res.probe!!
+            var shown = figuresOf(res, date).first
+            for (m in memos) {
+                val u = java.util.UUID.fromString(m.id)
+                if (m.droppedByServer || (m.confirmedIn && !m.removed)) continue   // confirmed IN earlier and untouched: stays IN, not probed, nothing to do
+                val voided = u in ans.voided; val inFig = u in ans.inFigure
+                if (!m.removed) {
+                    if (m.date > through) { if (voided) m.droppedByServer = true else shown += m.fig }
+                    else if (voided) m.droppedByServer = true
+                    else if (inFig) m.confirmedIn = true
+                    else shown += m.fig
+                } else if (m.date <= through && inFig) {
+                    val lines = ans.removedLines.getValue(u)
+                    val c = lines.filter { it.skuId == skuC && it.kind == "sale" }.sumOf { it.qtyBase }; val mm = lines.filter { it.skuId == skuM && it.kind == "sale" }.sumOf { it.qtyBase }
+                    shown -= Fig(c, if (lines.any { it.skuId == skuC }) 1 else 0, c, if (c > 0) 1 else 0, mm, mm * 1000, c, if (c > 0) 1 else 0)
+                }
+            }
+            return shown
+        }
+    }
+
+    private fun commitId(m: IdMemo, supersedes: IdMemo? = null, lines: List<SrMemoFixture.L>? = null, manualBy: Long? = null) {
+        val l = lines ?: listOfNotNull(if (m.qC > 0) SrMemoFixture.L(skuC, m.qC) else null, if (m.qM > 0) SrMemoFixture.L(skuM, m.qM) else null)
+        fx.memo(m.id, m.routeId, m.outletId, m.date, l, "now()", supersedes = supersedes?.id, memoNo = m.memoNo, manualBy = manualBy)
+    }
+    private fun assertIdTruth(p: IdPhone, what: String) { val shown = p.request(); assertEquals(p.truth(), shown, "by identity the phone shows exactly the true total: $what") }
+
+    @Test
+    fun idHeldVoidReleasedIsNotSubtractedTwice() {
+        val p = IdPhone()
+        val m = p.sell(uid(1), "2027-01-02", 80, 4); val other = p.sell(uid(2), "2027-01-01", 20); commitId(m); commitId(other)
+        assertIdTruth(p, "both confirmed IN")
+        m.removed = true                                   // the SR voids M; the void is held for review (device gate): the server still holds M
+        assertIdTruth(p, "void held: M is IN, the phone subtracts the lines the server holds")
+        fx.void(m.id, m.date)                              // the reviewer accepts the void: M is gone on the server; the phone has not heard
+        assertIdTruth(p, "void released before the phone hears: M is VOIDED on the server, nothing is subtracted a second time")
+    }
+
+    @Test
+    fun idHeldEditReleasedIsNeitherDoubleCountedNorLost() {
+        val p = IdPhone()
+        val m = p.sell(uid(1), "2027-01-02", 80, 4); commitId(m)
+        assertIdTruth(p, "M IN")
+        m.removed = true; val e = p.sell(uid(2), "2027-01-03", 90, 4)       // the edit E is dated today and is held
+        assertIdTruth(p, "edit held: M still IN (subtracted), E not stored (added)")
+        commitId(e, supersedes = m)                                           // the reviewer releases the edit: M superseded, E stored (today: not in a figure)
+        assertIdTruth(p, "edit released before the phone hears")
+        val m2 = p.sell(uid(3), "2027-01-02", 50); commitId(m2)
+        m2.confirmedIn = false; assertIdTruth(p, "another memo of the day")
+        m2.removed = true; val e2 = p.sell(uid(4), "2027-01-02", 55); assertIdTruth(p, "same-day edit held")
+        commitId(e2, supersedes = m2); assertIdTruth(p, "same-day edit released: M2 VOIDED, E2 IN, nothing added")
+    }
+
+    @Test
+    fun idAZeroPriceLineRefusedForGoodNeverMakesTheWholeMemoAddedOnEveryBundle() {
+        val p = IdPhone()
+        val m = p.sell(uid(1), "2027-01-02", 20, 10)                         // the phone sent two lines: SKU C 20, SKU M 10 (priced zero)
+        commitId(m, lines = listOf(SrMemoFixture.L(skuC, 20)))               // the server stored the memo with line 1 only; line 2 was refused (price_invalid)
+        val shown = p.request(); val serverOnly = Fig(20, 1, 20, 1, 0, 0, 20, 1)
+        assertEquals(serverOnly, shown, "the figure holds the stored lines and the phone adds nothing: server-authoritative")
+        assertEquals(serverOnly, p.request(), "and again on the next bundle: nothing is added on every bundle")
+        val res = service.bundle(principal, day, "1.0.0+1", probe = listOf(SrFigureProbe.Probe(java.util.UUID.fromString(m.id), null, LocalDate.parse(m.date))))
+        assertEquals(1, res.probe!!.inFigure[java.util.UUID.fromString(m.id)], "the answer carries the stored line count (1 of the 2 the phone sent), so the phone can show the difference")
+    }
+
+    @Test
+    fun idAHeldMemoOfTodayReleasedBeforeThePhoneHearsIsExactAndAHeldMemoOfYesterdayToo() {
+        val p = IdPhone()
+        val today = p.sell(uid(1), "2027-01-03", 50, 2); val yesterday = p.sell(uid(2), "2027-01-02", 30)
+        assertIdTruth(p, "both held (not stored): the phone adds both")
+        commitId(today); commitId(yesterday)                                  // the reviewer releases both
+        assertIdTruth(p, "released before the phone hears: today's is cut by through_date and added, yesterday's is IN and not added")
+        assertIdTruth(p, "and again")
+    }
+
+    @Test
+    fun idAnAdminDataVoidOfTodaysMemosIsNotAdded() {
+        val p = IdPhone()
+        val a = p.sell(uid(1), "2027-01-03", 60, 2); val b = p.sell(uid(2), "2027-01-03", 40); val old = p.sell(uid(3), "2027-01-02", 25)
+        commitId(a); commitId(b); commitId(old)
+        assertIdTruth(p, "everything stored")
+        fx.void(a.id, a.date); fx.void(b.id, b.date)                          // the office voids the route-day's memos of today
+        assertIdTruth(p, "the phone no longer adds today's voided memos (VOIDED), the old one stays IN")
+        fx.void(old.id, old.date)
+        assertEquals(Fig(), p.request(), "an old memo (confirmed IN earlier) voided by the office: the figure no longer holds it, the phone adds nothing: the office's truth, nothing counted")
+    }
+
+    @Test
+    fun idAPaperTwinOfAMemoThePhoneHasNotUploadedIsNotCountedTwice() {
+        val p = IdPhone()
+        val office = q("SELECT id FROM app.app_user WHERE id <> $sr ORDER BY id LIMIT 1")
+        val twin = IdMemo(uid(90), "2027-01-02", 300, 0, "sr1001-270102-0007")
+        commitId(twin, manualBy = office)                                     // the office keyed the printed memo: stored under ITS uuid
+        val phoneCopy = p.sell(uid(1), "2027-01-02", 300, 0, "sr1001-270102-0007")   // the revived phone has its own copy, another uuid, not uploaded
+        val shown = p.request()
+        assertEquals(Fig(300, 1, 300, 1, 0, 0, 300, 1), shown, "the paper memo is in the figure once and the phone's copy is answered IN through the memo number: 300, not 600")
+        assertTrue(phoneCopy.confirmedIn)
+        // and the office voids the paper memo: the phone's copy follows
+        fx.void(twin.id, twin.date)
+        phoneCopy.confirmedIn = false
+        assertEquals(Fig(), p.request(), "the paper memo voided: the phone's copy is VOIDED through the twin and not added")
+    }
+
+    @Test
+    fun idAUuidThatIsNotTheCallersOwnAnswersNotInAndRevealsNothing() {
+        val other = q("SELECT id FROM app.app_user WHERE id <> $sr ORDER BY id LIMIT 1")
+        SrMemoFixture({ x(it) }, other, 700).memo(uid(60), route, outlet, "2027-01-02", listOf(SrMemoFixture.L(skuC, 33)))
+        val res = service.bundle(principal, day, "1.0.0+1", probe = listOf(SrFigureProbe.Probe(java.util.UUID.fromString(uid(60)), null, LocalDate.parse("2027-01-02"))))
+        assertTrue(res.probe!!.inFigure.isEmpty() && res.probe!!.voided.isEmpty(), "another user's memo: no answer at all")
+    }
+
+    @Test
+    fun idAMemoCommittedWhileTheBundleIsReadIsAnsweredInExactlyWhenTheFigureHoldsIt() {
+        val ids = (0 until 300).map { uid(2000 + it) }
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false); val n = java.util.concurrent.atomic.AtomicInteger(0)
+        val t = Thread { while (!stop.get() && n.get() < ids.size) { fx.memo(ids[n.getAndIncrement()], route, outlet, "2027-01-02", listOf(SrMemoFixture.L(skuC, 1))) } }
+        t.start()
+        var builds = 0
+        try {
+            while (t.isAlive && builds < 40) {
+                val res = service.bundle(principal, day, "1.0.0+1", probe = ids.map { SrFigureProbe.Probe(java.util.UUID.fromString(it), null, LocalDate.parse("2027-01-02")) })
+                val f = figuresOf(res, day).first; builds++
+                assertEquals(res.probe!!.inFigure.size.toLong(), f.achQty, "build $builds: the memos answered IN are exactly the memos the figure holds (one snapshot)")
+                assertEquals(f.achQty, f.campStd)
+            }
+        } finally { stop.set(true); t.join(30_000) }
+        assertTrue(builds >= 3)
     }
 
     private fun note(s: String) = println("NOTE SrPhoneWouldShowTest: $s")

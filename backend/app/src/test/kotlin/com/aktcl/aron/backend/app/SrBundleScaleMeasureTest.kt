@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.DbServerConfig
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.backend.sync.BundleService
+import com.aktcl.aron.backend.sync.SrFigureProbe
 import com.aktcl.aron.backend.sync.SrMemoFigures
 import com.aktcl.aron.contract.Role
 import kotlinx.serialization.json.JsonArray
@@ -121,13 +122,25 @@ class SrBundleScaleMeasureTest {
                 SrMemoFigures.forOutletPairs(h, outlets.flatMap { o -> skus.map { o to it } }, from, through)
             } } }
             out("campaign read WARM (70 outlets x 20 SKUs): ${stats(campWarm)}")
+            fun size(label: String, raw: ByteArray) { val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(raw) } }.size(); out("SIZE $label: raw ${raw.size} bytes, gzip $gz bytes") }
+            // the identity probe (D-TKPI-14): 300 of the route's own memo uuids with their dates, answered in one query (warm), and the request size
+            val probeIds = figures[route]!!.lines.map { it.memo }.distinct().take(SrFigureProbe.MAX)
+            val memoDates = fresh.db.jdbi.withHandle<Map<java.util.UUID, LocalDate>, Exception> { h -> h.createQuery("SELECT client_uuid, business_date FROM app.memo WHERE client_uuid = ANY(:c) AND business_date BETWEEN :f AND :t").bindArray("c", java.util.UUID::class.java, probeIds).bind("f", from).bind("t", through).map { rs, _ -> rs.getObject(1, java.util.UUID::class.java) to rs.getObject(2, LocalDate::class.java) }.list().toMap() }
+            val probes = probeIds.map { SrFigureProbe.Probe(it, "r00001-270101-001", memoDates.getValue(it), false) }
+            repeat(3) { fresh.db.jdbi.withHandle<Any, Exception> { h -> SrFigureProbe.answer(h, sr, probes, from, through) } }
+            val probeWarm = (1..30).map { ms { fresh.db.jdbi.withHandle<Any, Exception> { h -> SrFigureProbe.answer(h, sr, probes, from, through) } } }
+            val ans = fresh.db.jdbi.withHandle<SrFigureProbe.Answer, Exception> { h -> SrFigureProbe.answer(h, sr, probes, from, through) }
+            out("PROBE of ${probes.size} memo uuids WARM: ${stats(probeWarm)}; answered IN: ${ans.inFigure.size}")
+            val reqJson = JsonArray(probes.map { p -> kotlinx.serialization.json.buildJsonObject { put("memo_client_uuid", kotlinx.serialization.json.JsonPrimitive(p.uuid.toString())); put("memo_no", kotlinx.serialization.json.JsonPrimitive("r00001-270101-001")); put("business_date", kotlinx.serialization.json.JsonPrimitive(p.date.toString())) } }).toString().toByteArray()
+            size("probe request (${probes.size} entries)", reqJson)
+            val ansJson = JsonArray(ans.inFigure.map { (u, n) -> kotlinx.serialization.json.buildJsonObject { put("memo_client_uuid", kotlinx.serialization.json.JsonPrimitive(u.toString())); put("lines", kotlinx.serialization.json.JsonPrimitive(n)) } }).toString().toByteArray()
+            size("probe answer (${ans.inFigure.size} IN)", ansJson)
             // END TO END build (everything the route snapshot reads, in the one repeatable-read snapshot), warm
             val build = (1..15).map { ms { service.bundle(principal, day, "1.0.0+1") } }
             out("END-TO-END bundle build WARM (SR with one route: 70 outlets x 20 campaign SKUs, targets for the whole catalogue, KPI, Star): ${stats(build)}")
             val res = service.bundle(principal, day, "1.0.0+1")
             val r = res.full.routes.single { it.route_id == route }
             val json = kotlinx.serialization.json.Json { encodeDefaults = false }
-            fun size(label: String, raw: ByteArray) { val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(raw) } }.size(); out("SIZE $label: raw ${raw.size} bytes, gzip $gz bytes") }
             size("campaigns (${r.campaigns?.size} outlets)", JsonArray(r.campaigns.orEmpty()).toString().toByteArray())
             size("achievement_mtd (${r.achievement_mtd.size} rows)", JsonArray(r.achievement_mtd).toString().toByteArray())
             size("targets (${r.targets.size} rows)", JsonArray(r.targets).toString().toByteArray())

@@ -1,0 +1,69 @@
+package com.aktcl.aron.backend.sync
+
+import org.jdbi.v3.core.Handle
+import java.time.LocalDate
+import java.util.UUID
+
+/**
+ * EXACT BY IDENTITY (the lead's ruling after the review of c6c799b69, D-TKPI-14; spike). The phone no longer infers from acknowledgements, resolutions, quarantine
+ * states or clocks what the server figure contains: with its request it sends the client uuids of its own memos whose status in the figure it does not yet know
+ * (never confirmed, pending, sent-unanswered, held, recently voided or edited), at most [MAX], and the server answers, in the SAME repeatable-read snapshot as the
+ * figures, for each one:
+ * - IN the figure (`inFigure`): the memo is stored, active, `line_count > 0`, not voided, has at least one non-voided line, and its business date lies from the 1st
+ *   of the bundle month up to `through_date`; with the number of its stored lines (the phone sees a difference when a line was refused for good, e.g. a zero price);
+ * - VOIDED (`voided`): the server holds it and it is gone for good (status voided or superseded, an admin data void, every line voided): the phone never adds it;
+ * - NOT IN (everything else, not listed): not stored (never uploaded, in flight and not committed at the snapshot, held for review, refused), or stored but dated after
+ *   `through_date`: the phone adds it if it is still a live sale locally.
+ * A memo that is not the caller's own answers NOT IN (nothing is revealed). PAPER TWIN: a probe may carry `memoNo`; when its uuid is unknown to the server and an
+ * own `manual` (paper backfill) memo with the same memo number and business date exists (the number is unique per date), the answer is that twin's, so the phone's
+ * copy of a keyed paper memo is IN when the paper memo is, and the phone does not add it on top. For a memo the phone has voided or superseded locally
+ * (`removedLocally`) that is IN, the answer also lists the stored lines (sku, base quantity, kind) so the phone subtracts exactly what the server holds.
+ */
+object SrFigureProbe {
+    const val MAX = 300
+
+    class Probe(val uuid: UUID, val memoNo: String?, val date: LocalDate, val removedLocally: Boolean = false)
+    class Line(val skuId: Long, val qtyBase: Long, val kind: String)
+    class Answer(val through: LocalDate, val inFigure: Map<UUID, Int>, val voided: Set<UUID>, val removedLines: Map<UUID, List<Line>>) {
+        companion object { fun empty(through: LocalDate) = Answer(through, emptyMap(), emptySet(), emptyMap()) }
+    }
+
+    private class Row(val uuid: UUID, val date: LocalDate, val status: String, val voided: Boolean, val lineCount: Int, val memoNo: String)
+
+    fun answer(h: Handle, userId: Long, probes: List<Probe>, first: LocalDate, through: LocalDate): Answer {
+        val list = probes.distinctBy { it.uuid }.take(MAX)
+        if (list.isEmpty()) return Answer.empty(through)
+        fun rows(sql: String, bind: (org.jdbi.v3.core.statement.Query) -> org.jdbi.v3.core.statement.Query) = bind(h.createQuery(sql)).map { rs, _ ->
+            Row(rs.getObject(1, UUID::class.java), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getTimestamp(4) != null, rs.getInt(5), rs.getString(6))
+        }.list()
+        val cols = "client_uuid, business_date, status, voided_at, line_count, memo_no"
+        val own = "AND (user_id = :u OR acting_for_user_id = :u)"
+        val byUuid = rows("SELECT $cols FROM app.memo WHERE client_uuid = ANY(:c) AND business_date = ANY(:d) $own") { q ->
+            q.bindArray("c", UUID::class.java, list.map { it.uuid }).bindArray("d", LocalDate::class.java, list.map { it.date }.distinct()).bind("u", userId)
+        }.associateBy { it.uuid }
+        // the paper twin of a probe the server does not know: same own memo number and date, entered by the office (entry_source manual)
+        val unknown = list.filter { it.uuid !in byUuid && it.memoNo != null }
+        val twins = if (unknown.isEmpty()) emptyMap() else rows("SELECT $cols FROM app.memo WHERE memo_no = ANY(:n) AND business_date = ANY(:d) AND entry_source = 'manual' $own") { q ->
+            q.bindArray("n", String::class.java, unknown.map { it.memoNo!! }.distinct()).bindArray("d", LocalDate::class.java, unknown.map { it.date }.distinct()).bind("u", userId)
+        }.associateBy { it.memoNo to it.date }
+        val matched = list.mapNotNull { p -> (byUuid[p.uuid] ?: twins[p.memoNo to p.date])?.let { p to it } }
+        if (matched.isEmpty()) return Answer.empty(through)
+        // stored, non-voided lines per memo
+        val lineRows = h.createQuery(
+            "SELECT memo_client_uuid, sku_id, qty_base, line_kind FROM app.memo_line WHERE memo_client_uuid = ANY(:c) AND business_date = ANY(:d) AND voided_at IS NULL",
+        ).bindArray("c", UUID::class.java, matched.map { it.second.uuid }.distinct()).bindArray("d", LocalDate::class.java, matched.map { it.second.date }.distinct())
+            .map { rs, _ -> rs.getObject(1, UUID::class.java) to Line(rs.getLong(2), rs.getLong(3), rs.getString(4)) }.list().groupBy({ it.first }, { it.second })
+        val inFigure = HashMap<UUID, Int>(); val voided = HashSet<UUID>(); val removed = HashMap<UUID, List<Line>>()
+        for ((p, m) in matched) {
+            val lines = lineRows[m.uuid].orEmpty()
+            when {
+                m.voided || m.status != "active" || lines.isEmpty() -> voided += p.uuid
+                m.lineCount > 0 && !m.date.isBefore(first) && !m.date.isAfter(through) -> {
+                    inFigure[p.uuid] = lines.size
+                    if (p.removedLocally) removed[p.uuid] = lines
+                }
+            }
+        }
+        return Answer(through, inFigure, voided, removed)
+    }
+}
