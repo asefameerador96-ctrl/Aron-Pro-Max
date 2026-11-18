@@ -37,9 +37,27 @@ data class SaleUiState(
     val qcCapMtkBySku: Map<Long, Long> = emptyMap(),
     /** Why the last save was refused INSIDE the transaction (stock moved, the memo to edit was replaced); the screen words it. Cleared by the next change. */
     val refusal: List<ReviewProblem> = emptyList(),
+    /** A one-line notice for the screen (a change refused, QC dropped at start); cleared by the next accepted change. */
+    val notice: SaleNotice? = null,
     /** D-AGATE-25: a replayed Save (the memo was already stored) answered with the STORED memo while the draft on screen differed from it: the later changes were not saved; the screen says so. */
     val laterChangesNotSaved: Boolean = false,
 )
+
+/**
+ * A change the DRAFT refused (a value out of range, a zero sale with lines, ...): nothing was written. The view model turns exactly this into a notice; any other failure (Room,
+ * serialization, a missing sale) still crashes with its own stack, so a real defect is never reported as "that change was not accepted".
+ */
+class DraftRefusedException(message: String?, cause: Throwable? = null) : RuntimeException(message, cause)
+
+/** What the sale screen tells the rep in one line besides a save refusal. */
+enum class SaleNotice {
+    /** A change was refused because QC was already submitted (the sale is locked). */
+    Locked,
+    /** QC that was typed but never submitted was dropped when the sale was reopened (a rotation or a relaunch). */
+    QcDropped,
+    /** A change the draft refused for a reason other than the lock (nothing was written). */
+    Refused,
+}
 
 /**
  * State holder of one sale (quantity entry, slide, QC, credit, review, commit). Every change is persisted to the
@@ -76,7 +94,8 @@ class SaleFlow(
     suspend fun start(visit: SaleVisit, editing: String? = null) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
         // D-AGATE-19: an EDIT starts clean when the stored draft is a leftover SALE draft of a call the phone already closed (a kill between the close and the drop leaves the file): never loaded into the edit
-        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && isCallClosed(it) }
+        // the same for a leftover SALE draft whose memo already LANDED (a kill between the commit and the drop): loading it would put the edit on a committed sale ("sale already committed")
+        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && (isCallClosed(it) || committer.existing(it.memoUuid) != null) }
         if (stored == null) store.clear(visit.visitUuid)
         val loaded = stored ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
@@ -86,11 +105,18 @@ class SaleFlow(
         // midnight and resumed after it still shows the figures the save will check
         rawCatalog = catalogSource.skus(committer.stockDate(loaded.businessDate, loaded.routeId), loaded.priceType).associateBy { it.skuId }
         val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
-        val catalog = withGiveBack(editing ?: draft.edit?.supersedesMemoUuid)
+        // a QC-locked draft cannot become an edit (beginEdit refuses it): nothing of another memo's stock is given back into its catalog
+        val catalog = withGiveBack(if (draft.qcCompleted) null else editing ?: draft.edit?.supersedesMemoUuid)
         val landed = committer.existing(draft.memoUuid)
         if (landed != null) store.clear(visit.visitUuid) // the commit landed and the kill came before the draft was cleared
+        val keep = previousNotice(visit) // read before the state is replaced
         publish(visit, draft, catalog, landed)
+        // typed QC that was never submitted is dropped on a restart (D-PAR-SR1-25): the rep is told, once, in one line
+        val dropped = loaded.qc.size > draft.qc.size && !loaded.qcCompleted
+        if (dropped || keep != null) ui.value = ui.value.copy(notice = if (dropped) SaleNotice.QcDropped else keep)
     }
+
+    private fun previousNotice(visit: SaleVisit): SaleNotice? = ui.value.takeIf { it.visit?.visitUuid == visit.visitUuid }?.notice
 
     /**
      * Hard stop at line entry (rule 2): the quantity cannot go above what is held (less the SKU's reward packs). Returns the quantity
@@ -107,8 +133,9 @@ class SaleFlow(
                 set = minOf(qty, free / unitBase)
             }
         }
-        editLocked { SaleDraftOps.setQuantity(it, skuId, set, unit) }
-        set
+        // the quantity that stands: what was set, or, when the draft refused the change (QC-locked), the line as it is
+        if (editLocked { SaleDraftOps.setQuantity(it, skuId, set, unit) }) set
+        else ui.value.draft?.lines?.firstOrNull { it.skuId == skuId && it.unit == unit.wire }?.qtyEntered ?: 0L
     }
     suspend fun setSlide(skuId: Long, emptyPackets: Long) = edit { SaleDraftOps.setSlide(it, skuId, emptyPackets) }
     /** A QC write on a draft whose QC is already submitted is ignored (the page is read-only then); the draft ops still refuse it, so nothing can throw into a coroutine of the screen. */
@@ -117,13 +144,18 @@ class SaleFlow(
     suspend fun confirmZeroSale(reasonCode: String? = null) = edit { SaleDraftOps.confirmZeroSale(it, reasonCode) }
     suspend fun startQcOnly() = edit { SaleDraftOps.startQcOnly(it) }
     suspend fun cancelQcOnly() = edit { if (it.qcCompleted) it else SaleDraftOps.cancelQcOnly(it) }
-    suspend fun withEdit(edit: EditContext) = lock.withLock {
+    /**
+     * Marks the draft as an edit of [edit]'s memo. Returns false, with nothing changed (no give-back of the old memo's stock either), when the sale is QC-locked
+     * (notice [SaleNotice.Locked]); true once the draft carries the edit.
+     */
+    suspend fun withEdit(edit: EditContext): Boolean = lock.withLock {
+        val d0 = checkNotNull(ui.value.draft) { "no sale in progress" }
+        if (d0.qcCompleted) { ui.value = ui.value.copy(notice = SaleNotice.Locked); return@withLock false }
         if (givenBackFor != edit.supersedesMemoUuid) {
             val catalog = withGiveBack(edit.supersedesMemoUuid)
-            val d = checkNotNull(ui.value.draft) { "no sale in progress" }
-            ui.value = ui.value.copy(catalog = catalog, review = SaleReviewCalculator.review(d, catalog, qcCapMtkBySku()))
+            ui.value = ui.value.copy(catalog = catalog, review = SaleReviewCalculator.review(d0, catalog, qcCapMtkBySku()))
         }
-        editLocked { check(!it.qcCompleted) { "a sale cannot be edited after QC" }; it.copy(edit = edit) }
+        editLocked { it.copy(edit = edit) }
     }
 
     /** [rawCatalog] with the stock of [memoUuid]'s own lines and reward packs added back (null: nothing to give back). */
@@ -227,16 +259,30 @@ class SaleFlow(
         had
     }
 
-    private suspend fun edit(change: (SaleDraft) -> SaleDraft) = lock.withLock { editLocked(change) }
+    private suspend fun edit(change: (SaleDraft) -> SaleDraft) { lock.withLock { editLocked(change) } }
 
-    private suspend fun editLocked(change: (SaleDraft) -> SaleDraft) {
+    /**
+     * Applies [change] to the draft. A change the draft rejects is not a crash of the screen: on a QC-locked draft (the sale cannot be edited after QC) nothing is written and the
+     * state says [SaleNotice.Locked] (returns false); any other rejection of [change] is a [DraftRefusedException] (nothing written). Failures of the review, the store or a missing
+     * sale are not draft refusals and propagate as they are. A screen that came back to the entry list after a rotation or a relaunch can still send such a change.
+     */
+    private fun editLocked(change: (SaleDraft) -> SaleDraft): Boolean {
         val s = ui.value
         check(s.committed == null) { "sale already committed" }
-        val next = change(checkNotNull(s.draft) { "no sale in progress" })
+        val current = checkNotNull(s.draft) { "no sale in progress" }
+        val next = try { change(current) } catch (e: RuntimeException) {
+            if (current.qcCompleted && e is IllegalStateException) { ui.value = s.copy(notice = SaleNotice.Locked); return false }
+            if (e is IllegalStateException || e is IllegalArgumentException) throw DraftRefusedException(e.message, e)
+            throw e
+        }
         val review = SaleReviewCalculator.review(next, s.catalog, qcCapMtkBySku()) // computed before saving: a failure is never persisted
         store.save(next)
         ui.value = SaleUiState(s.visit, next, s.catalog, review, null, qcCapMtkBySku())
+        return true
     }
+
+    /** The view model's net: a [DraftRefusedException] that reached a coroutine becomes a notice on the state, never a crash. (The lock names itself, at its source.) */
+    fun noteRefusal() { ui.value = ui.value.copy(notice = SaleNotice.Refused) }
 
     private fun publish(visit: SaleVisit, draft: SaleDraft, catalog: Map<Long, SaleSku>, committed: CommittedSale?) {
         ui.value = SaleUiState(visit, draft, catalog, SaleReviewCalculator.review(draft, catalog, qcCapMtkBySku()), committed, qcCapMtkBySku())

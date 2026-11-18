@@ -411,7 +411,9 @@ private fun qcMax(sku: SaleSku, review: SaleReview, entries: List<com.aktcl.aron
  * (SKU, QC type, quantity, the total and the settlement amount) and the "QC জমা দিন" bar; a tap on a SKU opens step 2, that SKU's entry page: the
  * maximum / done / remaining amounts, the fault-type table (group, type, quantity box) and সংরক্ষণ, বাতিল, ডিলিট. The quantities are applied live through
  * [onQty] exactly as the one-scroll screen does (nothing is held back in the screen); বাতিল puts back the values the page opened with, ডিলিট clears the SKU
- * ([onClearSku]). The open SKU and the values to restore survive a kill and relaunch (rememberSaveable); what is saved, the caps and the credit logic are not changed.
+ * ([onClearSku]). The open SKU and the values to restore are NOT saved (plain `remember`): after a rotation or a relaunch the sale is back on its first screen and QC opens on step 1,
+ * so বাতিল can only put back values this session's page opened with. The discard question ("Discard everything entered in QC?") is asked only by step 1's বাতিল, and only when QC
+ * is entered and not submitted; Back on step 2 returns to step 1 and step 2's বাতিল restores its own page, neither asks. What is saved, the caps and the credit logic are not changed.
  */
 @Composable
 private fun QcTwoStepScreen(
