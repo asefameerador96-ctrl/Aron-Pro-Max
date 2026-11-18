@@ -63,17 +63,17 @@ data class ShopText(val name: String, val owner: String, val mobile: String, val
 
 @Composable
 fun routeItem(p: Pick, errors: Set<AmoFormError>) = AmoFormItem.Select(
-    "route", null, stringResource(R.string.amo_out_pick_route), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.ROUTE.takeIf { it in errors }),
+    "route", stringResource(R.string.amo_out_pick_route), stringResource(R.string.amo_out_pick_route), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.ROUTE.takeIf { it in errors }),
 )
 
 @Composable
 fun clusterItem(p: Pick, errors: Set<AmoFormError>) = AmoFormItem.Select(
-    "cluster", null, stringResource(R.string.amo_out_pick_cluster), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.CLUSTER.takeIf { it in errors }),
+    "cluster", stringResource(R.string.amo_out_pick_cluster), stringResource(R.string.amo_out_pick_cluster), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.CLUSTER.takeIf { it in errors }),
 )
 
 @Composable
 fun retailerItem(p: Pick, errors: Set<AmoFormError>) = AmoFormItem.Select(
-    "retailer", null, stringResource(R.string.amo_out_pick_retailer), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.RETAILER.takeIf { it in errors }),
+    "retailer", stringResource(R.string.amo_out_pick_retailer), stringResource(R.string.amo_out_pick_retailer), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.RETAILER.takeIf { it in errors }),
 )
 
 @Composable

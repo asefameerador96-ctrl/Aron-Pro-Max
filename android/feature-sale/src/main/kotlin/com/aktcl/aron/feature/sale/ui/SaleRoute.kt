@@ -44,6 +44,8 @@ fun SaleRoute(
     printerAssist: Boolean = false,
     /** The way from the "add today's stock first" banner to the Stock screen; null shows the banner without the button. */
     onOpenStock: (() -> Unit)? = null,
+    /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
+    entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false, creditAsDialog: Boolean = false, totalsQuantity: Boolean = false,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -71,7 +73,7 @@ fun SaleRoute(
                         quantityPopup = quantityPopup, skuStats = skuStats, onOpenStock = onOpenStock,
                         onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
-                        onPreviousSales = onPreviousSales, historyLabel = historyLabel,
+                        onPreviousSales = onPreviousSales, historyLabel = historyLabel, headerCard = entryHeaderCard, amoSkuCard = amoSkuCard,
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
@@ -88,7 +90,7 @@ fun SaleRoute(
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },
                         // closing the credit prompt without confirming turns credit off (screens-sr s8)
-                        onCancel = { vm.setPaid(null); stage = SaleStage.Review },
+                        onCancel = { vm.setPaid(null); stage = SaleStage.Review }, asDialog = creditAsDialog,
                     )
                     SaleStage.Review -> if (review != null) {
                         ReviewScreen(
@@ -97,6 +99,7 @@ fun SaleRoute(
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
                             onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
+                            printLaterCard = printLaterCard, totalsQuantity = totalsQuantity,
                         )
                     }
                 }

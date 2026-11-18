@@ -107,7 +107,7 @@ fun TeamPerformanceListContent(
 ) {
     AmoPage(modifier) {
         AmoFetchBanner(failed, stale, refused, offlineText = R.string.amo_perf_offline)
-        AmoSegments(listOf(stringResource(R.string.amo_team_perf_monthly), stringResource(R.string.amo_team_perf_till_date)), if (tab == PerfTab.MONTHLY) 0 else 1, { onTab(if (it == 0) PerfTab.MONTHLY else PerfTab.TILL_DATE) }, Modifier.testTag(TeamPerfTags.TAB))
+        AmoSegments(listOf(stringResource(R.string.amo_team_perf_monthly_list), stringResource(R.string.amo_team_perf_till_date)), if (tab == PerfTab.MONTHLY) 0 else 1, { onTab(if (it == 0) PerfTab.MONTHLY else PerfTab.TILL_DATE) }, Modifier.testTag(TeamPerfTags.TAB))
         if (cards.zone == null && cards.routes.isEmpty()) AmoEmpty(stringResource(R.string.amo_perf_empty), hint = stringResource(R.string.amo_perf_empty_hint))
         cards.zone?.let { z ->
             PerfCard(stringResource(R.string.amo_team_perf_zone, z.name.orEmpty()), TeamTargets.categoryCards(z.rows, z.periodDays), tab, true, TeamPerfTags.CARD + "zone", null, null) { onDetails(z) }

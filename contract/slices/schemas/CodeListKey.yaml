@@ -22,6 +22,8 @@ CodeListKey:
   - ticket_resolution_code
   - zero_sale_reason
   - call_photo_skip
-  description: Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot
-    32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority,
-    category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+  - cluster_type
+  description: Business code lists (`cluster_type` from contract 1.18.0, the six cluster types of the field with
+    Bangla labels) (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip`
+    from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon
+    and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).

@@ -155,4 +155,8 @@
     <string name="edit_reason_glyph_dropdown">▾</string>
     <string name="edit_denied_checkin">Check in first: a sale can be edited only after you have checked in today.</string>
     <string name="edit_denied_day_closed">The sales of that day are already submitted, so this memo cannot be edited. Tell your TSO or AMO.</string>
+    <string name="sale_amo_rate">Rate</string>
+    <string name="sale_amo_discount">Discount</string>
+    <string name="sale_amo_percent">%1$s%%</string>
+    <string name="review_total_qty">Quantity</string>
 </resources>

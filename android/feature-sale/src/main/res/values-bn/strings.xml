@@ -154,4 +154,8 @@
     <string name="edit_reason_glyph_dropdown">▾</string>
     <string name="edit_denied_checkin">আগে হাজিরা দিন: আজ হাজিরা দেওয়ার পরেই বিক্রয় এডিট করা যায়।</string>
     <string name="edit_denied_day_closed">ওই দিনের বিক্রয় জমা হয়ে গেছে, তাই এই মেমো এডিট করা যায় না। আপনার টিএসও বা এএমওকে জানান।</string>
+    <string name="sale_amo_rate">রেট</string>
+    <string name="sale_amo_discount">ডিসকাউন্ট</string>
+    <string name="sale_amo_percent">%1$s%%</string>
+    <string name="review_total_qty">পরিমাণ</string>
 </resources>

@@ -182,6 +182,8 @@ fun SalesSubmitScreen(
     business: BusinessTotals? = null,
     serverBusiness: BusinessTotals? = null,
     categoryLabel: (String) -> String = { it },
+    /** AMO (screenshot 65): the Sales submit button is grey until the day is synced, then the AMO navy (white label 7:1); the SR and TSO keep the primary button. */
+    blueSubmit: Boolean = false,
 ) {
     // A type the host has no label for (memo_line, day_submit, ...) still reads in words, never as its wire name (checker)
     val known = recordTypeLabels()
@@ -282,7 +284,10 @@ fun SalesSubmitScreen(
                 stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(),
                 enabled = SalesSubmitRules.syncButtonEnabled(online, syncing), glyph = ButtonGlyph.Sync,
             )
-            AronPrimaryButton(
+            if (blueSubmit) BlueSubmitButton(
+                stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { if (gate.duesWarning != null) duesAsk = true else hold = true },
+                Modifier.fillMaxWidth(), enabled = canSubmit,
+            ) else AronPrimaryButton(
                 stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { if (gate.duesWarning != null) duesAsk = true else hold = true },
                 Modifier.fillMaxWidth(), enabled = canSubmit, glyph = ButtonGlyph.Submit,
             )
@@ -634,4 +639,20 @@ private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeL
             listOf(listOfNotNull(typeLabel(key.recordKey), word).joinToString("\n"), text(device, key), text(server, key))
         },
     )
+}
+
+/** The AMO's Sales submit button (screenshot 65): the look's navy when enabled, the look's disabled grey until the sync has made it possible; the floppy glyph and a white bold label. */
+@Composable
+private fun BlueSubmitButton(text: String, onClick: () -> Unit, modifier: Modifier, enabled: Boolean) {
+    val look = LocalAronLook.current
+    Row(
+        modifier.heightIn(min = 52.dp).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(if (enabled) look.choiceFill ?: look.purple else look.disabledFill)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = AronTokens.Space.M),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+    ) {
+        androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Save, contentDescription = null, tint = if (enabled) androidx.compose.ui.graphics.Color.White else look.inkMuted, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(AronTokens.Space.S))
+        // the disabled word is the look's muted ink on its disabled grey (4.5:1 or better, BlueSubmitContrastTest): a "not yet" cue the rep can still read
+        Text(text, color = if (enabled) androidx.compose.ui.graphics.Color.White else look.inkMuted, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+    }
 }

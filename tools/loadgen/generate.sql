@@ -51,7 +51,7 @@ INSERT INTO app.house (code, name, territory_id) SELECT 'LH' || substr(t.code, 3
 INSERT INTO app.zone (code, name, territory_id, house_id)
   SELECT 'LZ' || z, 'Load zone ' || z, t.id, h.id FROM lg_size, generate_series(1, zones) z
     JOIN app.territory t ON t.code = 'LT' || (1 + (z - 1) % (SELECT territories FROM lg_size)) JOIN app.house h ON h.territory_id = t.id;
-INSERT INTO app.cluster (zone_id, name, cluster_type) SELECT z.id, 'Market ' || c, 'market' FROM app.zone z, generate_series(1, 3) c WHERE z.code LIKE 'LZ%';
+INSERT INTO app.cluster (zone_id, name, cluster_type) SELECT z.id, 'Market ' || c, 'Transit Hub' FROM app.zone z, generate_series(1, 3) c WHERE z.code LIKE 'LZ%';
 
 -- ---------- routes of the three kinds (bit0 Sat ... bit6 Fri) ----------
 CREATE TEMP TABLE lg_route AS

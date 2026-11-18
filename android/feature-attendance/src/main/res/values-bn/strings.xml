@@ -41,8 +41,6 @@
     <string name="att_sr_out_done">চেক আউট সম্পন্ন হয়েছে</string>
     <string name="att_amo_in_done">চেক ইন সম্পন্ন হয়েছে</string>
     <string name="att_amo_out_after">চেক আউট %1$sটার পরে সক্রিয় হবে</string>
-    <string name="att_amo_already_in">ইতিমধ্যে চেক ইন করা হয়েছে</string>
-    <string name="att_amo_already_out">ইতিমধ্যে চেক আউট করা হয়েছে</string>
     <string name="att_gate_title">আগে হাজিরা দিন</string>
     <string name="att_gate_body">আজ হাজিরা দেওয়ার পরেই স্টক, বিক্রি, ভিজিট ও আউটলেট অনুরোধ খোলে। হাজিরা দিন চাপুন, তারপর ফিরে আসুন।</string>
     <string name="att_gate_go">হাজিরায় যান</string>
@@ -60,4 +58,6 @@
     <string name="att_rollover_draft">যে বিক্রি সংরক্ষণ করেননি সেটি এর সাথে বাদ গেছে।</string>
     <string name="att_checkout_open_call">একটি কল এখনো খোলা আছে। চেক-আউটের আগে সেটি বন্ধ করুন (বিক্রি শেষ করুন বা কল শেষ করুন): চেক-আউট আপনার দিনের বিক্রয়ও জমা দেয়।</string>
     <string name="att_checkout_open_edit">একটি মেমো এডিট এখনো খোলা আছে। চেক-আউটের আগে সেটি সংরক্ষণ বা বাতিল করুন: চেক-আউট আপনার দিনের বিক্রয়ও জমা দেয়।</string>
+    <string name="att_amo_already_in">Already Checked-In</string>
+    <string name="att_amo_already_out">Already Checked-Out</string>
 </resources>
