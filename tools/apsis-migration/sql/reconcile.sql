@@ -7,7 +7,7 @@ s AS (SELECT apsis_map.business_date(sale_date::text, (SELECT source_tz FROM r))
         FROM (SELECT DISTINCT ON (_row_uuid) * FROM apsis_stage.c_sales WHERE outlet_code IS NOT NULL AND btrim(outlet_code::text) <> ''
                  AND (qty IS NULL OR btrim(qty::text) = '' OR apsis_map.num(qty::text) IS NOT NULL)
                  AND (amount IS NULL OR btrim(amount::text) = '' OR apsis_map.num(amount::text) IS NOT NULL) ORDER BY _row_uuid) c
-       WHERE apsis_map.business_date(sale_date::text, (SELECT source_tz FROM r)) IS NOT NULL GROUP BY 1),
+       WHERE apsis_map.in_window(apsis_map.business_date(sale_date::text, (SELECT source_tz FROM r))) GROUP BY 1),
 h AS (SELECT business_date AS bd, sum(gross_mtk) AS g FROM apsis_hist.sales_line GROUP BY 1)
 SELECT jsonb_build_object('days_vendor', count(s.bd), 'days_loaded', count(h.bd),
   'days_differing', count(*) FILTER (WHERE s.g IS DISTINCT FROM h.g),
@@ -22,7 +22,7 @@ s AS (SELECT btrim(c.sku_code::text) AS sku_code,
         FROM (SELECT DISTINCT ON (_row_uuid) * FROM apsis_stage.c_sales WHERE outlet_code IS NOT NULL AND btrim(outlet_code::text) <> ''
                  AND (qty IS NULL OR btrim(qty::text) = '' OR apsis_map.num(qty::text) IS NOT NULL)
                  AND (amount IS NULL OR btrim(amount::text) = '' OR apsis_map.num(amount::text) IS NOT NULL)
-                 AND apsis_map.business_date(sale_date::text, (SELECT source_tz FROM r)) IS NOT NULL ORDER BY _row_uuid) c
+                 AND apsis_map.in_window(apsis_map.business_date(sale_date::text, (SELECT source_tz FROM r))) ORDER BY _row_uuid) c
         LEFT JOIN apsis_map.sku_map k ON k.code_norm = apsis_map.norm_code(c.sku_code)
        WHERE c.sku_code IS NOT NULL GROUP BY 1),
 h AS (SELECT sku_code, sum(qty_base) AS q FROM apsis_hist.sales_line WHERE sku_code IS NOT NULL GROUP BY 1)
