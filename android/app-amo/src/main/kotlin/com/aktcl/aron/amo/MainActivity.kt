@@ -318,8 +318,14 @@ class MainActivity : ComponentActivity() {
                             val openCallNow by (day?.visitSession?.current ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.outlet.OpenVisit?>(null) }).collectAsStateWithLifecycle()
                             // D-LEAD-PREREQ-04 (step 3 S7): only the screens that exist to write (stock, sale, the two calls) are closed; the reading screens (outlet, tasks, SR stock, exceptions) stay open before check-in, their writes are refused by the write layer
                             val gatedScreens = setOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL)
+                            val writeGuardedScreens = setOf(AmoScreen.OUTLET, AmoScreen.TASK_DELEGATION, AmoScreen.SR_STOCK, AmoScreen.EXCEPTIONS)
                             val gatedScreensMap: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = screens.mapValues { (k, content) ->
-                                if (k !in gatedScreens) content else { back: () -> Unit ->
+                                // D-AGATE-15 (T4): these screens READ before check-in but also WRITE; every write button refuses with the named reason (never a generic failure afterwards)
+                                if (k in writeGuardedScreens) { back: () -> Unit ->
+                                    val earlierOutletName by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { databases.of(s.user.userId).referenceDao().outlet(id)?.name }.getOrNull() } }
+                                    val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gateNow, earlierOutletName, onCheckIn = { navigate(AmoScreen.ATTENDANCE) }) { content(back) }
+                                } else if (k !in gatedScreens) content else { back: () -> Unit ->
                                     val why = gateNow
                                     // D-LEAD-PREREQ-04 ruling 4: an earlier day's open call is the only thing that works; the call's own screens stay open
                                     val earlierCall = why == com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN

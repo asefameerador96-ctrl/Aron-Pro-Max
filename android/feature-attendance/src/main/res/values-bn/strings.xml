@@ -48,6 +48,7 @@
     <string name="att_gate_go">হাজিরায় যান</string>
     <string name="att_gate_out_title">আজকের জন্য আপনি চেক-আউট করেছেন</string>
     <string name="att_gate_out_body">আজ স্টক, বিক্রি ও ভিজিট বন্ধ। আগামীকালের হাজিরার পর আবার খুলবে। মেমো, সারসংক্ষেপ ও বিক্রয় জমা দেখতে পারবেন।</string>
+    <string name="att_gate_ok">ঠিক আছে</string>
     <string name="att_gate_close_call">খোলা কলটি বন্ধ করুন</string>
     <string name="att_gate_notice">আগে হাজিরা দিন। হাজিরার পর স্টক, বিক্রি ও ভিজিট খুলবে।</string>
     <string name="att_gate_earlier_title">আগে গতকালের কলটি শেষ করুন</string>

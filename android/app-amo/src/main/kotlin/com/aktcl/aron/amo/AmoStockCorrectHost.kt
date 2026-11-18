@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var rows by remember { mutableStateOf<List<CorrectionRow>?>(null) }
     var selected by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -50,7 +51,7 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
         onText = { text = it }, onReason = { reason = it },
         onSave = {
             val id = selected; val r = reason; val sku = list.firstOrNull { it.skuId == id }
-            if (!saving && !saved && id != null && r != null && sku != null) {
+            if (!saving && !saved && id != null && r != null && sku != null && !writeGuard.refused()) {
                 saving = true
                 scope.launch {
                     val result = runCatching {
