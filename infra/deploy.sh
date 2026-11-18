@@ -429,6 +429,7 @@ else
   az deployment group what-if -g "$RG" --template-file infra/main.bicep \
     --parameters "infra/params/${PROFILE}.bicepparam" --no-pretty-print -o json > "$whatif_file" \
     || die "what-if of main.bicep failed (nothing was changed)"
+  ARON_ALLOW_REPLICA="$([[ "$ENV_NAME" == stage || "$ENV_NAME" == prod ]] && echo true || echo false)" \
   EXISTING_POSTGRES_IDS="$(az postgres flexible-server list -g "$RG" --query "[].id" -o tsv | tr '\n' ' ')" \
     infra/scripts/whatif-guard.py "$whatif_file" || die "what-if shows a change the guard refuses (nothing was changed)"
   note "main.bicep (budget start $ARON_BUDGET_START_DATE)"

@@ -32,7 +32,7 @@ pushes `main` before that approval (CLAUDE.md rule 11).
 |---|---|
 | quota requests (`docs/setup/azure-quota-request.md`); the Google / Firebase final project; provider registration | the `stage` deploy, the staging proofs and soak, the `server-v*` tag, `promote-prod`, the prod deploy |
 | `tools/github-governance.ps1` and both `bootstrap-azure.ps1` runs (run from the laptop; the scripts are files, they do not need `main`) | the `app-v*` release run of `release-app.yml` for the final host needs the prod host, so it comes after prod |
-| a **laptop what-if** of the final profile against the bootstrapped group: `AZURE_RESOURCE_GROUP=rg-aron-stage ARON_ENV=stage infra/validate.sh` (it runs `az deployment group what-if` when `az` is signed in; changes nothing) | the `whatif` and `ops-diagnose` workflows for stage and prod (they too run from `main` only) |
+| a **laptop what-if** of the final profile against the bootstrapped group: `AZURE_RESOURCE_GROUP=rg-aron-stage ARON_ENV=stage infra/validate.sh` (prod: `rg-aron-prod` and `ARON_ENV=prod`; `validate.sh` downloads Linux binaries, so run it on Linux or in WSL) (it runs `az deployment group what-if` when `az` is signed in; changes nothing) | the `whatif` and `ops-diagnose` workflows for stage and prod (they too run from `main` only) |
 | the Apsis landing place and the dump upload (`docs/requests/apsis-dump-landing.md`) | |
 
 **Step 0 itself (owner):** approve the release flow and the first promotion of the integration branch to `main` (the lead then opens
@@ -126,6 +126,15 @@ first stage deploy** (s4).
    release**; the server publishes the same host as `ARON_PUBLIC_API_URL`, and a prod deploy warns loudly when the two differ.
 7. Live-only, not yet proven anywhere: Front Door Premium with Private Link, direct-origin refusal, WAF false positives on
    `/v1/sync`, D8 on SSD v2 at 12,000 IOPS, the replica, the Multiple-revision fallback, the 1.5x fleet load.
+
+### Prod preview and diagnose: from the owner's laptop only
+
+`whatif` and `ops-diagnose` never run for prod (azure-prod admits `server-v*` tags only). With the owner signed in (`az login`, `az account set --subscription <final-subscription-id>`), on Linux or WSL:
+
+```bash
+AZURE_RESOURCE_GROUP=rg-aron-prod ARON_ENV=prod infra/validate.sh        # builds everything offline, then az deployment group what-if of main.bicep; changes nothing
+AZURE_RESOURCE_GROUP=rg-aron-prod infra/scripts/diagnose.sh <since-utc> <until-utc> caj-aron-prod-migrate ca-aron-prod-worker metadata   # metadata and metrics only
+```
 
 ## 3. Data
 

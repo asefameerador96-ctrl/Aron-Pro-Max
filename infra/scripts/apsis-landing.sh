@@ -51,10 +51,14 @@ group_exists() {
   out="$(az group exists --name "$1" --subscription "$final_sub" 2>/dev/null | tr -d '\r')" || die "cannot tell whether $1 exists (az failed); nothing was created or uploaded"
   case "$out" in true|false) printf '%s' "$out" ;; *) die "cannot tell whether $1 exists (az answered '${out:0:40}'); nothing was created or uploaded" ;; esac
 }
-if [ "$(group_exists rg-aron-dev)" = true ]; then
+# `die` inside $(...) only leaves the subshell, so each probe is assigned first and a failed probe ends the script here.
+dev_state="$(group_exists rg-aron-dev)" || exit 1
+prod_state="$(group_exists rg-aron-prod)" || exit 1
+stage_state="$(group_exists rg-aron-stage)" || exit 1
+if [ "$dev_state" = true ]; then
   die "this subscription holds rg-aron-dev: it is the TEST account. The dump may enter only the final account; nothing was created or uploaded"
 fi
-if [ "$(group_exists rg-aron-prod)" != true ] && [ "$(group_exists rg-aron-stage)" != true ]; then
+if [ "$prod_state" != true ] && [ "$stage_state" != true ]; then
   die "neither rg-aron-prod nor rg-aron-stage exists here: this is not a bootstrapped final subscription; nothing was created or uploaded"
 fi
 note "subscription confirmed as the final one"
@@ -81,7 +85,7 @@ case "$cmd" in
     [ -z "$loader" ] || args+=("loaderPrincipalIds=[\"$loader\"]")
     az deployment group create "${args[@]}" --subscription "$final_sub" --query properties.outputs -o json
     echo "::warning::lifecycle: dump blobs are DELETED 60 days after their last write; if the migration will run longer, re-upload or raise dumpDeleteAfterDays before then"
-    echo "::warning::after the upload is verified run: apsis-landing.sh remove-owner-ip ... (the private endpoint is then the only way in)"
+    echo "::warning::after the upload is verified run: apsis-landing.sh remove-owner-ip ... (the private endpoint is then the only way in). Run it AGAIN after every later deploy re-run: deploy sets the owner address back"
     if [ -n "$law" ]; then echo "::warning::blob access logs go to the shared workspace and outlive the group's deletion for that workspace's retention"; fi ;;
   remove-owner-ip)
     # The ONE supported way to close the upload path after the upload is verified (the private endpoint is then the only way in).

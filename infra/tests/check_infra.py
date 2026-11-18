@@ -2633,15 +2633,17 @@ class FinalAccountStage(unittest.TestCase):
         base = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/"
         primary = base + "psql-aron-prod-abc123"
 
-        def run(rid, kind, existing):
+        def run(rid, kind, existing, allow="true"):
             with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
                 json.dump({"changes": [{"resourceId": rid, "changeType": kind}]}, f)
             r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "whatif-guard.py"), f.name],
-                               env={**os.environ, "EXISTING_POSTGRES_IDS": existing}, capture_output=True, text=True)
+                               env={**os.environ, "EXISTING_POSTGRES_IDS": existing, "ARON_ALLOW_REPLICA": allow}, capture_output=True, text=True)
             os.unlink(f.name)
             return r.returncode
         self.assertEqual(run(primary + "-r1", "Create", primary), 0, "the declared replica may be created")
         self.assertEqual(run(primary + "-r1", "Create", primary.upper()), 0, "case-insensitive ids")
+        self.assertEqual(run(primary + "-r1", "Create", primary, allow="false"), 1, "dev profiles have no replica: the exemption is stage and prod only")
+        self.assertIn('ARON_ALLOW_REPLICA="$([[ "$ENV_NAME" == stage || "$ENV_NAME" == prod ]]', (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8"))
         self.assertEqual(run(base + "psql-aron-prod-abc123-r2", "Create", primary), 1, "only -r1")
         self.assertEqual(run(base + "psql-aron-prod-other-r1", "Create", primary), 1, "only the replica OF the existing server")
         self.assertEqual(run(base + "psql-aron-prod-xyz789", "Create", primary), 1, "a stray second server is still refused")
@@ -2817,7 +2819,7 @@ class ApsisLoaderJob(unittest.TestCase):
         self.assertEqual(load("apps.json")["variables"]["apsisLoaderEnabled"],
                          "[and(and(not(equals(parameters('environmentName'), 'dev')), not(empty(parameters('apsisLoaderImage')))), not(empty(parameters('apsisLoaderDbSecretName'))))]",
                          "never in dev, whatever the parameters say; needs an image AND its own login's secret")
-        self.assertEqual(res["apsisKvRead"]["scope"], "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('n').keyVault, parameters('apsisLoaderDbSecretName'))]",
+        self.assertEqual(res["apsisKvRead"]["scope"], "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('n').keyVault, variables('apsisSecretName'))]",
                          "Key Vault access scoped to the loader's one secret, not the vault")
         self.assertEqual(param_default("apps.json", "apsisLoaderImage"), "")
         self.assertEqual(param_default("apps.json", "apsisLoaderDbSecretName"), "", "never shipped on the admin database URL: needs its own login's secret")
@@ -2996,7 +2998,13 @@ class ReadOnlyOpsAndLoader(unittest.TestCase):
         ack = "the dump goes to the final account only"
         src = Path(wrapper).read_text(encoding="utf-8")
         self.assertIn("tr -d '\\r'", src)
-        self.assertNotRegex(src, r"(?m)^\s*az (?!account show|ad signed-in-user)[^\n]*(?<!subscription \"\$final_sub\")$", "every az call names the subscription") if False else None
+        for n, line in enumerate(src.splitlines(), 1):
+            code = line.split("#")[0] if line.lstrip().startswith("#") else line
+            if line.lstrip().startswith("#") or " die " in line or line.lstrip().startswith("die ") or 'echo "' in line:
+                continue
+            m = re.search(r"\baz ([a-z]+(?: [a-z-]+)*)", code)
+            if m and not m.group(1).startswith(("account show", "ad signed-in-user show")) and 'az "$@"' not in code:
+                self.assertIn("--subscription", code, f"apsis-landing.sh:{n} calls az without --subscription: {line.strip()}")
         with tempfile.TemporaryDirectory() as d:
             fake = Path(d) / "az"
             fake.write_text("#!/usr/bin/env bash\n"
@@ -3017,6 +3025,13 @@ class ReadOnlyOpsAndLoader(unittest.TestCase):
             r, log = run(exists_fail="1")
             self.assertNotEqual(r.returncode, 0, "an az error on `group exists` is a refusal, not 'false'")
             self.assertNotIn("group create", log)
+            # ONLY the rg-aron-dev probe fails (the others answer): `die` inside $(...) must still stop the script before anything is created
+            fake.write_text(fake.read_text().replace("  'group exists'*) [ \"$FAKE_EXISTS_FAIL\" = 1 ] && exit 1;", "  'group exists --name rg-aron-dev'*) exit 1;;\n  'group exists'*) [ \"$FAKE_EXISTS_FAIL\" = 1 ] && exit 1;"))
+            r, log = run(exists="true")
+            self.assertNotEqual(r.returncode, 0, "a failing dev probe must not fall through to creation: " + r.stdout + r.stderr)
+            self.assertNotIn("group create", log)
+            self.assertNotIn("deployment group create", log)
+            fake.write_text(fake.read_text().replace("  'group exists --name rg-aron-dev'*) exit 1;;\n", ""))
             r, log = run(exists="maybe")
             self.assertNotEqual(r.returncode, 0, "anything but exactly true/false is a refusal")
             r, log = run(exists="true")  # CRLF answers ("true\r") still compare exactly: it holds rg-aron-dev, so it is refused as the TEST account
@@ -3040,6 +3055,28 @@ class ReadOnlyOpsAndLoader(unittest.TestCase):
         st = (ROOT / "docs" / "status" / "infra-final.md").read_text(encoding="utf-8")
         self.assertIn("Owner decision proposed (not applied): tag protection", st)
         self.assertNotIn("rulesets", (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8").lower())
+
+
+class DevApplicationsAreUntouchedByTheLoader(unittest.TestCase):
+    """D-FINAL-INFRA-13: ARM validates the id of a conditional `existing` reference, so no dev resource may carry an empty name segment."""
+
+    def test_compiled_dev_templates_have_no_empty_name_segment(self):
+        res = load("apps.json")["resources"]
+        self.assertEqual(load("apps.json")["variables"]["apsisSecretName"],
+                         "[if(empty(parameters('apsisLoaderDbSecretName')), 'apsis-loader-unused', parameters('apsisLoaderDbSecretName'))]")
+        for key, r in res.items():
+            for field in ("name", "scope"):
+                v = r.get(field, "")
+                if isinstance(v, str):
+                    self.assertNotIn("parameters('apsisLoaderDbSecretName')", v.replace("empty(parameters('apsisLoaderDbSecretName'))", ""),
+                                     f"{key}.{field} uses the raw (possibly empty) secret name; use variables('apsisSecretName')")
+                    self.assertNotRegex(v, r"'/'|, ''\)|/\s*'\s*'", f"{key}.{field}: empty segment")
+        # the dev parameter files must evaluate to a non-empty name for every conditional reference
+        for f in ("dev", "dev-lite"):
+            p = params(f"{f}.apps.parameters.json")
+            self.assertEqual(p.get("apsisLoaderDbSecretName", ""), "", f)
+            self.assertEqual(p.get("apsisLoaderImage", ""), "", f)
+        self.assertEqual(res["apsisSecret"]["name"], "[format('{0}/{1}', variables('n').keyVault, variables('apsisSecretName'))]")
 
 
 if __name__ == "__main__":

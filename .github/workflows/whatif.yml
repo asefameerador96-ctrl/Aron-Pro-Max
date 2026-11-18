@@ -89,6 +89,7 @@ jobs:
             --parameters "infra/params/${PROFILE}.bicepparam" --no-pretty-print -o json > whatif.json
           existing="$(az postgres flexible-server list -g "${AZURE_RESOURCE_GROUP}" --query "[].id" -o tsv | tr '\n' ' ')"
           rc=0
+          ARON_ALLOW_REPLICA="$([[ "${PROFILE}" == stage* ]] && echo true || echo false)" \
           EXISTING_POSTGRES_IDS="${existing}" infra/scripts/whatif-guard.py whatif.json | tee whatif.txt || rc=$?
           {
             echo "## what-if ${PROFILE} (nothing was changed)"; echo "Omits what deploy.sh prepares from live state: PostgreSQL live zones, the read-replica gate, the budget start date."; echo

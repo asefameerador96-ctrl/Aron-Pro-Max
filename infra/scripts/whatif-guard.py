@@ -48,7 +48,8 @@ def main(path):
             problems.append(f"{rid}: would be deleted")
         # The declared in-region read replica is the ONE second server a deploy may create: its id is exactly
         # "<an existing server's id>-r1" (postgres.bicep replicaName), so a stray or renamed server is still refused.
-        is_replica = rid.lower() in {e + "-r1" for e in existing}
+        # Only where the caller says the profile has a replica (stage, prod: ARON_ALLOW_REPLICA=true); dev never does.
+        is_replica = os.environ.get("ARON_ALLOW_REPLICA") == "true" and rid.lower() in {e + "-r1" for e in existing}
         if kind == "Create" and existing - {rid.lower()} and not is_replica:
             problems.append(f"{rid}: a new server would be created next to {sorted(existing)}")
         if kind == "Modify":

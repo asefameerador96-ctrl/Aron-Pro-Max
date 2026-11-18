@@ -33,7 +33,8 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
   sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
   section "PostgreSQL diagnostic settings (which log categories stream to Log Analytics)"
-  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" -o json | head -60; fi
+  # Category names and enabled flags only: the full output holds resource ids, which carry the subscription id (a public log).
+  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" --query "[].{setting:name, logs:logs[].{category:category, group:categoryGroup, enabled:enabled}}" -o json | head -60; fi
   section "PostgreSQL parameters that bound a migration"
   for p in work_mem shared_buffers maintenance_work_mem temp_buffers statement_timeout idle_in_transaction_session_timeout lock_timeout log_min_duration_statement logfiles.download_enable logfiles.retention_days max_connections; do
     v="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n "$p" --query value -o tsv 2>/dev/null || echo '?')"

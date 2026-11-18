@@ -112,6 +112,9 @@ resource idMigrate 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31'
 resource idWeb 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idWeb }
 
 // Never in dev (the dump may enter only the final account): environmentName must not be dev, whatever the parameters say.
+// A NON-EMPTY name even when the loader is off: ARM validates the id of a conditional `existing` reference, and an empty name segment
+// would break every dev deploy (D-FINAL-INFRA-13). The placeholder is never read: the resources are under a false condition.
+var apsisSecretName = empty(apsisLoaderDbSecretName) ? 'apsis-loader-unused' : apsisLoaderDbSecretName
 var apsisLoaderEnabled = environmentName != 'dev' && !empty(apsisLoaderImage) && !empty(apsisLoaderDbSecretName)
 var kvSecretUrl = '${kv.properties.vaultUri}secrets/'
 // Which Key Vault secret each app's database URLs come from (docs/requests/db-runtime-roles.md).
@@ -300,11 +303,11 @@ resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if 
 // Key Vault access scoped to the loader's ONE secret, not the whole vault.
 resource apsisSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' existing = if (apsisLoaderEnabled) {
   parent: kv
-  name: apsisLoaderDbSecretName
+  name: apsisSecretName
 }
 
 resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (apsisLoaderEnabled) {
-  name: guid(kv.id, n.idApsisLoader, apsisLoaderDbSecretName, roles.keyVaultSecretsUser)
+  name: guid(kv.id, n.idApsisLoader, apsisSecretName, roles.keyVaultSecretsUser)
   scope: apsisSecret
   properties: {
     principalId: idApsis!.properties.principalId
@@ -329,7 +332,7 @@ resource apsisLoader 'Microsoft.App/jobs@2025-07-01' = if (apsisLoaderEnabled) {
       replicaRetryLimit: 0
       manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
       registries: [{ server: acr.properties.loginServer, identity: idApsis!.id }]
-      secrets: [kvSecret('db-direct-url', apsisLoaderDbSecretName, kvSecretUrl, idApsis!.id)]
+      secrets: [kvSecret('db-direct-url', apsisSecretName, kvSecretUrl, idApsis!.id)]
     }
     template: {
       containers: [

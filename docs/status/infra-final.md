@@ -4,23 +4,13 @@ Lane F-INFRA1, branch `lane/infra-final` (from INT `a4691a06`, train 120), writt
 subscription ids, tenant ids, e-mail addresses, phone numbers or names appear here; placeholders are written
 `<like-this>`.
 
-## HANDOVER (read this first)
+## HANDOVER (read this first; lane F-INFRA1 is FINISHED until the owner decides)
 
-- **Scope held.** No Azure access, none attempted. No Azure resource created, changed or deleted. No deploy, promote
-  or reset workflow dispatched. No pull request.
-- **Order of work and where it stands.** All four deliverables are pushed; see "Progress log" at the bottom. What a successor
-  does next: wait for the lead's reaction to the owner questions D1 to D8; compare the lab grant key format with
-  `tools/make-lab-grant-key.sh` after train 121; decide with the lead and the apsis-migration lane the loader's network path
-  (`docs/requests/apsis-dump-landing.md` s5.2); re-read the live required checks of `main`.
-- **Section 2 wording correction.** Rows of the audit table describe the state BEFORE this lane's pushes ("missing"/"stale" =
-  at INT `a4691a06`); the code, runbook, quota document and landing template that fix them are in the progress log.
-- **Facts about INT that the task text is ahead of.** INT at `a4691a06` has migrations up to **V0204** and contract
-  **1.20.0**. V0208 and 1.21.0 arrive only when train 121 lands; this file says "V0204 today, V0208 after train 121".
-  `ARON_LAB_GRANT_KEY` and `lab_grant.xml` also arrive with train 121 (today only `docs/reviews/android-integrity-*`
-  describe them; `Settings.kt` does not read the key yet and `lab_grant.xml` is not in `android/` yet). The infra
-  wiring for the key is therefore written so that it is harmless before the backend reads it.
-- **Decision ids** go at the END of `DECISIONS.md` as `D-FINAL-INFRA-NN`.
-- **Recycle** a successor at about 450k tokens of context; the successor reads this file, then `git log lane/infra-final`.
+- **State:** all four deliverables, the lead's reviews (round 1 FAIL, rounds 2 to 4) and their fixes are on `lane/infra-final`. Nothing ran against Azure; no resource was created, changed or deleted; no deploy, promote or reset workflow was dispatched; no pull request, `main` untouched.
+- **Waiting on the owner:** D1 to D9 (section 3d and 6), and the release flow / first promotion to `main` (step 0 of the owner list); the secret-scan allow-list entry for the false positive at `bfd0087c8:infra/validate.sh:generic-api-key:80` (the lead asked; ci stays red on that range until it is answered).
+- **A successor does, only after those answers:** compare the lab grant key format with `tools/make-lab-grant-key.sh` once train 121 lands (`seed-secrets.sh` assumes PKCS#8 DER base64); inject the per-environment public key into `lab_grant.xml` at release build; add the stage-lite choice or a prod-shaped stage per D3; apply the owner's answer on tag protection (D9); wire the redactor of lane ops-diagnose-api into `diagnose.sh` before any log lines are printed for stage; build the loader image step into deploy.sh once the apsis-migration lane has its image and the least-privilege `apsis_loader` login exists (the loader stays absent until then); re-read the live required checks of `main` before the first gate pull request.
+- **Facts about INT:** V0204 and contract 1.20.0 at the time of writing (V0208 and 1.21.0 after train 121). Decision ids: `D-FINAL-INFRA-01` to `-13` at the end of `DECISIONS.md` (append-only; -09 is superseded by -12 and -13 where they differ).
+- **Section 2 wording:** rows of the audit table describe the repository BEFORE this lane's pushes (INT `a4691a06`).
 
 ## 1. Verdict in one paragraph
 
@@ -117,9 +107,7 @@ final account (GitHub secrets scoped to the `azure-prod` and `azure-stage` envir
   the final account (a restore, a PITR rehearsal check, the Apsis loader) must run as a Container Apps job in
   `cae-aron-<env>`** (same identity pattern as `migrate`). The Apsis lane's loader needs such a job; the dump itself
   lands in storage (deliverable 4) which **is** reachable from the owner's machine through Entra.
-- **Other workflows hard-wired to `azure-dev`**: `drill.yml:37`, `reset.yml:38`, `acr-purge.yml:35`, `cost-report.yml:22`,
-  `ops-diagnose.yml:45` (B13.2 row 15). Correct for now (they must not touch the final account); the final registry
-  has no scheduled purge and the final cost report does not run. Listed as follow-ups in section 4, not changed here.
+- **Other workflows hard-wired to `azure-dev`**: `drill.yml`, `reset.yml`, `acr-purge.yml`, `cost-report.yml` (B13.2 row 15): correct (they write and must not touch the final account); `ops-diagnose.yml` and `whatif.yml` are read-only and now run for dev and stage only (prod previews from the owner's laptop); the final registry has no scheduled purge and the final cost report does not run.
 - **Budget, Service Health alert, DR, WAF Block, private endpoints for Key Vault/ACR/Storage** are designed but not
   in the templates (`docs/33` B13.2 rows 3, 13, 17); not part of this move.
 
@@ -138,7 +126,7 @@ only" means: needs the owner's account, MFA, approval, billing or hands.
 | 3 | **Sign in on the laptop with MFA**, in the shell the operator will use. | Owner only (MFA) | `az login --tenant <tenant-id>`; `az account set --subscription <final-subscription-id>`; `gh auth login` |
 | 4 | **Quota requests** (section 3b). Subscription-level ones can be filed now; the per-environment Container Apps cores request is filed after the environment exists (step 9). Lead time up to about a week; a region can refuse for capacity. | Owner only (portal, billing identity) | Portal > Quotas > Azure Database for PostgreSQL / Azure Container Apps / Azure Load Testing > the region > New limit. Support-request route: portal > Help + support > Create a support request > Service and subscription limits (quotas). Text to paste is in `docs/setup/azure-quota-request.md`. |
 | 5 | **Register resource providers** (non-blocking; the bootstrap does it, listed for completeness). | Operator | `.\infra\bootstrap-azure.ps1` does `az provider register` for the list in the script. |
-| 6 | **GitHub governance**: create the environments with their reviewers and branch/tag policies. Review the plan the script prints, then approve. | Owner approves; operator runs | `pwsh tools/github-governance.ps1` (creates `azure-stage` with branch `main` and the owner as reviewer, `azure-prod` with tags `server-v*` and `app-v*` and the owner as reviewer). **Must be run before the first workflow run**, otherwise GitHub creates the environment unprotected.  **A re-run leaves an existing `main` and its protection untouched** (re-read the live required checks in Settings > Branches before the first gate pull request). `app-release` (tags `app-v*`, owner reviewer, no Azure identity) is created here too. |
+| 6 | **GitHub governance**: create the environments with their reviewers and branch/tag policies. Review the plan the script prints, then approve. | Owner approves; operator runs | `pwsh tools/github-governance.ps1` (creates `azure-stage` with branch `main` and the owner as reviewer, `azure-prod` with tags `server-v*` only and the owner as reviewer, and `app-release` with tags `app-v*` and the owner as reviewer). **Must be run before the first workflow run**, otherwise GitHub creates the environment unprotected.  **A re-run leaves an existing `main` and its protection untouched** (re-read the live required checks in Settings > Branches before the first gate pull request). `app-release` (tags `app-v*`, owner reviewer, no Azure identity) is created here too. |
 | 7 | **Bootstrap the final subscription twice** (stage and prod are separate resource groups, identities and environments). Needs step 6 first: the script refuses an environment that is missing or has no required reviewer. | Operator (after steps 3 and 6) | `.\infra\bootstrap-azure.ps1 -SubscriptionId <final-subscription-id> -Location <region> -ResourceGroup rg-aron-stage -Environment azure-stage -AppName sp-aron-github-stage -AlertEmails "<monitored-address>"`, then the same with `-ResourceGroup rg-aron-prod -Environment azure-prod -AppName sp-aron-github-prod`. Writes **environment-scoped** secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) and variables (`AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `ARON_ALERT_EMAILS`); the test account's values are not touched. |
 | 8 | **Move the TEST account's repository-wide `AZURE_*`/`ARON_ALERT_EMAILS`/budget/suffix values into `azure-dev`** so both accounts coexist (environment values win; either order with step 7 works). The OWNER runs it in their own shell and pastes the values when `gh` asks (no `--body`, so no id reaches a session transcript): `gh secret set AZURE_CLIENT_ID --env azure-dev` (same for `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`), `gh variable set AZURE_RESOURCE_GROUP --env azure-dev --body rg-aron-dev` (same for the others). **Must stay repository-wide:** Maps, Google services, FCM and Play Integrity values (ci.yml reads them), `ANDROID_SIGNING_*`, `ARON_FINAL_ACCOUNT`, `ARON_PROD_API_BASE_URL`, `ARON_DEPLOY_FREEZE_DHAKA`. | Owner |
 | 9 | **Switch the final account on** (repository variables, not secrets). First `ARON_FINAL_ACCOUNT=true`; `ARON_PROD_API_BASE_URL` only after the first stage/prod deploy has created the Front Door host (or after a custom domain is chosen: then it is known in advance). | Operator | `gh variable set ARON_FINAL_ACCOUNT --body true`; later `gh variable set ARON_PROD_API_BASE_URL --body https://<api-host>` (must equal the host printed in the prod deploy summary). |
@@ -204,8 +192,7 @@ the buffer the recommended 9,000 needs the owner's yes (step 16).
   backup, WAF Block, DR, load, failover and restore** can only be proven in the final subscription.
 - Not built (needs a decision or another lane): a restore/loader Container Apps job (D6 default avoids the need; the
   Apsis lane needs one); DR tier; private endpoints for Key Vault, ACR and Storage; per-secret Key Vault RBAC;
-  scheduled ACR purge and cost report for the final account; the `ops-diagnose`/`drill`/`reset` workflows for stage
-  and prod (deliberately dev-only until the owner asks); `ops-diagnose` and `whatif` run for dev and stage only (D-FINAL-INFRA-12).
+  scheduled ACR purge and cost report for the final account; the `drill`/`reset` workflows for stage and prod (deliberately dev-only until the owner asks); `ops-diagnose` and `whatif` run for dev and stage only, never prod (D-FINAL-INFRA-12).
 - The lab grant public key reaching `lab_grant.xml` at release build time depends on train 121 (the file does not
   exist on INT yet).
 - Re-read the live required-checks list of `main` (e2e and analytics shards) before the first gate pull request.

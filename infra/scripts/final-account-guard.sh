@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Where may a READ-ONLY ops workflow (what-if, diagnose) run for this profile? One rule set for the workflows that are not
 # deploys (deploy.yml keeps its own inline copy of the same rules, pinned by infra/tests/check_infra.py):
+#   prod            REFUSED (azure-prod admits server-v* tags only; prod previews run from the laptop);
+#   app-release     only checks that the environment has a required reviewer;
 #   dev, dev-lite   from the integration branch (the azure-dev environment deploys from there only);
 #   stage, stage-lite   only in the FINAL account (ARON_FINAL_ACCOUNT=true) and only when the GitHub environment
 #                   azure-stage / azure-prod exists WITH a required reviewer (GitHub creates a missing environment unprotected),
