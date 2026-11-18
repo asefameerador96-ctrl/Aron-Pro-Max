@@ -58,7 +58,7 @@ import com.aktcl.aron.feature.sale.domain.SaleSku
 import com.aktcl.aron.feature.sale.domain.SkuStats
 
 /** The manual's lavender box and amber stats panel (22); the stats ink on both ends of the amber is 7:1 or better (QuantityPopupContrastTest). */
-internal val PopupTint = androidx.compose.ui.graphics.Color(0xFFEDE7F6)
+internal val PopupTint = AronLook.LavenderPanel
 internal val StatsTop = androidx.compose.ui.graphics.Color(0xFFFFC107)
 internal val StatsBottom = androidx.compose.ui.graphics.Color(0xFFFFA000)
 internal val StatsInk = androidx.compose.ui.graphics.Color(0xFF2B1700)

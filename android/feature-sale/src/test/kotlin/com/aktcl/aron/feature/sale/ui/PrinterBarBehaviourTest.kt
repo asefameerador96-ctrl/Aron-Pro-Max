@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
@@ -16,9 +15,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.printing.bt.PrinterState
-import com.aktcl.aron.core.printing.ui.LocalPrinterBarFlag
 import com.aktcl.aron.core.printing.ui.PrinterBarMillis
-import com.aktcl.aron.core.printing.ui.PrinterConnectedBar
+import com.aktcl.aron.core.printing.ui.PrinterBarHost
 import com.aktcl.aron.core.printing.ui.PrinterConnectedToast
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -37,14 +35,13 @@ class PrinterBarBehaviourTest {
     @get:Rule val compose = createComposeRule()
     private val label = "Printer connected"
 
+    /** The real wiring: PrinterBarHost (what SrFrame wraps its screen in) around a screen that holds the toast and a control in the middle. */
     private fun host(states: MutableStateFlow<PrinterState>, taps: IntArray = IntArray(1)) {
-        val flag = mutableStateOf(false)
         compose.setContent {
-            CompositionLocalProvider(LocalPrinterBarFlag provides flag, com.aktcl.aron.core.ui.LocalSrManualLook provides true) {
-                PrinterConnectedToast(states)
-                Box(Modifier.fillMaxSize()) {
-                    Text("under", Modifier.align(Alignment.Center).testTag("under").clickable { taps[0]++ })
-                    if (flag.value) PrinterConnectedBar(Modifier.align(Alignment.Center))
+            CompositionLocalProvider(com.aktcl.aron.core.ui.LocalSrManualLook provides true) {
+                PrinterBarHost(Modifier.fillMaxSize()) {
+                    PrinterConnectedToast(states)
+                    Box(Modifier.fillMaxSize()) { Text("under", Modifier.align(Alignment.Center).testTag("under").clickable { taps[0]++ }) }
                 }
             }
         }

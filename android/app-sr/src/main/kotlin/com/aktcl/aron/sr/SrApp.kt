@@ -177,12 +177,11 @@ fun SrFrame(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    // the printer-connected bar (manual 17) is drawn by this frame, over its content: a flag the toast sets, an overlay that takes no touch
-    val barFlag = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    if (printer != null) androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.printing.ui.LocalPrinterBarFlag provides barFlag) { HoldPrinter(printer, assist = printerAssist) }
+    // the printer-connected bar (manual 17): PrinterBarHost provides the flag the toast sets and draws the bar over the whole frame (no touch taken)
+    com.aktcl.aron.core.printing.ui.PrinterBarHost(modifier) {
+    if (printer != null) HoldPrinter(printer, assist = printerAssist)
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
-    Box(modifier) {
     ParityScaffold(
         modifier = Modifier,
         topBar = {
@@ -204,7 +203,6 @@ fun SrFrame(
             bottomBar()
         }
     }
-    if (barFlag.value) com.aktcl.aron.core.printing.ui.PrinterConnectedBar(Modifier.align(androidx.compose.ui.Alignment.Center))
     }
 }
 

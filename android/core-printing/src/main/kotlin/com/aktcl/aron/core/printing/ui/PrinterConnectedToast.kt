@@ -45,6 +45,19 @@ val PrinterBarGreen = Color(0xFF14612A)
  */
 val LocalPrinterBarFlag = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.MutableState<Boolean>?> { null }
 
+/**
+ * The SR frame's side of the connected bar: provides [LocalPrinterBarFlag] to [content] and draws [PrinterConnectedBar] over it, centred, while the flag
+ * is up. One composable, so the real frame (SrFrame) and its test use the same wiring. The bar is part of this layout, not a window: it takes no touch.
+ */
+@Composable
+fun PrinterBarHost(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val flag = remember { mutableStateOf(false) }
+    Box(modifier) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalPrinterBarFlag provides flag) { content() }
+        if (flag.value) PrinterConnectedBar(Modifier.align(Alignment.Center))
+    }
+}
+
 /** How long the SR's connected bar stays up. */
 const val PrinterBarMillis = 2500L
 

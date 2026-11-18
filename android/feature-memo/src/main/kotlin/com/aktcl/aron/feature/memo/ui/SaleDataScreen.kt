@@ -106,15 +106,15 @@ fun SaleDataScreen(
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
                     ) {
                         Text(stringResource(R.string.memo_col_sku), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.weight(1f))
-                        Text(stringResource(R.string.memo_col_qty), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End)
-                        Text(stringResource(R.string.memo_col_price), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 72.dp))
+                        Text(stringResource(R.string.memo_col_qty), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = QtyColumn))
+                        Text(stringResource(R.string.memo_col_price), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = PriceColumn))
                     }
                     day.skuRows.forEach { r ->
                         TableRow(skuName(r.skuId), lineQtyText(r.qtyEntered, r.unitEntered, skuCategory(r.skuId), r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
                     }
                     CardDivider()
                     Row(
-                        Modifier.fillMaxWidth().testTag(SaleDataTags.TOTAL).background(androidx.compose.ui.graphics.Color(0xFFEDE7F6), RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
+                        Modifier.fillMaxWidth().testTag(SaleDataTags.TOTAL).background(AronLook.LavenderPanel, RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(stringResource(R.string.history_footer), color = look.purple, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

@@ -199,7 +199,7 @@ class SrParity1bSaleTests {
     @Test fun creditDialogTooMuch() = shot("srp1b_credit_dialog_error", title = reviewTitle) { WithCredit("9999") }
     @Test fun creditDialogSunlight() = shot("srp1b_credit_dialog_sunlight", sunlight = true, title = reviewTitle) { WithCredit("100") }
 
-    @Composable private fun Step(st: SaveAndPrint.Step) { SoldReview(); SaveAndPrintStepDialog(st, true, {}, {}, {}, {}, {}, {}, {}) }
+    @Composable private fun Step(st: SaveAndPrint.Step) { SoldReview(); SaveAndPrintStepDialog(st, true, null, {}, {}, {}, {}, {}, {}, {}) }
     @Test fun askSave() = shot("srp1b_dialog_ask_save", title = reviewTitle) { Step(SaveAndPrint.Step.AskSave) }
     @Test fun askPrint() = shot("srp1b_dialog_ask_print", title = reviewTitle) { Step(SaveAndPrint.Step.AskPrint) }
     @Test fun saved() = shot("srp1b_dialog_saved", title = reviewTitle) { Step(SaveAndPrint.Step.Done(true)) }
