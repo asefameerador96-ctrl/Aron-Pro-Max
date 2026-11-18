@@ -35,11 +35,15 @@ RouteWrite:
       - daily
       - 3f
       - 2f
+      - none
       - null
+      description: 'none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted
+        in target outlets; shown as "no visit plan".'
     visit_days_mask:
       type: integer
-      minimum: 1
+      minimum: 0
       maximum: 127
+      description: 0 only with visit_kind none (no visit plan).
     sequence_no:
       type:
       - integer

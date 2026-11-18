@@ -18,8 +18,8 @@ Rules (docs/16 s4.1, docs/22 P-07, P-09, P-14):
   * outlet code: leading non-alphanumerics (":", "*", Bengali danda) stripped; must match the app.outlet.code CHECK
   * contact number: Bengali digits transliterated, 880 prefix dropped, leading 0 restored; else NULL
   * geo classification "Semi Urban" -> SemiUrban; blank stays NULL
-  * sub channel -> channel: Astha tiers (Gold, Platinum, Diamond, Silver, Titanium) -> Astha, else the value itself;
-    sub_channel_id only for the nine V0027 codes (Titanium is counted as unmapped, no master row exists)
+  * sub channel -> channel: Astha tiers (Gold, Platinum, Diamond, Titanium; the retired Silver too) -> Astha, else the value itself;
+    sub_channel_id only for the active sub-channel codes (GT, RCC, DCC, MT, HoReCa, Gold, Platinum, Diamond, Titanium); Silver is retired (V0199) and counted as unmapped
   * route name "Name(Sun, Tue, Thu)" / "NameDaily" -> visit_days_mask (bit0 Sat .. bit6 Fri), visit_kind, display_label
   * rows without coordinates or outside Bangladesh (lat 20.5..26.7, lon 88.0..92.7) are rejected and counted
   * a 6-decimal point shared by at least --placeholder-min-shared (3) outlets marks location_confirmed = false (DQ-48)
@@ -46,7 +46,7 @@ DAY_BITS = {"sat": 1, "sun": 2, "mon": 4, "tue": 8, "wed": 16, "thu": 32, "fri":
 DAY_ORDER = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
 GEO_CLASS = {"hill": "Hill", "urban": "Urban", "semiurban": "SemiUrban", "semi urban": "SemiUrban", "rural": "Rural"}
 SUB_CHANNELS = {"GT": "GT", "RCC": "RCC", "DCC": "DCC", "MT": "MT", "HoReCa": "HoReCa",
-                "Gold": "Astha", "Platinum": "Astha", "Diamond": "Astha", "Silver": "Astha"}
+                "Gold": "Astha", "Platinum": "Astha", "Diamond": "Astha", "Titanium": "Astha"}
 ASTHA_TIERS = {"gold", "platinum", "diamond", "silver", "titanium"}
 CHANNELS = {"GT", "DCC", "Astha", "RCC", "MT", "HoReCa"}
 OUTLET_CODE_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$")
@@ -106,8 +106,8 @@ def clean_geo_class(v) -> str | None:
 
 
 def clean_sub_channel(v) -> tuple[str, str | None, bool]:
-    """(channel, sub_channel code or None, mapped). Astha tiers map to channel Astha; a tier without a master row
-    (Titanium) keeps the channel and no sub_channel_id."""
+    """(channel, sub_channel code or None, mapped). Astha tiers map to channel Astha (Gold, Platinum, Diamond, Titanium: the
+    field's tiers, D-MD-07); Silver is retired (inactive master row), so it keeps the channel and gets no sub_channel_id."""
     s = cell(v)
     for code, channel in SUB_CHANNELS.items():
         if s.lower() == code.lower():

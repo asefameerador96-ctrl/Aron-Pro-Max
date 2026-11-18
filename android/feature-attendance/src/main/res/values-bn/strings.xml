@@ -41,6 +41,6 @@
     <string name="att_sr_out_done">চেক আউট সম্পন্ন হয়েছে</string>
     <string name="att_amo_in_done">চেক ইন সম্পন্ন হয়েছে</string>
     <string name="att_amo_out_after">চেক আউট %1$sটার পরে সক্রিয় হবে</string>
-    <string name="att_amo_already_in">ইতিমধ্যে চেক ইন করা হয়েছে</string>
-    <string name="att_amo_already_out">ইতিমধ্যে চেক আউট করা হয়েছে</string>
+    <string name="att_amo_already_in">Already Checked-In</string>
+    <string name="att_amo_already_out">Already Checked-Out</string>
 </resources>

@@ -4,13 +4,17 @@ operation:
   tags:
   - admin-outlets
   operationId: importOutlets
-  summary: Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run,
-    commit with a reason).
-  description: 'A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included.
-    `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole
-    batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED).
-    A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone
-    or address keeps the stored one).
+  summary: Bulk create-or-update outlets from a sheet as the field has it (preview with dry_run, commit with a reason).
+  description: 'The field''s data is accepted as it is (1.18.0). A channel label of the field ("GT Channel") is
+    mapped; an empty channel comes from the sub-channel, else the row loads as GT with the warning `channel_defaulted`;
+    a channel that names none of the six is the row error `unknown_channel` (never a 400 for the batch). Phones
+    are repaired to the national form, coordinates are rounded to 8 decimals, a tier that does not fit the channel
+    loads with no tier and the warning `sub_channel_mismatch`. `dry_run: true` writes nothing and returns the report;
+    `dry_run: false` needs `change_reason` and, with `on_row_error` `reject_batch` (default), refuses the whole
+    batch on any row error; `skip_rows` writes the good rows and lists the skipped ones. Idempotent by `batch_uuid`
+    (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet
+    of the same zone updates it (never its status; a blank route, pin, phone, address, tier or geo class keeps the
+    stored one).
 
     '
   requestBody:

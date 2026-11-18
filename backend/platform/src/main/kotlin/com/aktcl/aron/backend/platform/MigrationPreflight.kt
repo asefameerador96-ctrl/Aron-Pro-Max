@@ -32,15 +32,20 @@ object MigrationPreflight {
         fun repair(c: Connection, findings: List<Finding>): List<Long>
         /** What the person must do in a non-dev environment. */
         val advice: String
+        /** False for a guard with NO automatic repair (a business decision): it fails the deploy in EVERY environment, dev included, and changes nothing. */
+        val devRepair: Boolean get() = true
+        /** What [Finding.where] names in the report line ("zone", for the cluster check). */
+        val whereLabel: String get() = "zone"
     }
 
-    val CHECKS: List<Check> = listOf(ClusterNames)
+    val CHECKS: List<Check> = listOf(ClusterNames, TitaniumTier)
 
     /** The only value of the raw `ARON_ENV` that may repair: an unset value is NOT dev here (Settings' own default stays as it is elsewhere), nor is anything else (staging, prod, a typo). */
     const val DEV = "dev"
 
     fun run(ds: DataSource, declaredEnv: String?, report: (String) -> Unit = {}, checks: List<Check> = CHECKS) {
         for (check in checks) {
+            if (!check.devRepair) { strict(ds, check, report); continue }
             val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
             if (found.isEmpty()) continue
             val summary = describe(check, found)
@@ -75,8 +80,17 @@ object MigrationPreflight {
         }
     }
 
+    /** A check with no automatic repair: it fails in every environment (dev included) before any migration and changes nothing. */
+    private fun strict(ds: DataSource, check: Check, report: (String) -> Unit) {
+        val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
+        if (found.isEmpty()) return
+        val summary = describe(check, found)
+        report("preflight ${check.id}: $summary")
+        throw PreflightFailed("pre-flight ${check.id} failed in every environment (no automatic repair), nothing was changed: $summary. ${check.advice}")
+    }
+
     private fun describe(check: Check, found: List<Finding>) =
-        "${found.size} group(s): " + found.joinToString("; ") { "zone ${it.where} ids ${it.ids}" }
+        "${found.size} group(s): " + found.joinToString("; ") { "${check.whereLabel} ${it.where} ids ${it.ids}" }
 
     private fun <T> readOnly(ds: DataSource, block: (Connection) -> T): T = ds.connection.use { c ->
         c.autoCommit = false
@@ -165,5 +179,47 @@ object MigrationPreflight {
             return renamed
         }
 
+    }
+
+    /**
+     * V0199: the Astha tier Titanium. V0199 raises when `Titanium` is already a sub-channel of another channel, or the `titanium` sub_channel code-list item
+     * already names another channel (the SQL in `db/preflight` mirrors both guards exactly). Which channel is right is a business decision, so this check has
+     * NO automatic repair and fails the deploy in every environment, dev included. Applies while V0199 is pending: the tables exist and Flyway's history has
+     * no successful V0199 row.
+     */
+    object TitaniumTier : Check {
+        override val id = "V0199-titanium-tier"
+        override val devRepair = false
+        override val whereLabel = "finding"
+        override val advice = "In the admin portal (Master data, Code lists, sub_channel) set the channel of the Titanium item to Astha, or retire it; if the sub-channel row itself " +
+            "holds Titanium under another channel, ask the database owner for a one-off correction (which channel is right is a business decision, so nothing is repaired automatically), then deploy again."
+        private const val RESOURCE = "db/preflight/V0199__astha_tiers_cluster_types.sql"
+
+        private val sql: String by lazy {
+            val text = TitaniumTier::class.java.classLoader.getResourceAsStream(RESOURCE)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: error("$RESOURCE is not on the classpath")
+            text.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+        }
+
+        override fun applies(c: Connection): Boolean = c.createStatement().use { st ->
+            val tables = st.executeQuery("SELECT to_regclass('app.sub_channel') IS NOT NULL AND to_regclass('app.code_list_item') IS NOT NULL").use { it.next() && it.getBoolean(1) }
+            if (!tables) return@use false
+            val hasHistory = st.executeQuery("SELECT to_regclass('flyway_schema_history') IS NOT NULL").use { it.next() && it.getBoolean(1) }
+            if (!hasHistory) return@use true
+            !st.executeQuery("SELECT EXISTS (SELECT 1 FROM flyway_schema_history WHERE success AND version ~ '^0*199$')").use { it.next() && it.getBoolean(1) }
+        }
+
+        override fun findings(c: Connection): List<Finding> = c.createStatement().use { st ->
+            st.executeQuery(sql).use { rs ->
+                buildList {
+                    while (rs.next()) add(Finding(rs.getString("where_code"), (rs.getArray("ids").array as Array<*>).map { (it as Number).toLong() }))
+                }
+            }
+        }
+
+        /** No repair, so nothing to lock first. */
+        override fun lock(c: Connection) {}
+
+        override fun repair(c: Connection, findings: List<Finding>): List<Long> = throw PreflightFailed("pre-flight $id has no automatic repair")
     }
 }
