@@ -172,3 +172,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 117 built: lane/lead-train117 a5f07f32e = 874a71c97 + docs + sr-server 1c8c3cb0; Opus pass on three lenses, 0 blocking; GO given to the integrator. Expect 0200 -> 0203, contract 1.19.0, 585 D-lines. After landing: read the migrate log through ops-diagnose; tell SV6 (follow-up lows), A-INT3 (renumber to the next free numbers, contract 1.20.0), A-GATE7 (closed_by may go on the wire), L-A11 (numbers), UI lanes (merge).
 - Reviews today: android-integrity slice 3 part 2 PASS (lows sent); AMO slices 10-16 PASS (head now 3eb30f2e, small unchecked change); Loyalty sweep fix 8a90f1b4 FAIL (stale waiting marker after return to device; fix round); SR Sale-page batch FAIL (AMO control call restyled through geoPanel; fix round, slice 4 8377f5c9 checked with it).
 - A-GATE7 (session_014mnioM2HobwPFoqAjUSGyu) on the gates closing round.
+
+
+### 2026-11-18 05:48 update: SR programme screens were never built on the phone
+- Found by P-SR1b, confirmed by the lead in code: the SR app's Astha, Loyalty Point, Photo Capture and Match Program tiles open ComingSoonContent. D-OWNER-SR-PROGRAMMES-01 (2026-11-12) put these screens in scope; the server side partly landed (trains 112, 115), but no Android lane was ever assigned (the SR manual brief gave Android lanes S1, S3..S6 other rows). This is the lead's planning miss.
+- New build lane A-PROG1 (session_014mnioPwjnzZjvN6ZbTva5k, branch lane/android-sr-programmes): step 1 scoping file docs/status/android-sr-programmes.md and server needs docs/requests/sr-programmes-server-needs.md; step 2 screens whose data is on the wire. No Room bump until the lead gives a number (after gates 10 and integrity 11).
+- Owed to the owner: say this plainly with the new completion date.
