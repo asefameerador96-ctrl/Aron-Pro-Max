@@ -139,7 +139,8 @@ fun AmoFrame(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    @androidx.annotation.DrawableRes icon: Int? = null,
+    /** Accepted and NOT drawn (D-PAR-AMO-20): the old AMO bars carry no tile art. It stays because 14 hosts name their screen's art here and the art is the reference for a later change of mind; remove the argument from them together when the owner confirms. */
+    @Suppress("UNUSED_PARAMETER") @androidx.annotation.DrawableRes icon: Int? = null,
     bottomButtons: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
