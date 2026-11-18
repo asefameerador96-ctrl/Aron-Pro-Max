@@ -128,4 +128,23 @@ class SrBundleStabilityTest {
         assertEquals(a.version, build().version, "idle passes with the real touchFreshness: same version")
         assertNull(service.delta(principal, a.bundle.meta.cursor, day))
     }
+
+    @Test @Order(4)
+    fun anEditWithIdenticalLinesAndAVoidMoveTheVersionOnceEach() {
+        val outlet = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr, 300)
+        val lines = listOf(SrMemoFixture.L(sku, 40))
+        fx.memo("00000000-0000-4000-8000-0000000a0101", route, outlet, "2027-01-02", lines, "TIMESTAMPTZ '2027-01-03T01:40:00Z'")
+        val a = build(); idleWorkerPass(); assertEquals(a.version, build().version, "stable before the edit")
+        // the edit has the SAME lines: the figure is unchanged, but the new memo is newer, so as_of and with it the version move ONCE
+        fx.memo("00000000-0000-4000-8000-0000000a0102", route, outlet, "2027-01-02", lines, "TIMESTAMPTZ '2027-01-03T01:50:00Z'", supersedes = "00000000-0000-4000-8000-0000000a0101")
+        val b = build()
+        assertNotEquals(a.version, b.version, "an edit with identical lines moves the version once (as_of is the newest received_at)")
+        repeat(2) { idleWorkerPass(); assertEquals(b.version, build().version, "and then it is stable again") }
+        // a void changes the figure: the version moves once
+        fx.void("00000000-0000-4000-8000-0000000a0102", "2027-01-02")
+        val c = build()
+        assertNotEquals(b.version, c.version, "a void changes the figure and the version")
+        repeat(2) { idleWorkerPass(); assertEquals(c.version, build().version, "stable after the void") }
+    }
 }
