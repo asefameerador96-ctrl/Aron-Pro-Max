@@ -237,7 +237,7 @@ class MyCallScreenTest {
         compose.onNodeWithText("কাজ দিতে চান?").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun questionsAreTextFieldsOnlyAndStayBanglaInEnglishMode() {
+    @Test fun seededTextQuestionsAreFieldsNotRadiosAndStayBanglaInEnglishMode() {
         // D-PAR-TSO-05 (screenshot 37): no Yes/No radios for a question, and the Bangla wording shows in English mode too
         val st = VisitQueryState(boolRubric, "p", 1, 1) { true }
         show(AppLanguage.EN) { VisitQueryScreen(st, "Shop One", onDone = {}, onBack = {}) }
@@ -245,6 +245,16 @@ class MyCallScreenTest {
         compose.onNodeWithTag(MyCallTags.text(1)).assertExists()
         compose.onNodeWithTag(MyCallTags.yes(1)).assertDoesNotExist()
         compose.onNodeWithTag(MyCallTags.DELEGATE_YES).performScrollTo().assertExists()
+    }
+
+    @Test fun aBoolCriterionOfAnotherRubricIsStillDrawnAsYesNo() {
+        // D-PAR-TSO-10: a question is never dropped silently; only the seeded rubric (text questions) has no radios
+        val rubric = Rubric(6, 1, listOf(Criterion(1, "বুলিয়ান প্রশ্ন?", "Bool question?"), Criterion(2, "লেখা প্রশ্ন?", "Text question?", text = true)))
+        val st = VisitQueryState(rubric, "p", 1, 1) { true }
+        show(AppLanguage.EN) { VisitQueryScreen(st, "Shop One", onDone = {}, onBack = {}) }
+        compose.onNodeWithText("বুলিয়ান প্রশ্ন?").assertIsDisplayed()
+        compose.onNodeWithTag(MyCallTags.yes(1)).assertExists(); compose.onNodeWithTag(MyCallTags.no(1)).assertExists()
+        compose.onNodeWithTag(MyCallTags.text(2)).assertExists()
     }
 
     @Test fun submitThenDelegateYesCallsOnDone() {

@@ -70,7 +70,6 @@
     <string name="tso_chrome_menu">মেনু খুলুন</string>
     <string name="tso_chrome_logout">লগ আউট!</string>
     <string name="tso_chrome_home">হোম</string>
-    <string name="tso_drawer_role">TSO</string>
     <string name="tso_drawer_dashboard">ড্যাশবোর্ড</string>
     <string name="tso_drawer_dashboard_sub">ড্যাশবোর্ড দেখুন</string>
     <string name="tso_drawer_leave">ছুটি</string>
@@ -84,7 +83,6 @@
     <string name="tso_drawer_feedback">আমার মতামত</string>
     <string name="tso_drawer_feedback_sub">আপনার মতামত পরিচালনা করুন</string>
     <string name="tso_drawer_settings">সেটিংস</string>
-    <string name="tso_drawer_settings_sub">ভাষা, সংস্করণ, আপডেট ও পাসওয়ার্ড</string>
     <string name="tso_mc_set_plan">প্ল্যান করুন</string>
     <string name="tso_mc_set_plan_sub">যে দোকানগুলোতে যাবেন তা বাছাই করুন</string>
     <string name="tso_mc_visit_plan">আমার ভিজিট প্ল্যান</string>

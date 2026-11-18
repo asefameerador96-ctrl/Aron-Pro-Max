@@ -32,7 +32,7 @@ data class FsRoute(
      */
     val notDue: Boolean get() = uploadState?.let { it == FsUploadState.NOT_DUE } ?: (planned == false && !hadData)
 
-    /** A due route that has not uploaded: the amber "Not uploaded" chip and a line of the warning dialog. */
+    /** A due route that has not uploaded: named in the submit warning dialog (no chip on the card since D-PAR-TSO-04). */
     val notUploaded: Boolean get() = uploadState == FsUploadState.NOT_UPLOADED
 
     /** AMO for an AMO route; otherwise the stored visit kind (daily, 3f, 2f); null when the route has none. */

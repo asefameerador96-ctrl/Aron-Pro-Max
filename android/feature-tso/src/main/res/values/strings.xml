@@ -70,7 +70,6 @@
     <string name="tso_chrome_menu">Open the menu</string>
     <string name="tso_chrome_logout">Log Out!</string>
     <string name="tso_chrome_home">Home</string>
-    <string name="tso_drawer_role">TSO</string>
     <string name="tso_drawer_dashboard">Dashboard</string>
     <string name="tso_drawer_dashboard_sub">View Dashboard</string>
     <string name="tso_drawer_leave">Leave</string>
@@ -84,7 +83,6 @@
     <string name="tso_drawer_feedback">My Feedback</string>
     <string name="tso_drawer_feedback_sub">Manage your feedbacks</string>
     <string name="tso_drawer_settings">Settings</string>
-    <string name="tso_drawer_settings_sub">Language, version, update and password</string>
     <string name="tso_mc_set_plan">Set Plan</string>
     <string name="tso_mc_set_plan_sub">Set a new visit plan</string>
     <string name="tso_mc_visit_plan">My Visit Plan</string>

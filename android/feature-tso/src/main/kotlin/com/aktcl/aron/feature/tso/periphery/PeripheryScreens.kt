@@ -113,8 +113,9 @@ fun TeamScreen(
     val live = online() && MapsKey.present(context)
     var full by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = full) { full = false }
-    // the network drops while the map is full screen: leave full screen cleanly, the list and the banners come back (lead check, low 5)
-    LaunchedEffect(live) { if (!live) full = false }
+    // the network drops, or there is no result to show (after process death): leave full screen, never a bare screen (lead check, low 5)
+    val hasMap = ui.phase is TeamUi.Shown
+    LaunchedEffect(live, hasMap) { if (!live || !hasMap) full = false }
     TsoFrame(stringResource(R.string.tso_pe_my_teams), nav, homeButton = true, modifier = modifier, onBack = onBack) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (full) 0.dp else AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             if (ui.zones.isNotEmpty() && !full) TsoDropdownField(
@@ -230,8 +231,8 @@ fun RetailerScreen(
     val live = online() && MapsKey.present(context)
     var full by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = full) { full = false }
-    // the network drops while the map is full screen: leave full screen cleanly, the list and the banners come back (lead check, low 5)
-    LaunchedEffect(live) { if (!live) full = false }
+    val hasMap = phase is RetailerUi.Shown
+    LaunchedEffect(live, hasMap) { if (!live || !hasMap) full = false }
     TsoFrame(stringResource(R.string.tso_pe_outlets_title), nav, homeButton = true, modifier = modifier, onBack = onBack) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (full) 0.dp else AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             if (!full) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -266,9 +267,9 @@ fun RetailerScreen(
             }
             if (ui.mockWarning) TsoBanner(stringResource(R.string.tso_pe_mock), Modifier.testTag(PeripheryTags.MOCK), kind = TsoBannerKind.Warning)
             val shown = phase as? RetailerUi.Shown
-            // D-PAR-TSO-07: on the online map the info card, the count caption and the refresh button are gone (screenshot 29); they stay for the no-network list
-            if (!live && shown?.result?.computedOnPhone == true) TsoBanner(stringResource(R.string.tso_pe_computed), Modifier.testTag(PeripheryTags.COMPUTED), kind = TsoBannerKind.Offline)
-            else if (!live && shown?.result?.fromCache == true) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = TsoBannerKind.Offline)
+            // D-PAR-TSO-07/10: on the online map the count caption and the refresh row are gone (screenshot 29); the "worked out on this phone" and "cached" notes stay visible
+            if (shown?.result?.computedOnPhone == true) TsoBanner(stringResource(R.string.tso_pe_computed), Modifier.testTag(PeripheryTags.COMPUTED), kind = TsoBannerKind.Offline)
+            else if (shown?.result?.fromCache == true) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = TsoBannerKind.Offline)
             if (shown?.result?.value?.truncated == true) TsoBanner(stringResource(R.string.tso_pe_truncated, shown.result.value.items.size), Modifier.testTag(PeripheryTags.TRUNCATED), kind = TsoBannerKind.Info)
             if (!live || shown == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 val line = if (shown == null) stringResource(R.string.tso_pe_pick_hint)

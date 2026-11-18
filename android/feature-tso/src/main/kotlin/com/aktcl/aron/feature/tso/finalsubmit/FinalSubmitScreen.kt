@@ -98,8 +98,8 @@ fun fsRouteTitle(r: FsRoute): String {
 /**
  * Final Submit (screenshots 23 to 26). The pickers: Wing, Division, Territory, House, Zone (each a dropdown; one option is
  * picked for the TSO) and the lime Get Sales Data, enabled once the zone is chosen. The routes: the Sales Date box, the
- * route cards ("<name> <kind>", the FF line, an amber "Not uploaded" chip on a due route that has not uploaded; not-due
- * routes carry a "not due" line and are not dimmed, D-TSO-MAN-51) and Submit. No Home button (s8 rows 23 to 26). Back from the routes returns to the pickers.
+ * route cards ("<name> <kind>", the FF line and, on a card that holds data, the clear icon; no "not due" line and no "Not uploaded"
+ * chip since D-PAR-TSO-04/09, the warning dialog names the routes not uploaded) and Submit. No Home button (s8 rows 23 to 26). Back from the routes returns to the pickers.
  */
 @Composable
 fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Modifier = Modifier, onClearRoute: ((FsRoute) -> Unit)? = null) {
@@ -241,14 +241,21 @@ private fun Routes(ui: FinalSubmitState.Ui, phase: FsPhase, onClear: ((FsRoute) 
  * call this build's contract does not have (docs/requests/android-parity-tso.md, row 1): until the host passes [onClear] the icon is
  * shown and does nothing (no click target, no false promise), so nothing is ever cleared that was not.
  */
+/** The clear glyph's colours: red 7F1D1D on a white disc is 11:1 (non-text icon needs 3:1, WCAG 1.4.11); tested in FinalSubmitTest. */
+internal val CLEAR_ICON_RED = Color(0xFF7F1D1D)
+internal val CLEAR_ICON_DISC = Color.White
+
 @Composable
 private fun ClearIcon(r: FsRoute, onClear: ((FsRoute) -> Unit)?, solid: Boolean) {
     val label = stringResource(R.string.tso_fs_clear_route)
-    val red = LocalAronLook.current.red
     Box(
         // inert (no action yet): nothing for TalkBack to announce, no click, no role (lead check, low 1)
         if (onClear != null) Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = label) { onClear(r) }.semantics { contentDescription = label }.testTag(FsTags.clear(r.routeId))
         else Modifier.size(48.dp).clearAndSetSemantics { testTag = FsTags.clear(r.routeId) },
         contentAlignment = Alignment.Center,
-    ) { Icon(com.aktcl.aron.feature.tso.TsoIcons.Delete, contentDescription = null, tint = red, modifier = Modifier.size(26.dp)) }
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(CLEAR_ICON_DISC), contentAlignment = Alignment.Center) {
+            Icon(com.aktcl.aron.feature.tso.TsoIcons.Delete, contentDescription = null, tint = CLEAR_ICON_RED, modifier = Modifier.size(22.dp))
+        }
+    }
 }

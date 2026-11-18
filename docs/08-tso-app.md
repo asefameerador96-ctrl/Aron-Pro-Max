@@ -122,7 +122,7 @@ button. The system back and the on-screen back always go to the same place (CR-4
 - **Set Plan:** Select Date (today by default, up to `cfg.tso.plan_max_days_ahead` days ahead, 60), Select Zone (chosen
   when there is one), Select Route (dropdowns) → Show Outlet ("Choose a route" without one) → **Select Outlets**: cards
   "name / code | cluster / owner | phone" with a tick, the outlets already planned for that date ticked (a second save is
-  a union), Select all (kept as an improvement) → Set Plan: queued on the phone (`visit_plan` with `route_id`,
+  a union), no count and no Select all link (D-PAR-TSO-08, screenshot 33) → Set Plan: queued on the phone (`visit_plan` with `route_id`,
   `visit_plan_outlet`; deterministic uuids), a toast, back to the form. Back: Select Outlets → form → out.
 - **My Visit Plan:** Select Date (today), Select Zone, Select Route → Show Outlet → **Visit Plan Outlets**: Pending and
   Completed tabs without counts; "No Outlets Found" for an empty tab or no plan; the 5-line card "Code, Owner, Contact,

@@ -29,5 +29,8 @@ Also in slice 1 (medium, same screens): Final Submit routes lose the "not due" l
 | Target details "Show all categories" link, mixed Bangla view | NOT STARTED | next slice |
 | My Feedback list screen | KEEP | the drawer's "My feedback" row is an owner-approved addition (D-TSO-MAN); old app goes straight to the form from the menu entry, the form stays first |
 
+## Slice 2 follow-ups (lead check lows, D-PAR-TSO-09/10)
+Clear icon silent while inert and 11:1 on a white disc; bool criteria drawn; map Refresh and data age kept, computed/cached notes visible, fullscreen reset offline and with no result; visit query golden back; unused strings and stale KDoc removed; docs/08 updated.
+
 ## Next slices
 Medium findings (login, drawer icons, Leave, quick ticket, Final Submit details and Success dialog, My Call, targets, feedback, logout dialog), then the small lows. Rows are added here as they are done.

@@ -78,6 +78,17 @@ class FinalSubmitLogicTest {
         assertEquals(ids.size, ids.toSet().size)
     }
 
+    private fun lum(c: androidx.compose.ui.graphics.Color): Double {
+        fun f(v: Float): Double = if (v <= 0.03928f) v / 12.92 else Math.pow(((v + 0.055f) / 1.055f).toDouble(), 2.4)
+        return 0.2126 * f(c.red) + 0.7152 * f(c.green) + 0.0722 * f(c.blue)
+    }
+
+    @Test fun theClearIconIsAtLeastThreeToOneOnItsDisc() {
+        val a = lum(CLEAR_ICON_DISC); val b = lum(CLEAR_ICON_RED)
+        val ratio = (maxOf(a, b) + 0.05) / (minOf(a, b) + 0.05)
+        assertTrue("clear icon contrast $ratio", ratio >= 3.0)
+    }
+
     @Test fun validation() {
         assertTrue(validateFs(10, D, D).isEmpty())
         assertEquals(listOf(FsError.NO_ZONE), validateFs(null, D, D))
