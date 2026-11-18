@@ -47,9 +47,9 @@ test("bulk upload: a bad file is shown by line, a clean file is previewed (nothi
   await hydrated(page.getByTestId("adjust-tab-bulk"));
   await page.getByTestId("adjust-tab-bulk").click();
   await hydrated(page.getByTestId("adj-file"));
-  await page.getByTestId("adj-file").setInputFiles(csv("outlet_id,points\n401,10\n402,0\nabc,5\n"));
+  await page.getByTestId("adj-file").setInputFiles(csv("outlet_id,points\n101,10\n102,0\nabc,5\n"));
   await expect(page.getByTestId("adj-file-errors")).toContainText("Zero adjusts nothing");
-  await page.getByTestId("adj-file").setInputFiles(csv("outlet_id,points,expires_on\n401,100,2099-12-31\n402,40\n"));
+  await page.getByTestId("adj-file").setInputFiles(csv("outlet_id,points,expires_on\n101,100,2099-12-31\n102,40\n"));
   await expect(page.getByTestId("adj-file-name")).toBeVisible();
   await expect(page.getByTestId("adj-file-errors")).toHaveCount(0);
   await page.locator("#adj-bulk-reason").fill("Bulk load of the October credit");
