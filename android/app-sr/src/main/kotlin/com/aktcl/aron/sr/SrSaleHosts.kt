@@ -199,12 +199,29 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
 fun NoSaleHost(day: SrDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var refused by remember { mutableStateOf<DayRefusal?>(null) }
+    // D-AGATE-19 (step-5 low 2): a close that cannot be written (a persistent write error) keeps the call and shows the existing error state, never a crash; a refusal that lands during the write says the call ended
+    var failed by remember { mutableStateOf(false) }
+    var ended by remember { mutableStateOf<DayRefusal?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         outcomeRows.forEach { (code, label) ->
-            AronListRow(stringResource(label), onClick = { scope.launch { day.sale.openCallRefusal()?.let { refused = it } ?: run { day.sale.closeVisit(code); onDone() } } })
+            AronListRow(stringResource(label), onClick = {
+                scope.launch {
+                    try {
+                        val early = day.sale.openCallRefusal()
+                        if (early != null) refused = early else day.sale.closeVisit(code)?.let { ended = it } ?: onDone()
+                    } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { failed = true }
+                }
+            })
         }
     }
     refused?.let { SrRefusalDialog(it, onOk = { scope.launch { day.sale.endRefusedCall(); onDone() } }) }
+    ended?.let { SrCallEndedDialog(it, onOk = { ended = null; onDone() }) }
+    if (failed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { failed = false }, onDismiss = { failed = false },
+        )
+    }
 }
 
 /** The reason for skipping [outlet] from the list (`visit_skip`, F-SR-057): the same outcome list, no fix, not a visit. */

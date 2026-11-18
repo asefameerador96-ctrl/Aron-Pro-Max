@@ -143,9 +143,21 @@ class RefusedRecordsTest {
 
     /** The parent was refused by the SERVER and a child exhausted: sending the child again could only answer parent_missing for ever. */
     @Test fun aFamilyWhoseParentTheServerRefusedIsNotOfferedSendAgain() = runTest {
-        val family = ClientIds.newUuid()
-        val memo = row(today, "rejected", "price_invalid", "memo", family = family, rank = 1)
-        val child = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2, parent = memo) // D-AGATE-18: the real parent link (a memo line names its memo), never a rank guess
+        // D-AGATE-19: built the way production builds it: the memo and its line are captured through the repository (a memo_line outbox row has NO parent_uuid; its parent is its memo through the memo_line table)
+        val meta = CaptureMeta(today, "${today}T04:31:07.120Z", 1, 1, 0, true, 10231, null, "b", false, 1)
+        val visit = ClientIds.newUuid(); val memoUuid = ClientIds.newUuid(); val lineUuid = ClientIds.newUuid()
+        val repo = CaptureRepository(db) { "${today}T04:36:00.000Z" }
+        val fix = com.aktcl.aron.core.database.entity.GeoFixEntity(ClientIds.newUuid(), visit, "visit_open", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordVisitOpen(com.aktcl.aron.core.database.entity.VisitEntity(visit, meta, "sr_call", 1, "${today}T04:31:07.120Z", 1, true, null, fix.clientUuid, "in_range", 18.4, 100, 50, "master", 23.7, 90.4, "sale_allowed"), fix)
+        repo.recordSale(com.aktcl.aron.core.database.repo.SaleCapture(
+            com.aktcl.aron.core.database.entity.MemoEntity(memoUuid, meta, visit, 1, "sr334001-261113-001", "sale", "${today}T04:35:00.000Z", today, "outlet", 84_000, 0, 0, 0, 0, 84_000, 84_000, 0, false, null, 1, 0, 0),
+            listOf(com.aktcl.aron.core.database.entity.MemoLineEntity(lineUuid, meta, memoUuid, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)),
+        ))
+        val rows = db.outboxDao().nextPending(100)
+        val memo = rows.first { it.recordType == "memo" }.clientUuid; val child = rows.first { it.recordType == "memo_line" }.clientUuid
+        assertNull("production never sets parent_uuid on a memo line", db.outboxDao().byClientUuid(child)!!.parentUuid)
+        db.outboxDao().applyAck(memo, "rejected", "price_invalid", null, "${today}T05:00:00.000Z")
+        db.outboxDao().applyAck(child, "rejected", "retry_exhausted", null, "${today}T05:00:00.000Z")
         val e = source.rejectedRows(today).single()
         assertEquals(RejectedOutcome.DROPPED, e.outcome)
         assertFalse(e.canSendAgain); assertTrue(e.canMarkSeen)

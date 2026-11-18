@@ -226,15 +226,33 @@ class SrMidnightRestoreTest {
         // the rep's own way out of each call: the sale screen's close (sold / zero sale) or the back press (abandoned)
         rep.forEach { (k, v) ->
             f.day.visitSession.restore(v)
-            f.day.sale.closeCall() // D-AGATE-18: the ONE classification, whatever the way out (the explicit kinds are asserted in SrCallCloseClassificationTest)
+            f.day.sale.closeCall() // D-AGATE-18: the ONE classification, whatever the way out (the real buttons are driven in SrCallCloseExitsTest; here both ends are asserted against the literal table below)
         }
         f.trustAt(at(next(), 8, 0))
         repeat(kinds.size) { f.day.restoreOpenVisit(); f.day.abandonStaleCall() }
+        val literal = mapOf("sold" to ("sold" to false), "zero" to ("zero_sale_stock_ok" to true), "survey" to ("abandoned" to true), "empty" to ("abandoned" to true))
         val closes = f.db.captureDao().visitClosesOn(d0).associateBy { it.visitClientUuid }
         kinds.indices.forEach { i ->
             val a = closes.getValue(auto[i].second.visitUuid); val r = closes.getValue(rep[i].second.visitUuid)
+            // D-AGATE-19: not "auto == rep" alone (both go through closeCall): each is asserted against what the call HOLDS, written out
+            val (outcome, zero) = literal.getValue(kinds[i])
+            assertEquals(kinds[i] + " automatic outcome", outcome, a.outcomeCode); assertEquals(kinds[i] + " automatic is_zero_sale", zero, a.isZeroSale)
+            assertEquals(kinds[i] + " own outcome", outcome, r.outcomeCode); assertEquals(kinds[i] + " own is_zero_sale", zero, r.isZeroSale)
             assertEquals(kinds[i] + " outcome", r.outcomeCode, a.outcomeCode); assertEquals(kinds[i] + " is_zero_sale", r.isZeroSale, a.isZeroSale)
         }
+    }
+
+    /** D-AGATE-19 (step-5 low 3): the phone's 04:00 end of a call whose route-day refuses a close (Sales Submit stands) writes no close, but the rep is still told his call was ended. */
+    @Test fun aPhoneEndTheRouteDayRefusedStillStoresTheNotice() = runBlocking {
+        val v = f.openCall()
+        f.day.visitSession.restore(v) // the call is in the session (a lock that lands while it is held: a start never restores a call the route-day refuses)
+        f.salesSubmitted()
+        f.trustAt(at(next(), 8, 0))
+        f.day.resumeDay()
+        assertNull("the call ended on the phone", f.day.visitSession.current.value)
+        assertTrue("no close was written", f.db.captureDao().visitClosesOn(d0).none { it.visitClientUuid == v.visitUuid })
+        assertTrue("but the marker is stored", f.day.capture.phoneMarks().any { it.kind == "call_ended" && it.outletId == v.outletId })
+        assertEquals(d0, f.day.rolloverNotice.value.abandonedDate)
     }
 
     /** D-AGATE-18: the rep's own close after midnight is never told as "the phone ended it": the notice comes from the local marker only, and the rep's close writes none. */

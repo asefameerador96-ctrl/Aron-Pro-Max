@@ -29,6 +29,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -144,5 +145,81 @@ class SrCallCloseExitsTest {
             }
         }
         assertEquals(1, close(v).size)
+    }
+
+    // ---- D-AGATE-19 (step-5 closing round)
+
+    /** Low 1: the phone ended the call (04:00) while the sale screen was open; the rep's Save then finds a closed call: refused inside the lock, NO memo stored, the close stays `abandoned`. */
+    @Test fun aSaveAfterThePhoneClosedTheCallIsRefusedAndStoresNoMemo() {
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        val vm = f.refusedSale(v) { runBlocking { f.day.sale.closeCall(phoneEnd = true) } } // the close lands between the draft and the Save
+        assertEquals("the save stopped before the print step", com.aktcl.aron.core.printing.flow.SaveAndPrint.Step.SaveFailed, vm.saveAndPrint.step.value)
+        assertTrue("no memo stored on a call the phone closed as abandoned", runBlocking { f.db.captureDao().memosOn(f.date) }.none { it.visitClientUuid == v.visitUuid })
+        val c = close(v).single(); assertEquals("abandoned", c.outcomeCode); assertEquals(true, c.isZeroSale)
+    }
+
+    /** Low 1, the other order: the Save commits first, then the phone's end finds the memo and writes `sold`. */
+    @Test fun aSaveThatWonTheLockIsClosedAsSold() {
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        f.savedSale(v) { }
+        runBlocking { f.day.sale.closeCall(phoneEnd = true) }
+        val c = close(v).single(); assertEquals("sold", c.outcomeCode); assertEquals(false, c.isZeroSale)
+    }
+
+    /** Low 2: a persistent write error on a NoSale reason row is caught: the call is kept and the existing error text shows (no crash). */
+    @Test fun aFailingNoSaleReasonKeepsTheCallAndShowsTheErrorNotACrash() {
+        val v = callWith("empty")
+        runBlocking { f.db.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = OFF"); f.db.openHelper.writableDatabase.execSQL("DELETE FROM visit WHERE client_uuid = '${v.visitUuid}'") }
+        var done = 0
+        show { NoSaleHost(f.day, onDone = { done++ }) }
+        compose.onNodeWithText("Shop closed").performClick()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("The call could not be closed").assertExists() }.isSuccess }
+        assertEquals(0, done); assertNotNull("the call is kept", f.day.visitSession.current.value)
+        compose.onNodeWithText("OK").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("The call could not be closed").assertDoesNotExist()
+    }
+
+    /** Low 3: the route-day refuses the gate's Close (the rep's own Sales Submit stands): nothing is written, the call ends on the phone, and the rep is TOLD before Home. */
+    @Test fun theGateCloseTellsTheRepWhenTheRouteDayRefusedTheClose() {
+        val v = callWith("empty")
+        f.salesSubmitted()
+        var closed = 0
+        show { SrCheckInGate(f.day, AttendanceRefusal.EARLIER_CALL_OPEN, canCloseCall = true, earlierOutlet = null, onCheckIn = {}, onCallClosed = { closed++ }) }
+        compose.onNodeWithTag(CheckInFirstTags.CLOSE_CALL).performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("The call was ended on the phone").assertExists() }.isSuccess }
+        compose.onNodeWithText("Today's sales are already submitted", substring = true).assertExists()
+        assertEquals("not sent Home in silence", 0, closed)
+        assertTrue("nothing was written", close(v).isEmpty())
+        compose.onNodeWithText("OK").performClick()
+        compose.waitUntil(5_000) { closed == 1 }
+        assertNull("the call ended on the phone", f.day.visitSession.current.value)
+    }
+
+    /** Item 6a: the sale screen's own FINISH exit (Save, print answered No, the saved message's OK) closes the call through the one classification: a saved sale is `sold`. */
+    @Test fun theSaleScreensFinishExitWritesSoldThroughTheRealButtons() {
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        f.stockedCatalog()
+        runBlocking {
+            f.day.sale.prepare()
+            f.day.sale.flow.start(f.day.sale.saleVisit(v))
+            f.day.sale.flow.setQuantity(105, 2, com.aktcl.aron.rules.QtyUnit.DOZEN)
+        }
+        var done = 0
+        show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = { done++ }) }
+        compose.onNodeWithText("Yes").performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Proceed").assertExists() }.isSuccess }
+        compose.onNodeWithText("Proceed").performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Print").assertExists() }.isSuccess }
+        compose.onNodeWithText("Print").performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("The sale will be saved").assertExists() }.isSuccess }
+        compose.onNodeWithText("Yes").performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Do you want to print this sale?").assertExists() }.isSuccess }
+        compose.onNodeWithText("No").performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("The sale was saved").assertExists() }.isSuccess }
+        compose.onNodeWithText("OK").performClick()
+        compose.waitUntil(20_000) { close(v).isNotEmpty() }
+        val c = close(v).single(); assertEquals("sold", c.outcomeCode); assertEquals(false, c.isZeroSale)
+        compose.waitUntil(10_000) { done == 1 }
     }
 }

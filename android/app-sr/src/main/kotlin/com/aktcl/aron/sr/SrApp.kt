@@ -927,18 +927,22 @@ internal fun SrCheckInGate(
 ) {
     val scope = rememberCoroutineScope()
     var failed by remember { mutableStateOf(false) }
+    // D-AGATE-19: the route-day refused the close (Final Submit or Sales Submit): the call is ended on the phone with nothing written, and the rep is told so before Home
+    var ended by remember { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
     com.aktcl.aron.feature.attendance.CheckInFirst(
         why, onCheckIn = onCheckIn,
         onCloseCall = if (canCloseCall) {
             {
                 scope.launch {
-                    val ok = try { day.sale.closeCall(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
-                    if (ok) onCallClosed() else failed = true
+                    var refusal: com.aktcl.aron.core.database.repo.DayRefusal? = null
+                    val ok = try { refusal = day.sale.closeCall(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
+                    if (!ok) failed = true else if (refusal != null) ended = refusal else onCallClosed()
                 }
             }
         } else null,
         earlierCallOutlet = earlierOutlet,
     )
+    ended?.let { SrCallEndedDialog(it, onOk = { ended = null; onCallClosed() }) }
     if (failed) {
         com.aktcl.aron.core.ui.aron.AronDialog(
             stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),

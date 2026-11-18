@@ -333,10 +333,16 @@ class MainActivity : ComponentActivity() {
                                     if (why == null || (earlierCall && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) content(back) else {
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         com.aktcl.aron.feature.amo.AmoFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
+                                            // D-AGATE-19: a close that cannot be written keeps the call and shows the existing error text (no crash), as the SR's gate does
+                                            var closeFailed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                                             com.aktcl.aron.feature.attendance.CheckInFirst(
                                                 why, onCheckIn = { navigate(AmoScreen.ATTENDANCE) },
-                                                onCloseCall = if (openCallNow != null && (earlierCall || k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) { { dayScope.launch { day?.closeVisit(); back() } } } else null,
+                                                onCloseCall = if (openCallNow != null && (earlierCall || k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.SALE))) { { dayScope.launch { val ok = try { day?.closeVisit(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }; if (ok) back() else closeFailed = true } } } else null,
                                                 earlierCallOutlet = earlierOutlet,
+                                            )
+                                            if (closeFailed) com.aktcl.aron.core.ui.aron.AronDialog(
+                                                stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+                                                stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { closeFailed = false }, onDismiss = { closeFailed = false },
                                             )
                                         }
                                     }

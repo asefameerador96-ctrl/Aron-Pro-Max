@@ -178,10 +178,18 @@ class SaleFlow(
      * D-LEAD-PREREQ-04 ruling 3: the phone ends an abandoned call of an earlier day, so that call's UNSAVED draft is dropped. A memo already saved is never touched (it
      * is in Room; this only clears the draft file and the screen state). Returns true when a draft with something entered was dropped.
      */
-    suspend fun dropUnsavedDraft(visitUuid: String): Boolean = lock.withLock {
+    suspend fun dropUnsavedDraft(visitUuid: String): Boolean = dropUnsavedDraft(visitUuid) { }
+
+    /**
+     * [dropUnsavedDraft] with [tell] run BEFORE the draft is cleared and only when there is something to drop (D-AGATE-19): the rep's notice is stored first, so a kill between the two can
+     * only show a notice for a draft that is dropped by the next start (never drop it without a word). A [tell] that fails is not allowed to keep the draft (the failure is swallowed, a
+     * cancellation is not).
+     */
+    suspend fun dropUnsavedDraft(visitUuid: String, tell: suspend () -> Unit): Boolean = lock.withLock {
         val d = store.load(visitUuid)
         val saved = d != null && committer.existing(d.memoUuid) != null
         val had = d != null && !saved && (d.lines.isNotEmpty() || d.slide.isNotEmpty() || d.qc.isNotEmpty() || d.paidMtk != null || d.zeroSale)
+        if (had) try { tell() } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { }
         if (d != null) store.clear(visitUuid)
         val s = ui.value
         if (s.visit?.visitUuid == visitUuid && s.committed == null) ui.value = SaleUiState()

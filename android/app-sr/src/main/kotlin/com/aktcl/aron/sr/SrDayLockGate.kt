@@ -116,3 +116,16 @@ fun SrRefusalDialog(why: DayRefusal, onOk: () -> Unit) {
         DayRefusal.SALES_SUBMIT -> SrDaySubmittedDialog(onOk)
     }
 }
+
+/**
+ * D-AGATE-19 (step-5 low 3): the words for a call the phone ended without writing its close because the route-day refused it (the Final Submit lock, or the SR's own Sales Submit): the rep
+ * is told the call is over and why nothing was recorded, never sent Home in silence. Bangla and English in the localisation layer.
+ */
+@Composable
+fun SrCallEndedDialog(why: DayRefusal, onOk: () -> Unit) {
+    com.aktcl.aron.core.ui.aron.AronDialog(
+        stringResource(R.string.sr_call_ended_title),
+        stringResource(if (why == DayRefusal.FINAL_SUBMIT) R.string.sr_call_ended_final else R.string.sr_call_ended_submit),
+        stringResource(R.string.sr_ok), onConfirm = onOk, onDismiss = onOk,
+    )
+}

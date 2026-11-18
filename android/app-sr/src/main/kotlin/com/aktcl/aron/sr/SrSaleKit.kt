@@ -171,7 +171,21 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     /** The host has shown the text of a refused save. */
     fun clearLockRefusal() { _lockRefused.value = null; _submitRefused.value = null }
 
-    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(commitStep::invoke, day.printing) { why ->
+    /** D-AGATE-19: a new sale's Save finds the call it belongs to already closed (the phone ended it, or the rep did, while the sale screen was open): nothing is stored. */
+    class CallAlreadyClosedException : IllegalStateException("the call this sale belongs to is already closed")
+
+    /**
+     * D-AGATE-19 (step-5 low 1): the sale's commit runs under the SAME [SrDay.closeLock] as every close of a call, so a Save and the phone's 04:00 end cannot interleave: either the memo is
+     * committed first (the close then reads it: `sold`) or the close came first and the Save is refused here, inside the lock, before anything is written (a memo is never stored on a call the
+     * phone just closed as abandoned). A memo EDIT is a new memo on an old call and is not refused for a closed call. The print step that follows runs outside the lock.
+     */
+    private suspend fun commitUnderCloseLock(): com.aktcl.aron.core.printing.flow.CommittedMemo = day.closeLock.withLock {
+        val d = flow.state.value.draft
+        if (d != null && d.edit == null && dao.visitClosesOn(d.businessDate).any { it.visitClientUuid == d.visitUuid }) throw CallAlreadyClosedException()
+        commitStep()
+    }
+
+    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(::commitUnderCloseLock, day.printing) { why ->
         val key = flow.state.value.draft?.let(::refusalKey)
         when (why) {
             DayRefusal.FINAL_SUBMIT -> _lockRefused.value = key
@@ -232,7 +246,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * D-AGATE-18 (B1): THE ONE classification of how a call ends on the SR, used by every way it ends that does not carry a reason the rep chose: the sale screen's finish, the gate's
      * "Close the open call", the back press of a restored call and the phone's own end at 04:00. It reads what the call really HOLDS: a saved memo with lines = `sold`; a saved
      * zero-sale or QC-only memo = `zero_sale_stock_ok`; nothing saved (a survey answer alone included, as the back press always did) = `abandoned`. The memo read and the close are under
-     * ONE lock, so a sale committed between them cannot be missed; [phoneEnd] also stores the local "ended by the phone" marker with the close, in the same transaction.
+     * ONE lock, and the sale's own commit takes the same lock ([commitUnderCloseLock]), so a sale committed between them cannot be missed and a Save after the close is refused; [phoneEnd] also stores the local "ended by the phone" marker with the close, in the same transaction.
      */
     suspend fun closeCall(phoneEnd: Boolean = false): DayRefusal? = day.closeLock.withLock {
         val open = day.visitSession.current.value ?: return@withLock null

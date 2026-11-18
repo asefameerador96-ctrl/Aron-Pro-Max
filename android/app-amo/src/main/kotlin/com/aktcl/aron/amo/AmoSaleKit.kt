@@ -1,5 +1,7 @@
 package com.aktcl.aron.amo
 
+import kotlinx.coroutines.sync.withLock
+
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
@@ -145,7 +147,17 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     /** The host has shown the text of a refused save. */
     fun clearLockRefusal() { _lockRefused.value = null; _submitRefused.value = null }
 
-    fun newSaleViewModel() = SaleViewModel(flow, AmoLockGate.saveAndPrint(commitStep::invoke, day.printing) { why ->
+    /** D-AGATE-19: a new sale's Save finds its call already closed: nothing is stored (see SrSaleKit.CallAlreadyClosedException). */
+    class CallAlreadyClosedException : IllegalStateException("the call this sale belongs to is already closed")
+
+    /** D-AGATE-19 (step-5 low 1, as the SR): the commit runs under the SAME close lock as every close of a call, and a NEW sale on a call that is already closed is refused inside it. An edit is not. */
+    private suspend fun commitUnderCloseLock(): com.aktcl.aron.core.printing.flow.CommittedMemo = day.closeLock.withLock {
+        val d = flow.state.value.draft
+        if (d != null && d.edit == null && dao.visitClosesOn(d.businessDate).any { it.visitClientUuid == d.visitUuid }) throw CallAlreadyClosedException()
+        commitStep()
+    }
+
+    fun newSaleViewModel() = SaleViewModel(flow, AmoLockGate.saveAndPrint(::commitUnderCloseLock, day.printing) { why ->
         val key = flow.state.value.draft?.let(::refusalKey)
         when (why) {
             com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT -> _lockRefused.value = key

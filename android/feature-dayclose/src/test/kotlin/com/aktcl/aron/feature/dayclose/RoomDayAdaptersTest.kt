@@ -183,6 +183,36 @@ class RoomDayAdaptersTest {
         assertFalse(RoomDaySource(db).rejectedRows("2026-10-05").any { it.canSendAgain })
     }
 
+    /**
+     * D-AGATE-19 (step-5 low 8): a parent in ANOTHER family still withholds Send again. A memo REPRINTED after its route-day was submitted is a rank-0 print_event in its OWN family
+     * (RoomPrintLedger), and a due collection is its own family too: when the memo they name was refused for good they could only answer parent_missing, in the reader and in the SQL guard.
+     */
+    @Test fun aParentInAnotherFamilyWithholdsSendAgainOfAReprintAndOfADueCollection() = runTest {
+        sell(due = 84_000)
+        val memoRow = db.captureDao().memosOn("2026-10-05").single()
+        val memoUuid = memoRow.clientUuid
+        val reprint = com.aktcl.aron.core.database.entity.PrintEventEntity(ClientIds.newUuid(), meta(), "memo", memoUuid, null, 2, "printed", true, 1, "RPP02N", 1L)
+        db.printDao().insertEvent(reprint)
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.record.RecordMapping.printEvent(reprint, reprint.clientUuid, 0, kotlinx.serialization.json.buildJsonObject {}, "2026-10-05T04:50:00.000Z")))
+        val due = com.aktcl.aron.core.database.entity.DueCollectionEntity(ClientIds.newUuid(), meta(), memoRow.outletId, memoUuid, memoRow.memoNo, "2026-10-05", 10_000, false, 84_000)
+        repo.recordDueCollection(due)
+        val rows = db.outboxDao().nextPending(100)
+        val memo = rows.first { it.recordType == "memo" }
+        db.outboxDao().applyAck(memo.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(reprint.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(due.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        assertTrue("memo stored: both can be sent again", RoomDaySource(db).rejectedRows("2026-10-05").all { it.canSendAgain })
+        assertEquals(1, db.outboxDao().requeueRetryExhausted(reprint.clientUuid)); assertEquals(1, db.outboxDao().requeueRetryExhausted(due.clientUuid))
+        db.outboxDao().applyAck(reprint.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        db.outboxDao().applyAck(due.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        // the memo they depend on is refused for good (a different family from both)
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'price_invalid' WHERE client_uuid = '${memo.clientUuid}'")
+        assertEquals("the reprint is withheld", 0, db.outboxDao().requeueRetryExhausted(reprint.clientUuid))
+        assertEquals("the due collection is withheld", 0, db.outboxDao().requeueRetryExhausted(due.clientUuid))
+        val entries = RoomDaySource(db).rejectedRows("2026-10-05")
+        assertTrue("and the screen offers no Send again for them", entries.filter { it.code == "retry_exhausted" }.none { it.canSendAgain })
+    }
+
     /** Contract 1.9 row 4: the digest adds this phone's received counts and the server's rows this install does not hold. */
     @Test fun theDigestFeedsThePerDeviceCountsAndTheServerList() = runTest {
         db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",

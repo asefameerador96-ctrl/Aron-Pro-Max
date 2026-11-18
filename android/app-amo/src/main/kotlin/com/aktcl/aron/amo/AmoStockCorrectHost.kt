@@ -2,6 +2,7 @@ package com.aktcl.aron.amo
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,14 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
+    // D-AGATE-19: the screen guards ITSELF from the day's gate when the app gave it no guard (an open fallback would let a Save through before check-in); the app's own guard still wins
+    if (com.aktcl.aron.feature.attendance.LocalWriteGuard.current != null) { AmoStockCorrectBody(day, onDone); return }
+    val gate by day.dayGate.collectAsState()
+    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gate, null, onCheckIn = {}) { AmoStockCorrectBody(day, onDone) }
+}
+
+@Composable
+private fun AmoStockCorrectBody(day: AmoDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     val bn = LocalAppLanguage.current == AppLanguage.BN

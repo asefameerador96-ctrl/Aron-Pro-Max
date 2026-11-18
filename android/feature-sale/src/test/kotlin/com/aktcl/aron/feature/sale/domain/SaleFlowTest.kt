@@ -54,6 +54,21 @@ class SaleFlowTest {
         assertEquals(20, relaunched.state.value.review!!.lines.single().qtyBase)
     }
 
+    /** D-AGATE-19: the rep's notice is stored BEFORE the draft goes, only when something is really there, and a failing notice never keeps the draft (a kill between the two can only tell, never drop in silence). */
+    @Test fun theNoticeIsStoredBeforeTheDraftIsDroppedAndOnlyWhenSomethingIsThere() = runTest {
+        val store = MemStore(); val v = visit(); val f = flow(store); f.start(v)
+        var told = 0; var draftWasThereWhenTold = false
+        assertEquals("an empty draft: nothing to drop, nothing told", false, f.dropUnsavedDraft(v.visitUuid) { told++ })
+        assertEquals(0, told)
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(true, f.dropUnsavedDraft(v.visitUuid) { told++; draftWasThereWhenTold = store.load(v.visitUuid) != null })
+        assertEquals(1, told); assertEquals("the draft was still stored when the notice was written", true, draftWasThereWhenTold)
+        assertNull("and it is gone afterwards", store.load(v.visitUuid))
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals("a notice that cannot be stored does not keep the draft", true, f.dropUnsavedDraft(v.visitUuid) { error("disk full") })
+        assertNull(store.load(v.visitUuid))
+    }
+
     @Test fun commitIsRememberedSoADoubleTapWritesOneMemo() = runTest {
         val store = MemStore(); val v = visit(); val f = flow(store); f.start(v)
         f.setQuantity(100, 5, QtyUnit.STICK)

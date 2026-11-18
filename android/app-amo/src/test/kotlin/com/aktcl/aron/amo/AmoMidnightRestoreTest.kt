@@ -165,4 +165,87 @@ class AmoMidnightRestoreTest {
         assertFalse("told once: after the rep has seen it, a later start does not show it again", f.day.rolloverNotice.value.any)
     }
 
+
+    // ---- D-AGATE-19: the AMO marker paths (the SR ones exist in SrMidnightRestoreTest; the AMO code is the same shape and is asserted here against Room)
+
+    /** The rep's own close after midnight writes no marker and is never told as the phone's. */
+    @Test fun theRepsOwnCloseAfterMidnightIsNeverToldAsThePhones() = runBlocking {
+        val v = f.controlCall(); f.creditMemo(v)
+        f.day.visitSession.restore(v)
+        f.trustAt(at(next(), 0, 6))
+        f.day.resumeDay()
+        assertNotNull("held open before 04:00", f.day.visitSession.current.value)
+        f.day.closeVisit() // the rep's own close
+        f.day.resumeDay()
+        assertNull(f.day.rolloverNotice.value.abandonedDate)
+        assertTrue(f.day.capture.phoneMarks().none { it.kind == "call_ended" })
+    }
+
+    /** The marker shares the close's transaction: a close that fails stores no marker and tells nothing. */
+    @Test fun aPhoneCloseThatFailsLeavesNoMarkerAndNoNotice() = runBlocking {
+        val v = f.controlCall()
+        f.day.visitSession.restore(v)
+        f.db.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = OFF"); f.db.openHelper.writableDatabase.execSQL("DELETE FROM visit WHERE client_uuid = '${v.visitUuid}'")
+        f.trustAt(at(next(), 8, 0))
+        assertFalse(f.day.abandonStaleCall())
+        assertNotNull("the call stays until a close is stored", f.day.visitSession.current.value)
+        assertTrue(f.day.capture.phoneMarks().isEmpty()); assertNull(f.day.rolloverNotice.value.abandonedDate)
+    }
+
+    /** The route-day refuses the phone's close: no close is written, the notice is still stored (the rep is told the call was ended). */
+    @Test fun aPhoneEndTheRouteDayRefusedStillStoresTheNotice() = runBlocking {
+        val v = f.controlCall()
+        f.day.visitSession.restore(v) // in the session when the lock lands (a start never restores a call the route-day refuses)
+        f.supervisorDaySubmitted() // the AMO's own supervisor-day Sales Submit stands
+        f.trustAt(at(next(), 8, 0))
+        f.day.resumeDay()
+        assertNull(f.day.visitSession.current.value)
+        assertTrue(f.db.captureDao().visitClosesOn(d0).none { it.visitClientUuid == v.visitUuid })
+        assertTrue(f.day.capture.phoneMarks().any { it.kind == "call_ended" && it.outletId == v.outletId })
+        assertEquals(d0, f.day.rolloverNotice.value.abandonedDate)
+    }
+
+    /** DAY_CLOSED and EDIT_DROPPED markers: stored with what they describe, rebuilt after a kill, told once. */
+    @Test fun theDayClosedAndEditDroppedMarkersAreStoredAndSurviveAKill() = runBlocking {
+        val v = f.controlCall(); val memo = f.creditMemo(v); f.stockedCatalog()
+        f.day.visitSession.restore(v); f.day.closeVisit()
+        f.day.sale.prepare(); f.day.sale.beginEdit(memo, com.aktcl.aron.feature.sale.domain.EditReason.WRONG_SKU)
+        AmoLockFixture.await("edit open") { f.day.sale.flow.state.value.draft?.edit != null }
+        f.trustAt(at(next(), 0, 30)); f.day.resumeDay()
+        val kinds = f.day.capture.phoneMarks().map { it.kind }
+        assertTrue("edit_dropped stored: $kinds", "edit_dropped" in kinds); assertTrue("day_closed stored: $kinds", "day_closed" in kinds)
+        f.day.rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice() // the process dies before the screen
+        f.day.resumeDay()
+        assertTrue("told again from the stored markers", f.day.rolloverNotice.value.editDropped); assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
+        f.day.dismissRolloverNotice(); f.day.resumeDay()
+        assertFalse("told once", f.day.rolloverNotice.value.any)
+    }
+
+    /** An unsaved sale draft dropped at the limit: the notice is stored (before the drop), survives a kill, and nothing is told when nothing was dropped. */
+    @Test fun theDroppedDraftNoticeSurvivesAKillAndNothingIsToldWhenNothingWasDropped() = runBlocking {
+        val v = f.controlCall(); f.stockedCatalog()
+        f.day.visitSession.restore(v)
+        val vm = f.saleViewModel(); f.day.sale.prepare(); vm.start(f.day.sale.saleVisit(v))
+        AmoLockFixture.await("drafted") { f.day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }
+        vm.setQuantity(105, 2, com.aktcl.aron.rules.QtyUnit.DOZEN)
+        AmoLockFixture.await("two dozen") { f.day.sale.flow.state.value.draft?.lines?.isNotEmpty() == true }
+        f.trustAt(at(next(), 4, 0))
+        f.day.resumeDay()
+        assertTrue(f.day.rolloverNotice.value.draftDropped)
+        f.day.rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice()
+        f.day.resumeDay()
+        assertTrue("told again from the stored marker", f.day.rolloverNotice.value.draftDropped)
+        f.day.dismissRolloverNotice(); f.day.resumeDay()
+        assertFalse(f.day.rolloverNotice.value.any)
+        assertFalse(f.day.dropStaleEdit()); assertFalse(f.day.rolloverNotice.value.editDropped)
+    }
+
+    /** Low 1 on the AMO: the phone ended the call while the sale screen was open; the Save then is refused inside the close lock and stores no memo. */
+    @Test fun aSaveAfterThePhoneClosedTheCallIsRefusedAndStoresNoMemo() = runBlocking {
+        val v = f.controlCall(); f.day.visitSession.restore(v)
+        val vm = f.refusedSale(v) { runBlocking { f.day.closeVisit(phoneEnd = true) } }
+        assertEquals(com.aktcl.aron.core.printing.flow.SaveAndPrint.Step.SaveFailed, vm.saveAndPrint.step.value)
+        assertTrue(f.db.captureDao().memosOn(d0).none { it.visitClientUuid == v.visitUuid })
+        assertEquals("abandoned", f.db.captureDao().visitClosesOn(d0).single { it.visitClientUuid == v.visitUuid }.outcomeCode)
+    }
 }

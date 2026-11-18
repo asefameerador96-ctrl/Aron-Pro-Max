@@ -334,7 +334,7 @@ object RecordMapping {
     )
 
     /** D-AGATE-18 (B2): the record an AMO child depends on, named in its payload: a distribution line's check, an assessment answer's assessment. */
-    private fun amoParent(type: String, payload: JsonObject): String? = when (type) {
+    internal fun amoParent(type: String, payload: JsonObject): String? = when (type) {
         "distribution_check_line" -> (payload["check_client_uuid"] as? JsonPrimitive)?.contentOrNull
         "call_assessment_answer" -> (payload["assessment_client_uuid"] as? JsonPrimitive)?.contentOrNull
         else -> null

@@ -322,10 +322,12 @@ class AmoDay(
         val vd = visitDate(v)
         if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
         // the phone's end goes through the SAME close as the rep's (closeVisit, under closeLock) with its marker in the same transaction; a failing write keeps the call and its draft
-        com.aktcl.aron.feature.attendance.catching { closeVisit(phoneEnd = true) }
+        val refusal = com.aktcl.aron.feature.attendance.catching { closeVisit(phoneEnd = true) }.getOrNull()
         if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
-        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
-        if (dropped) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DRAFT_DROPPED, businessDate = vd, createdAt = iso(clock.nowMs()))) }
+        // D-AGATE-19 (step-5 low 3): the route-day refused the close, so no marker came with one; the rep is still told that the phone ended the call
+        if (refusal != null) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.CALL_ENDED, businessDate = vd, outletId = v.outletId, createdAt = iso(clock.nowMs()))) }
+        // D-AGATE-19: the notice is stored BEFORE the draft goes (inside the draft's own lock, and only when something is really there to drop)
+        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(v.visitUuid) { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DRAFT_DROPPED, businessDate = vd, createdAt = iso(clock.nowMs()))) } }.getOrDefault(false)
         return true
     }
 
@@ -334,8 +336,8 @@ class AmoDay(
         val s = sale.flow.state.value
         val d = s.draft ?: return false
         if (d.edit == null || s.committed != null || d.businessDate >= businessDate()) return false
-        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(d.visitUuid) }.getOrDefault(false)
-        if (dropped) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.EDIT_DROPPED, businessDate = d.businessDate, createdAt = iso(clock.nowMs()))) }
+        // D-AGATE-19: the notice is stored BEFORE the draft goes (inside the draft's own lock, and only when something is really there to drop)
+        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(d.visitUuid) { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.EDIT_DROPPED, businessDate = d.businessDate, createdAt = iso(clock.nowMs()))) } }.getOrDefault(false)
         return dropped
     }
 
@@ -487,7 +489,7 @@ class AmoDay(
      * audit record (assessment, price check, survey) means a real call with no sale, `zero_sale_stock_ok`; nothing at all means
      * `abandoned`, which does not count as a visit (D-AMO-CLOSE-01).
      */
-    private val closeLock = kotlinx.coroutines.sync.Mutex()
+    internal val closeLock = kotlinx.coroutines.sync.Mutex()
 
     suspend fun closeVisit(phoneEnd: Boolean = false): DayRefusal? = closeLock.withLock {
         // the lock makes a double tap wait; the second run finds the session already closed

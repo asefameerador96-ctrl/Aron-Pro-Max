@@ -90,6 +90,7 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
         val reasons = ReasonTextsJson.parse(ReferenceRepository(db).section("reason_texts"))
         val ref = db.referenceDao()
         val entries = ArrayList<RejectedRow>()
+        val refusedByServer: Set<String> = refused.filter { it.state == OutboxState.REJECTED && it.lastCode != com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED }.map { it.clientUuid }.toHashSet()
         for ((_, members) in refused.groupBy { it.familyUuid }.entries.sortedByDescending { (_, m) -> m.maxOf { it.seq } }) {
             val lead = members.minWith(compareBy({ it.rank }, { it.seq }))
             // A family's outcome is the most serious of its members (round-2 review): a parent the SERVER refused means nothing below it can ever land
@@ -100,10 +101,9 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             val exhaustedRows = members.filter { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
             // only a refused ANCESTOR (the record it depends on) stops Send again; a refused SIBLING never does (same rule as the SQL guard in requeueRetryExhausted). A record that never reached the server whose parents are stored can always be sent again.
             // D-AGATE-15 (T5): REAL parentage, as the SQL guard: a memo line's memo, a rank-1 record's visit (the family's root); a refused survey, close or content view is a sibling
+            // D-AGATE-19: a real parent may sit in ANOTHER family (a reprint after the route-day's submit, a due collection's memo, an edit's superseded memo): look it up among ALL refused rows
             val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x ->
-                serverRefused.any { s ->
-                    (x.rank >= 1 && s.clientUuid == x.familyUuid) || s.clientUuid == x.parentUuid // D-AGATE-18: the real parents only, no rank fallback
-                }
+                serverRefused.any { s -> x.rank >= 1 && s.clientUuid == x.familyUuid } || (x.parentUuid != null && refusedByServer.contains(x.parentUuid))
             }
             val gaveUp = exhaustedRows.isNotEmpty() && !parentRefused
             val outcome = when {

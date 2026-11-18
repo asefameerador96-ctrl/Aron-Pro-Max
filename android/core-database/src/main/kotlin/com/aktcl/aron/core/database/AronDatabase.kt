@@ -54,7 +54,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         AutoMigration(from = 6, to = 7), // v7: purged_uuid, the tombstones that stop a replay of a purged record from being captured again
         AutoMigration(from = 7, to = 8), // v8 (PARITY-SPEC s2.6): sku.image_asset_id, the pack picture of the bundle
         AutoMigration(from = 8, to = 9), // v9 (SRM-B-44): cluster_create, the clusters an SR created on the phone (local only until the contract record exists)
-        AutoMigration(from = 9, to = 10), // v10 (D-AGATE-04): outbox.last_message_key and outbox.seen_at, so a refused record can name its reason and be marked seen without losing the row
+        AutoMigration(from = 9, to = 10, spec = Migration9To10::class), // v10 (D-AGATE-04, -18): outbox.last_message_key, outbox.seen_at (a refused record names its reason and can be marked seen), outbox.parent_uuid (Send again's real parent, backfilled for AMO lines by the spec) and the local phone_mark table
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
