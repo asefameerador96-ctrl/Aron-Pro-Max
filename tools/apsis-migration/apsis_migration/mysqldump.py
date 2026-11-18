@@ -43,10 +43,22 @@ class TableSchema:
         return [c.name for c in self.columns]
 
 
+_UNESC = re.compile(r"\\(.)|''", re.S)
+
+
 def _unescape(body: str) -> str:
-    if "\\" in body:
-        body = re.sub(r"\\(.)", lambda m: _ESC.get(m.group(1), m.group(1)), body, flags=re.S)
-    return body.replace("''", "'")
+    """One pass, left to right: a backslash escape or a doubled quote is decoded once (a second pass would collapse \\'' wrongly). NUL is removed."""
+    if "\\" not in body and "''" not in body:
+        return body
+    return _UNESC.sub(lambda m: "'" if m.group(1) is None else _ESC.get(m.group(1), m.group(1)), body).replace("\0", "")
+
+
+_TSV = re.compile(r"\\(.)", re.S)
+_TSVESC = {"t": "\t", "n": "\n", "r": "\r", "\\": "\\", "0": ""}
+
+
+def _unescape_tsv(body: str) -> str:
+    return _TSV.sub(lambda m: _TSVESC.get(m.group(1), m.group(1)), body) if "\\" in body else body
 
 
 def _value(tok: str):
@@ -89,8 +101,8 @@ def parse_values(text: str):
 
 def _open(path):
     if str(path).endswith(".gz"):
-        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", errors="strict", newline="\n")
-    return open(path, "r", encoding="utf-8", errors="strict", newline="\n")
+        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", errors="replace", newline="\n")
+    return open(path, "r", encoding="utf-8", errors="replace", newline="\n")
 
 
 def _split_type(rest: str):
@@ -140,7 +152,7 @@ def events(path, batch_rows=50000, skip_statements=0):
                 except ValueError as e:
                     raise ValueError(f"{mi.group(1)}: statement {ordinal} (file line {lineno}): {e}") from None
                 for i in range(0, len(rows), batch_rows):
-                    yield ("rows", mi.group(1), rows[i:i + batch_rows], ordinal)
+                    yield ("rows", mi.group(1), rows[i:i + batch_rows], ordinal, i + batch_rows >= len(rows))
 
 
 def tsv_events(path, table, batch_rows=50000):
@@ -150,10 +162,10 @@ def tsv_events(path, table, batch_rows=50000):
         yield ("schema", TableSchema(table, [Column(h, "text") for h in header]))
         batch = []
         for line in fh:
-            parts = [None if p == "\\N" else _unescape(p) for p in line.rstrip("\n").split("\t")]
+            parts = [None if p == "\\N" else _unescape_tsv(p) for p in line.rstrip("\n").split("\t")]
             batch.append(tuple(parts))
             if len(batch) >= batch_rows:
-                yield ("rows", table, batch, 0)
+                yield ("rows", table, batch, 0, False)
                 batch = []
         if batch:
-            yield ("rows", table, batch, 0)
+            yield ("rows", table, batch, 0, True)

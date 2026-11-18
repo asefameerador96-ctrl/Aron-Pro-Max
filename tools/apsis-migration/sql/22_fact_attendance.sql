@@ -1,16 +1,15 @@
--- master_ff_attendance_records -> apsis_hist.attendance, one chunk. Device columns never reach staging. psql variables: chunk, src_tz.
+-- master_ff_attendance_records -> apsis_hist.attendance, one chunk. Device columns never reach staging. A row with no usable check-in time is
+-- counted as skipped. The user's home zone chain is the scope of the row. psql variables: chunk, src_tz.
 CREATE TEMP TABLE _src ON COMMIT DROP AS
-SELECT DISTINCT ON (c._row_uuid)
-       c._row_uuid, lower(btrim(c.user_code::text)) AS user_code,
-       (btrim(c.check_in_at::text)::timestamp AT TIME ZONE :'src_tz') AS in_utc,
-       CASE WHEN c.check_out_at IS NULL OR btrim(c.check_out_at::text) = '' OR left(btrim(c.check_out_at::text), 4) = '0000' THEN NULL
-            ELSE (btrim(c.check_out_at::text)::timestamp AT TIME ZONE :'src_tz') END AS out_utc,
-       NULLIF(btrim(c.lat::text), '')::numeric AS lat, NULLIF(btrim(c.lng::text), '')::numeric AS lng
-  FROM @C_ATT@ c
- WHERE c._chunk = :'chunk' AND c.user_code IS NOT NULL AND c.check_in_at IS NOT NULL
-   AND btrim(c.check_in_at::text) <> '' AND left(btrim(c.check_in_at::text), 4) <> '0000'
- ORDER BY c._row_uuid;
+SELECT * FROM (
+  SELECT DISTINCT ON (c._row_uuid)
+         c._row_uuid, btrim(c.user_code::text) AS user_code, apsis_map.mysql_ts(c.check_in_at::text, :'src_tz') AS in_utc,
+         apsis_map.mysql_ts(c.check_out_at::text, :'src_tz') AS out_utc, apsis_map.num(c.lat::text) AS lat, apsis_map.num(c.lng::text) AS lng
+    FROM @C_ATT@ c WHERE c._chunk = :'chunk' AND c.user_code IS NOT NULL AND btrim(c.user_code::text) <> '' ORDER BY c._row_uuid) x
+ WHERE in_utc IS NOT NULL;
 SELECT apsis_hist.ensure_partition('attendance', d) FROM (SELECT DISTINCT app.dhaka_date(in_utc) AS d FROM _src) x;
 DELETE FROM apsis_hist.attendance WHERE chunk_key = :'chunk';
-INSERT INTO apsis_hist.attendance (row_uuid, business_date, chunk_key, user_code, check_in_at, check_out_at, lat, lng)
-SELECT _row_uuid, app.dhaka_date(in_utc), :'chunk', user_code, in_utc, out_utc, lat::double precision, lng::double precision FROM _src;
+INSERT INTO apsis_hist.attendance (row_uuid, business_date, chunk_key, user_code, user_id, zone_id, territory_id, division_id, wing_id, check_in_at, check_out_at, lat, lng)
+SELECT s._row_uuid, app.dhaka_date(s.in_utc), :'chunk', s.user_code, um.user_id, um.home_zone_id, um.territory_id, um.division_id, um.wing_id,
+       s.in_utc, s.out_utc, s.lat::double precision, s.lng::double precision
+  FROM _src s LEFT JOIN apsis_map.user_map um ON um.code_norm = apsis_map.norm_code(s.user_code);

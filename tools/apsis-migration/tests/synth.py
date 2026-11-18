@@ -60,7 +60,7 @@ PASSWORD_MARKER = "SYN-HASH-NOT-A-REAL-HASH-0000"
 DEVICE_MARKER = "SYN-DEVICE-0000"
 
 
-def build(dump_dir, memo_dup=False, rows_sales=None):
+def build(dump_dir, memo_dup=False, rows_sales=None, sales_by_id=False, outlet_rows=None):
     d = Path(dump_dir)
     d.mkdir(parents=True, exist_ok=True)
     f = {}
@@ -68,10 +68,11 @@ def build(dump_dir, memo_dup=False, rows_sales=None):
         "`outlet_id` bigint NOT NULL", "`outlet_code` varchar(32) NOT NULL", "`outlet_name` varchar(120)", "`owner_name` varchar(120)",
         "`mobile_no` varchar(20)", "`dep_code` varchar(20)", "`route_code` varchar(20)", "`is_active` tinyint(1)",
         "`created_at` datetime", "`updated_at` datetime"], "outlet_id", [
+        *(outlet_rows or [
         (1, "SYN-O-0001", "Syn Outlet 1", "Syn Owner A", "00000000001", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", "2026-02-02 03:04:05"),
         (2, "SYN-O-0002", "Syn Outlet 2 it's", "Syn Owner B", "00000000002", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", "0000-00-00 00:00:00"),
         (3, "SYN-O-0003", "Syn Outlet 3", "Syn Owner C", "00000000003", "SZ1", "SR-9", 0, "2026-01-02 03:04:05", None),
-        (1, "SYN-O-0001", "Syn Outlet 1", "Syn Owner A", "00000000001", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", "2026-02-02 03:04:05")])  # duplicate key
+        (1, "SYN-O-0001", "Syn Outlet 1", "Syn Owner A", "00000000001", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", "2026-02-02 03:04:05")])])  # duplicate key
     f["master_routes"] = table_file("master_routes", ["`route_id` int NOT NULL", "`route_code` varchar(20)", "`route_name` varchar(80)",
                                     "`dep_code` varchar(20)", "`is_active` tinyint(1)"], "route_id",
                                     [(1, "SR-1", "Syn Route 1", "SZ1", 1), (2, "SR-2", "Syn Route 2", "SZ1", 1), (3, "SR-9", "Syn Old Route", "SZ1", 0)])
@@ -90,10 +91,19 @@ def build(dump_dir, memo_dup=False, rows_sales=None):
         (6, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "0000-00-00 00:00:00", 1, "1.000", 0, "SYN-M-5", None),   # zero date: skipped and counted
         (1, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "2026-03-05 17:59:59", 3, "123.455", 0, "SYN-M-1", "it's \"fine\"\nline2"),   # exact duplicate row
     ]
-    f["trans_sales_by_outlet"] = table_file("trans_sales_by_outlet", [
-        "`id` bigint NOT NULL", "`outlet_code` varchar(32)", "`sku_code` varchar(20)", "`route_code` varchar(20)", "`ff_code` varchar(10)",
-        "`sales_date` datetime", "`quantity` int", "`amount` decimal(14,4)", "`is_zero_sale` tinyint(1)", "`memo_no` varchar(30)", "`remarks` text"],
-        "id", sales, per_stmt=2)
+    if sales_by_id:       # facts that reference the masters by vendor id, not by code
+        oid = {"SYN-O-0001": 1, "SYN-O-0002": 2, "SYN-O-0003": 3}
+        sid = {"SYN-SKU-1": 1, "SYN-SKU-2": 2, "SYN-SKU-9": 3, None: None}
+        rid = {"SR-1": 1, "SR-2": 2, "SR-9": 3}
+        f["trans_sales_by_outlet"] = table_file("trans_sales_by_outlet", [
+            "`id` bigint NOT NULL", "`outlet_id` bigint", "`sku_id` bigint", "`route_id` int", "`ff_id` int", "`sales_date` datetime", "`quantity` int",
+            "`amount` decimal(14,4)", "`is_zero_sale` tinyint(1)"], "id",
+            [(r[0], oid[r[1]], sid[r[2]], rid[r[3]], 1, r[5], r[6], r[7], r[8]) for r in sales], per_stmt=2)
+    else:
+        f["trans_sales_by_outlet"] = table_file("trans_sales_by_outlet", [
+            "`id` bigint NOT NULL", "`outlet_code` varchar(32)", "`sku_code` varchar(20)", "`route_code` varchar(20)", "`ff_code` varchar(10)",
+            "`sales_date` datetime", "`quantity` int", "`amount` decimal(14,4)", "`is_zero_sale` tinyint(1)", "`memo_no` varchar(30)", "`remarks` text"],
+            "id", sales, per_stmt=2)
     f["live_geo_data_by_outlets"] = table_file("live_geo_data_by_outlets", [
         "`id` bigint NOT NULL", "`outlet_code` varchar(32)", "`ff_code` varchar(10)", "`route_code` varchar(20)", "`captured_at` datetime",
         "`latitude` decimal(10,7)", "`longitude` decimal(10,7)", "`accuracy` double", "`distance` double", "`is_valid` tinyint(1)", "`device_id` varchar(40)"], "id", [
@@ -116,7 +126,8 @@ def build(dump_dir, memo_dup=False, rows_sales=None):
                                        [(1, "SYN-PROMO-1", "2026-03-10 00:00:00", 5)])
     # a no-primary-key table: exact duplicates collapse via the full-row key
     f["trans_by_outlet_promotion_data"] = table_file("trans_by_outlet_promotion_data", ["`outlet_code` varchar(32)", "`promotion_date` date", "`units` int"], None, [
-        ("SYN-O-0001", "2026-03-06", 4), ("SYN-O-0001", "2026-03-06", 4), ("SYN-O-0002", "2026-04-06", 1)])
+        ("SYN-O-0001", "2026-03-06", 4), ("SYN-O-0001", "2026-03-06", 4), ("SYN-O-0002", "2026-04-06", 1),
+        ("SYN-O-0001", "0000-00-00", 2)])         # a MySQL zero date in a programme table
     for name, text in f.items():
         (d / f"{name}.sql").write_text(text, encoding="utf-8")
     return d

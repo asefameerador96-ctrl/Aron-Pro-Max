@@ -1,0 +1,31 @@
+{
+ "_comment": "vendor row counts from docs/reference/apsis-db-inventory-2026-11.md (the owner's sheet). The reconciliation fails when rows read from the dump differ.",
+ "rows": {
+  "trans_sales_by_outlet": 122210777,
+  "live_geo_data_by_outlets": 89451038,
+  "trans_by_outlet_promotion_data": 38476448,
+  "master_ff_attendance_records": 3264185,
+  "master_outlet_classifications": 1783319,
+  "trans_section_summary": 1844255,
+  "master_sr_target_scope": 1043265,
+  "master_outlets": 980274,
+  "master_outlet_section_mapping": 979981,
+  "master_geo_config": 747816,
+  "master_clusters": 130868,
+  "master_ff_route_mapping": 23850,
+  "master_sections": 14524,
+  "master_routes": 14524,
+  "master_field_forces": 8078,
+  "master_dep_location_mapping": 4216,
+  "master_sr_targe_configuration": 2923,
+  "master_promotion": 1154,
+  "master_dep": 1056,
+  "master_locations": 654,
+  "master_price_list": 308,
+  "master_category": 75,
+  "master_product_classifications": 60,
+  "master_sku": 42,
+  "master_section_configuration": 11,
+  "master_price_group": 5
+ }
+}

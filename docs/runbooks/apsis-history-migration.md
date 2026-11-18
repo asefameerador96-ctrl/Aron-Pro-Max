@@ -1,73 +1,74 @@
 # Runbook: Apsis history migration into the final Azure account
 
-Owner of the run: the lead's operator session (or the infra-final lane) executes every command. **The owner's steps are approvals only** (marked OWNER). Nothing here runs in the test account, CI or a laptop: the dump never leaves the final account.
+Who runs it: the lead's operator session (or the infra-final lane) executes every command. **The owner's steps are approvals only** (marked OWNER). Nothing runs in the test account, CI or a laptop: the dump never leaves the final account.
 Design and mapping: `docs/status/apsis-migration.md`. Landing and identity: `docs/requests/apsis-dump-landing.md`. Tool: `tools/apsis-migration/README.md`.
 
-Status of this runbook: written blind, not yet rehearsed against the real dump; every "check" below has a number to compare with, and the first real action is the dry run.
+Status: written blind, not rehearsed against the real dump. Every check has a number to compare. The first real action is the dry run.
 
-## 0. Before anything (preconditions, all must be true)
-1. The final account exists; PostgreSQL has the October master data loaded (the master-data load is the first load: `docs/reference/master-data-loader.md`). Without it the history keeps vendor codes with no scope ids.
-2. The three provisional migrations (V0260..V0262 as landed and renumbered by the lead) are applied by the normal migrate role. Check: `SELECT count(*) FROM information_schema.schemata WHERE schema_name IN ('apsis_ctl','apsis_map','apsis_hist')` = 3.
-3. Free storage on the PostgreSQL server >= 250 GB, storage autogrow on. Check in the portal/CLI; write the figure in the sign-off.
-4. The dump is in container `apsis-dump` (OWNER moved it; blob names and sizes written in the sign-off). Total about 52.5 GB, 26 tables.
-5. **Restore point**: note the UTC time and run a PITR-capable check (backup retention >= 7 days, latest backup within 24 h) and take an on-demand backup/snapshot if the SKU supports it. Write the restore point time in the sign-off. Rollback (section 5) depends on it.
-6. Time window: outside selling hours (night, Dhaka), no cutover wave in progress.
-7. OWNER approvals (the only owner actions): (a) approve starting the dry run; (b) after the dry run, approve the settings below; (c) approve the sign-off of the reconciliation.
+## 0. Preconditions (all must be true)
+1. The final account exists; PostgreSQL has the October master data loaded (the master-data load is the first load: `docs/reference/master-data-loader.md`). Without it history keeps vendor codes with no scope ids and the reconciliation fails on the match shares.
+2. The provisional migrations (as landed and renumbered by the lead: control/role, archive, dw views, job grants) are applied by the normal migrate role. Check: `SELECT count(*) FROM pg_namespace WHERE nspname IN ('apsis_ctl','apsis_map','apsis_hist','apsis_stage')` = 4 and `SELECT 1 FROM pg_roles WHERE rolname = 'apsis_migrator'`.
+3. **The job's database login.** The migrate role runs `GRANT apsis_migrator TO "<entra principal of id-apsis-migration>"` (membership only; the job connects as that principal and the tool does `SET ROLE apsis_migrator`: `--db-role apsis_migrator`). The role can read only column-limited live masters and write only `apsis_ctl`, `apsis_map`, `apsis_stage` and the archive; it has no write on any live table.
+4. Free storage on the server >= 250 GB, autogrow on (write the figure in the sign-off). High availability: the load runs **before any user is live on this server** (cutover is later). If the server already serves users, the lead decides explicitly how WAL volume and replica lag are handled; the runbook does not assume a quiet server.
+5. The dump is in container `apsis-dump` (OWNER moved it; blob names and sizes in the sign-off): 26 files, about 52.5 GB.
+6. **Reviewed column list** committed as `tools/apsis-migration/mapping/column_review.json` (section 1 produces the suggestion; a person reviews it; the run refuses a table with an unclassified column). `mapping/expected_counts.json` holds the vendor's row counts (the inventory).
+7. **Restore point**: note the UTC time; confirm backup retention >= 7 days and a backup within 24 h; take an on-demand backup/snapshot if the SKU supports it. Write the time in the sign-off. Rollback (section 6) depends on it.
+8. Window: Dhaka night, no cutover wave in progress. OWNER approvals (the only owner actions): (a) start of the dry run; (b) the settings and the column list after the dry run; (c) the sign-off.
 
 ## 1. Dry run (counts only; no database writes)
-Job command: `apsis-migration.py profile --dump-dir /data --out /reports/profile.json`.
-Read `profile.json` (numbers only) and check:
+`apsis-migration.py profile --dump-dir /data --out /reports/profile.json --suggest-review /reports/column_review.suggested.json`
+Read `profile.json` (numbers and column **names** only):
 | Check | Expected | If not |
 |---|---|---|
-| tables found | 26 file(s), names as the inventory | missing table: stop, ask the owner |
-| rows per table | inventory counts (e.g. trans_sales_by_outlet 122,210,777) within 0 | difference: the dump is not the one counted: stop |
-| `chunks` (months) | 2025-11 .. 2026-09 only; `unknown` small | many `unknown` or other months: dates parse wrongly, stop |
-| `zero_dates` | small, listed | large: ask owner |
-| `dropped_columns` | credential/device/personal columns | any column the lead did not expect: log it; tables that are a token/OTP store are excluded with `--only` |
+| tables found / `tables_missing` / `files_refused_not_on_allow_list` | all 26, none refused | a missing or refused file: stop, ask the owner |
+| `rows` vs `rows_expected_by_vendor` | equal for every table | different: not the dump that was counted: stop. (A file cut between two INSERT statements parses cleanly; this is the check that catches it.) |
+| `chunks` | 2025-11 .. 2026-09; `unknown` small | other months or many `unknown`: the date column is wrong: stop |
+| `chunk_date_column_found` | true for every fact table | false: edit `mapping/columns.json` (there is no fallback to another column) |
+| `time_zone_hint` and `hour_histogram_stored` per fact table | the hint is `utc` or `dhaka_local`, the same for every table | `unclear` or different per table: ask the owner; do not guess. The hint chooses `--source-tz` (`UTC` or `Asia/Dhaka`) |
+| `columns[].suggested` | credential/personal suggestions are plausible | the **reviewer** edits the suggestion into `column_review.json`: every column in `keep` or `drop`; credential-looking columns in `keep` need an explicit ack; non-personal, non-credential columns stay (the programme archives keep them for later) |
+| `zero_dates`, `undecodable_rows` | small | large: ask the owner |
 | `float_money_columns` | none | any: money cannot be exact; owner decides (design Q9) |
-| `has_primary_key` | true for transactional tables | false: rows are keyed by whole-row hash; accept and note |
-| `duplicate_keys` | 0 or small | note the figure; the loader collapses them |
-Then OWNER approves these settings, which are recorded in `apsis_ctl.run`: `--source-tz` (UTC unless the profile's hour histogram says otherwise: design Q4), `--qty-unit` (base unless the vendor counts packs: Q9), whether imported coordinates are confirmed (`--confirm-locations`, M01 ruling) and whether to fill missing outlet coordinates (`--fill-locations`).
-Update `mapping/columns.json` from the profile's column list (an operator edit committed through the lane; the job image is rebuilt). A required column without a match stops that step with `missing:<column>`.
+| `has_primary_key` | true for the fact tables | false for sales: owner decision (thresholds `accept_full_row_key`) before the run |
+| `duplicate_keys` | 0 or small | note it |
+OWNER approves the settings, recorded in `apsis_ctl.run`: `--source-tz`, `--qty-unit` (base unless the vendor counts packs), whether imported coordinates are confirmed (`--confirm-locations`) and whether missing outlet coordinates are filled from the dump (`--fill-locations`). Thresholds in `mapping/columns.json` ("thresholds") are confirmed too.
 
-## 2. Prepare the database for the load window (operator, platform admin)
-Set (server parameters; revert in section 4): `max_wal_size = 64GB`, `checkpoint_timeout = 30min`, `wal_compression = on`, `maintenance_work_mem = 2GB`. The loader role sets `synchronous_commit = off` for its own session only. Confirm no other job (nightly, partition maintenance) is scheduled in the window.
-Check: `SHOW max_wal_size` returns the new value.
+## 2. Prepare the database (operator, platform admin)
+Server parameters for the window, reverted in section 5: `max_wal_size = 64GB`, `checkpoint_timeout = 30min`, `wal_compression = on`, `maintenance_work_mem = 2GB`. (The job sets `synchronous_commit = off` for its own session in code.) Nothing else is scheduled on the server. If `--fill-locations` was approved: the migrate role runs `SELECT apsis_ctl.allow_fill_locations()` (a time-boxed UPDATE grant on four outlet columns) and `disallow_fill_locations()` after the run.
 
 ## 3. Run (restartable)
-Command: `apsis-migration.py run --dump-dir /data --dsn <entra connection> --source-tz <as approved> --qty-unit <as approved> [--fill-locations --confirm-locations]`.
-What happens, in this order: masters (small tables) -> staging of each table -> masters match -> small facts -> promotion/target archives -> geo by month -> sales by month. Each table and month is a checkpoint in `apsis_ctl.chunk` (`pending -> staged -> transformed -> verified`).
-- **If the job stops** (timeout, node move, SIGTERM): start the same command again. It resumes at the first chunk not `verified`; a half-staged table resumes at its last statement. Nothing is repeated that is verified.
-- **If a chunk is `failed`**: read `apsis_ctl.chunk.error` (table, chunk, statement number, no data). Typical: `checksum mismatch` (do not continue; ask the lead), `missing column` (edit the mapping, rebuild, rerun).
-- Progress check at any time: `SELECT vendor_table, state, count(*), sum(rows_out) FROM apsis_ctl.chunk WHERE chunk_key <> '_stage' GROUP BY 1,2 ORDER BY 1,2;`.
-- Expected duration: planning figure 12 h (design section 4); measure the first month of sales and state the measured figure to the owner before continuing the rest if it is more than 2x.
-- Disk: the staging copy of a fact or archive table is dropped as soon as all its chunks are verified (the sales staging and the master tables stay until the reconciliation, section 4); if the server storage free space falls below 60 GB stop and extend storage before resuming.
+`apsis-migration.py run --dump-dir /data --dsn "<host/db/user, NO password>" --db-role apsis_migrator --review column_review.json --source-tz <approved> --qty-unit <approved> [--fill-locations --confirm-locations]`
+The password or Entra token comes from the environment (`PGPASSWORD`), never from the command line. Order: masters first (matched to ours by normalised code), then one fact table at a time (stage, transform month by month, verify, drop that table's staging).
+- **If the job stops** (timeout, node move, SIGTERM, failover): start the same command again. It resumes at the first unverified month; a half-staged table resumes at its last complete statement; **a staged table that no longer holds the rows recorded for it is re-staged from the dump** (the tool says so). Nothing verified is repeated. No hand edit of `apsis_ctl` is ever needed or allowed.
+- **A `failed` month**: `SELECT vendor_table, chunk_key, error FROM apsis_ctl.chunk WHERE state = 'failed'` (SQLSTATE and our own words, never data). `checksum mismatch`: stop, ask the lead. `staged rows differ from the recorded count`: run again. `none of the N vendor outlets matched`: the code format differs: stop, do not loosen anything, ask the lead. `missing column`: edit the mapping, rebuild the image, run again.
+- **Changed settings** (source time zone or quantity unit) while verified months exist are refused. After the OWNER agrees: `apsis-migration.py reset-transform`, then run again (months are re-transformed from staging, or the table is re-staged).
+- Progress: `SELECT vendor_table, state, count(*), sum(rows_out), sum(rows_skipped) FROM apsis_ctl.chunk WHERE chunk_key <> '_stage' GROUP BY 1,2 ORDER BY 1,2`.
+- Duration: planning figure 12 h, **estimate**: measure the first month of sales and tell the owner the measured rate if it is more than 2x. Disk: stop and extend storage if free space falls below 60 GB.
 
-## 4. Finish
-1. `apsis-migration.py finalize --dsn ...` (indexes on the archive, autovacuum back on for the archive partitions, ANALYZE).
-2. Revert the server parameters of section 2. `DROP SCHEMA apsis_stage CASCADE` (staging holds no personal data, but it is a full copy of the numbers).
-3. `apsis-migration.py reconcile --dsn ... --out /reports/reconciliation-<run>.json`. The command exits non-zero if any section is not ok. The file holds numbers only.
-4. Check against the report (the lead reads each line to the owner):
+## 4. Reconcile, then sign-off (staging is still there; do not drop it yet)
+`apsis-migration.py reconcile --dsn ... --db-role apsis_migrator --out /reports/reconciliation.json`. Exit code non-zero and the line "reconciliation FAILED: ..." on any failed gate; the JSON holds numbers only. Read it with the owner:
 | Section | Pass condition |
 |---|---|
-| `tables` | every table `rows_in` equals the dump's inventory count; `skipped_no_date_or_key` is small and explained (zero dates) |
-| `months` | every transactional month `verified`; per-month counts add up to the table totals |
-| `daily_money` | `days_differing` = 0 and `max_abs_diff_mtk` = 0; the two totals are equal |
+| `tables.by_table` | `rows_parsed` = the vendor's `expected_rows`; `rows_loaded + rows_skipped` = staged rows; skipped share within the threshold and explained (zero dates); `collapsed_duplicate_rows` reported; a table without a primary key was accepted by the owner |
+| `daily_money` | `days_differing` = 0, `max_abs_diff_mtk` = 0, totals equal |
 | `sku_qty` | `skus_differing` = 0 |
-| `memo_numbers` | `applicable` false, or `numbers_on_more_than_one_outlet` = 0 |
-| `outlets_per_route`, `section_summary` | informational: the lead reviews the differing counts with the owner (the vendor's own summary is compared with our recomputation) |
-| `control` | `default_partition_rows` = 0, `chunks_not_verified` = 0; `sales_rows_without_outlet_id` equals the outlets stubbed (history of outlets we do not carry) |
-5. Scope check (lead): as a TSO test user and as the sync role, confirm history is invisible to the sync path (`has_table_privilege` false for `api_rw`, `worker_rw`, `jobs_rw`: the tool's test asserts it; the lead runs the same query in the final database) and that a TSO sees only their territory through `dw.v_hist_*`.
-6. OWNER approves the sign-off (the reconciliation file plus the figures of section 0). Only then is the dump deleted from `apsis-dump` (owner's decision) and the job's role grants revoked.
+| `time_zone` | `agreement` >= 0.80 (the vendor's own route-day visited counts against our recomputation). **If it fails, the source time zone or date column is probably wrong: stop, `reset-transform`, rerun with the other zone after the OWNER agrees** |
+| `masters` | match shares within the thresholds; the unmatched-row shares are explained (vendor history holds more outlets than the October master data) |
+| `memo_numbers` | `applicable` false, or none on more than one outlet |
+| `control` | `default_partition_rows` = 0, `chunks_not_verified` = 0 |
+Then: scope check by the lead (as a TSO test user through `dw.v_hist_*` / `dw.v_sales_with_history`, and `has_table_privilege` false for `api_rw`, `worker_rw`, `jobs_rw` on every history relation: the lane's test asserts it; the lead runs the same query in the final database). **OWNER signs** the reconciliation file plus the figures of section 0.
 
-## 5. Rollback (any time before or after sign-off)
-The load is into marked rows and an archive schema, so it is deleted by marker:
-1. History: `DROP SCHEMA apsis_hist CASCADE;` (drops the four dw views with it) and `DROP SCHEMA apsis_stage CASCADE;`. The id map and control tables (`apsis_map`, `apsis_ctl`) hold only keys and counts; keep them for the record or `DROP SCHEMA ... CASCADE` too.
-2. Live masters: the tool changed only what `--fill-locations` filled; undo exactly from the log:
-   `UPDATE app.outlet o SET lat = NULL, lng = NULL, location_basis = f.prev_location_basis, location_confirmed = COALESCE(f.prev_location_confirmed, false) FROM apsis_map.fill_log f WHERE f.outlet_id = o.id;`
-   (run before dropping `apsis_map`).
-3. If anything outside these schemas looks wrong (it should not: the tool writes nowhere else), restore to the PITR point written in section 0 into a new server and compare; do not restore over the live server without the lead.
-4. Re-running after a rollback is allowed: the keys are deterministic, so the same dump gives the same rows.
+## 5. After sign-off
+1. `apsis-migration.py cleanup --dsn ... --db-role apsis_migrator` drops the staging copy (refuses unless the latest reconciliation report is ok).
+2. `apsis-migration.py finalize --dsn ... --db-role apsis_migrator` (read indexes, autovacuum back on, ANALYZE).
+3. Revert the server parameters of section 2; `disallow_fill_locations()` if it was opened; the migrate role revokes the job's membership/login. The dump is deleted from `apsis-dump` by the owner's decision.
+4. Opening balances are **not** loaded by this run (design section 11, questions Q21-Q27): the raw programme archives keep the vendor rows for a later step.
 
-## 6. What the operator must not do
-Do not copy the dump or any `apsis_stage` content out of the final account; do not paste profile or reconciliation figures into a public place (the repository is public); do not edit a verified chunk by hand; do not disable the checksum compare; do not run the tool against the test account.
+## 6. Rollback (any time)
+The load is in an archive schema and the id map; only the optional coordinate fill touches live masters.
+1. Coordinates (if filled), **before** dropping `apsis_map`: `UPDATE app.outlet o SET lat = f.prev_lat, lng = f.prev_lng, location_basis = f.prev_location_basis, location_confirmed = COALESCE(f.prev_location_confirmed, false) FROM apsis_map.fill_log f WHERE f.outlet_id = o.id AND o.lat IS NOT DISTINCT FROM f.new_lat AND o.lng IS NOT DISTINCT FROM f.new_lng;` (a point corrected after the fill is left alone).
+2. `DROP SCHEMA apsis_hist CASCADE` (the five dw views go with it) and `DROP SCHEMA apsis_stage CASCADE`; keep or drop `apsis_map` / `apsis_ctl` (keys and counts only). **Re-running after a rollback needs the archive objects back**: they are created by a migration, so the lead re-applies that migration's DDL (the migration history still says "applied"); the runbook does not drop `apsis_ctl`, which keeps the checkpoints.
+3. If anything outside these schemas looks wrong (it should not: the job role cannot write elsewhere), restore to the point written in section 0 into a new server and compare; never over the live server without the lead.
+4. Re-runs are safe: keys are deterministic, so the same dump gives the same rows.
+
+## 7. The operator must not
+Copy the dump or any staging content out of the final account; paste profile or reconciliation figures into a public place (the repository is public); edit a control row by hand; loosen a threshold or disable a check to get a pass; set `APSIS_DEBUG_ERRORS` (it prints server error text, which can quote data); run the tool against the test account; put a password in `--dsn`.
