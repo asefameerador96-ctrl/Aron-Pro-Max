@@ -60,7 +60,7 @@ PASSWORD_MARKER = "SYN-HASH-NOT-A-REAL-HASH-0000"
 DEVICE_MARKER = "SYN-DEVICE-0000"
 
 
-def build(dump_dir, memo_dup=False, rows_sales=None, sales_by_id=False, outlet_rows=None):
+def build(dump_dir, memo_dup=False, rows_sales=None, sales_by_id=False, outlet_rows=None, extra_sales=None):
     d = Path(dump_dir)
     d.mkdir(parents=True, exist_ok=True)
     f = {}
@@ -91,6 +91,7 @@ def build(dump_dir, memo_dup=False, rows_sales=None, sales_by_id=False, outlet_r
         (6, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "0000-00-00 00:00:00", 1, "1.000", 0, "SYN-M-5", None),   # zero date: skipped and counted
         (1, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "2026-03-05 17:59:59", 3, "123.455", 0, "SYN-M-1", "it's \"fine\"\nline2"),   # exact duplicate row
     ]
+    sales = list(sales) + list(extra_sales or [])
     if sales_by_id:       # facts that reference the masters by vendor id, not by code
         oid = {"SYN-O-0001": 1, "SYN-O-0002": 2, "SYN-O-0003": 3}
         sid = {"SYN-SKU-1": 1, "SYN-SKU-2": 2, "SYN-SKU-9": 3, None: None}

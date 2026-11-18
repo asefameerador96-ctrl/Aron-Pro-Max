@@ -292,7 +292,7 @@ class FullRun(Base):
         rid = self.full_run()
         s = self.snapshot()
         self.assertEqual(s["sales"]["n"], 5)
-        self.assertEqual(s["raw"], 4)       # master_promotion 1 + programme rows 3 distinct (the exact duplicate collapsed; the zero-date row kept)
+        self.assertEqual(s["raw"], 20)      # every table that is not a typed fact is archived raw: masters 3+3+3+1+3+3, master_promotion 1, programme rows 2 (the exact duplicate collapsed; the zero-date row is rejected)
         self.assertEqual(self.db.scalar("SELECT count(*) - count(DISTINCT row_uuid) FROM apsis_hist.sales_line"), "0")
         rep = self.recon(rid)
         self.assertEqual(rep["tables"]["by_table"]["trans_sales_by_outlet"]["collapsed_duplicate_rows"], 1)
@@ -321,7 +321,7 @@ class FullRun(Base):
         before = self.owner.scalar("SELECT md5(string_agg(o::text, ',' ORDER BY id)) FROM app.outlet o")
         self.full_run()
         self.assertEqual(self.owner.scalar("SELECT md5(string_agg(o::text, ',' ORDER BY id)) FROM app.outlet o"), before)
-        for sql in ("UPDATE app.outlet SET lat = 1", "INSERT INTO app.wing (code, name) VALUES ('x', 'y')", "SELECT count(*) FROM app.memo", "SELECT owner_name FROM app.outlet",
+        for sql in ("UPDATE apsis_ctl.setting SET value = '2026-12-31' WHERE key = 'history_until'", "UPDATE app.outlet SET lat = 1", "INSERT INTO app.wing (code, name) VALUES ('x', 'y')", "SELECT count(*) FROM app.memo", "SELECT owner_name FROM app.outlet",
                     "SELECT password_hash FROM app.app_user", "DELETE FROM app.route", "UPDATE apsis_ctl.run SET note = 'x'; DROP TABLE apsis_hist.sales_line"):
             with self.assertRaises(DbError, msg=sql) as cm:
                 self.db.run(sql)
@@ -351,6 +351,9 @@ class FullRun(Base):
                     self.assertEqual(self.owner.scalar(f"SELECT has_table_privilege('{role}', '{rel}', '{priv}')"), "f", f"{role} {priv} {rel}")
             for sch in ("apsis_hist", "apsis_stage", "apsis_ctl", "apsis_map"):
                 self.assertEqual(self.owner.scalar(f"SELECT has_schema_privilege('{role}', '{sch}', 'USAGE')"), "f", f"{role} {sch}")
+        for v in ("dw.v_hist_sales_line", "dw.v_hist_sales_day", "dw.v_hist_visit_geo", "dw.v_hist_attendance", "dw.v_sales_with_history"):
+            self.assertEqual(self.owner.scalar(f"SELECT has_table_privilege('hist_ro', '{v}', 'SELECT')"), "t", f"hist_ro {v}")     # the scoped reader of history
+            self.assertEqual(self.owner.scalar(f"SELECT has_table_privilege('hist_ro', '{v}', 'INSERT')"), "f", f"hist_ro {v}")
         for role in ("web_ro", "bi_reader"):
             for v in ("dw.v_hist_sales_line", "dw.v_hist_sales_day", "dw.v_sales_with_history"):
                 self.assertEqual(self.owner.scalar(f"SELECT has_table_privilege('{role}', '{v}', 'SELECT')"), "t", f"{role} {v}")
@@ -395,16 +398,18 @@ class FullRun(Base):
                        "FROM apsis_map.fill_log f WHERE f.outlet_id = o.id AND o.lat IS NOT DISTINCT FROM f.new_lat AND o.lng IS NOT DISTINCT FROM f.new_lng")
         self.assertEqual(self.owner.scalar("SELECT lat FROM app.outlet WHERE code='SYN-O-0001'"), "23.99")      # the undo leaves the later correction alone
 
-    def test_k_a_wrong_source_time_zone_fails_the_reconciliation(self):
-        ok = self.recon(self.full_run(tz="UTC"))
-        self.assertTrue(ok["ok"], "; ".join(ok["problems"]))
-        # same data read as Dhaka local time: business dates shift by six hours and the vendor's own route-day figures stop agreeing
-        self.db.run("SELECT 1")
-        self.owner.run("DELETE FROM apsis_ctl.chunk WHERE vendor_table <> '_x'")      # arrange only: re-load under the other zone
-        rid = self.full_run(tz="Asia/Dhaka")
-        rep = self.recon(rid)
-        self.assertFalse(rep["ok"])
-        self.assertTrue(any("time zone check" in p for p in rep["problems"]), rep["problems"])
+    def test_k_time_zone_is_evidence_for_the_owner_not_an_automatic_gate(self):
+        rep = self.recon(self.full_run(tz="UTC"))
+        tz = rep["time_zone"]
+        self.assertTrue(tz["informational"] and tz["owner_signs_the_zone"])
+        self.assertEqual((tz["chosen_zone"], tz["vendor_route_days"], tz["route_days_equal"]), ("UTC", 2, 2))
+        self.assertTrue(tz["geo_has_route_column"])
+        # the tool never decides or switches the zone: it refuses to run without an explicit one
+        for argv in (["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator"],
+                     ["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator", "--source-tz", "UTC", "--dsn", "dbname=x password=secret"]):
+            with self.assertRaises(SystemExit) as cm:
+                runner.main(argv)
+            self.assertIn("refused", str(cm.exception))
 
     def test_l_settings_cannot_change_silently_while_verified_chunks_exist(self):
         self.full_run(tz="UTC")
@@ -442,16 +447,96 @@ class FullRun(Base):
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "5")
         self.assertTrue(self.recon(rid2)["ok"])
 
-    def test_o_cleanup_waits_for_a_passing_reconciliation_and_needs_no_hand_edits(self):
+    def test_o_cleanup_needs_a_passing_reconciliation_and_the_owners_signoff_of_every_open_question(self):
         rid = self.full_run()
+        so = Path(self.tmp.name) / "signoff.json"
+        full = dict({f"q{n}": "waived" for n in range(21, 34)}, signed_by="owner")
+        so.write_text(json.dumps(full))
         with self.assertRaises(DbError):
-            runner.cleanup(self.db)                     # no report yet
+            runner.cleanup(self.db, so)                 # no passing report yet
         self.assertTrue(self.recon(rid)["ok"])
-        runner.cleanup(self.db)
+        for bad in ({}, dict(full, q25="open"), {k: v for k, v in full.items() if k != "q30"}, dict(full, signed_by="")):
+            so.write_text(json.dumps(bad))
+            with self.assertRaises(DbError):
+                runner.cleanup(self.db, so)             # an open or missing question blocks the deletion of the staging copy
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema='apsis_stage'") != "0", True)
+        so.write_text(json.dumps(full))
+        runner.cleanup(self.db, so)
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema='apsis_stage'"), "0")
-        runner.start_run(self.db, "UTC", False)         # a later run still works: control rows say verified, nothing to re-stage
-        rid2 = runner.start_run(self.db, "UTC", False)
+        rid2 = runner.start_run(self.db, "UTC", False)          # a later run still works: control rows say verified, nothing to re-stage
         runner.stage_all(self.db, self.dump, self.mapping, self.review, rid2, log=lambda m: None)
+
+    def test_p_a_run_that_covered_only_some_tables_cannot_be_signed(self):
+        rid = runner.start_run(self.db, "UTC", False, note="only=master_sku")
+        runner.stage_all(self.db, self.dump, self.mapping, self.review, rid, only={"master_sku", "master_routes", "master_outlets"}, log=lambda m: None)
+        runner.transform_all(self.db, self.mapping, rid, "UTC", "base", only={"master_sku", "master_routes", "master_outlets"}, log=lambda m: None)
+        rep = self.recon(rid)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any("expected but never loaded" in p for p in rep["problems"]))
+        self.assertFalse(rep["tables"]["by_table"]["trans_sales_by_outlet"]["loaded"])
+
+    def test_q_an_ignored_file_in_the_dump_folder_fails_the_sign_off(self):
+        d = Path(self.tmp.name) / "withextra"
+        d.mkdir()
+        for f in self.dump.iterdir():
+            (d / f.name).write_bytes(f.read_bytes())
+        (d / "unexpected_table.sql").write_text("CREATE TABLE `unexpected_table` (`a` int);\n")
+        rid = runner.start_run(self.db, "UTC", False)
+        runner.stage_all(self.db, d, self.mapping, self.review, rid, log=lambda m: None)
+        runner.transform_all(self.db, self.mapping, rid, "UTC", "base", log=lambda m: None)
+        rep = self.recon(rid)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any("not on the table allow-list" in p for p in rep["problems"]))
+
+    def test_r_every_other_reviewed_column_of_a_sales_row_is_kept_and_money_quality_is_reported(self):
+        rid = self.full_run()
+        ex = json.loads(self.db.scalar("SELECT extra::text FROM apsis_hist.sales_line WHERE gross_mtk = 123455"))
+        self.assertIn("id", ex); self.assertNotIn("remarks", ex)          # the personal column was dropped by the review; the rest stays
+        self.assertNotIn("quantity", ex); self.assertNotIn("amount", ex)  # mapped columns are not duplicated
+        rep = self.recon(rid)
+        self.assertEqual(rep["money_quality"]["negative_money_lines"], 1)  # the -10.0004 line is reported, never hidden
+
+    def test_s_rollback_resets_the_checkpoints_and_a_rerun_reloads_everything(self):
+        rid = self.full_run()
+        first = self.snapshot()
+        self.assertTrue(self.recon(rid)["ok"])
+        for sql in ("SELECT apsis_hist.reset_history()", "TRUNCATE apsis_hist.sales_line"):
+            with self.assertRaises(DbError):
+                self.db.run(sql)                         # the job role cannot roll back, only the migrate role
+        self.owner.run("SELECT apsis_hist.reset_history()")
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_ctl.chunk"), "0")
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "0")
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'apsis_stage'"), "0")
+        rid2 = self.full_run()
+        self.assertEqual(self.snapshot(), first)
+        self.assertTrue(self.recon(rid2)["ok"])
+
+
+class HistoryReader(Base):
+    def test_hist_ro_reads_only_the_history_views_and_a_scope_filter_works(self):
+        self.full_run()
+        self.owner.run("INSERT INTO app.wing(code,name) VALUES ('SW2','w2')")
+        self.owner.run("INSERT INTO app.division(code,name,wing_id) SELECT 'SD2','d2',id FROM app.wing WHERE code='SW2'")
+        self.owner.run("INSERT INTO app.territory(code,name,division_id) SELECT 'ST2','t2',id FROM app.division WHERE code='SD2'")
+        self.owner.run("INSERT INTO app.zone(code,name,territory_id) SELECT 'SZ2','z2',id FROM app.territory WHERE code='ST2'")
+        # two synthetic rows of another territory and one row with unresolved geography
+        self.owner.run("INSERT INTO apsis_hist.sales_line (row_uuid, business_date, chunk_key, outlet_code, outlet_id, zone_id, territory_id, division_id, wing_id, qty_base, gross_mtk, is_zero_sale) "
+                       "SELECT gen_random_uuid(), DATE '2026-03-10', '2026-03', 'X' || g, NULL, z.id, t.id, d.id, d.wing_id, 1, 1000, false FROM generate_series(1, 2) g, app.zone z "
+                       "JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE z.code = 'SZ2'")
+        self.owner.run("INSERT INTO apsis_hist.sales_line (row_uuid, business_date, chunk_key, outlet_code, qty_base, gross_mtk, is_zero_sale) VALUES (gen_random_uuid(), DATE '2026-03-11', '2026-03', 'NOGEO', 1, 500, false)")
+        hist = Db(conninfo(self.name), role="hist_ro")
+        own = self.owner.scalar("SELECT id FROM app.territory WHERE code = 'ST1'")
+        q = "SELECT count(*) FROM dw.v_hist_sales_line WHERE territory_id = ANY(ARRAY[%s]::bigint[]) OR (%s AND territory_id IS NULL)"
+        self.assertEqual(hist.scalar(q % (own, "false")), "4")      # a TSO of ST1 sees its own territory only, never the two ST2 rows, never the NULL-scope row
+        self.assertEqual(hist.scalar(q % (own, "true")), "6")       # a national reader also sees the unresolved-geography row
+        self.assertEqual(hist.scalar("SELECT count(*) FROM dw.v_sales_with_history WHERE source = 'apsis'"), "8")
+        for sql in ("SELECT 1 FROM apsis_hist.sales_line", "SELECT 1 FROM app.outlet", "SELECT 1 FROM dw.v_memo", "SELECT 1 FROM apsis_ctl.chunk",
+                    "INSERT INTO app.wing(code,name) VALUES ('Z','Z')", "SELECT 1 FROM dw.v_outlet_sku_daily"):
+            with self.assertRaises(DbError, msg=sql) as cm:
+                hist.run(sql)
+            self.assertIn("42501", str(cm.exception), sql)
+        self.owner.run("SELECT app.apply_db_role_grants()")
+        self.assertEqual(hist.scalar("SELECT count(*) FROM dw.v_hist_sales_day") != "", True)      # the refresh does not touch hist_ro
 
 
 class Normalisation(Base):
@@ -544,6 +629,121 @@ class MemoNumbers(Base):
         rep = self.recon(self.full_run())
         self.assertEqual(rep["memo_numbers"]["numbers_on_more_than_one_outlet"], 1)
         self.assertFalse(rep["ok"])
+
+
+class OutOfWindow(Base):
+    dump_kwargs = {"extra_sales": [
+        (8, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "1970-01-01 05:00:00", 1, "1.000", 0, "SYN-M-8", None),
+        (9, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "2031-01-01 05:00:00", 1, "1.000", 0, "SYN-M-9", None)]}
+    thresholds = dict(LENIENT, max_reject_share=0.0001)
+
+    def test_dates_outside_the_window_are_rejected_counted_and_never_get_a_partition(self):
+        rid = self.full_run()
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_hist.reject WHERE vendor_table = 'trans_sales_by_outlet'"), "2")
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relname ~ 'y(1970|2031)m'"), "1")      # only the raw-archive sentinel month 1970-01 exists (masters)
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM pg_class WHERE relname ~ 'sales_line_y(1970|2031)'"), "0")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "5")
+        rep = self.recon(rid)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any("outside the plausible window" in p for p in rep["problems"]))
+        rep2 = runner.reconcile(self.db, rid, dict(self.mapping, thresholds=dict(LENIENT, max_reject_share=0.5)), self.expected)
+        self.assertTrue(rep2["ok"], "; ".join(rep2["problems"]))
+        self.assertEqual(rep2["tables"]["by_table"]["trans_sales_by_outlet"]["rejected_out_of_window"], 2)
+
+
+class ZeroMoney(Base):
+    dump_kwargs = {"rows_sales": [(i, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", f"2026-03-0{i} 05:00:00", 2, "0.000", 0, f"M{i}", None) for i in range(1, 6)]}
+
+    def test_sales_lines_with_no_money_fail_the_gate(self):
+        rep = self.recon(self.full_run())
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any("money/quantity quality" in p for p in rep["problems"]))
+
+
+class VendorCollision(Base):
+    dump_kwargs = {"outlet_rows": [(1, "0042", "x", "x", "x", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", None), (2, "42", "x", "x", "x", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", None),
+                                   (3, "SYN-O-0001", "x", "x", "x", "SZ1", "SR-1", 1, "2026-01-02 03:04:05", None)],
+                   "rows_sales": [(1, "0042", "SYN-SKU-1", "SR-1", "SY01", "2026-03-05 05:00:00", 1, "10.000", 0, "M1", None),
+                                  (2, "42", "SYN-SKU-1", "SR-1", "SY01", "2026-03-05 06:00:00", 1, "20.000", 0, "M2", None),
+                                  (3, "SYN-O-0001", "SYN-SKU-1", "SR-1", "SY01", "2026-03-05 07:00:00", 1, "30.000", 0, "M3", None)]}
+
+    def test_two_vendor_codes_that_normalise_alike_are_never_merged_onto_one_outlet(self):
+        self.owner.run("INSERT INTO app.outlet(code,name,owner_name,zone_id,route_id,cluster_id,channel) SELECT '42','Syn 42','Syn Owner',zone_id,route_id,cluster_id,'GT' FROM app.outlet WHERE code='SYN-O-0001'")
+        self.full_run()
+        self.assertEqual(self.owner.scalar("SELECT count(*) FROM apsis_map.code_ambiguous WHERE side = 'vendor' AND kind = 'outlet'"), "1")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code IN ('0042', '42') AND (outlet_id IS NOT NULL OR zone_id IS NOT NULL)"), "0")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line WHERE outlet_code = 'SYN-O-0001' AND outlet_id IS NOT NULL"), "1")
+
+
+class UnmappedColumn(Base):
+    def test_a_target_column_with_no_vendor_column_stops_the_table_and_shows_in_the_coverage(self):
+        m = copy.deepcopy(self.mapping)
+        m["tables"]["trans_sales_by_outlet"]["columns"]["amount"] = ["no_such_amount_column"]
+        rid = runner.start_run(self.db, "UTC", False)
+        runner.stage_all(self.db, self.dump, m, self.review, rid, log=lambda x: None)
+        st = runner.transform_all(self.db, m, rid, "UTC", "base", log=lambda x: None)
+        self.assertEqual(st["trans_sales_by_outlet"], "missing:amount")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_hist.sales_line"), "0")
+        cov = json.loads(self.db.scalar("SELECT value::text FROM apsis_ctl.report WHERE name = 'mapping_coverage'"))
+        status = {r["target"]: r["status"] for r in cov["trans_sales_by_outlet"]}
+        self.assertEqual((status["amount"], status["memo_no"], status["qty"]), ("UNMAPPED", "intentionally_absent", "mapped"))
+        rep = self.recon(rid)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any("unmapped target column" in p for p in rep["problems"]))
+
+
+class Charset(Base):
+    def test_text_that_is_not_utf8_stops_the_run_and_is_never_guessed(self):
+        d = Path(self.tmp.name) / "latin"
+        d.mkdir()
+        (d / "master_sku.sql").write_bytes(b"CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('caf\xe9');\n")
+        rid = runner.start_run(self.db, "UTC", False)
+        with self.assertRaises(Exception) as cm:
+            runner.stage_all(self.db, d, self.mapping, self.review, rid, only={"master_sku"}, log=lambda m: None)
+        self.assertIn("character set", str(cm.exception))
+        self.assertNotIn("caf", str(cm.exception))
+        rid2 = runner.start_run(self.db, "UTC", False)          # only an explicit owner decision loads it as latin1
+        runner.stage_all(self.db, d, self.mapping, self.review, rid2, only={"master_sku"}, log=lambda m: None, charset="latin-1")
+        self.assertEqual(self.db.scalar("SELECT count(*) FROM apsis_stage.master_sku"), "1")
+
+    def test_the_profile_reports_undecodable_rows_and_mojibake_hints(self):
+        d = Path(self.tmp.name) / "moji"
+        d.mkdir()
+        (d / "master_sku.sql").write_bytes("CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('à¦¬à¦¾'),('ok');\n".encode("utf-8") + b"INSERT INTO `master_sku` VALUES ('bad\xe9');\n")
+        rep = runner.profile(d, self.mapping)
+        info = rep["tables"]["master_sku"]
+        self.assertEqual((info["mojibake_rows"], info["undecodable_rows"]), (1, 1))
+
+    def test_an_absurdly_long_statement_is_refused_with_a_clear_message(self):
+        from apsis_migration import mysqldump
+        old, mysqldump.MAX_LINE = mysqldump.MAX_LINE, 100
+        try:
+            d = Path(self.tmp.name) / "long"
+            d.mkdir()
+            (d / "master_sku.sql").write_text("CREATE TABLE `master_sku` (`sku_code` varchar(20));\nINSERT INTO `master_sku` VALUES " + ",".join("('%d')" % i for i in range(200)) + ";\n")
+            with self.assertRaises(ValueError) as cm:
+                list(mysqldump.events(d / "master_sku.sql"))
+            self.assertIn("net-buffer-length", str(cm.exception))
+        finally:
+            mysqldump.MAX_LINE = old
+
+
+class Evidence(unittest.TestCase):
+    def test_the_dry_run_compares_the_vendors_date_column_with_the_timestamp_in_each_zone_and_lists_the_mapping_coverage(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            # dates are the Dhaka date of a UTC timestamp: evening UTC rows (18:00-24:00) belong to the NEXT day
+            rows = [("O1", "2026-03-06", "2026-03-05 19:00:00"), ("O1", "2026-03-06", "2026-03-05 23:30:00"), ("O2", "2026-03-05", "2026-03-05 10:00:00")]
+            (d / "trans_by_outlet_promotion_data.sql").write_text(synth.table_file("trans_by_outlet_promotion_data",
+                ["`outlet_code` varchar(32)", "`promotion_date` date", "`created_at` datetime"], None, rows))
+            (d / "master_sku.sql").write_text(synth.table_file("master_sku", ["`sku_id` int NOT NULL", "`sku_code` varchar(20)"], "sku_id", [(1, "A")]))
+            mapping = staging.load_mapping(ROOT / "mapping" / "columns.json")
+            rep = runner.profile(d, mapping)
+        ev = rep["tables"]["trans_by_outlet_promotion_data"]["date_column_agreement"][0]
+        self.assertEqual((ev["rows_where_zones_disagree"], ev["share_if_stored_utc"], ev["share_if_stored_dhaka"]), (2, 1.0, 0.0))
+        cov = {r["target"]: r["status"] for r in rep["tables"]["master_sku"]["mapping_coverage"]}
+        self.assertEqual(cov, {"code": "mapped"})
 
 
 if __name__ == "__main__":

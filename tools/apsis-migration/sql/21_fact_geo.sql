@@ -1,5 +1,5 @@
 -- live_geo_data_by_outlets -> apsis_hist.visit_geo, one chunk. A row with no usable capture time is not loaded and is counted (rows_skipped).
--- psql variables: chunk, src_tz.
+-- psql variables: chunk, src_tz, vt.
 CREATE TEMP TABLE _src ON COMMIT DROP AS
 SELECT * FROM (
   SELECT DISTINCT ON (c._row_uuid)
@@ -12,6 +12,9 @@ SELECT * FROM (
     FROM @C_GEO_VISIT@ c
    WHERE c._chunk = :'chunk' AND c.outlet_code IS NOT NULL AND btrim(c.outlet_code::text) <> '' ORDER BY c._row_uuid) x
  WHERE at_utc IS NOT NULL;
+DELETE FROM apsis_hist.reject WHERE vendor_table = :'vt' AND chunk_key = :'chunk';
+INSERT INTO apsis_hist.reject (vendor_table, row_uuid, chunk_key, reason, vendor_date) SELECT :'vt', _row_uuid, :'chunk', 'date_out_of_window', app.dhaka_date(at_utc) FROM _src WHERE NOT apsis_map.in_window(app.dhaka_date(at_utc));
+DELETE FROM _src WHERE NOT apsis_map.in_window(app.dhaka_date(at_utc));
 SELECT apsis_hist.ensure_partition('visit_geo', d) FROM (SELECT DISTINCT app.dhaka_date(at_utc) AS d FROM _src) x;
 DELETE FROM apsis_hist.visit_geo WHERE chunk_key = :'chunk';
 INSERT INTO apsis_hist.visit_geo (row_uuid, business_date, chunk_key, outlet_code, outlet_id, user_code, user_id, route_code, route_id, zone_id,

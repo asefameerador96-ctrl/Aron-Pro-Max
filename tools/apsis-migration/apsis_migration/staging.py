@@ -67,7 +67,7 @@ def chunk_of(value):
     """'YYYY-MM' from a vendor date text, 'unknown' for a null, blank or zero date."""
     if not value or value.startswith("0000"):
         return "unknown"
-    m = re.match(r"^(\d{4})-(\d{2})", value)
+    m = re.match(r"^([0-9]{4})-([0-9]{2})", value)
     return f"{m.group(1)}-{m.group(2)}" if m and m.group(2) != "00" else "unknown"
 
 
@@ -111,11 +111,11 @@ class TableStager:
         cols += ["_row_uuid uuid NOT NULL", "_chunk text NOT NULL", "_stmt int NOT NULL"]
         return f"CREATE TABLE IF NOT EXISTS {self.schema}.{safety.quote(ts.name)} ({', '.join(cols)})"      # LOGGED: survives a restart or failover
 
-    def stage_file(self, path, table, checkpoint=None, skip_statements=0, parsed_before=0, batch_rows=50000, tsv=False):
+    def stage_file(self, path, table, checkpoint=None, skip_statements=0, parsed_before=0, batch_rows=50000, tsv=False, charset="utf-8"):
         """Stages one file. `table` is the file's stem and must equal the CREATE TABLE name and be on the allow-list.
         checkpoint(ordinal, rows_parsed_total) is called after each COMPLETE INSERT statement (so a resume redoes at most one statement)."""
         safety.table(table, self.allowed)
-        it = tsv_events(path, table, batch_rows) if tsv else events(path, batch_rows, skip_statements)
+        it = tsv_events(path, table, batch_rows, charset) if tsv else events(path, batch_rows, skip_statements, charset)
         ts, keep_idx, cols, dropped, key_idx, chunk_idx = None, None, None, [], None, None
         parsed, bad_chars = parsed_before, 0
         for ev in it:
@@ -154,8 +154,6 @@ class TableStager:
             for r in rows:
                 if len(r) != len(ts.columns):
                     raise ValueError(f"{table}: statement {ordinal}: a row has {len(r)} values but the table has {len(ts.columns)} columns")
-                if any(v is not None and "\ufffd" in v for v in r):
-                    bad_chars += 1
                 k = keys.row_uuid(table, [r[i] for i in key_idx]) if key_idx else keys.row_uuid(table, [keys.full_row_key(r)])
                 ch = chunk_of(r[chunk_idx]) if chunk_idx is not None else "all"
                 out.append("\t".join([pg_text(r[i]) for i in keep_idx] + [k, ch, str(ordinal)]))

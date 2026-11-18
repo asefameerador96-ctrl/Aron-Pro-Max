@@ -21,6 +21,7 @@ CREATE TABLE apsis_hist.sales_line (
   gross_mtk      bigint NOT NULL,              -- integer milli-taka
   is_zero_sale   boolean NOT NULL,
   vendor_deleted boolean NOT NULL DEFAULT false,
+  extra          jsonb,                        -- every other reviewed column of the vendor row (paid, due, credit, memo number ...): kept so nothing an opening balance may need is lost
   PRIMARY KEY (row_uuid, business_date)
 ) PARTITION BY RANGE (business_date);
 CREATE TABLE apsis_hist.visit_geo (
@@ -93,6 +94,15 @@ CREATE TABLE apsis_hist.outlet_route (           -- outlet to route mapping hist
   valid_from   date,
   valid_to     date
 );
+CREATE TABLE apsis_hist.reject (                 -- rows with a usable date OUTSIDE the plausible window (1970 epoch, before the vendor's first year, future): counted, gated, never given a partition
+  vendor_table   text NOT NULL,
+  row_uuid       uuid NOT NULL,
+  chunk_key      text NOT NULL,
+  reason         text NOT NULL,
+  vendor_date    date NOT NULL,
+  PRIMARY KEY (vendor_table, row_uuid)
+);
+CREATE INDEX ON apsis_hist.reject (vendor_table, chunk_key);
 CREATE TABLE apsis_hist.sales_line_default PARTITION OF apsis_hist.sales_line DEFAULT;
 CREATE TABLE apsis_hist.visit_geo_default PARTITION OF apsis_hist.visit_geo DEFAULT;
 CREATE TABLE apsis_hist.attendance_default PARTITION OF apsis_hist.attendance DEFAULT;
@@ -119,7 +129,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION apsis_hist.ensure_partition(text, date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION apsis_hist.ensure_partition(text, date) TO apsis_migrator;
-GRANT SELECT, INSERT, UPDATE, DELETE ON apsis_hist.sales_line, apsis_hist.visit_geo, apsis_hist.attendance, apsis_hist.raw_archive,
+GRANT SELECT, INSERT, UPDATE, DELETE ON apsis_hist.reject, apsis_hist.sales_line, apsis_hist.visit_geo, apsis_hist.attendance, apsis_hist.raw_archive,
   apsis_hist.route_day_vendor, apsis_hist.outlet_stub, apsis_hist.outlet_route TO apsis_migrator;
 COMMENT ON SCHEMA apsis_hist IS 'Apsis history archive (Dec 2025 - Sep 2026). Read-only after load, read through the dw.v_hist_* views only; no grants to any application role. Attributed to the geography as of the load (past moves are not kept).';
 
@@ -141,3 +151,17 @@ END $$;
 REVOKE ALL ON FUNCTION apsis_hist.finish_load() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION apsis_hist.finish_load() TO apsis_migrator;
 GRANT SELECT ON apsis_hist.sales_line_default, apsis_hist.visit_geo_default, apsis_hist.attendance_default, apsis_hist.raw_archive_default TO apsis_migrator;   -- reconciliation reads the default partitions directly
+
+-- Rollback (migrate role only; NOT granted to the job role): empties the archive, the id map, the lookups, the checkpoints and the staging copy,
+-- so a re-run reloads everything. The undo of the coordinate fill (runbook) comes first, because it reads apsis_map.fill_log.
+CREATE FUNCTION apsis_hist.reset_history() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, apsis_hist AS $$
+DECLARE r record;
+BEGIN
+  TRUNCATE apsis_hist.sales_line, apsis_hist.visit_geo, apsis_hist.attendance, apsis_hist.raw_archive, apsis_hist.route_day_vendor,
+           apsis_hist.outlet_stub, apsis_hist.outlet_route, apsis_hist.reject;
+  TRUNCATE apsis_ctl.chunk, apsis_map.id_map, apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous;
+  FOR r IN SELECT quote_ident(table_name) AS n FROM information_schema.views WHERE table_schema = 'apsis_stage' LOOP EXECUTE 'DROP VIEW IF EXISTS apsis_stage.' || r.n || ' CASCADE'; END LOOP;
+  FOR r IN SELECT quote_ident(table_name) AS n FROM information_schema.tables WHERE table_schema = 'apsis_stage' AND table_type = 'BASE TABLE' LOOP EXECUTE 'DROP TABLE IF EXISTS apsis_stage.' || r.n || ' CASCADE'; END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION apsis_hist.reset_history() FROM PUBLIC;

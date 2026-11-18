@@ -6,6 +6,7 @@ Values are Python str / None (numbers stay as their text so no float ever touche
 import gzip
 import io
 import re
+from itertools import islice
 from dataclasses import dataclass, field
 
 _CREATE = re.compile(r"^CREATE TABLE (?:IF NOT EXISTS )?`?([^`\s(]+)`?\s*\($", re.I)
@@ -73,9 +74,16 @@ def _value(tok: str):
     return tok
 
 
-def parse_values(text: str):
-    """Parse '(a,b),(c,d);' into a list of tuples. Raises ValueError on a malformed statement."""
-    rows, cur, depth = [], None, 0
+class CharsetError(ValueError):
+    """The file is not valid text in the stated character set. Never guessed: the owner decides (Q2)."""
+
+
+MAX_LINE = 256 * 1024 * 1024
+
+
+def iter_values(text: str):
+    """Lazily parse '(a,b),(c,d);' into tuples (a 1 GB statement is never held as a list of rows). Raises ValueError on a malformed statement."""
+    cur, depth = None, 0
     for m in _TOKEN.finditer(text):
         t = m.group(0)
         if t == "(":
@@ -84,7 +92,7 @@ def parse_values(text: str):
         elif t == ")":
             if depth != 1 or cur is None:
                 raise ValueError("unbalanced parenthesis")
-            rows.append(tuple(cur))
+            yield tuple(cur)
             cur, depth = None, 0
         elif t == ",":
             pass
@@ -96,13 +104,34 @@ def parse_values(text: str):
             cur.append(_value(t))
     if depth != 0:
         raise ValueError("statement ended inside a row")
-    return rows
 
 
-def _open(path):
+def parse_values(text: str):
+    return list(iter_values(text))
+
+
+def _open(path, charset="utf-8", strict=True):
+    errors = "strict" if strict else "replace"
     if str(path).endswith(".gz"):
-        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", errors="replace", newline="\n")
-    return open(path, "r", encoding="utf-8", errors="replace", newline="\n")
+        return io.TextIOWrapper(gzip.open(path, "rb"), encoding=charset, errors=errors, newline="\n")
+    return open(path, "r", encoding=charset, errors=errors, newline="\n")
+
+
+def _lines(fh):
+    """Lines with a size guard; a decode failure is reported with the line number only (never the bytes)."""
+    n = 0
+    while True:
+        try:
+            line = fh.readline(MAX_LINE + 1)
+        except UnicodeDecodeError:
+            raise CharsetError(f"the file is not valid text in the stated character set near line {n + 1}: "
+                               "do not guess; the owner decides the character set (Q2), then pass --charset") from None
+        if not line:
+            return
+        n += 1
+        if len(line) > MAX_LINE:
+            raise ValueError(f"line {n} is longer than {MAX_LINE} bytes: re-dump with a smaller --net-buffer-length (or use mydumper chunks)")
+        yield n, line
 
 
 def _split_type(rest: str):
@@ -110,16 +139,16 @@ def _split_type(rest: str):
     return m
 
 
-def events(path, batch_rows=50000, skip_statements=0):
-    """Yield ('schema', TableSchema) and ('rows', table, rows, statement_ordinal) from one dump file.
+def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=True):
+    """Yield ('schema', TableSchema) and ('rows', table, rows, statement_ordinal, statement_done) from one dump file.
 
     skip_statements: INSERT statements with ordinal <= this are skipped (resume); the CREATE TABLE still yields.
     """
     schema = None
     in_create = False
     ordinal = 0
-    with _open(path) as fh:
-        for lineno, line in enumerate(fh, 1):
+    with _open(path, charset, strict) as fh:
+        for lineno, line in _lines(fh):
             if in_create:
                 s = line.strip()
                 if s.startswith(")"):
@@ -147,17 +176,20 @@ def events(path, batch_rows=50000, skip_statements=0):
                 ordinal += 1
                 if ordinal <= skip_statements:
                     continue
+                it = iter_values(line[mi.end():])
                 try:
-                    rows = parse_values(line[mi.end():])
+                    cur = list(islice(it, batch_rows))
+                    while cur:
+                        nxt = list(islice(it, batch_rows))
+                        yield ("rows", mi.group(1), cur, ordinal, not nxt)
+                        cur = nxt
                 except ValueError as e:
-                    raise ValueError(f"{mi.group(1)}: statement {ordinal} (file line {lineno}): {e}") from None
-                for i in range(0, len(rows), batch_rows):
-                    yield ("rows", mi.group(1), rows[i:i + batch_rows], ordinal, i + batch_rows >= len(rows))
+                    raise ValueError(f"statement {ordinal} (file line {lineno}): {e}") from None
 
 
-def tsv_events(path, table, batch_rows=50000):
+def tsv_events(path, table, batch_rows=50000, charset="utf-8", strict=True):
     """TSV with a header line (MySQL SELECT INTO OUTFILE style, \\N = NULL). Schema: every column text."""
-    with _open(path) as fh:
+    with _open(path, charset, strict) as fh:
         header = fh.readline().rstrip("\n").split("\t")
         yield ("schema", TableSchema(table, [Column(h, "text") for h in header]))
         batch = []

@@ -5,10 +5,15 @@
 -- psql variables: run_id. Templates: @C_*@ are replaced by the runner with the canonical staging views.
 TRUNCATE apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous;
 
-INSERT INTO apsis_map.code_ambiguous SELECT 'outlet', apsis_map.norm_code(code), count(*) FROM app.outlet GROUP BY 2 HAVING count(*) > 1;
-INSERT INTO apsis_map.code_ambiguous SELECT 'route', apsis_map.norm_code(code), count(*) FROM app.route GROUP BY 2 HAVING count(*) > 1;
-INSERT INTO apsis_map.code_ambiguous SELECT 'sku', apsis_map.norm_code(code), count(*) FROM app.sku GROUP BY 2 HAVING count(*) > 1;
-INSERT INTO apsis_map.code_ambiguous SELECT 'user', apsis_map.norm_code(COALESCE(employee_code, username)), count(*) FROM app.app_user GROUP BY 2 HAVING count(*) > 1;
+INSERT INTO apsis_map.code_ambiguous SELECT 'outlet', 'live', apsis_map.norm_code(code), count(*) FROM app.outlet GROUP BY 3 HAVING count(*) > 1;
+INSERT INTO apsis_map.code_ambiguous SELECT 'route', 'live', apsis_map.norm_code(code), count(*) FROM app.route GROUP BY 3 HAVING count(*) > 1;
+INSERT INTO apsis_map.code_ambiguous SELECT 'sku', 'live', apsis_map.norm_code(code), count(*) FROM app.sku GROUP BY 3 HAVING count(*) > 1;
+INSERT INTO apsis_map.code_ambiguous SELECT 'user', 'live', apsis_map.norm_code(COALESCE(employee_code, username)), count(*) FROM app.app_user GROUP BY 3 HAVING count(*) > 1;
+-- VENDOR side: two different vendor codes that normalise to one ('000457' and '457') must never be merged onto one of our masters (a scope leak across
+-- territories): both are excluded from matching and counted. A single spelling used consistently is not ambiguous.
+INSERT INTO apsis_map.code_ambiguous SELECT 'outlet', 'vendor', n, count(DISTINCT code) FROM (SELECT apsis_map.norm_code(code) AS n, code FROM @C_OUTLETS@ WHERE code IS NOT NULL) x GROUP BY n HAVING count(DISTINCT code) > 1 ON CONFLICT DO NOTHING;
+INSERT INTO apsis_map.code_ambiguous SELECT 'route', 'vendor', n, count(DISTINCT code) FROM (SELECT apsis_map.norm_code(code) AS n, code FROM @C_ROUTES@ WHERE code IS NOT NULL) x GROUP BY n HAVING count(DISTINCT code) > 1 ON CONFLICT DO NOTHING;
+INSERT INTO apsis_map.code_ambiguous SELECT 'sku', 'vendor', n, count(DISTINCT code) FROM (SELECT apsis_map.norm_code(code) AS n, code FROM @C_SKU@ WHERE code IS NOT NULL) x GROUP BY n HAVING count(DISTINCT code) > 1 ON CONFLICT DO NOTHING;
 
 INSERT INTO apsis_map.route_geo
 SELECT apsis_map.norm_code(r.code), r.code, r.id, z.id, t.id, d.id, d.wing_id
@@ -62,6 +67,7 @@ SELECT :run_id, 'masters_gap', jsonb_build_object(
   'skus_matched',    (SELECT count(DISTINCT apsis_map.norm_code(c.code)) FROM @C_SKU@ c JOIN apsis_map.sku_map g ON g.code_norm = apsis_map.norm_code(c.code)),
   'live_outlets',    (SELECT count(*) FROM apsis_map.outlet_geo), 'live_routes', (SELECT count(*) FROM apsis_map.route_geo),
   'live_skus',       (SELECT count(*) FROM apsis_map.sku_map),
-  'live_codes_ambiguous', (SELECT count(*) FROM apsis_map.code_ambiguous),
+  'live_codes_ambiguous', (SELECT count(*) FROM apsis_map.code_ambiguous WHERE side = 'live'),
+  'vendor_codes_ambiguous', (SELECT count(*) FROM apsis_map.code_ambiguous WHERE side = 'vendor'),
   'live_outlets_without_zone_chain', (SELECT count(*) FROM apsis_map.outlet_geo WHERE wing_id IS NULL))
 ON CONFLICT (run_id, name) DO UPDATE SET value = EXCLUDED.value;

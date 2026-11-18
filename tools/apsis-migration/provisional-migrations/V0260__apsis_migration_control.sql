@@ -25,6 +25,15 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT CASE WHEN n ~ '^[0-9]+$' THEN regexp_replace(n, '^0+(?=[0-9])', '') ELSE n END
     FROM (SELECT upper(regexp_replace(btrim(p), '\s+', '', 'g')) AS n) s $$;
 
+-- ---- settings owned by the migrate role (the job role reads them, never changes them)
+CREATE TABLE apsis_ctl.setting (key text PRIMARY KEY, value text NOT NULL);
+INSERT INTO apsis_ctl.setting VALUES ('history_until', '2026-09-30'), ('window_from', '2025-10-01'), ('window_to', '2026-12-31');
+COMMENT ON TABLE apsis_ctl.setting IS 'history_until: last business date for which dw.v_sales_with_history uses the archive instead of live rows (owner question Q16). window_from/window_to: the plausible business-date window of the vendor history; a row outside it is rejected (apsis_hist.reject), never given a partition.';
+CREATE FUNCTION apsis_map.in_window(p date) RETURNS boolean
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT p IS NOT NULL AND p >= (SELECT value::date FROM apsis_ctl.setting WHERE key = 'window_from')
+                       AND p <= (SELECT value::date FROM apsis_ctl.setting WHERE key = 'window_to') $$;
+
 -- ---- MySQL oddities -> NULL (zero dates, blank, impossible dates). Callers count the NULLs; nothing aborts on a bad date.
 CREATE FUNCTION apsis_map.mysql_date(p text) RETURNS date
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
@@ -109,12 +118,13 @@ CREATE TABLE apsis_map.route_geo (code_norm text PRIMARY KEY, route_code text NO
   territory_id bigint, division_id bigint, wing_id bigint);
 CREATE TABLE apsis_map.sku_map (code_norm text PRIMARY KEY, sku_code text NOT NULL, sku_id bigint NOT NULL, base_per_pack int NOT NULL);
 CREATE TABLE apsis_map.user_map (code_norm text PRIMARY KEY, user_id bigint NOT NULL, home_zone_id bigint, territory_id bigint, division_id bigint, wing_id bigint);
-CREATE TABLE apsis_map.code_ambiguous (kind text NOT NULL, code_norm text NOT NULL, n int NOT NULL, PRIMARY KEY (kind, code_norm));
-COMMENT ON TABLE apsis_map.code_ambiguous IS 'Live codes that collide after normalisation: excluded from matching and counted in the report.';
+CREATE TABLE apsis_map.code_ambiguous (kind text NOT NULL, side text NOT NULL CHECK (side IN ('live', 'vendor')), code_norm text NOT NULL, n int NOT NULL, PRIMARY KEY (kind, side, code_norm));
+COMMENT ON TABLE apsis_map.code_ambiguous IS 'Codes that collide after normalisation, on our side (two live masters) or the vendor side (two distinct vendor codes, e.g. 000457 and 457): excluded from matching, never merged onto one master, and counted in the report.';
 CREATE TABLE apsis_map.fill_log (outlet_id bigint PRIMARY KEY, prev_lat double precision, prev_lng double precision, prev_location_basis text,
   prev_location_confirmed boolean, new_lat double precision, new_lng double precision, run_id bigint);
 COMMENT ON TABLE apsis_map.fill_log IS 'The only live-master write of the tool (coordinate fill), logged with before and after so the undo touches only rows still holding the filled value.';
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA apsis_ctl, apsis_map TO apsis_migrator;
 GRANT TRUNCATE ON apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous TO apsis_migrator;
-GRANT EXECUTE ON FUNCTION apsis_map.norm_code(text), apsis_map.mysql_date(text), apsis_map.mysql_ts(text, text), apsis_map.business_date(text, text), apsis_map.num(text) TO apsis_migrator;
+GRANT SELECT ON apsis_ctl.setting TO apsis_migrator;
+GRANT EXECUTE ON FUNCTION apsis_map.in_window(date), apsis_map.norm_code(text), apsis_map.mysql_date(text), apsis_map.mysql_ts(text, text), apsis_map.business_date(text, text), apsis_map.num(text) TO apsis_migrator;

@@ -3,11 +3,6 @@
 -- Conventions of the stable dw views: data_origin then is_effective as the last two columns (DwViewContractTest), scope columns
 -- (zone_id, territory_id, division_id, wing_id) on every view so the server-side scope rule can filter; rows whose geography could not
 -- be resolved have NULL scope ids and are therefore visible to national roles only.
-CREATE TABLE apsis_ctl.setting (key text PRIMARY KEY, value text NOT NULL);
-INSERT INTO apsis_ctl.setting VALUES ('history_until', '2026-09-30');
-COMMENT ON TABLE apsis_ctl.setting IS 'history_until: last business date for which dw.v_sales_with_history uses the archive instead of live rows (no double count while both systems hold the same day; owner question Q16).';
-GRANT SELECT, UPDATE ON apsis_ctl.setting TO apsis_migrator;
-
 CREATE VIEW dw.v_hist_sales_line AS
   SELECT business_date, outlet_id, outlet_code, sku_id, sku_code, route_id, route_code, zone_id, territory_id, division_id, wing_id,
          user_id, user_code, qty_base, gross_mtk, is_zero_sale, vendor_deleted,
@@ -40,6 +35,18 @@ CREATE VIEW dw.v_sales_with_history AS
          h.qty_base, 'apsis'::text, h.data_origin, h.is_effective
     FROM dw.v_hist_sales_day h
    WHERE h.business_date <= (SELECT value::date FROM apsis_ctl.setting WHERE key = 'history_until');
+
+-- The scoped reader of history (lead ruling): a read-only role that sees ONLY these five views. The API's analytics read pool connects as a
+-- login that is a member of hist_ro and applies the server-side scope filter on the scope columns; the sync code never holds that pool.
+-- hist_ro is outside the five-role grant map, so apply_db_role_grants() neither grants nor revokes it.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hist_ro') THEN
+    CREATE ROLE hist_ro NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+  END IF;
+END $$;
+COMMENT ON ROLE hist_ro IS 'Read-only reader of the Apsis history views (dw.v_hist_*, dw.v_sales_with_history). Used by the API analytics read pool, never by the sync path.';
+GRANT USAGE ON SCHEMA dw TO hist_ro;
+GRANT SELECT ON dw.v_hist_sales_line, dw.v_hist_sales_day, dw.v_hist_visit_geo, dw.v_hist_attendance, dw.v_sales_with_history TO hist_ro;
 
 -- Column and view comments (the data dictionary).
 DO $$
