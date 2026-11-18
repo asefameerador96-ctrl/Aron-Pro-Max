@@ -34,6 +34,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.aktcl.aron.core.system.update.DownloadUi
@@ -111,7 +115,7 @@ fun AmoUpdateScreen(
             }
             Column(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(AronTokens.Space.Xl * 3))
-                Image(painterResource(R.drawable.amo_update_ribbon_cloud), null, Modifier.fillMaxWidth(0.85f))
+                AmoUpdateRibbonAndCloud(Modifier.fillMaxWidth(0.85f))
                 Text(stringResource(R.string.amo_upd_heading), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = look.ink, modifier = Modifier.testTag(UpdateTags.AMO_HEADING))
                 Spacer(Modifier.height(AronTokens.Space.S))
                 Text(stringResource(R.string.amo_upd_version, release.versionName), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted)
@@ -219,3 +223,47 @@ private fun currentVersionName(): String {
 
 private fun orEmptyVersion(ctx: android.content.Context): String =
     try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName.orEmpty() } catch (_: Exception) { "" }
+
+
+/**
+ * The "NEW UPDATE" ribbon and the download cloud of screen 05, drawn in code (D-PAR-AMO-24): the traced picture smudged the lettering. An orange band with two
+ * darker folded tails and white bold letters with a navy outline; under it a purple cloud with a white down arrow. Decoration only: the heading and the version
+ * line under it carry the meaning, and the whole is hidden from a screen reader.
+ */
+@Composable
+private fun AmoUpdateRibbonAndCloud(modifier: Modifier = Modifier) {
+    val navy = androidx.compose.ui.graphics.Color(0xFF1B2A5C)
+    Column(modifier.clearAndSetSemantics { }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth().height(104.dp), contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val w = size.width; val h = size.height
+                val tail = androidx.compose.ui.graphics.Color(0xFFD9661A); val band = androidx.compose.ui.graphics.Color(0xFFF0842A); val fold = androidx.compose.ui.graphics.Color(0xFFB04A0E)
+                val left = androidx.compose.ui.graphics.Path().apply { moveTo(0f, h * 0.38f); lineTo(w * 0.2f, h * 0.30f); lineTo(w * 0.2f, h * 0.82f); lineTo(w * 0.04f, h * 0.88f); lineTo(w * 0.09f, h * 0.62f); close() }
+                val right = androidx.compose.ui.graphics.Path().apply { moveTo(w, h * 0.38f); lineTo(w * 0.8f, h * 0.30f); lineTo(w * 0.8f, h * 0.82f); lineTo(w * 0.96f, h * 0.88f); lineTo(w * 0.91f, h * 0.62f); close() }
+                drawPath(left, tail); drawPath(right, tail)
+                val bandPath = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.1f, h * 0.20f); quadraticBezierTo(w * 0.5f, h * 0.02f, w * 0.9f, h * 0.20f); lineTo(w * 0.9f, h * 0.70f); quadraticBezierTo(w * 0.5f, h * 0.52f, w * 0.1f, h * 0.70f); close() }
+                drawPath(bandPath, band)
+                val foldL = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.1f, h * 0.70f); lineTo(w * 0.2f, h * 0.82f); lineTo(w * 0.2f, h * 0.64f); close() }
+                val foldR = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.9f, h * 0.70f); lineTo(w * 0.8f, h * 0.82f); lineTo(w * 0.8f, h * 0.64f); close() }
+                drawPath(foldL, fold); drawPath(foldR, fold)
+            }
+            Box(Modifier.padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+                val base = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black, fontSize = 26.sp, letterSpacing = 0.5.sp)
+                Text(stringResource(R.string.amo_upd_ribbon), style = base.copy(color = navy, drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 9f, join = androidx.compose.ui.graphics.StrokeJoin.Round)))
+                Text(stringResource(R.string.amo_upd_ribbon), style = base.copy(color = androidx.compose.ui.graphics.Color.White))
+            }
+        }
+        androidx.compose.foundation.Canvas(Modifier.size(64.dp)) {
+            val purple = androidx.compose.ui.graphics.Color(0xFF6B4FA8)
+            val w = size.width; val h = size.height
+            drawCircle(purple, radius = w * 0.2f, center = androidx.compose.ui.geometry.Offset(w * 0.3f, h * 0.55f))
+            drawCircle(purple, radius = w * 0.26f, center = androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.4f))
+            drawCircle(purple, radius = w * 0.2f, center = androidx.compose.ui.geometry.Offset(w * 0.74f, h * 0.56f))
+            drawRect(purple, topLeft = androidx.compose.ui.geometry.Offset(w * 0.3f, h * 0.5f), size = androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.26f))
+            val white = androidx.compose.ui.graphics.Color.White
+            drawLine(white, androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.3f), androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.78f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(white, androidx.compose.ui.geometry.Offset(w * 0.38f, h * 0.64f), androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.8f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(white, androidx.compose.ui.geometry.Offset(w * 0.66f, h * 0.64f), androidx.compose.ui.geometry.Offset(w * 0.52f, h * 0.8f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+    }
+}
