@@ -3349,3 +3349,8 @@
 - Train 116 master data cd079fb2: merge-only review running. sr-server c3ec4317 (four migrations, final V0201..V0204 / 1.19.0) waits for 116. Integrity V0205..V0206 / 1.20.0. L-A11 V0207 / 1.21.0 (sweep runs in the API process, no grant change).
 - android-gates: step 3 12a178bc FAILED (5 blocking, docs/reviews/android-gates-step3-2026-11-18.md); A-GATE5 session_014mnioM5JcbtBQV899MvN4N on step 4. P-SR1b session_014mnioQAtKKTq9KrTS98tic (Sale page). CI-E2E session_014mnioLZHqPfcspFYruwHTm (split web e2e; the 30-minute limit is not widened).
 - Retired: A-GATE4, P-SR1, L-A10. P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 04:46 UTC
+- INT 951292a48 (train 116) live; health ok. Train 116a (CI: web e2e split, map test) lane/lead-train116a 3c1c195ce: GO given.
+- Waiting: SV6 final head for train 117 (merge, drop username widening, renumber from V0201, 1.19.0). Reviews running: android-gates step 5 (abfa1ef4). Pending checks: P-AMO3 slices 10-15 after its merge "checked"; P-SR1b Sale-page batch after its merge; P-TSO bfea7197 after its ci; L-A11 fix round; A-INT3 lab part 2.
+- P-SR2b still blocked on the owner's push approval.
