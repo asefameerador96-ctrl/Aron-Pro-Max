@@ -1,5 +1,18 @@
 # Lane P-SR1 (android-parity-sr-1): SR parity, first half of the journey
 
+## HANDOVER (written 2026-11-18, branch tip pushed; read this first)
+
+State: branch `lane/android-parity-sr-1`, INT merged up to f5bfee39 (train 115). Gated by the lead: shell + bar, Stock, Login/OTP/update goldens, Home (+7 lows), AMO R-PAR-AMO-06/07. Pushed after the last gate (not yet gated): Attendance goldens (8, D-PAR-SR1-09), opened picker goldens (D-PAR-SR1-10). Local method that works: `export ANDROID_HOME=$HOME/android-sdk` (SDK: `bash tools/android-sdk.sh`, `echo sdk.dir=$HOME/android-sdk > local.properties`), record with `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true [--tests ...] -q`, verify without the flag; ALWAYS read the git status afterwards: any `amo_`/`tso_` file that changed must be explained.
+
+Key finding for the rest of the lane: most audit rows of the "old white bar / separate start-call screen / no dots" kind come from the OLD TEST FRAMES (`Frame()` in `SrStateScreenshotTests`/`ScreenshotTests`, calls without the SR host's flags), not from `SrApp`. Production already has: `VisitCheckContent(callQuestion = ..., geoPanel = true, mapSlot = ...)` (SrSaleHosts.kt:111-125, the inline question with হ্যাঁ/না, Sale History and Points buttons), `OutletPickerContent(manualRows = true)`, `AttendanceContent(statusBoxes = true)`, `StockContent(srParity = true)`. So each remaining row is RECORD with the host's flags, compare with the manual image, then FIX the differences.
+
+NOT STARTED (my screens, in this order): (1) Sale page: record `VisitCheckContent` as SrApp draws it: in range with `callQuestion` (relaunch path and with `geo`), outside range (`VisitUiState.NeedsDecision` out of range + geoPanel: check "ফোর্স সেল" + "রিফ্রেশ" and our map below), force-sale reason (`SrScreen.FORCE`, manual 31), zero sale + its Review (manual 32); compare with manual 19, 30, 31, 32. (2) Quantity pop-up `QuantityPopup` (feature-sale ui, manual 22): record, check quick steps and the আগের দিন / ADS / SDLW panel (wire to `outlet_sku_stats` only if it is on INT: grep `outlet_sku_stats` and `SkuStats.kt` in feature-sale/domain; else dashes and say so). (3) Review (manual 24: printer icon, discount table with zero, buttons), partial payment as a DIALOG over Review with live "বাকিঃ" and হ্যাঁ/না then the ticked Baki card (manual 27), confirm / print question / "সফল" dialogs (manual 28, 29), printer connect (manual 15-17; Bluetooth screens). (4) Permissions screen (manual 05) and the Sale History button target (do not route to a wrong screen; target/KPI programmes are deferred, keep hooks). Server/contract needs go in `docs/requests/android-parity-sr.md` (R-PAR-SR1-01 is the first entry).
+
+Open questions to the lead (sent): Stock row density/packshot size (PackCard is shared with Sale and AMO; KEEP-WITH-REASON unless told otherwise).
+
+Rules that bit me (do not repeat): a shared-kit change must be proven against the AMO/TSO goldens (my two-line title cap clipped an AMO title: cap only on the legacy path); append-only DECISIONS.md (a wrong entry is corrected by a NEW entry, D-PAR-SR1-05 corrected the text of 02); the stock head must name the figure under it ("স্টক" only when stockBase is supplied); never put a real-looking password in a fixture; the verify can fail on a fresh image only after the record; check `git status` for amo_/tso_ files.
+
+
 Branch `lane/android-parity-sr-1` from INT 4e064555. Nothing here was walked on a device; the lane CI Android job is the proof.
 
 ## Shell slice (D-PAR-SR1-01)
