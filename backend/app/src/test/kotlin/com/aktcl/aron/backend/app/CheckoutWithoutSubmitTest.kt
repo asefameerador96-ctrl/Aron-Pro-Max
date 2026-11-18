@@ -39,6 +39,7 @@ class CheckoutWithoutSubmitTest : NightSyncHarness() {
     fun aCheckOutWithoutSalesSubmitRaisesOneSignalPerUserDayAndIsStoredUnchanged() = testApplication {
         application { aronApi(wiring) }
         val t = client.token("sr1001", phone)
+        seedCapture(day) // train 117 (contract 1.19.0): only a day with route captures is judged
         val out = attendance("check_out")
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(out)))
         assertEquals(1, stored(out), "the check-out is stored unchanged")
@@ -79,6 +80,7 @@ class CheckoutWithoutSubmitTest : NightSyncHarness() {
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(attendance("check_out", d2))))
         assertEquals(0, signals(d2))
         val d3 = "2026-12-29"
+        seedCapture(d3)
         val voided = daySubmit(d3)
         assertTrue(client.send(t, phone, listOf(voided)).single().startsWith("accepted"))
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route_day_event SET voided_at = now() WHERE client_uuid = '${cu(voided)}'") }

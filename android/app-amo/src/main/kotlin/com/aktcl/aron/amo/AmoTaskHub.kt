@@ -90,6 +90,7 @@ private fun AmoTaskList(day: AmoDay, team: List<TeamSr>, days: List<RouteDay>, s
 @Composable
 private fun AmoTaskForm(day: AmoDay, days: List<RouteDay>, members: List<TeamMember>, team: List<TeamSr>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     var types by remember { mutableStateOf<List<TaskType>?>(null) }
     LaunchedEffect(day) { types = runCatching { day.taskTypes() }.getOrDefault(emptyList()) }
     val today = remember { day.businessDate() }
@@ -128,7 +129,7 @@ private fun AmoTaskForm(day: AmoDay, days: List<RouteDay>, members: List<TeamMem
         onSave = {
             val e = TaskDelegation.validateForm(routeId, outletId, sr?.userId, typeCode, due, description, today)
             errors = e
-            if (e.isEmpty() && !busy) {
+            if (e.isEmpty() && !busy && !writeGuard.refused()) {
                 busy = true
                 scope.launch {
                     val type = loaded.first { it.code == typeCode }

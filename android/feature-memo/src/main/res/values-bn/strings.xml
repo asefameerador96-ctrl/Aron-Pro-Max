@@ -142,4 +142,8 @@
     <string name="kpi_brand_total_volume">মোট ভলিউম</string>
     <string name="kpi_brand_total_memo">মোট মেমো</string>
     <string name="kpi_brand_section">FMC BRANDS</string>
+    <string name="summary_block_title">মোট বিক্রয়</string>
+    <string name="summary_block_total">মোট</string>
+    <string name="summary_block_grand">সর্ব মোট</string>
+    <string name="summary_block_minus">(-) %1$s</string>
 </resources>

@@ -2843,6 +2843,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/devices/{device_id}/lab-exemption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Let ONE phone run with Developer options on for 1 to 14 days (the owner's ADB device walks).
+         * @description D-OWNER-MDM-02. The field apps refuse to run while Developer options, USB debugging or wireless debugging is on. This signs a grant
+         *     (ECDSA P-256 over the device uuid, the grant time and the expiry, with a server secret that is never stored in the repository) and
+         *     records it; the phone receives it in its next full day bundle as the device-scoped config value `integrity.lab_exemption` (key prefix cfg., see ResolvedConfigValue),
+         *     verifies it offline against a public key built into the app, and never widens it beyond "the gate lets this device run with
+         *     developer options on" (the mock-location refusals still apply). Super Admin and an Admin with the `mdm` write grant only. A new
+         *     grant replaces the old one. 409 when the server has no signing secret (nothing is recorded). Audited; the audit row never carries the token.
+         */
+        put: operations["grantDeviceLabExemption"];
+        post?: never;
+        /**
+         * Withdraw a phone's lab exemption (idempotent).
+         * @description The phone drops the grant with its next full day bundle (a bundle without the value); until then it keeps it up to its expiry. Audited.
+         */
+        delete: operations["revokeDeviceLabExemption"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/devices/{device_id}/directives": {
         parameters: {
             query?: never;
@@ -3659,8 +3688,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
-         * @description A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+         * Bulk create-or-update outlets from a sheet as the field has it (preview with dry_run, commit with a reason).
+         * @description The field's data is accepted as it is (1.18.0). A channel label of the field ("GT Channel") is mapped; an empty channel comes from the sub-channel, else the row loads as GT with the warning `channel_defaulted`; a channel that names none of the six is the row error `unknown_channel` (never a 400 for the batch). Phones are repaired to the national form, coordinates are rounded to 8 decimals, a tier that does not fit the channel loads with no tier and the warning `sub_channel_mismatch`. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason` and, with `on_row_error` `reject_batch` (default), refuses the whole batch on any row error; `skip_rows` writes the good rows and lists the skipped ones. Idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone, address, tier or geo class keeps the stored one).
          */
         post: operations["importOutlets"];
         delete?: never;
@@ -4168,6 +4197,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/programmes/{id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
+         * @description From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated and the answer reports `valid`, the totals and the row errors (`errors[]`: row index, column, code; the first 200, with `error_count` and `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply refuses the whole file with `409`). Only the outlets of DEBIT rows are locked (one statement, in sorted order; `allow_overdraw` or not); a file may carry at most 2,000 debit rows (`400`, pointer `body.rows`, error code `too_many_debit_rows`, already at the dry run: split the file; credit rows are neither locked nor counted). The audit row of a batch lists the rows that went below zero (`overdrawn`: row, outlet_id, balance_before; at most 200) beside `overdrawn_rows`. When the database has no free lock slots the apply is `503` `ERR_SERVICE_UNAVAILABLE` and nothing is written. A replay is judged on the stored rows only.
+         */
+        put: operations["putProgrammeAdjustments"];
+        /**
+         * Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
+         * @description From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters. IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only. An outlet with no CURRENT enrolment in the programme (every kind, a campaign programme included) is `400` `not_enrolled`, because the bundle shows a balance only for an enrolled outlet; this is the lead's ruling and the owner may change it; a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid` is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. EVERY debit (a guarded one and one with `allow_overdraw`, single or bulk) takes the ledger job's per-outlet lock and reads the balance in one statement under it, so two concurrent ADMIN debits and a ledger-job pass are serialised: they cannot both pass the guard, and the `overdraw` flag and `balance_before` are decided under the lock; a phone redemption arriving at the same instant is NOT serialised with it (redemptions are field facts and are never refused): the ledger job's next pass and the `overdrawn` flag of the bundle show the result. A credit takes no lock. A debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row. A token of an ADMIN without the `modules` claim is refused (`403`) here.
+         */
+        post: operations["postProgrammeAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The points ledger of a programme (newest first), with the reason of each portal adjustment.
+         * @description From 1.23.0. Ledger rows are outlet data, cut to the caller's server-side reach exactly as `listProgrammeEnrolments`: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the rows of the outlets of their zones and routes; a BRAND user is refused `403`. A programme outside the caller's reach is `404`. Optional filters `outlet_id` and `source_type`. `reason` is set on `adjustment` rows only (from their audit row).
+         */
+        get: operations["listProgrammeLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/gifts": {
         parameters: {
             query?: never;
@@ -4562,7 +4635,7 @@ export interface components {
          */
         AppVersionString: string;
         /**
-         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen, docs/24 s7.5).
+         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{2,31}$` (no hyphen, docs/24 s7.5).
          * @example sr334001
          */
         Username: string;
@@ -4602,10 +4675,10 @@ export interface components {
          */
         Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "NATIONAL" | "BRAND" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
         /**
-         * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).
+         * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18); `gift_choice` from 1.15.0 (the Astha gift an outlet chose, SRM-B-66).
          * @enum {string}
          */
-        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack" | "content_view" | "redemption" | "redemption_line" | "gift_photo" | "price_compliance_check" | "risk_review" | "activity_log" | "app_error" | "sale_abort" | "consent_accept" | "support_ticket" | "support_ticket_event";
+        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack" | "content_view" | "redemption" | "redemption_line" | "gift_photo" | "price_compliance_check" | "risk_review" | "activity_log" | "app_error" | "sale_abort" | "consent_accept" | "support_ticket" | "support_ticket_event" | "gift_choice";
         /**
          * @description accepted: stored now. duplicate: already stored with the same payload hash (the phone marks it synced).
          *     rejected: not stored as a business row; `code` says why and `retryable` says whether to resend after a
@@ -4626,7 +4699,7 @@ export interface components {
          *     business date.
          * @enum {string}
          */
-        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown" | "cluster_name_exists";
+        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown" | "gift_locked" | "gift_not_for_tier" | "cluster_name_exists";
         /**
          * @description Stable problem codes (HTTP status in docs/24 s3.4). From contract 1.10.0 (409): `ERR_TICKET_TRANSITION_INVALID`
          *     (a support-desk status change the ticket's state does not allow, D-TSO-MAN-20), `ERR_TICKET_COMMENTS_CLOSED` (a
@@ -4726,6 +4799,11 @@ export interface components {
         StockMovementKind: "issue" | "return" | "adjustment" | "damaged" | "short" | "qc_return";
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
+        /**
+         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is stored on the attendance row only; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
+         * @enum {string}
+         */
+        AttendanceClosedBy: "rep" | "phone";
         /** @enum {string} */
         MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "outlet_call";
         /** @enum {string} */
@@ -4743,10 +4821,10 @@ export interface components {
         /** @enum {string} */
         QuarantineStatus: "open" | "accepted" | "accepted_with_fix" | "discarded";
         /**
-         * @description Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+         * @description Business code lists (`cluster_type` from contract 1.18.0, the six cluster types of the field with Bangla labels) (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
          * @enum {string}
          */
-        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason" | "call_photo_skip";
+        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason" | "call_photo_skip" | "cluster_type";
         /** @enum {string} */
         BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
@@ -5159,6 +5237,17 @@ export interface components {
             play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
             /** @description Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). Missing (an older app) means unknown, not clean and not a failure: the server stores NULL (never an empty array) and scoring treats it as no evidence (docs/24 s14a R18). */
             root_hints?: ("su_binary" | "test_keys" | "ro_debuggable" | "ro_secure_off" | "root_app" | "hook_framework" | "root_mount" | "clone_app_installed" | "secondary_user" | "foreign_data_dir")[];
+            /** @description Developer-options gate onsets since the last acknowledged report (contract 1.21.0, D-OWNER-MDM-02): the app did not run while one of these was on. Oldest first. A phone can send the same event again after a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of an event. Optional; absent from an older app. */
+            integrity_events?: {
+                at: components["schemas"]["Timestamp"];
+                flags: ("dev_options" | "adb" | "adb_wifi")[];
+                /**
+                 * @description Why the gate did not block (none = it blocked).
+                 * @enum {string}
+                 */
+                exempt: "none" | "debug_build" | "benchmark_build" | "lab";
+                app_version?: components["schemas"]["AppVersionString"];
+            }[];
             pending_rows: number;
             pending_media?: number;
             last_sync_at?: components["schemas"]["Timestamp"] | null;
@@ -5250,6 +5339,11 @@ export interface components {
             gnss?: components["schemas"]["GnssSummary"] | null;
             radio?: components["schemas"]["RadioEnvironment"] | null;
             device: components["schemas"]["FixDeviceState"];
+            /**
+             * @description Anti-spoofing codes the phone found for this fix (contract 1.21.0, D-OWNER-MDM-02), evidence for the server's risk rules. Optional: a phone built against an older contract sends none, and absent means unknown, not clean.
+             *     `mock_flag`, `mock_app_selected` and `test_provider` are HARD (the phone refused the geo-validated action; `is_mock` is true for all three, so `is_mock` is the platform flag OR an inferred hard code, and these codes tell them apart). The rest are SOFT and never block alone. Extensible: the server stores a code it does not know.
+             */
+            signals?: ("mock_flag" | "mock_app_selected" | "test_provider" | "test_provider_props" | "fake_gps_app_installed" | "gnss_no_sats" | "gnss_none" | "fix_stale" | "fix_clock_mismatch" | "jump" | "speed" | "provider_disagree" | "root_hint" | "emulator" | "hook_framework")[];
         };
         /** @description GnssStatus (and optional GnssMeasurement) statistics collected only while the fix request was open. */
         GnssSummary: {
@@ -5721,7 +5815,7 @@ export interface components {
             type: "support_ticket_event";
         };
         /** @description One outbox record; `type` selects the payload schema. */
-        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"] | components["schemas"]["ContentViewRecord"] | components["schemas"]["RedemptionRecord"] | components["schemas"]["RedemptionLineRecord"] | components["schemas"]["GiftPhotoRecord"] | components["schemas"]["PriceComplianceCheckRecord"] | components["schemas"]["RiskReviewRecord"] | components["schemas"]["ActivityLogRecord"] | components["schemas"]["AppErrorRecord"] | components["schemas"]["SaleAbortRecord"] | components["schemas"]["ConsentAcceptRecord"] | components["schemas"]["SupportTicketRecord"] | components["schemas"]["SupportTicketEventRecord"];
+        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"] | components["schemas"]["ContentViewRecord"] | components["schemas"]["RedemptionRecord"] | components["schemas"]["RedemptionLineRecord"] | components["schemas"]["GiftPhotoRecord"] | components["schemas"]["GiftChoiceRecord"] | components["schemas"]["PriceComplianceCheckRecord"] | components["schemas"]["RiskReviewRecord"] | components["schemas"]["ActivityLogRecord"] | components["schemas"]["AppErrorRecord"] | components["schemas"]["SaleAbortRecord"] | components["schemas"]["ConsentAcceptRecord"] | components["schemas"]["SupportTicketRecord"] | components["schemas"]["SupportTicketEventRecord"];
         ContentViewRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
             type: "content_view";
@@ -5754,6 +5848,18 @@ export interface components {
              * @enum {string}
              */
             type: "redemption_line";
+        };
+        /** @description The Astha gift an outlet chose for a quarter (contract 1.17.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
+        GiftChoiceRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "gift_choice";
+            payload: components["schemas"]["GiftChoicePayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gift_choice";
         };
         GiftPhotoRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
@@ -5840,6 +5946,8 @@ export interface components {
             fix: components["schemas"]["GeoFix"];
             /** @description Reverse-geocoded text shown on screen; display only, never used for a decision. */
             address_display?: string | null;
+            /** @description Contract 1.19.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted; `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time. */
+            closed_by?: components["schemas"]["AttendanceClosedBy"];
         };
         DayOpenPayload: {
             route_ids: components["schemas"]["Id"][];
@@ -6570,6 +6678,18 @@ export interface components {
                 rows: number;
             }[];
         };
+        BundleGeoName: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            name_bn: string | null;
+        };
+        BundleGeography: {
+            wing: components["schemas"]["BundleGeoName"];
+            division: components["schemas"]["BundleGeoName"];
+            territory: components["schemas"]["BundleGeoName"];
+            zone: components["schemas"]["BundleGeoName"];
+        };
         BundleUser: {
             user_id: components["schemas"]["Id"];
             username: components["schemas"]["Username"];
@@ -6584,6 +6704,8 @@ export interface components {
             zone_id?: number | null;
             /** Format: int64 */
             territory_id?: number | null;
+            /** @description From 1.22.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them. */
+            geography?: components["schemas"]["BundleGeography"] | null;
             /** @description Policy versions the user accepted (F-SYS-075), earliest acceptance per version. The phone seeds its consent flag from it and does not show the notice again. */
             consents?: {
                 /** @enum {string} */
@@ -6592,6 +6714,11 @@ export interface components {
                 accepted_at: components["schemas"]["Timestamp"];
             }[];
         };
+        /**
+         * @description A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant
+         *     (D-OWNER-MDM-02 iii, 1.21.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
+         *     without it withdraws the grant.
+         */
         ResolvedConfigValue: {
             key: components["schemas"]["ConfigKeyName"];
             value: components["schemas"]["ConfigValueJson"];
@@ -8836,8 +8963,16 @@ export interface components {
             resolved_by_user_id?: number | null;
             resolved_at?: components["schemas"]["Timestamp"] | null;
             resolution_note?: string | null;
+            /** @description From 1.20.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`, field names and uuids only). The server's own sweep (in the API process) releases it when that parent is stored, with exactly the override a reviewer's accept carried for it and nothing more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it. */
+            waiting?: boolean;
+            /** @description From 1.20.0. The parent a waiting item awaits; null when not waiting. */
+            waits_for_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description From 1.20.0. True when the awaited parent is refused or discarded (refreshed at every pass): the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`) is the way out. */
+            waits_for_refused?: boolean;
         };
         QuarantinePage: {
+            /** @description From 1.20.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters. */
+            waiting_count?: number;
             items: components["schemas"]["QuarantineItem"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
@@ -8940,9 +9075,12 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             /** @enum {string} */
             kind: "sr" | "amo";
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
-            /** @description bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21). */
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 (1.18.0) = no visit plan (visit_kind none). bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21). */
             visit_days_mask: number;
             sequence_no?: number | null;
             status: components["schemas"]["ActiveStatus"];
@@ -8961,8 +9099,12 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             /** @enum {string} */
             kind: "sr" | "amo";
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 only with visit_kind none (no visit plan). */
             visit_days_mask: number;
             sequence_no?: number | null;
         };
@@ -8970,8 +9112,12 @@ export interface components {
             name?: string;
             display_label?: string | null;
             zone_id?: components["schemas"]["Id"];
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 only with visit_kind none (no visit plan). */
             visit_days_mask?: number;
             sequence_no?: number | null;
             status?: components["schemas"]["ActiveStatus"];
@@ -9928,6 +10074,21 @@ export interface components {
                 status: "active" | "unbound_by_policy" | "revoked";
             }[];
             last_status?: components["schemas"]["DeviceStatusReport"] | null;
+            /** @description The unexpired lab exemption of this phone; absent when there is none. Never carries the signed token. */
+            lab_exemption?: components["schemas"]["LabExemption"] | null;
+            /** @description True when the server can sign a grant (the signing secret is set); the portal offers the action only then. */
+            lab_exemption_available?: boolean;
+        };
+        LabExemption: {
+            granted_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            granted_by: components["schemas"]["Id"];
+            note?: string | null;
+        };
+        LabExemptionRequest: {
+            days: number;
+            /** @description Why the phone needs it (for example the walk it is for). */
+            note?: string | null;
         };
         DevicePage: {
             items: components["schemas"]["Device"][];
@@ -10153,7 +10314,7 @@ export interface components {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
             visit_client_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). */
+            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it is stored as sent (a display fact; the database refuses a negative value) and is never compared with the ledger, which is the server's balance; an overdraw is accepted whatever it says. A phone whose balance is already negative sends 0 (clamped). */
             balance_before_points: number;
             points_total: number;
             /** @description Cash-back points (at most cfg.loyalty.cash_max_points). */
@@ -10175,8 +10336,24 @@ export interface components {
             points_total: number;
         };
         /**
-         * @description Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
-         *     or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+         * @description 1.17.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+         *     photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
+         *     the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
+         *     `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
+         */
+        GiftChoicePayload: {
+            outlet_id: components["schemas"]["Id"];
+            gift_id: components["schemas"]["Id"];
+            /** @description The Astha quarter label (`cfg.astha.quarter_start_month`). */
+            quarter: string;
+            fix?: components["schemas"]["GeoFix"];
+        };
+        /**
+         * @description Hand-over photo of a gift: of an Astha gift assignment or of one redeemed campaign gift unit (Gift Verify). Several photos may be sent: the FIRST by `captured_at` (tie: client
+         *     uuid) is the winner and locks the Astha choice; every other photo is STORED as a flagged duplicate, never refused or deleted (cfg.astha.one_photo_per_outlet is the phone's own
+         *     count rule). A campaign-unit photo whose redemption is FINAL (refused, voided, or a line of it voided or refused) or that fails the server checks is stored and flagged
+         *     (`check_flag`: parent_refused, parent_voided, unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach), never the unit's photo; only a redemption that has
+         *     genuinely not arrived yet answers `parent_missing` (retryable).
          */
         GiftPhotoPayload: {
             programme_kind: components["schemas"]["ProgrammeKind"];
@@ -10422,6 +10599,125 @@ export interface components {
             rows: components["schemas"]["ProgrammeEnrolment"][];
             change_reason: components["schemas"]["ChangeReason"];
         };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentWrite: {
+            request_uuid: components["schemas"]["Uuid"];
+            outlet_id: components["schemas"]["Id"];
+            /** @description Signed, never 0: a credit is positive, a debit negative. */
+            points: number;
+            reason: components["schemas"]["ChangeReason"];
+            /**
+             * Format: date
+             * @description Last day the credited points count (not before today, Dhaka); null or absent = no expiry.
+             */
+            expires_on?: string | null;
+            /**
+             * @description A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).
+             * @default false
+             */
+            allow_overdraw: boolean;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentRow: {
+            outlet_id: components["schemas"]["Id"];
+            points: number;
+            /** Format: date */
+            expires_on?: string | null;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentBatch: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @description true = validate and report, write nothing. */
+            dry_run: boolean;
+            change_reason: components["schemas"]["ChangeReason"];
+            /**
+             * @description As on the single post, for every debit row of the file.
+             * @default false
+             */
+            allow_overdraw: boolean;
+            rows: components["schemas"]["ProgrammeAdjustmentRow"][];
+        };
+        ProgrammeAdjustmentRowError: {
+            /** @description Zero-based index in `rows`. */
+            row: number;
+            /** @description The member at fault (`outlet_id`, `points`, `expires_on`) or `row`. */
+            column: string;
+            /** @description Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, not_enrolled, in_the_past, debit_has_no_expiry, would_overdraw, too_many_debit_rows, invalid_value ... */
+            code: string;
+            /**
+             * Format: int64
+             * @description With `would_overdraw`: the balance before the file.
+             */
+            balance_points?: number;
+        };
+        /** @description From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries `posted`. */
+        ProgrammeAdjustmentBatchResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            dry_run: boolean;
+            rows: number;
+            /** @description Apply only: ledger rows written now (0 on a replay). */
+            posted?: number;
+            /** @description The batch was posted before (an apply answers it with posted 0; a dry run says so). */
+            replayed: boolean;
+            /**
+             * Format: int64
+             * @description Sum of the valid rows points.
+             */
+            total_points: number;
+            /** @description Dry run only: no row error and the programme can take the batch (or it is a replay). */
+            valid?: boolean;
+            /** @description Dry run only. */
+            outlets?: number;
+            /**
+             * Format: int64
+             * @description Dry run only.
+             */
+            credit_points?: number;
+            /**
+             * Format: int64
+             * @description Dry run only (negative or 0).
+             */
+            debit_points?: number;
+            /**
+             * @description Dry run only.
+             * @enum {string}
+             */
+            programme_status?: "draft" | "active" | "inactive";
+            /** @description Dry run only: the first 200 row errors. */
+            errors?: components["schemas"]["ProgrammeAdjustmentRowError"][];
+            /** @description Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`). */
+            error_count?: number;
+            /** @description Dry run only. */
+            errors_truncated?: boolean;
+        };
+        /** @description From 1.23.0. One row of the append-only points ledger. */
+        LedgerEntry: {
+            /** Format: int64 */
+            ledger_id: number;
+            /** @description adjustment, redemption, redemption_void, expiry, ... */
+            source_type: string;
+            /** @description For an adjustment: the request_uuid, or `<batch_uuid>:<row index>` for a bulk row. */
+            source_id: string;
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            points: number;
+            business_date: components["schemas"]["BusinessDate"];
+            /** Format: date */
+            expires_on: string | null;
+            /** @description Portal adjustments carry `portal`, and `overdraw` when the debit took the balance below zero (allowed with `allow_overdraw`). */
+            flags: string[];
+            /** @description The audit reason of an adjustment; null on other rows. */
+            reason: string | null;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description From 1.23.0. */
+        LedgerPage: {
+            programme_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            programme_status: "draft" | "active" | "inactive";
+            items: components["schemas"]["LedgerEntry"][];
+            next_cursor: string | null;
+        };
         Gift: {
             gift_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
@@ -10472,11 +10768,16 @@ export interface components {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
             league_label: string | null;
-            /** @description The PLAIN SUM of all ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit that was partly redeemed lapses only for what is left of it); before that job has run the balance may still include points past their date. Negative only after a flagged overdraw. */
+            /** @description From 1.22.0, additive. The outlet's tier in this programme at the business date (`programme_enrolment.tier_code`, an Astha tier or Superstar slab); null when the enrolment names none. The phone needs it to judge a gift against the tier (`gift.tier_codes`) before the outlet has chosen a gift (a `gift_assignment` row exists only after the first choice). */
+            tier_code?: string | null;
+            /** @description Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption is in the figure at once), read in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still include points past their date. A negative balance means the outlet is overdrawn. Transients (the first three are gone after the next ledger-job pass, at most about ten minutes): a debit that synced late with an earlier business date is in the figure before the expiry give-back it causes is posted (the figure is LESS favourable until then); a redemption voided after it was posted keeps its debit until the pass posts the reversal (LESS favourable); and points whose date has passed stay in the figure until the first pass after Dhaka midnight posts their expiry row; and, the fourth, a backdated adjustment whose transaction committed late is found at the latest by the first pass of the next Dhaka day (up to one Dhaka day): until then only the expiry correction it causes is off, while the balance sum is exact (the adjustment row is in the sum as soon as it is committed). */
             balance_points: number;
-            /** @description The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped by the balance and never negative; no window. Debits are not matched to credits in this read. */
+            /** @description 1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row. */
+            overdrawn: boolean;
+            /** @description What the EARLIEST upcoming expiry (`expiry_date`) will take: the credits expiring on that date as the ledger replay leaves them AFTER debits (oldest expiry consumed first) and after unfunded debt has been settled by later credits, capped by the balance and never negative; no window. */
             expiring_points: number;
             expiry_date: components["schemas"]["BusinessDate"] | null;
+            /** @description DISPLAY ONLY: the business date the figures were read on ("figures include everything the server held when the bundle was built"). It is not a cut: no ledger row is left out because of its date. */
             as_of_date: components["schemas"]["BusinessDate"];
         };
         LoyaltyBalanceList: {
@@ -10492,6 +10793,10 @@ export interface components {
             outlet_id?: number | null;
             /** Format: int64 */
             brand_id?: number | null;
+            /** @description From 1.22.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id` is the product-tree node id of the brand level), sent ONLY when that node is not active, i.e. not among the bundle's `products.nodes` (an active brand is named there; a row costs no extra bytes), so the phone never shows an id for an inactive brand. */
+            brand_name?: string;
+            /** @description From 1.22.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name` when the node has one. */
+            brand_name_bn?: string;
             month: components["schemas"]["Month"];
             std_target: components["schemas"]["Decimal3"];
             std_achieved: components["schemas"]["Decimal3"];
@@ -10577,18 +10882,22 @@ export interface components {
             gift_id: components["schemas"]["Id"];
             qty: number;
             photos_captured: number;
+            /** @description From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending, at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift, from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count: it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone offers exactly the open units. Same bound and snapshot as the rest of the section. */
+            units_captured?: number[];
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle's business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it discards the section's achievement and refetches. `astha_as_of` and a row's `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200) or gift_assignments (2,000) that was cut, and `astha_truncated` the 1,000-row Astha bound. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle's business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row's `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section's achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer's accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server's per-uuid answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];
             gifts: components["schemas"]["Gift"][];
-            /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
+            /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the quarter of the business date (before 1.22.0: the month); the Dhaka start of the quarter when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
             astha_as_of: components["schemas"]["Timestamp"];
-            /** @description 1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments` was cut at its cap (50, 11,000, 200, 2,000); empty when none. A cut is also logged by the server. The phone shows a notice. */
-            truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments")[];
-            /** @description 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. */
+            /** @description 1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
+            truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments" | "pending_gift_verifications")[];
+            /** @description 1.15.0. True when the user's routes had more Astha rows (for the quarter from 1.22.0, before that for the month) than the bound of 1,000 and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. `astha_truncated_months` says which months. */
             astha_truncated: boolean;
+            /** @description From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty when `astha_truncated` is false); a month not named here is complete FOR THE OUTLETS ENROLLED TODAY ON TODAY'S ROUTES: a row of a past month is not sent (and the month is not named) when the outlet's enrolment ended earlier in the quarter or its target row still carries an old route; `listAsthaTargets` has the same route and enrolment filter, so the limit is the same online. A month the bound cut is named even when the cut left it with no row sent. */
+            astha_truncated_months?: components["schemas"]["Month"][];
             astha_targets: components["schemas"]["AsthaTargetRow"][];
             gift_assignments: components["schemas"]["GiftAssignment"][];
             pending_gift_verifications: components["schemas"]["PendingGiftVerification"][];
@@ -11290,45 +11599,109 @@ export interface components {
             zone_code: string;
             /** @description Cluster name inside the zone. */
             cluster: string;
-            /** @enum {string} */
-            channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+            /** @description Since 1.18.0 optional and free text: one of GT, DCC, Astha, RCC, MT, HoReCa or the field's label ("GT Channel", "Astha Channel", "DCC Channel", "MT Channel"), any case. Empty: derived from sub_channel, else GT with the warning channel_defaulted. */
+            channel?: string | null;
             /** @enum {string} */
             outlet_kind: "retail" | "wholesale";
             route_code?: string | null;
+            /** @description More than 8 decimals are rounded, never rejected. */
             lat?: number | null;
             lng?: number | null;
+            /** @description The text as the sheet has it (the portal does not repair it). The server repairs it to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable and its text is kept in the outlet's source column (warning phone_source_kept, first 60 characters). */
             contact_number?: string | null;
             address?: string | null;
+            /** @description 1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum, Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does not belong to the row's channel, is unknown or retired (Silver) loads with no tier and a warning. */
+            sub_channel?: string | null;
+            /** @description 1.18.0. Rural, Urban, Semi Urban (stored as SemiUrban) or Hill; unknown is stored empty with a warning. */
+            geo_class?: string | null;
+            /** @description 1.18.0. The field's Created At text (ISO or yyyy-MM-dd HH:mm:ss, dd/MM/yyyy; without an offset it is Asia/Dhaka). Kept on a new outlet; unreadable or future values keep the import time with a warning. */
+            created_at?: string | null;
+            /** @description 1.18.0. The field's Updated At text, same rules; kept on a new outlet. */
+            updated_at?: string | null;
         };
         OutletImportWrite: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: components["schemas"]["OutletImportRow"][];
             dry_run: boolean;
             change_reason?: components["schemas"]["ChangeReason"];
+            /**
+             * @description 1.18.0. The owner's switch at load time: true marks every imported pin inside Bangladesh as confirmed (no first-visit correction); false loads them as the master pin, unconfirmed. A pin outside Bangladesh is never confirmed. A re-run with true confirms pins loaded earlier with false.
+             * @default false
+             */
+            location_confirmed: boolean;
+            /**
+             * @description 1.18.0. reject_batch (the earlier behaviour) refuses the whole commit on any row error; skip_rows writes the good rows and lists the skipped ones.
+             * @default reject_batch
+             * @enum {string}
+             */
+            on_row_error: "reject_batch" | "skip_rows";
+        };
+        /** @description A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier, phone_source_kept, tier_source_kept). */
+        OutletImportRowWarning: {
+            row: number;
+            column: string;
+            /** @enum {string} */
+            code: "phone_unusable" | "phone_repaired" | "coordinates_rounded" | "coordinates_outside_bangladesh" | "channel_derived" | "channel_defaulted" | "sub_channel_mismatch" | "sub_channel_retired" | "unknown_sub_channel" | "astha_without_tier" | "unknown_geo_class" | "created_at_unreadable" | "updated_at_unreadable" | "phone_source_kept" | "tier_source_kept" | "tier_cleared" | "pin_kept_as_candidate" | "coordinates_invalid" | "coordinates_incomplete";
         };
         OutletImportRowError: {
             /** @description 1-based position in rows. */
             row: number;
             column: string;
             /** @enum {string} */
-            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged";
+            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged" | "unknown_channel" | "sub_channel_inconsistent";
         };
         OutletImportPreview: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: number;
             creates: number;
             updates: number;
+            /** @description 1.18.0 (push 1b). Valid rows whose outlet already holds exactly these values; the commit writes nothing for them (no version bump, no audit row). */
+            unchanged?: number;
+            /** @description 1.18.0 (push 1b). Rows with a row error: left out by on_row_error skip_rows, else they refuse the commit. */
+            skipped?: number;
             /** @description Valid rows per channel. */
             by_channel: {
                 [key: string]: number;
             };
             errors: components["schemas"]["OutletImportRowError"][];
             errors_truncated: boolean;
+            /** @description 1.18.0. */
+            warnings?: components["schemas"]["OutletImportRowWarning"][];
+            /** @description 1.18.0. */
+            warnings_truncated?: boolean;
+            /** @description 1.18.0. Count of every warning code, informational ones included. */
+            warnings_by_code?: {
+                [key: string]: number;
+            };
         };
         OutletImportResult: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: number;
             replayed: boolean;
+            /** @description 1.18.0. */
+            creates?: number;
+            /** @description 1.18.0. */
+            updates?: number;
+            /** @description 1.18.0 (push 1b). Rows that changed nothing (no write, no version bump, no audit row). */
+            unchanged?: number;
+            /** @description 1.18.0 (push 1b). Loaded rows per channel. Not on a replay. */
+            by_channel?: {
+                [key: string]: number;
+            };
+            /** @description 1.18.0. Rows left out because of a row error (on_row_error skip_rows). */
+            skipped?: number;
+            /** @description 1.18.0. Only with skip_rows. */
+            errors?: components["schemas"]["OutletImportRowError"][];
+            /** @description 1.18.0. */
+            errors_truncated?: boolean;
+            /** @description 1.18.0. Not on a replay. */
+            warnings?: components["schemas"]["OutletImportRowWarning"][];
+            /** @description 1.18.0. */
+            warnings_truncated?: boolean;
+            /** @description 1.18.0. */
+            warnings_by_code?: {
+                [key: string]: number;
+            };
         };
         BulkResult: {
             batch_uuid: components["schemas"]["Uuid"];
@@ -17109,6 +17482,63 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    grantDeviceLabExemption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabExemptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The device with its lab exemption. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revokeDeviceLabExemption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device without a lab exemption. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listDeviceDirectives: {
         parameters: {
             query?: never;
@@ -19684,6 +20114,110 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    putProgrammeAdjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentBatch"];
+            };
+        };
+        responses: {
+            /** @description The dry-run report, or the result of the apply. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeAdjustmentBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    postProgrammeAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentWrite"];
+            };
+        };
+        responses: {
+            /** @description A repeat of the same request; the stored row, nothing added. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            /** @description Posted now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listProgrammeLedger: {
+        parameters: {
+            query?: {
+                outlet_id?: components["schemas"]["Id"];
+                source_type?: string;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of ledger rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listGifts: {

@@ -29,7 +29,13 @@
     <string name="sale_unit_pack">packs</string>
     <string name="sale_pack_badge">= %1$s packs + %2$s</string>
     <string name="sale_stock_warning">Only %1$s %3$s in stock for %2$s.</string>
-    <string name="sale_no_stock">No stock of %1$s. Add it on the Stock screen first.</string>
+    <string name="sale_stock_first">No stock is entered for today. Add today\'s stock first, then sell.</string>
+    <string name="sale_stock_first_action">Open Stock</string>
+    <string name="review_problem_edit_superseded">This memo was already edited. Open the latest version of the memo from the Memo screen and edit that one. Nothing was saved.</string>
+    <string name="review_problem_not_checked_in">You are not checked in for this day, so nothing was saved. Open Attendance and check in, then save again.</string>
+    <string name="review_problem_earlier_call_open">An earlier day\'s call is still open, so nothing was saved. Finish that call first (or close it), then come back.</string>
+    <string name="review_problem_checked_out">You have already checked out for this day, so nothing was saved. Sales close with the check-out.</string>
+    <string name="review_problem_clock_back">The phone\'s clock was set back after this memo was opened, so it cannot be saved with its own date. Nothing was saved. Set the date and time to automatic and open the memo again.</string>
     <string name="sale_empty">Add a quantity to start the sale.</string>
     <string name="sale_zero_confirm_title">No SKU selected for sale</string>
     <string name="sale_zero_confirm_message">Do you want to make a zero (0) sale?</string>
@@ -100,6 +106,7 @@
     <string name="edit_reason_wrong_sku">Wrong SKU</string>
     <string name="edit_reason_wrong_quantity">Wrong quantity</string>
     <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_denied_mock">This sale cannot be edited: a fake location was detected. Turn off and uninstall any fake-GPS app, then go back and try again.</string>
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
@@ -174,4 +181,18 @@
     <string name="slide_glyph_close">✕</string>
     <string name="slide_quick_down">−%1$s</string>
     <string name="qc_minus_amount">− %1$s</string>
+    <string name="edit_denied_checkin">Check in first: a sale can be edited only after you have checked in today.</string>
+    <string name="edit_denied_day_closed">The sales of that day are already submitted, so this memo cannot be edited. Tell your TSO or AMO.</string>
+    <string name="sale_amo_rate">Rate</string>
+    <string name="sale_amo_discount">Discount</string>
+    <string name="sale_amo_percent">%1$s%%</string>
+    <string name="review_total_qty">Quantity</string>
+    <string name="qc_col_type">Type</string>
+    <string name="qc_fault_mfc">MFC Fault</string>
+    <string name="qc_fault_mkt">MKT Fault</string>
+    <string name="review_problem_call_closed">This call has already ended, so the sale was not saved. Nothing was recorded for it.</string>
+    <string name="review_later_title">Saved memo shown</string>
+    <string name="review_later_body">The memo had already been saved before your last changes. The saved memo is shown; the changes you made after it were not saved. Edit the memo if they are needed.</string>
+    <string name="qc_discard_message">Discard everything entered in QC?</string>
+    <string name="qc_summary_none">No product has QC yet</string>
 </resources>

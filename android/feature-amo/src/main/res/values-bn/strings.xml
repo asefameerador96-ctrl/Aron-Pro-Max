@@ -47,7 +47,7 @@
     <string name="amo_pc_off">তালিকা মূল্য থেকে %1$s ৳ ভিন্ন</string>
     <string name="amo_pc_invalid">১২৫ বা ১২৫.৫-এর মতো মূল্য লিখুন</string>
     <string name="amo_edit_checking">আপনি দোকানে আছেন কিনা দেখা হচ্ছে…</string>
-    <string name="amo_sale_history">এই দোকানের বিক্রয় ইতিহাস</string>
+    <string name="amo_sale_history">Sale History</string>
     <string name="amo_rec_visit">আউটলেট</string>
     <string name="amo_rec_memo">বিক্রয়</string>
     <string name="amo_rec_stock_movement">স্টক</string>
@@ -94,7 +94,7 @@
     <string name="amo_verify_f_mobile">মোবাইল নম্বর</string>
     <string name="amo_verify_f_address">ঠিকানা</string>
     <string name="amo_verify_f_reason">বন্ধের কারণ</string>
-    <string name="amo_verify_f_sub_channel">সাব-চ্যানেল</string>
+    <string name="amo_verify_f_sub_channel">Sub-Channel</string>
     <string name="amo_verify_flag_remote">এসআর আউটলেটে ছিলেন না</string>
     <string name="amo_verify_flag_home">এসআর বাসায় ছিলেন</string>
     <string name="amo_verify_flag_accuracy">অবস্থান সঠিক ছিল না</string>
@@ -237,11 +237,11 @@
     <string name="amo_rep_memos">মেমো</string>
     <string name="amo_rep_by_category">ক্যাটাগরি অনুযায়ী</string>
     <string name="amo_rep_cat_qty">%1$s %2$s বিক্রি</string>
-    <string name="amo_rep_cpr">সিপিআর %1$s</string>
+    <string name="amo_rep_cpr">CPR %1$s</string>
     <string name="amo_rep_memos_n">%1$s মেমো</string>
     <string name="amo_rep_target">টার্গেট আউটলেট</string>
     <string name="amo_rep_calls">সফল কল</string>
-    <string name="amo_rep_cpr_label">সিপিআর</string>
+    <string name="amo_rep_cpr_label">CPR</string>
     <string name="amo_rep_memos_label">মোট মেমো</string>
     <string name="amo_rep_net">নিট বিক্রি</string>
     <string name="amo_rep_brands">ব্র্যান্ড</string>
@@ -274,4 +274,5 @@
     <string name="amo_ok">ওকে</string>
     <string name="amo_field_invalid">মানটি যাচাই করুন</string>
     <string name="amo_verify_loading">বিস্তারিত লোড হচ্ছে…</string>
+    <string name="amo_gate_day_submitted">এই কলের দিনের বিক্রি আগেই জমা দেওয়া হয়েছে। কলটি ফোনে শেষ করা হয়েছে।</string>
 </resources>

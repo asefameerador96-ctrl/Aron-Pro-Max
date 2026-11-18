@@ -87,6 +87,13 @@ class AmoShellScreenshotTests {
     @Composable private fun Login() = com.aktcl.aron.feature.auth.AmoLoginContent(
         com.aktcl.aron.feature.auth.LoginUiState(username = "amo5864", password = "secret"), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25",
     )
+    // the first start (screenshot 03): empty fields show their words centred (D-PAR-AMO-23)
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_empty_bn() = shot("amo_login_empty_bn", AppLanguage.BN, amoLook = false) {
+        com.aktcl.aron.feature.auth.AmoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25")
+    }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_empty_bn_fs2() = shot("amo_login_empty_bn_fs2", AppLanguage.BN, fontScale = 2f, amoLook = false) {
+        com.aktcl.aron.feature.auth.AmoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25")
+    }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn() = shot("amo_login_bn", AppLanguage.BN, amoLook = false) { Login() }
     @Test fun amo_login_en() = shot("amo_login_en", AppLanguage.EN, amoLook = false) { Login() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn_fs2() = shot("amo_login_bn_fs2", AppLanguage.BN, fontScale = 2f, amoLook = false) { Login() }
@@ -99,7 +106,7 @@ class AmoShellScreenshotTests {
     private val done = open.copy(checkedOutAt = "2026-11-06T11:30:00.000Z", checkOutEnabled = false)
 
     @Composable private fun Attendance(st: com.aktcl.aron.feature.attendance.AttendanceState) = ParityFrame(
-        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance,
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_attendance), null,
     ) {
         com.aktcl.aron.feature.attendance.AttendanceContent(st, "17:00", {}, {}, onRefreshFix = {}, nowIso = now, userTitle = "AMO-Dariapur (amo5864)", userSubtitle = "Dariapur AMO, 2026-11-06", amoStyle = true)
     }
@@ -133,11 +140,11 @@ class AmoShellScreenshotTests {
         com.aktcl.aron.feature.stock.CategoryTotal("cigarette", 600), com.aktcl.aron.feature.stock.CategoryTotal("lighter", 400), com.aktcl.aron.feature.stock.CategoryTotal("match", 400),
     )
     @Composable private fun Stock(connected: Boolean, saved: Boolean) = ParityFrame(
-        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = connected,
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_stock), null, printerConnected = connected,
     ) {
         com.aktcl.aron.feature.stock.StockContent(
             stockRows, stockTotals, if (saved) com.aktcl.aron.feature.stock.StockMessage.SAVED else null, slipNotPrinted = saved,
-            onIssue = { _, _ -> }, onSave = {}, onPrint = if (saved && connected) ({}) else null,
+            onIssue = { _, _ -> }, onSave = {}, onPrint = if (saved && connected) ({}) else null, srParity = true,
         )
     }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_stock_notconnected_bn() = shot("amo_stock_notconnected_bn", AppLanguage.BN) { Stock(false, false) }

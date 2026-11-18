@@ -12,4 +12,8 @@
     <string name="amo_upd_steps">প্রসেসিং(%1$d/%2$d)</string>
     <string name="amo_upd_tip">টিপস: অ্যাপটি বন্ধ করবেন না</string>
     <string name="amo_upd_back">পিছনে</string>
+    <string name="amo_sale_hdr_route">রুট:</string>
+    <string name="amo_memo_hdr_section">সেকশনঃ</string>
+    <string name="amo_sale_hdr_retailer">খুচরা বিক্রেতাঃ</string>
+    <string name="amo_upd_ribbon">NEW UPDATE</string>
 </resources>

@@ -48,7 +48,7 @@ fun main() {
             val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate", connectionTimeoutMs = Migrator.MIGRATE_CONNECTION_TIMEOUT_MS).use { ds ->
                 runCatching {
                     // Pre-flight BEFORE Flyway applies anything (D-SV2-12): a migration whose guard would raise on existing data stops the deploy here, with the schema untouched.
-                    MigrationPreflight.run(ds, settings.env, report = { line -> log.info("{}", line) })
+                    MigrationPreflight.run(ds, System.getenv("ARON_ENV"), report = { line -> log.info("{}", line) })
                     Migrator.migrate(ds)
                 }
                     .onSuccess { log.info("migrate: {} migration(s) applied", it) }
@@ -59,6 +59,8 @@ fun main() {
         }
         ServerRole.API -> {
             val wiring = Wiring.production(settings)
+            // D-LOY-API-28: the waiting-item sweep runs in the API process with the API role (least privilege: the worker login stays away from the ingest tables); never in migrate/worker.
+            wiring.startBackgroundJobs()
             apiServer(wiring, settings.port).start(wait = true)
         }
         ServerRole.WORKER -> {
@@ -71,6 +73,8 @@ fun main() {
             }
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
+            // No schedule starts before ONE successful SELECT 1 on the pool (D-LOY-API-21): a new replica cannot always reach PostgreSQL in its first seconds.
+            startWorker({ com.aktcl.aron.backend.platform.WorkerReadiness().await(workerDb.write) }) {
             // The admin's cfg.geo.suspicious_score_threshold, as the dashboards and reports read it (data-architecture review finding 18).
             AggregationWorker(workerDb, config = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
             run {
@@ -96,9 +100,11 @@ fun main() {
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
+            com.aktcl.aron.backend.sync.LoyaltyLedgerJob(workerDb).start()   // push C: redemption posting and the replay-based expiry
             com.aktcl.aron.backend.notify.InboxPruneJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start() // tso-manual B1
             com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)).let { c -> com.aktcl.aron.backend.sync.AutoFinalSubmitJob(workerDb, c, com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb)), com.aktcl.aron.backend.notify.PushNotifier(workerDb, c, settings.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) })).start() } // tso-manual B3: midnight auto Final Submit and start-up catch-up (D-TSO-MAN-30)
-            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse)")
+            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse, loyalty ledger)")
+            }
             Thread.currentThread().join()
         }
     }
@@ -120,7 +126,7 @@ fun apiServer(w: Wiring, port: Int, callThreads: Int? = null) =
         },
     ) {
         aronApi(w)
-        monitor.subscribe(ApplicationStopped) { runCatching { w.securityStore?.close() }; w.database?.close() }
+        monitor.subscribe(ApplicationStopped) { runCatching { w.stopBackgroundJobs() }; runCatching { w.securityStore?.close() }; w.database?.close() }
     }
 
 @Serializable
@@ -154,4 +160,12 @@ private fun Route.healthRoutes(w: Wiring) {
         }
         call.respond(Health("ok", ContractInfo.API_BASE_PATH, w.clock.now().wire(), w.generation(), w.build))
     }
+}
+
+/**
+ * The worker's start sequence (D-LOY-API-21): [awaitReady] must return before ANY job is constructed or started; if it throws, no job starts. Extracted from `main` so a test can drive it with a fake.
+ */
+internal fun startWorker(awaitReady: () -> Unit, startJobs: () -> Unit) {
+    awaitReady()
+    startJobs()
 }

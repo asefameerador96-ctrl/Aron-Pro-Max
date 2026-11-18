@@ -39,6 +39,9 @@ interface CaptureDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertQcLines(rows: List<QcLineEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertDueCollection(row: DueCollectionEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertVisitSkip(row: VisitSkipEntity)
+    @Insert suspend fun insertPhoneMark(row: com.aktcl.aron.core.database.entity.PhoneMarkEntity)
+    @Query("SELECT * FROM phone_mark ORDER BY id") suspend fun phoneMarks(): List<com.aktcl.aron.core.database.entity.PhoneMarkEntity>
+    @Query("DELETE FROM phone_mark WHERE id <= :upToId") suspend fun clearPhoneMarks(upToId: Long)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertAmoRecord(row: com.aktcl.aron.core.database.entity.AmoRecordEntity)
     @Query("SELECT * FROM amo_record WHERE record_type = :type ORDER BY captured_at, rowid") suspend fun amoRecordsOfType(type: String): List<com.aktcl.aron.core.database.entity.AmoRecordEntity>
     @Query("SELECT COUNT(*) FROM amo_record WHERE client_uuid = :clientUuid") suspend fun amoRecordCount(clientUuid: String): Int
@@ -77,6 +80,10 @@ interface CaptureDao {
            AND business_date BETWEEN :fromDate AND :toDate""",
     )
     suspend fun supersededIn(fromDate: String, toDate: String): List<String>
+
+    /** D-AGATE-25: how many `visit_close` rows a visit has (0 or 1: the call is still open or already closed). */
+    @Query("SELECT COUNT(*) FROM visit_close WHERE visit_client_uuid = :visitClientUuid")
+    suspend fun visitCloseCount(visitClientUuid: String): Int
 
     @Query("SELECT * FROM visit_close WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun visitClosesOn(businessDate: String): List<VisitCloseEntity>
@@ -141,6 +148,35 @@ interface CaptureDao {
     @Query("SELECT * FROM memo_discount WHERE business_date = :businessDate")
     suspend fun discountsOn(businessDate: String): List<MemoDiscountEntity>
 
+    /**
+     * D-AGATE-06: the business dates that have a check-in and no check-out, oldest first: the open day(s) of the phone. The newest is the
+     * day the rep is working; any older one is a forgotten day the phone closes at the next start.
+     */
+    @Query(
+        """SELECT DISTINCT business_date FROM attendance_event WHERE kind = 'check_in'
+           AND business_date NOT IN (SELECT business_date FROM attendance_event WHERE kind = 'check_out') ORDER BY business_date""",
+    )
+    suspend fun openAttendanceDates(): List<String>
+
+    /** D-AGATE-06: the routes the rep captured on [businessDate] (visits, memos, stock, dues, skips, AMO records): one route-day each. */
+    @Query(
+        """SELECT route_id FROM visit WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM memo WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM stock_movement WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM due_collection WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM visit_skip WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM amo_record WHERE business_date = :businessDate AND route_id IS NOT NULL""",
+    )
+    suspend fun captureRoutesOn(businessDate: String): List<Long>
+
+    /** D-AGATE-06: how many operational rows were captured on [businessDate], routed or not: zero means a day with nothing to submit. */
+    @Query(
+        """SELECT (SELECT COUNT(*) FROM visit WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM memo WHERE business_date = :businessDate)
+           + (SELECT COUNT(*) FROM stock_movement WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM due_collection WHERE business_date = :businessDate)
+           + (SELECT COUNT(*) FROM visit_skip WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM amo_record WHERE business_date = :businessDate)""",
+    )
+    suspend fun captureCountOn(businessDate: String): Int
+
     @Query("SELECT * FROM attendance_event WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun attendanceOn(businessDate: String): List<AttendanceEventEntity>
 
@@ -150,9 +186,12 @@ interface CaptureDao {
     @Query("SELECT * FROM stock_movement WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun stockOn(businessDate: String): List<StockMovementEntity>
 
-    /** Issued minus returned and adjusted stock in base units per SKU for a day (issue and adjustment add; others, `qc_return` included, subtract). */
+    /**
+     * The stock movements of a day in base units per SKU, by the ONE definition of "held" (D-AGATE-02, [com.aktcl.aron.core.database.repo.StockHeld.held]):
+     * `issue` and `adjustment` add, `qc_return` subtracts, every other kind counts zero. A test holds this SQL equal to the Kotlin formula for every kind.
+     */
     @Query(
-        """SELECT sku_id AS skuId, SUM(CASE WHEN kind IN ('issue','adjustment') THEN qty_base ELSE -qty_base END) AS qtyBase
+        """SELECT sku_id AS skuId, SUM(CASE WHEN kind IN ('issue','adjustment') THEN qty_base WHEN kind = 'qc_return' THEN -qty_base ELSE 0 END) AS qtyBase
            FROM stock_movement WHERE business_date = :businessDate GROUP BY sku_id ORDER BY sku_id""",
     )
     suspend fun stockBalanceOn(businessDate: String): List<SkuQty>

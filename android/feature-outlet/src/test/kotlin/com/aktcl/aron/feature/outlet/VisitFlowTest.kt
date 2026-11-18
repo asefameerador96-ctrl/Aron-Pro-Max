@@ -131,12 +131,50 @@ class VisitFlowTest {
         assertTrue(runCatching { f.forceSale("internet_problem", UUID.randomUUID().toString()) }.exceptionOrNull() is IllegalStateException)
     }
 
+    // D-OWNER-MDM-02: this test used to pin "a mocked fix leaves the force-sale path open" (default silent_flag). A fake
+    // location is a HARD signal now and refuses the geo-validated action: the visit is recorded as blocked, no force sale.
     @Test fun mockedFixIsNeverValid() = runTest {
-        val (f, rec, _) = flow(listOf(fix(mock = true))) // at the outlet's own coordinates
-        val st = f.open(outlet) as VisitUiState.NeedsDecision
-        assertEquals("mocked", st.result.verdict.wire)
-        assertTrue(st.forceSaleAvailable)
-        assertTrue(rec.visits.isEmpty())
+        val session = VisitSession()
+        val (f, rec, _) = flow(listOf(fix(mock = true)), session = session) // at the outlet's own coordinates
+        val st = f.open(outlet)
+        assertTrue(st is VisitUiState.Blocked)
+        assertEquals("mocked", rec.visits.single().first.geoVerdict)
+        assertEquals("blocked", rec.visits.single().first.geoAction)
+        assertNull(session.current.value)
+    }
+
+    @Test fun theBundleCannotSoftenTheRefusalOfAFakeLocation() = runTest {
+        for (mp in MockPolicy.entries) {
+            val s = GeoSettings.DEFAULT.copy(policyBase = GeoSettings.DEFAULT.policyBase.copy(mockPolicy = mp))
+            val (f, rec, _) = flow(listOf(fix(mock = true)), s)
+            assertTrue("$mp", f.open(outlet) is VisitUiState.Blocked)
+            assertEquals("blocked", rec.visits.single().first.geoAction)
+        }
+    }
+
+    @Test fun aHardSpoofSignalOtherThanTheMockFlagRefusesToo() = runTest {
+        // toReading() folds a selected mock app or a test provider into isMock; the exact codes ride in `signals`.
+        val reading = fix().copy(isMock = true, signals = listOf("mock_app_selected"))
+        val (f, rec, _) = flow(listOf(reading))
+        assertTrue(f.open(outlet) is VisitUiState.Blocked)
+        assertEquals("[\"mock_app_selected\"]", reading.toEntity("00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2", "visit_open", 0).signalsJson)
+    }
+
+    @Test fun softSignalsNeverBlockTheSale() = runTest {
+        val reading = fix().copy(signals = listOf("jump", "gnss_no_sats", "root_hint")) // isMock stays false: no hard signal
+        val (f, rec, _) = flow(listOf(reading))
+        val st = f.open(outlet)
+        assertFalse(st is VisitUiState.Blocked)
+        assertEquals("in_range", rec.visits.single().first.geoVerdict)
+        assertEquals("[\"jump\",\"gnss_no_sats\",\"root_hint\"]", rec.visits.single().second.signalsJson)
+    }
+
+    /** Review low: "checked, nothing found" is `[]` (sent as an empty list); a fix whose check did not run stays NULL (unknown, no member). */
+    @Test fun aCleanCheckedFixStoresAnEmptyListAndAnUncheckedOneStoresNone() = runTest {
+        val e = fun(r: FixReading) = r.toEntity("00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2", "visit_open", 0)
+        assertEquals("[]", e(fix().copy(signals = emptyList())).signalsJson)
+        assertEquals(null, e(fix().copy(signals = null)).signalsJson)
+        assertEquals("a reading that never carried the member is unknown", null, e(fix()).signalsJson)
     }
 
     @Test fun mockBlockPolicyRecordsTheVisitAndBlocks() = runTest {
@@ -401,5 +439,13 @@ class VisitFlowTest {
         f.open(outlet)
         assertTrue(f.refresh() is VisitUiState.NeedsDecision) // returns although the check is still waiting
         gate.complete(Unit)
+    }
+
+    /** D-LEAD-PREREQ-04 ruling 4: a call the check-in gate refused is worded (check in / checked out), never the generic storage failure. */
+    @org.junit.Test fun aCallTheCheckInGateRefusedIsNotTheGenericFailure() {
+        val gate = com.aktcl.aron.core.database.repo.AttendanceRefusal.values()
+        assertEquals(CommitFailure.NOT_CHECKED_IN, VisitFlow.commitFailureOf(com.aktcl.aron.core.database.repo.AttendanceRefusedException(gate[0], "2026-10-05")))
+        assertEquals(CommitFailure.CHECKED_OUT, VisitFlow.commitFailureOf(com.aktcl.aron.core.database.repo.AttendanceRefusedException(com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT, "2026-10-05")))
+        assertEquals(CommitFailure.STORAGE, VisitFlow.commitFailureOf(IllegalStateException("disk")))
     }
 }

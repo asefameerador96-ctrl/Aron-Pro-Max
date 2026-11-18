@@ -137,6 +137,8 @@ POST /v1/admin/device-otps -> case DeviceOtpTest#aTsoSeesOnlyTheOtpOfSrsInOwnZon
 POST /v1/admin/devices/{device_id}/directives -> gap: backend-reports
 POST /v1/admin/devices/{device_id}/replace -> gap: backend-reports
 POST /v1/admin/devices/{device_id}/state -> gap: backend-reports
+PUT /v1/admin/devices/{device_id}/lab-exemption -> case LabExemptionServiceTest#aPhoneOutsideTheCallersReachOrRevokedIsNotFound
+DELETE /v1/admin/devices/{device_id}/lab-exemption -> case LabExemptionServiceTest#aPhoneOutsideTheCallersReachOrRevokedIsNotFound
 POST /v1/admin/enrolment-tokens -> gap: backend-reports
 POST /v1/admin/enrolment-tokens/{token_id}/revoke -> gap: backend-reports
 POST /v1/admin/geo/{level} -> gap: backend-admin
@@ -251,6 +253,9 @@ POST /v1/admin/programmes -> case AdminLoyaltyTest#createIsRefusedToEveryRoleBut
 PATCH /v1/admin/programmes/{id} -> case AdminLoyaltyTest#updateRefusalsStaleEtagNoChangeImmutableMembersFinalProgrammesAndMissingProgramme
 POST /v1/admin/programmes/{id}/status -> case AdminLoyaltyTest#statusMovesDraftToActiveBySuperadminAndActiveToEndedByAdminWithTheTrailAndReplay
 PUT /v1/admin/programmes/{id}/enrolments -> case AdminLoyaltyTest#enrolmentsUpsertIdempotentlyByBatchWithCountsAndRefusals
+GET /v1/admin/programmes/{id}/ledger -> case AdminLoyaltyTest#theLedgerViewShowsAdjustmentsWithTheirReasonWithinTheReadersScope
+POST /v1/admin/programmes/{id}/adjustments -> case AdminLoyaltyTest#anAdjustmentIsRefusedOutsideTheProgrammeScopeTheRoleAndTheRules
+PUT /v1/admin/programmes/{id}/adjustments -> case AdminLoyaltyTest#theBulkUploadHasADryRunThatWritesNothingThenAnAllOrNothingIdempotentApply
 POST /v1/admin/gifts -> case AdminLoyaltyTest#giftCreateIsSuperadminOnlyWithReplayDuplicateAndRefusals
 PATCH /v1/admin/gifts/{id} -> case AdminLoyaltyTest#giftUpdateGetListWithPreconditionNoChangeAndFirstResultReplay
 GET /v1/programmes/loyalty/balances -> case LoyaltyFieldRoutesTest#theLiveBalanceIsTheLedgerUpToTodayCutToTheCallersOutlets

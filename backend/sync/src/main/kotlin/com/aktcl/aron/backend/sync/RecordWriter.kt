@@ -101,7 +101,9 @@ object RecordWriter {
                 doc["received_at"] = JsonPrimitive(now.wire())
                 val result = insert(h, rule.table, clientUuid, doc)
                 if (result is Result.Stored) {
-                    (payload["fix"] as? JsonObject)?.let { geoFix(h, type, "fix", env, it, up, now) }
+                    // A check-out the phone made for a forgotten day (closed_by = phone, contract 1.19.0) is not a location reading of the rep: whatever fix it carries is kept on the
+                    // attendance row only and never becomes a geo_fix (the user's newest location, the risk rules).
+                    if (!IngestService.isPhoneClose(type, payload)) (payload["fix"] as? JsonObject)?.let { geoFix(h, type, "fix", env, it, up, now) }
                     (payload["edit_fix"] as? JsonObject)?.let { geoFix(h, type, "edit_fix", env, it, up, now) }
                 }
                 result

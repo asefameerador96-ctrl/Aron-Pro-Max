@@ -35,7 +35,8 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
     const zone = str(chosen.zone_id);
     const [codeLists, clusters] = await Promise.all([
       Promise.all([
-        loadRefOptionsChecked({ path: "/v1/admin/code-lists", codeList: "sub_channel", label: ["label_en", "label_bn"] }, session.at),
+        // the picker hides a retired tier (Silver) except the one this outlet holds now (its label stays readable)
+        loadRefOptionsChecked({ path: "/v1/admin/code-lists", codeList: "sub_channel", label: ["label_en", "label_bn"] }, session.at, { hideRetired: true, keep: [str(chosen.sub_channel_id)] }),
         loadRefOptionsChecked({ path: "/v1/admin/code-lists", codeList: "outlet_close_reason", value: "code", label: ["label_en", "label_bn"] }, session.at),
       ]),
       /^[0-9]{1,15}$/.test(zone) ? loadAllRows("/v1/admin/clusters", session.at, { zone_id: zone }) : Promise.resolve({ rows: [], failed: false }),

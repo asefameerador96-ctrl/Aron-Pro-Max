@@ -295,6 +295,8 @@ internal fun dhakaStamp(iso: String): String = runCatching {
 }.getOrDefault(iso.take(16).replace('T', ' '))
 
 
+/** The faint lavender of the manual's task cards (47); only where the look's card is plain white (Sunlight keeps its own). */
+private val ManualCardTint = Color(0xFFF6F2FB)
 private val OrangeStatus = Color(0xFFE07B00)
 private val RedType = Color(0xFFC8423F)
 
@@ -369,7 +371,7 @@ private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, 
     val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     val resolveLabel = stringResource(R.string.tsk_resolve)
     Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L)
+        modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(if (look.card == Color.White) ManualCardTint else look.card).padding(AronTokens.Space.L)
             // TalkBack cannot swipe: the same confirmed resolve is one custom action away
             // P-SR2 (manual 47): the vendor card shows no button, the swipe is the gesture. This custom action is for TalkBack (and other
             // accessibility services that list actions); a plain hardware keyboard cannot reach it, and has no other way to resolve here.

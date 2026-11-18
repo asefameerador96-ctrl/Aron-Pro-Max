@@ -326,6 +326,33 @@ class QuarantineAcceptTest {
         assertEquals("accepted", item(visit).second)
     }
 
+    /**
+     * D-SV2-22 (lead review of 9b69fba3): a record outside the business-date window with a bad `closed_by` is held as `business_date_out_of_window` (not a final schema error), and a reviewer's
+     * accept re-runs the whole judgement with the window waived: the `closed_by` check then refuses it, so the accept is a 409 and nothing changes (the item stays open, the registry row stays
+     * quarantined, no attendance row exists). The reviewer's way out is discard or return-to-device, never a stored record with a value the contract forbids.
+     */
+    @Test
+    fun anOutOfWindowRecordWithABadClosedByIsHeldAndItsAcceptIsRefusedWith409() = testApplication {
+        app()
+        val id = uuid()
+        val bad = JsonObject(envelope("attendance_event", id, id, 0, Json.parseToJsonElement(
+            """{"kind":"check_out","closed_by":"server","fix":{"purpose":"attendance_out","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+        ).jsonObject, route = null) + mapOf("business_date" to JsonPrimitive("2026-10-01"), "captured_at" to JsonPrimitive("2026-10-01T12:00:00.000Z")))
+        val r = json(client.send(client.token(), batch(listOf(bad))).bodyAsText())
+        assertEquals(listOf("quarantined"), statuses(r), r.toString())
+        assertEquals("business_date_out_of_window", r["acks"]!!.jsonArray.single().jsonObject["code"]!!.jsonPrimitive.content, "held by the window, not rejected for its value")
+        assertEquals(0L, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$id' AS uuid)"), "not a final reject")
+        val (itemId, status) = item(id)
+        assertEquals("open", status)
+        val res = client.resolve(itemId, "accept")
+        assertEquals(HttpStatusCode.Conflict, res.status, res.bodyAsText())
+        assertEquals("open", item(id).second, "the refused accept leaves the item open")
+        assertEquals("quarantined", registry(id).substringBefore('/'), "and the registry row quarantined")
+        assertEquals(0L, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST('$id' AS uuid)"), "nothing stored")
+        assertEquals(0L, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$id' AS uuid)"), "and no final reject was written by the failed accept (it rolled back)")
+    }
+
     @Test
     fun aPayloadConflictCopyCannotBeAccepted() = testApplication {
         app()
@@ -360,5 +387,94 @@ class QuarantineAcceptTest {
         assertEquals(true, replay["replayed"]!!.jsonPrimitive.boolean)
         assertEquals(outcomes(first), outcomes(replay))
         assertEquals(outcomes(first).drop(5), outcomes(json(client.send(t, batch(bad)).bodyAsText())).map { it.replace("duplicate", "accepted") })
+    }
+
+    /**
+     * The lead's review of the sweep (D-LOY-API-30, B1): a TSO's collection against a held SR memo whose own visit has not synced waits after the reviewer accepts the memo (the reviewer
+     * gave the TSO's collection NO override). When the visit then syncs and belongs to ANOTHER user, the automatic release must not carry the memo's scope waiver: the collection becomes an
+     * ordinary held item with its own reason, is not stored, and the phone is told nothing final.
+     */
+    @Test
+    fun theSweepGivesATsoCollectionNoWaiverOfTheSrMemosScopeHold() = testApplication {
+        app()
+        val tso = count("SELECT id FROM app.app_user WHERE username = 'tso1001'")
+        fresh.db.jdbi.useHandle<Exception> { h ->   // the TSO covers the outlet that the SR does not: only the SR's own reach fails
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from) SELECT ?, 'zone', id, DATE '2020-01-01' FROM app.zone WHERE code = 'Z-OTHER'", tso)
+            h.execute("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = ?", tso)
+        }
+        val fam = saleFamily(outlet = otherOutletId)
+        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
+        val (visit, memo) = fam.map { cu(it) }
+        val otherVisit = uuid(); val dueCu = uuid()
+        val due = envelope("due_collection", dueCu, dueCu, 2, Json.parseToJsonElement(
+            """{"outlet_id":$otherOutletId,"against_memo_client_uuid":"$memo","against_memo_no":"x","against_memo_business_date":"$day","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":5000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
+        ).jsonObject, outlet = otherOutletId)
+        client.send(client.token(), batch(listOf(due)))
+        // the collection came from the TSO's upload: it is held with the memo (the reviewer's accept finds it by that), as the TSO's own record
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.sync_quarantine SET user_id = ?, device_id = NULL, code = 'scope_out_of_reach', detail = ? WHERE client_uuid = CAST(? AS uuid)", tso, "parent $memo is quarantined (scope_out_of_reach)", dueCu)
+            h.execute("UPDATE app.ingest_registry SET user_id = ?, device_id = NULL, status = 'quarantined', outcome_code = 'scope_out_of_reach' WHERE client_uuid = CAST(? AS uuid)", tso, dueCu)
+        }
+        assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status); assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
+        val waiting = fresh.db.jdbi.withHandle<Map<String, Any?>, Exception> { h -> h.createQuery("SELECT status, code, detail, waiting_since IS NOT NULL AS waiting, waiting_release_code AS rc FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) ORDER BY id DESC LIMIT 1").bind("c", dueCu).mapToMap().one() }
+        assertEquals("open", waiting["status"], waiting.toString()); assertEquals(true, waiting["waiting"], "its visit has not synced: it waits ($waiting)"); assertEquals(null, waiting["rc"], "the reviewer gave a child of another uploader no override")
+        // the visit syncs, but it is the SR's own visit, not the TSO's
+        val visitPayload = Json.parseToJsonElement(
+            """{"visit_kind":"sr_call","outlet_id":$outletId,"opened_at":"2027-01-03T03:50:00.120Z","sequence_no":2,"planned":true,
+               "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                      "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
+               "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""",
+        ).jsonObject
+        assertEquals(listOf("accepted"), statuses(json(client.send(client.token(), batch(listOf(envelope("visit", otherVisit, otherVisit, 0, visitPayload)))).bodyAsText())))
+        val job = waitingSweepJob(wiring, clock, fresh.url)
+        job.tick()!!.also { assertEquals(0, it.released, "a visit of another user: nothing waives that check: $it"); assertEquals(1, it.heldOwn, it.toString()) }
+        assertEquals(0L, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "the money collection is not stored")
+        val held = fresh.db.jdbi.withHandle<Map<String, Any?>, Exception> { h -> h.createQuery("SELECT status, code, detail, waiting_since IS NOT NULL AS waiting FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) ORDER BY id DESC LIMIT 1").bind("c", dueCu).mapToMap().one() }
+        assertEquals("open", held["status"]); assertEquals(false, held["waiting"], "an ordinary held item for a reviewer: $held"); assertEquals(true, (held["detail"] as String).startsWith("a check of its own held it"), held.toString())
+        assertEquals(true, (held["detail"] as String).contains("belongs to another user"), held.toString())
+        assertEquals(0L, count("SELECT count(*) FROM app.audit_log WHERE entity = 'quarantine' AND via = 'job'"), "no release, no job audit row")
+        job.tick()!!.also { assertEquals(0, it.released); assertEquals(0, it.heldOwn) }
+    }
+
+    /** B1 and B2 together, the other side: a SAME-uploader child is released with the parent's waiver (the reviewer's accept carried it for that child), and the release is audited by the job in the chain. */
+    @Test
+    fun aSameUploaderChildIsReleasedByTheSweepWithTheParentsWaiverAndAHashChainedAuditRowByTheJob() = testApplication {
+        app()
+        val fam = saleFamily(outlet = otherOutletId)
+        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
+        val (visit, memo) = fam.map { cu(it) }
+        val otherVisit = uuid(); val dueCu = uuid()
+        val due = envelope("due_collection", dueCu, dueCu, 2, Json.parseToJsonElement(
+            """{"outlet_id":$otherOutletId,"against_memo_client_uuid":"$memo","against_memo_no":"x","against_memo_business_date":"$day","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":5000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
+        ).jsonObject, outlet = otherOutletId)
+        client.send(client.token(), batch(listOf(due)))
+        fresh.db.jdbi.useHandle<Exception> { h ->   // held with the memo (as the SR's own record), found by the reviewer's accept through that detail
+            h.execute("UPDATE app.sync_quarantine SET code = 'scope_out_of_reach', detail = ? WHERE client_uuid = CAST(? AS uuid)", "parent $memo is quarantined (scope_out_of_reach)", dueCu)
+            h.execute("UPDATE app.ingest_registry SET status = 'quarantined', outcome_code = 'scope_out_of_reach' WHERE client_uuid = CAST(? AS uuid)", dueCu)
+        }
+        assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status); assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
+        val w = fresh.db.jdbi.withHandle<Map<String, Any?>, Exception> { h -> h.createQuery("SELECT status, waiting_since IS NOT NULL AS waiting, waiting_release_code AS rc FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) ORDER BY id DESC LIMIT 1").bind("c", dueCu).mapToMap().one() }
+        assertEquals("open", w["status"]); assertEquals(true, w["waiting"], w.toString()); assertEquals("scope_out_of_reach", w["rc"], "the reviewer's waiver for this same-uploader child, kept")
+        val visitPayload = Json.parseToJsonElement(
+            """{"visit_kind":"sr_call","outlet_id":$outletId,"opened_at":"2027-01-03T03:55:00.120Z","sequence_no":3,"planned":true,
+               "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                      "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
+               "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""",
+        ).jsonObject
+        assertEquals(listOf("accepted"), statuses(json(client.send(client.token(), batch(listOf(envelope("visit", otherVisit, otherVisit, 0, visitPayload)))).bodyAsText())))
+        val id = item(dueCu).first
+        val audits = count("SELECT count(*) FROM app.audit_log"); assertEquals(0L, count("SELECT count(*) FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = '$id' AND via = 'job'"))
+        val job = waitingSweepJob(wiring, clock, fresh.url)
+        job.tick()!!.also { assertEquals(1, it.released, it.toString()) }
+        assertEquals(1L, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "released with the waiver the reviewer's accept carried"); assertEquals("accepted", item(dueCu).second)
+        assertEquals(audits + 1, count("SELECT count(*) FROM app.audit_log"), "exactly one audit row for the release")
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val a = h.createQuery("SELECT actor_user_id, via, action, after->>'action' AS act, after->>'awaited' AS awaited, after->>'first_parent' AS fp, after->>'override' AS ov, before->>'code' AS code FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = :i").bind("i", id.toString()).mapToMap().single()
+            assertEquals("scope_out_of_reach", a["ov"], "the audit row records the override the release carried"); assertEquals(null, a["actor_user_id"]); assertEquals("job", a["via"]); assertEquals("accept", a["action"]); assertEquals("sweep_release", a["act"]); assertEquals(otherVisit, a["awaited"]); assertEquals(memo, a["fp"]); assertEquals("scope_out_of_reach", a["code"])
+            assertEquals(null, h.createQuery("SELECT app.audit_verify()").mapTo(Long::class.javaObjectType).one(), "the hash chain verifies (null = intact)")
+            assertEquals(1L, h.createQuery("SELECT CASE WHEN has_table_privilege('api_rw', 'app.audit_log', 'INSERT') THEN 1 ELSE 0 END").mapTo(Long::class.java).one(), "the API role holds the audit grant")
+        }
+        job.tick()!!.also { assertEquals(0, it.released) }; assertEquals(audits + 1, count("SELECT count(*) FROM app.audit_log"), "a pass that skips writes nothing")
+        assertEquals("duplicate", statuses(json(client.send(client.token(), batch(listOf(due))).bodyAsText())).single(), "the phone's resend is a duplicate")
     }
 }

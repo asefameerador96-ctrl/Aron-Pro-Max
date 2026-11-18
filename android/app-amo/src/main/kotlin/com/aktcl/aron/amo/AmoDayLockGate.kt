@@ -69,10 +69,18 @@ internal object AmoLockGate {
      * A skip ([write] queues its `visit_skip`): true when queued, false when the route-day refused it (nothing stored;
      * [onRefused] says why: the lock, or since the follow-up the supervisor day's Sales Submit, R-W-23).
      */
-    suspend fun skip(onRefused: (DayRefusal) -> Unit = {}, write: suspend () -> Unit): Boolean =
+    suspend fun skip(
+        onRefused: (DayRefusal) -> Unit = {},
+        /** The check-in gate refused the skip (no check-in on its date, or checked out): the caller refreshes its gate mirror so the rep SEES why, never silence (round-3 low). */
+        onAttendanceRefused: suspend (com.aktcl.aron.core.database.repo.AttendanceRefusal) -> Unit = {},
+        write: suspend () -> Unit,
+    ): Boolean =
         try {
             write()
             true
+        } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            onAttendanceRefused(e.why) // D-OWNER-PREREQ-01 rule 1: no check-in on this date; nothing stored; the caller refreshes the UI mirror (CheckInFirst) that says why
+            false
         } catch (e: Exception) {
             onRefused(DayRefusal.of(e) ?: throw e)
             false
@@ -149,22 +157,24 @@ fun AmoDayLockDialog(day: AmoDay, onOk: () -> Unit) {
 
 /**
  * tso-manual X4a follow-up (R-W-23): the words of a capture refused because the day's sales are already submitted (the AMO's
- * supervisor-day Sales Submit stands): the Sales Submit title and feature-dayclose's `submit_blocked_done`, bn and en.
+ * supervisor-day Sales Submit stands): the Sales Submit title and feature-dayclose's `submit_blocked_done`, bn and en; when a call is ended ([ofCallsDay]) `amo_gate_day_submitted` (D-AGATE-22).
  */
 @Composable
-fun AmoDaySubmittedDialog(onOk: () -> Unit) {
+fun AmoDaySubmittedDialog(onOk: () -> Unit, ofCallsDay: Boolean = false) {
     com.aktcl.aron.core.ui.aron.AronDialog(
-        stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title), stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
+        // D-AGATE-22 (item 8): when a CALL is ended (the gate's Close, leaving a control call) the call may be of an EARLIER day, so the words say "the day of this call", never "today's sales"
+        stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title),
+        stringResource(if (ofCallsDay) AmoR.string.amo_gate_day_submitted else com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
         stringResource(AmoR.string.amo_ok), onConfirm = onOk, onDismiss = onOk,
     )
 }
 
 /** tso-manual X4a follow-up (R-W-23): the words of [why]: the lock text, or the submit text. */
 @Composable
-fun AmoRefusalDialog(day: AmoDay, why: DayRefusal, onOk: () -> Unit) {
+fun AmoRefusalDialog(day: AmoDay, why: DayRefusal, onOk: () -> Unit, ofCallsDay: Boolean = false) {
     when (why) {
         DayRefusal.FINAL_SUBMIT -> AmoDayLockDialog(day, onOk)
-        DayRefusal.SALES_SUBMIT -> AmoDaySubmittedDialog(onOk)
+        DayRefusal.SALES_SUBMIT -> AmoDaySubmittedDialog(onOk, ofCallsDay)
     }
 }
 

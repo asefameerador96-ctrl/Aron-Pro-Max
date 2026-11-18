@@ -160,9 +160,10 @@ class BundleService(
                     locale = if (user.locale == "en") "en" else "bn", bind_ordinal = bindOrdinal(h, p),
                     memo_seq_block_size = config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
+                    geography = (user.homeZoneId ?: plans.firstOrNull()?.zoneId)?.let { geographyOf(h, it) },
                     consents = ConsentRecords.accepted(h, user.id),
                 ),
-                config = ResolvedConfig(configVersion, cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
+                config = ResolvedConfig(configVersion, cfg.deviceValues(userChain) + labGrant(h, p.deviceId, now), cfg.deviceScheduled(userChain, until)),
                 code_lists = codeLists(h, date, user.role), // tso-manual B3: a code limited by attrs.roles reaches those roles only
                 products = products(h),
                 prices = prices(h, date, date.plusDays(horizonDays.toLong())),
@@ -211,6 +212,18 @@ class BundleService(
             if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
         if (paged.isNotEmpty()) cachePages(p, result, now)
         return result
+    }
+
+    /**
+     * The lab exemption of THIS phone (D-OWNER-MDM-02 iii): the server-signed grant stored with the unexpired row, as the device-scoped value
+     * [LAB_GRANT_KEY]. Absent when there is none, which is how the phone learns the grant was withdrawn. The token is stored (signed once when
+     * granted), so equal content gives an equal bundle (ETag, snapshot, delta); it is not a secret, it only verifies on the phone it names.
+     * It rides in `config.values` but is not a registry key: the config delta never carries it, only a full bundle does.
+     */
+    private fun labGrant(h: org.jdbi.v3.core.Handle, deviceId: Long?, now: Instant): List<ResolvedConfigValue> {
+        if (deviceId == null) return emptyList()
+        val token = h.createQuery("SELECT grant_token FROM app.device_lab_exemption WHERE device_id = :d AND expires_at > :n AND grant_token IS NOT NULL").bind("d", deviceId).bind("n", java.sql.Timestamp.from(now)).mapTo(String::class.java).findOne().orElse(null) ?: return emptyList()
+        return listOf(ResolvedConfigValue(LAB_GRANT_KEY, kotlinx.serialization.json.JsonPrimitive(token), "device", deviceId, null, null, null, false, null))
     }
 
     private fun pageKey(p: AronPrincipal, version: String) = "${p.userId}|${p.scopeVersion}|$version"
@@ -712,6 +725,18 @@ class BundleService(
         return roles.any { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == role }
     }
 
+    /** The names of one zone's own chain (zone, territory, division, wing), Bangla and English (contract 1.22.0, N-9); only the caller's own home zone is ever asked for. */
+    private fun geographyOf(h: Handle, zoneId: Long): BundleGeography? = h.createQuery(
+        """
+        SELECT z.id zi, z.code zc, z.name zn, z.name_bn zb, t.id ti, t.code tc, t.name tn, t.name_bn tb, d.id di, d.code dc, d.name dn, d.name_bn db, w.id wi, w.code wc, w.name wn, w.name_bn wb
+        FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id WHERE z.id = :z
+        """.trimIndent(),
+    ).bind("z", zoneId).map { rs, _ ->
+        fun g(i: String, c: String, n: String, b: String) = BundleGeoName(rs.getLong(i), rs.getString(c), rs.getString(n), rs.getString(b))
+        BundleGeography(g("wi", "wc", "wn", "wb"), g("di", "dc", "dn", "db"), g("ti", "tc", "tn", "tb"), g("zi", "zc", "zn", "zb"))
+    }.findOne().orElse(null)
+
+
     private fun products(h: Handle): BundleProducts {
         val nodes = h.createQuery("SELECT id, level, parent_id, code, name, name_bn, sort FROM app.product_node WHERE status = 'active' ORDER BY sort, id").map { rs, _ ->
             BundleProductNode(rs.getLong("id"), rs.getString("level"), rs.getObject("parent_id") as Long?, rs.getString("code"), rs.getString("name"), rs.getString("name_bn"), rs.getInt("sort"))
@@ -781,6 +806,9 @@ class BundleService(
     }.list()
 
     companion object {
+        /** The device-scoped config value that carries the phone's lab grant (contract 1.21.0); see [labGrant]. */
+        const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
+
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
 
         private const val PAGE_CACHE_TTL_S = 300L

@@ -1,0 +1,67 @@
+ProgrammeAdjustmentBatchResult:
+  type: object
+  required:
+  - batch_uuid
+  - dry_run
+  - rows
+  - total_points
+  - replayed
+  additionalProperties: false
+  description: From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries
+    `posted`.
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    dry_run:
+      type: boolean
+    rows:
+      type: integer
+      minimum: 0
+    posted:
+      type: integer
+      minimum: 0
+      description: 'Apply only: ledger rows written now (0 on a replay).'
+    replayed:
+      type: boolean
+      description: The batch was posted before (an apply answers it with posted 0; a dry run says so).
+    total_points:
+      type: integer
+      format: int64
+      description: Sum of the valid rows points.
+    valid:
+      type: boolean
+      description: 'Dry run only: no row error and the programme can take the batch (or it is a replay).'
+    outlets:
+      type: integer
+      minimum: 0
+      description: Dry run only.
+    credit_points:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Dry run only.
+    debit_points:
+      type: integer
+      format: int64
+      maximum: 0
+      description: Dry run only (negative or 0).
+    programme_status:
+      type: string
+      enum:
+      - draft
+      - active
+      - inactive
+      description: Dry run only.
+    errors:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/ProgrammeAdjustmentRowError'
+      description: 'Dry run only: the first 200 row errors.'
+    error_count:
+      type: integer
+      minimum: 0
+      description: 'Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`).'
+    errors_truncated:
+      type: boolean
+      description: Dry run only.

@@ -75,4 +75,7 @@
     <string name="sr_bar_qc">QC</string>
     <string name="sr_bar_qc_entry">QC entry</string>
     <string name="sr_bar_slide">Slide</string>
+    <string name="sr_call_ended_title">The call was ended on the phone</string>
+    <string name="sr_call_ended_final">The Final Submit has already closed the day of this call, so no end of the call was written. The call is ended on the phone.</string>
+    <string name="sr_call_ended_submit">The sales of the day of this call are already submitted, so no end of the call was written. The call is ended on the phone.</string>
 </resources>

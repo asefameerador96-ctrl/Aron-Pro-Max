@@ -24,7 +24,7 @@ export default async function DevicePage({ params }: { params: Promise<{ id: str
   return (
     <>
       {!h.ok || !dirs.ok ? <p role="alert" data-testid="ref-load-failed" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "error.ref_load")}</p> : null}
-      <DeviceDetailView locale={locale} device={d.data} history={h.ok ? h.data.items : []} directives={dirs.ok ? dirs.data.items : []} canWrite={gate("device.state")} />
+      <DeviceDetailView locale={locale} device={d.data} history={h.ok ? h.data.items : []} directives={dirs.ok ? dirs.data.items : []} canWrite={gate("device.state")} canLab={gate("device.lab-exemption.grant")} />
     </>
   );
 }

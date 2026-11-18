@@ -66,6 +66,25 @@ class SyncApi(private val client: AronApiClient) {
         )
     }
 
+    /**
+     * `GET /v1/programmes/astha/targets?quarter=YYYY-Qn&route_id=` (contract listAsthaTargets): one page of the Astha target rows of one route for a quarter, the raw
+     * `AsthaTargetPage` (parsed by the programmes feature, which keeps the months on the phone). [cursor] is the previous page's `next_cursor`.
+     */
+    suspend fun listAsthaTargets(quarter: String, routeId: Long, cursor: String? = null, limit: Int = 500): ApiResult<String> {
+        val path = "/v1/programmes/astha/targets"
+        return client.call(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = {
+                val b = client.origin.path(path).newBuilder().addQueryParameter("quarter", quarter).addQueryParameter("route_id", routeId.toString()).addQueryParameter("limit", limit.toString())
+                if (cursor != null) b.addQueryParameter("cursor", cursor)
+                url(b.build())
+                get()
+            },
+            decode = { body, _ -> body },
+        )
+    }
+
     /** `GET /v1/config/delta?since=` (s4.10 Config delta): the raw `ConfigDelta`, 304 when unchanged, 410 when too far behind. */
     suspend fun configDelta(since: Long): ApiResult<String> {
         val path = "/v1/config/delta"

@@ -21,11 +21,32 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
     private val outbox = db.outboxDao()
     private val capture = db.captureDao()
 
+    /**
+     * The TRUE outbox states (D-AGATE-04 round 2, D1-1): every rejected and quarantined row of any date, seen or not. This is what the gates
+     * and the `day_submit` counts read, exactly as before "seen" existed: "seen" is a SCREEN matter only (see [seenRefused]).
+     */
     override suspend fun outboxStates(businessDate: String): OutboxStates {
-        val pending = outbox.countInState("pending")
+        // D-LEAD-PREREQ-04 ruling 6: a check-out held behind its date's submit is not waiting work the rep can act on, so it is not counted here
+        val pending = outbox.pendingNotHeld()
         val inFlight = outbox.countInState("in_flight")
-        return OutboxStates(pending, inFlight, outbox.countInState("acked"), outbox.countInState("rejected"), outbox.countInState("quarantined"))
+        return OutboxStates(pending, inFlight, outbox.countInState("acked"), outbox.countRefused(OutboxState.REJECTED), outbox.countRefused(OutboxState.QUARANTINED))
     }
+
+    /** The rows of each refused state the rep marked as seen: the screen subtracts them from its banner, nothing else does. */
+    override suspend fun seenRefused(): OutboxStates =
+        OutboxStates(0, 0, 0, outbox.countSeenRefused(OutboxState.REJECTED), outbox.countSeenRefused(OutboxState.QUARANTINED))
+
+    /** The send state of the rows of [businessDate] only (the status line of the screen is scoped to the day on screen). */
+    override suspend fun outboxStatesOn(businessDate: String): OutboxStates {
+        val c = outbox.stateCountsOn(businessDate).associate { r -> r.state to r.count }
+        return OutboxStates(c["pending"] ?: 0, c["in_flight"] ?: 0, c["acked"] ?: 0, c["rejected"] ?: 0, c["quarantined"] ?: 0)
+    }
+
+    override suspend fun markSeen(clientUuid: String) { outbox.markRefusedSeen(clientUuid, java.time.Instant.now().toString()) }
+
+    override suspend fun markUnseen(clientUuid: String) { outbox.markRefusedUnseen(clientUuid) }
+
+    override suspend fun sendAgain(clientUuid: String): Boolean = outbox.requeueRetryExhausted(clientUuid) > 0
 
     override suspend fun deviceCounts(businessDate: String): Map<String, Int> =
         outbox.committedCounts(businessDate).associate { it.recordType to it.count }
@@ -53,37 +74,74 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
      * (`cfg.app.outbox_keep_days`), and queued rows the server answered with a retryable code (`last_code` set). The memo
      * number or outlet comes from the stored record itself; the reason from the bundle's `reason_texts`.
      */
-    override suspend fun rejectedRows(businessDate: String): List<RejectedRow> {
-        val from = LocalDate.parse(businessDate).minusDays(REJECTED_LOOKBACK_DAYS).toString()
-        val refused = outbox.refusedUuids(from).mapNotNull { outbox.byClientUuid(it) }
+    override suspend fun rejectedRows(businessDate: String): List<RejectedRow> = rejectedPage(businessDate, Int.MAX_VALUE)
+
+    /**
+     * The refused or held records of the phone, NEWEST first, every date, at most [limit] ROWS (no payload is ever read: the memo number and outlet
+     * come from the domain tables by uuid). A FAMILY (a memo with its lines, discounts and QC) is ONE entry, led by its parent,
+     * counting its records; a family any of whose rows the phone gave up on is a "phone gave up" entry whose Send again acts on the family.
+     */
+    override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> {
+        val refused = outbox.refusedList(limit)
         // Only codes the server answers as retryable (scope_stale, parent_missing, ...): the phone's own markers on queued
         // rows (resync, digest_resend, a released device_integrity_failed) are not rejections (checker).
-        val retry = outbox.nextPending(RETRY_SCAN_LIMIT).filter { it.lastCode in RETRYABLE }
+        val retry = outbox.queuedWithCodes(RETRYABLE.toList(), RETRY_SCAN_LIMIT) // light rows: the reader never loads a payload
         if (refused.isEmpty() && retry.isEmpty()) return emptyList()
         val reasons = ReasonTextsJson.parse(ReferenceRepository(db).section("reason_texts"))
         val ref = db.referenceDao()
-        return (refused + retry).sortedBy { it.seq }.map { row ->
-            val payload = RecordPayloads.payloadOf(row.payloadJson)
-            // A memo line names its memo (memo_client_uuid): the memo number and outlet come from that memo.
-            val parent = RecordPayloads.string(payload, "memo_client_uuid")?.let { runCatching { capture.memo(it) }.getOrNull() }
-            val outletName = (RecordPayloads.long(payload, "outlet_id") ?: parent?.outletId)?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() }
-            val reason = row.lastCode?.let { reasons[it] }
-            RejectedRow(
-                clientUuid = row.clientUuid, recordType = row.recordType, businessDate = row.businessDate, code = row.lastCode,
-                outcome = when (row.state) {
-                    OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
-                    OutboxState.REJECTED -> RejectedOutcome.DROPPED
-                    else -> RejectedOutcome.RETRY
-                },
-                memoNo = RecordPayloads.string(payload, "memo_no") ?: parent?.memoNo, outletName = outletName,
-                reasonBn = reason?.first, reasonEn = reason?.second,
-            )
+        val entries = ArrayList<RejectedRow>()
+        val refusedByServer: Set<String> = refused.filter { it.state == OutboxState.REJECTED && it.lastCode != com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED }.map { it.clientUuid }.toHashSet()
+        for ((_, members) in refused.groupBy { it.familyUuid }.entries.sortedByDescending { (_, m) -> m.maxOf { it.seq } }) {
+            val lead = members.minWith(compareBy({ it.rank }, { it.seq }))
+            // A family's outcome is the most serious of its members (round-2 review): a parent the SERVER refused means nothing below it can ever land
+            // (DROPPED, no Send again); else a record the phone gave up on (Send again); else a child the server refused (DROPPED, never hidden behind a
+            // stored-and-flagged lead); else a quarantined lead (STORED_FLAGGED).
+            val exhausted = com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED
+            val serverRefused = members.filter { it.state == OutboxState.REJECTED && it.lastCode != exhausted }
+            val exhaustedRows = members.filter { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
+            // only a refused ANCESTOR (the record it depends on) stops Send again; a refused SIBLING never does (same rule as the SQL guard in requeueRetryExhausted). A record that never reached the server whose parents are stored can always be sent again.
+            // D-AGATE-15 (T5): REAL parentage, as the SQL guard: a memo line's memo, a rank-1 record's visit (the family's root); a refused survey, close or content view is a sibling
+            // D-AGATE-19: a real parent may sit in ANOTHER family (a reprint after the route-day's submit, a due collection's memo, an edit's superseded memo): look it up among ALL refused rows
+            val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x ->
+                serverRefused.any { s -> x.rank >= 1 && s.clientUuid == x.familyUuid } || (x.parentUuid != null && refusedByServer.contains(x.parentUuid))
+            }
+            val gaveUp = exhaustedRows.isNotEmpty() && !parentRefused
+            val outcome = when {
+                gaveUp -> RejectedOutcome.PHONE_GAVE_UP
+                serverRefused.isNotEmpty() -> RejectedOutcome.DROPPED
+                lead.state == OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
+                else -> RejectedOutcome.DROPPED
+            }
+            val shownCode = if (gaveUp) exhausted else (serverRefused.minByOrNull { it.rank }?.lastCode ?: lead.lastCode)
+            entries += entry(lead.copy(memoNo = members.firstNotNullOfOrNull { it.memoNo }, outletId = members.firstNotNullOfOrNull { it.outletId }), shownCode,
+                outcome, lead.lastMessageKey,
+                // an orphaned child the phone gave up on (its parent was refused) can never be marked seen: "seen" is judged on the members that can be
+                members.filter { !(it.state == OutboxState.REJECTED && it.lastCode == exhausted) }.let { markable -> markable.isNotEmpty() && markable.all { it.seenAt != null } }, members.size, reasons, ref)
         }
+        for (row in retry) {
+            entries += entry(row, row.lastCode, RejectedOutcome.RETRY, row.lastMessageKey, false, 1, reasons, ref)
+        }
+        return entries
+    }
+
+    override suspend fun refusedTotal(): Int = outbox.countRefused(OutboxState.REJECTED) + outbox.countRefused(OutboxState.QUARANTINED)
+
+    private suspend fun entry(
+        row: com.aktcl.aron.core.database.dao.RefusedRowLite, code: String?, outcome: RejectedOutcome, messageKey: String?, seen: Boolean,
+        familySize: Int, reasons: Map<String, Pair<String?, String?>>, ref: com.aktcl.aron.core.database.dao.ReferenceDao,
+    ): RejectedRow {
+        // the memo number and the outlet come from the domain tables by uuid (see OutboxDao.REFUSED_SELECT), never from the payload
+        val outletName = row.outletId?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() }
+        val reason = code?.let { reasons[it] }
+        return RejectedRow(
+            clientUuid = row.clientUuid, recordType = row.recordType, businessDate = row.businessDate, code = code, outcome = outcome,
+            memoNo = row.memoNo, outletName = outletName,
+            reasonBn = reason?.first, reasonEn = reason?.second, messageKey = messageKey, seen = seen, familySize = familySize,
+            afterCheckOut = row.recordType == "day_submit" && runCatching { capture.attendanceOn(row.businessDate).any { it.kind == "check_out" } }.getOrDefault(false),
+        )
     }
 
     private companion object {
-        /** The outbox keeps answered rows at most 14 days (`cfg.app.outbox_keep_days` 1..14). */
-        const val REJECTED_LOOKBACK_DAYS = 14L
         /** Retryable rows are few (a stale scope, a parent not yet there); the scan stops at this many queued rows. */
         const val RETRY_SCAN_LIMIT = 500
         val RETRYABLE = com.aktcl.aron.contract.RecordOutcomeCode.entries.filter { it.retryable == true }.map { it.wire }.toSet()
@@ -163,11 +221,59 @@ class RoomDaySubmitWriter(
             DaySubmitEntity(
                 clientUuid = newUuid(), meta = m, scope = scope, submitCycle = cycle,
                 deviceCountsJson = countsJson.toString(), deviceMoneyJson = MoneyTotalsJson.build(db, businessDate, categoryOf).toString(),
-                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = 0,
+                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = db.outboxDao().unsentOn(businessDate), // D-AGATE-06: the real number
                 submittedWithDues = dues != null, duesOutstandingMtk = dues?.outstandingMtk ?: 0L, retailersWithDues = dues?.retailersWithDues ?: 0,
                 stockSlipPrinted = stockSlipPrinted(),
             ),
         )
+    }
+}
+
+/**
+ * D-AGATE-06 (owner rule 3): the `day_submit`(s) a check-out writes by itself when the rep has not submitted. One per ROUTE-DAY that has
+ * captures on [build]'s business date and no submit standing (the SR works one or more routes a day; the AMO has one supervisor day),
+ * with the true device counts, money, dues and the REAL `pending_count`, built inside the check-out's own transaction. No network,
+ * no "everything acked" gate: the outbox holds the submit until every earlier record of the date is final and sends the check-out after it.
+ * A route-day whose submit already stands (a manual Sales Submit) is left alone, so the check-out then writes only itself.
+ */
+class AutoDaySubmits(
+    private val db: AronDatabase,
+    private val repo: CaptureRepository,
+    /** The capture envelope of "now" for a route (null: the AMO's supervisor day, no route). */
+    private val metaFor: (routeId: Long?) -> CaptureMeta,
+    private val categoryOf: (Long) -> String,
+    /** D-AGATE-22 (item 2): asked for the date being CLOSED (a forgotten day is not today), never for today. */
+    private val stockSlipPrinted: suspend (businessDate: String) -> Boolean = { false },
+    /** `route_day` for the SR; the AMO submits its supervisor day (`supervisor_day`, no route). */
+    private val scope: String = "route_day",
+    private val newUuid: () -> String = ClientIds::newUuid,
+) {
+    suspend fun build(businessDate: String): List<DaySubmitEntity> {
+        val dao = db.captureDao()
+        val targets: List<Long?> = if (scope == "supervisor_day") (if (dao.captureCountOn(businessDate) > 0) listOf<Long?>(null) else emptyList())
+        else dao.captureRoutesOn(businessDate).distinct().sorted()
+        if (targets.isEmpty()) return emptyList()
+        val dues = RoomDaySource(db).dues(businessDate)
+        val counts = db.outboxDao().committedCounts(businessDate)
+        val countsJson = JsonObject(counts.associate { it.recordType to JsonPrimitive(it.count) })
+        val money = MoneyTotalsJson.build(db, businessDate, categoryOf).toString()
+        val rejected = db.outboxDao().countOnInState(businessDate, OutboxState.REJECTED)
+        val quarantined = db.outboxDao().countOnInState(businessDate, OutboxState.QUARANTINED)
+        val slip = stockSlipPrinted(businessDate)
+        return targets.mapNotNull { route ->
+            val meta = metaFor(route).copy(businessDate = businessDate, routeId = route)
+            // a submit that stands (the rep's own Sales Submit) is left alone: the check-out then writes only itself
+            // D-LEAD-PREREQ-03 ruling 4: asked WITHOUT a record type, so the Final Submit lock is not consulted: a standing submit is skipped whatever the zone's Final Submit state
+            if (repo.submitStandsFor(meta)) return@mapNotNull null
+            val cycle = (dao.daySubmitsFor(businessDate, route).maxOfOrNull { it.submitCycle } ?: 0) + 1
+            DaySubmitEntity(
+                clientUuid = newUuid(), meta = meta, scope = scope, submitCycle = cycle,
+                deviceCountsJson = countsJson.toString(), deviceMoneyJson = money,
+                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = 0, // the real pending count is set inside the transaction
+                submittedWithDues = dues.retailersWithDues > 0 || dues.outstandingMtk > 0, duesOutstandingMtk = dues.outstandingMtk, retailersWithDues = dues.retailersWithDues,
+                stockSlipPrinted = slip,
+            )
+        }
     }
 }
 

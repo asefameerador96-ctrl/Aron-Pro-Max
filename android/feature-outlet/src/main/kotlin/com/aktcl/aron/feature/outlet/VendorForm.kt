@@ -43,100 +43,19 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
 
 /**
- * The SR outlet forms exactly as the owner's manual draws them (screenshots 42, 43, 44): every entry is a **label above a
- * purple-outlined white box**, the outlet drop-down carries a round status dot, the first-letter filter is a dark grey panel
- * whose letters wrap over as many rows as they need, and the two wide actions are gradient bars (GEO purple to crimson, Save
- * crimson to purple with a save glyph).
+ * What the SR outlet forms still draw themselves after the landed field and picker (D-PAR-SR2-08): the dark grey first-letter panel of the
+ * change-information form (manual 44) whose chips wrap over as many rows as they need, and the colour of the round status dot before a chosen
+ * outlet (manuals 43, 44). The labelled purple-outlined fields and drop-downs are the landed `OutlinedFormField` and `SearchPickerField`.
  *
- * It lives beside [FormField] and [SearchPickerField] rather than replacing them: the AMO's own request form (OutletRequestContent)
- * keeps the kit look it was built with, so nothing outside the SR journey moves. Only `SrOutletRequestContent` draws from here.
- *
- * Outdoor legibility (standing rule 14a, docs/32 s2a) decides where the manual is only a colour: the field outline is the look's
- * own purple on white, the label is full-strength ink rather than the vendor's grey, and a letter chip is never colour alone —
- * the selected one is also the only filled one and carries `selected` in its semantics.
+ * Outdoor legibility (standing rule 14a, docs/32 s2a): a letter chip is never colour alone, the selected one is also the only filled one and
+ * carries `selected` in its semantics; the panel is the look's own `panelDark`, near-black in Sunlight, so the white letters keep their contrast.
  */
-
-/** The vendor's field outline: a 1.5 dp purple rule around a white 10 dp box. */
-private val FieldShape = RoundedCornerShape(10.dp)
-private val FieldBorder = 1.5.dp
-private val FieldMinHeight = 52.dp
 
 /** The bar ramp (red to purple) the manual fills the selected letter and the gradient actions with. */
 @Composable
 private fun barBrush(): androidx.compose.ui.graphics.Brush {
     val look = LocalAronLook.current
     return androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(look.barStart, look.barMid, look.barEnd))
-}
-
-@Composable
-private fun fieldOutline(isError: Boolean): Color = if (isError) LocalAronLook.current.red else LocalAronLook.current.purple
-
-/** The small label the manual puts above every box ("ক্লাস্টার নির্বাচন করুন", "দোকানের নাম", ...). */
-@Composable
-internal fun VendorLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier, style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.ink)
-}
-
-/**
- * A labelled text box of the manual's forms. [fieldModifier] (the test tag) goes on the editable node so the existing tests
- * keep finding it; the box turns red on [isError] and the error's own line is written by the caller, as before.
- */
-@Composable
-internal fun VendorField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    singleLine: Boolean = true,
-    fieldModifier: Modifier = Modifier,
-) {
-    val look = LocalAronLook.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        VendorLabel(label)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = FieldMinHeight).clip(FieldShape).background(look.card)
-                .border(FieldBorder, fieldOutline(isError), FieldShape)
-                .padding(horizontal = 14.dp, vertical = 14.dp)
-                .semantics { contentDescription = label }
-                .then(fieldModifier),
-            textStyle = LocalTextStyle.current.merge(MaterialTheme.typography.bodyLarge).copy(color = look.ink),
-            singleLine = singleLine,
-            minLines = if (singleLine) 1 else 3,
-            cursorBrush = SolidColor(look.purple),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        )
-    }
-}
-
-/**
- * A labelled drop-down of the manual's forms: the chosen label (or the placeholder, which the manual repeats from the label)
- * with a caret, over the same searchable dialog [SearchPickerField] opens. [dot] draws the manual's round status marker before
- * the text; it is never the only thing that carries meaning (its colour repeats what the row already says in words).
- */
-@Composable
-internal fun VendorPicker(
-    label: String,
-    title: String,
-    searchHint: String,
-    items: List<PickItem>,
-    selected: PickItem?,
-    onPick: (PickItem) -> Unit,
-    tag: String,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    dot: Color? = null,
-) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        VendorLabel(label)
-        SearchPickerField(
-            title, searchHint, items, selected, onPick, tag,
-            Modifier.fillMaxWidth(), isError = isError, boxed = true, leadingDot = if (selected != null) dot else null,
-        )
-    }
 }
 
 /**

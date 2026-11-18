@@ -143,4 +143,8 @@
     <string name="kpi_brand_total_volume">Total volume</string>
     <string name="kpi_brand_total_memo">Total memo</string>
     <string name="kpi_brand_section">FMC BRANDS</string>
+    <string name="summary_block_title">Total sales</string>
+    <string name="summary_block_total">Total</string>
+    <string name="summary_block_grand">Grand total</string>
+    <string name="summary_block_minus">(-) %1$s</string>
 </resources>

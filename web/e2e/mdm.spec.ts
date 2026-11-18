@@ -165,6 +165,9 @@ test("enrolment: a code is created, its QR is shown once, and the code can be re
   await asAdmin(page);
   await page.goto("/admin/mdm/enrolment");
   await hydrated(page.getByTestId("mdm-enrolment-form"));
+  // The lockdown level has no default any more (D-OWNER-MDM-02): without a choice the form refuses, so choose one first.
+  await expect(page.getByRole("button", { name: "Create QR" })).toBeVisible();
+  await page.locator("#e-lock").selectOption("prod");
   await page.getByRole("button", { name: "Create QR" }).click();
   await expect(page.getByTestId("qr-result")).toBeVisible();
   await page.getByRole("button", { name: "Hide the QR" }).click();

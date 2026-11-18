@@ -3328,3 +3328,53 @@
 ### Lane check 2026-11-17 20:46 UTC
 - Train 113 on INT a6a1cbf25: ci 44165939686 success; deploy 44170414803 in progress; health still 4e0645556. Integrator 24 watching.
 - Reviews today: sr-server B7 c65fbb84b PASS; android-gates slices 2 and 3 FAIL (6 blocking, D-LEAD-PREREQ-03, round 3 to A-GATE2); android-integrity 791fefae: B1, B2 fixed, new W1 (wireless debugging not read) + 12 lows; masterdata 1cd7892d FAIL on resume (2 blocking), successor MD3 session_014mnioNCrZkAoVLKBo4xoEM; A-GATE1 and MD2 retired; A-GATE2 session_014mnioP8tEWhoSZiEUJjjUx merges A-GATE1's late round-2 pushes (a57c0ed95, e17164070).
+
+### 2026-11-17 22:04 UTC
+- Train 113 deploy FAILED at V0191 (dev data guard); D-LEAD-TRAIN-113-02. Train 114a ee1bedb71 built, GO to integrator 24.
+- Reviews: android-gates round 2 (2eb321bd0) FAIL 4 blocking; android-integrity slice 2 (49e6abc6) PASS; SR-1 2e66b5fbb PASS; sr-server 05d1b3bf8 PASS.
+- Retired: A-INT1 (successor A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM). A-GATE2 writing a handover; successor A-GATE3 to start.
+- P-SR2b push still blocked on the owner's approval (8 commits local only).
+
+### Lane check 2026-11-17 22:47 UTC
+- Train 114a: lane ci 44186232155 success; INT now 9bb7f5cf1 (integrator pushed); deploy pending; health still 4e0645556.
+- Reviews: Loyalty C 1bb516a76 FAIL (1 blocking: released child closed as discarded), fix round with L-A10; AMO ca0071055 PASS; P-AMO2 retired, P-AMO3 session_014mnioQ9FLnKpmmTrqyizwA (b08bc42c lows, slice 3 = AMO Stock screen). SV5 d0618d115 (pre-flight follow-ups) green, unreviewed. Heads: android-gates 9395a341c, android-integrity 8becd888b, masterdata-fit 091f7fddd, TSO f0800021a.
+
+### Lane check 2026-11-18 00:47 UTC
+- INT 9bb7f5cf1 live (train 114a; migrate log verified 0190 -> 0191). Train 115 lane/lead-train115 10ee32206 (Loyalty C 6c13c81b3 + sr-server 932bb1634 + SR-1 75b2a14d6): lane ci 44208229771 in progress; GO given to integrator 24.
+- Reviews since last check: masterdata d1c16cf PASS (train 116 after merge; head 6c2ed868 green); sr-server check-out round 2f5922ee PASS (train 117, renumber to V0201..V0203 / 1.19.0); android-gates step 1 04f8bf1a: round-2 blockers fixed, 4 new blocking (docs/reviews/android-gates-step1-2026-11-18.md) with A-GATE3 session_014mnioM8e2x3t9gk9o9UbUu; AMO slices 3-5b PASS after discount-row fix (2195c0f12), not in 115 (5 golden conflicts with core-ui), slices 6-7 unchecked.
+- New sessions: SV6 session_014mnioLvKP6ttPtSaCjKTmx, A-GATE3, A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM (renumber to V0204/V0205, 1.20.0). P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 02:46 UTC
+- INT f5bfee390 (train 115) live; migrate log verified 0191 -> 0194. Train 115a (UI: AMO slices 3-9 + SR-1 Attendance goldens) lane/lead-train115a 652db94d0: GO given, ci running.
+- Train 116 master data cd079fb2: merge-only review running. sr-server c3ec4317 (four migrations, final V0201..V0204 / 1.19.0) waits for 116. Integrity V0205..V0206 / 1.20.0. L-A11 V0207 / 1.21.0 (sweep runs in the API process, no grant change).
+- android-gates: step 3 12a178bc FAILED (5 blocking, docs/reviews/android-gates-step3-2026-11-18.md); A-GATE5 session_014mnioM5JcbtBQV899MvN4N on step 4. P-SR1b session_014mnioQAtKKTq9KrTS98tic (Sale page). CI-E2E session_014mnioLZHqPfcspFYruwHTm (split web e2e; the 30-minute limit is not widened).
+- Retired: A-GATE4, P-SR1, L-A10. P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 04:46 UTC
+- INT 951292a48 (train 116) live; health ok. Train 116a (CI: web e2e split, map test) lane/lead-train116a 3c1c195ce: GO given.
+- Waiting: SV6 final head for train 117 (merge, drop username widening, renumber from V0201, 1.19.0). Reviews running: android-gates step 5 (abfa1ef4). Pending checks: P-AMO3 slices 10-15 after its merge "checked"; P-SR1b Sale-page batch after its merge; P-TSO bfea7197 after its ci; L-A11 fix round; A-INT3 lab part 2.
+- P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 06:47 UTC
+- INT 39db6c734 (train 117) live; health ok, build 39db6c734. Trains 116a and 117 landed in this window; migrate console read: 0200 -> 0203, no errors.
+- Next: train 118 = Loyalty sweep (V0204, 1.20.0; L-A11 landing push awaited, head still d88b751b) + AMO e7a2f572. Final pass running on android-gates bc38c0ad9. A-INT3 at 817906b1 (renumbered to V0204..V0207 / 1.20.0 before my change reached it; told to shift to V0205..V0208 / 1.21.0).
+- New lanes: A-PROG1 (SR programme screens, slices 1-3 pushed, bb607ed7), T-KPI1 (targets server, d8f7c124). P-SR1b: one blocking (printer bar) in fix. P-TSO c834414e (slice 2 in progress). SV6 follow-ups not yet pushed. P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 08:47 UTC
+- Dev health ok, build 39db6c734 (train 117; train 118 was Android-only, deploy skipped by design). Integration branch is 4d310d8c0 = train 119 pushed (Loyalty sweep, V0204, contract 1.20.0); its ci and real deploy are in progress; integrator's report awaited.
+- Passed final review, waiting to land: android-integrity (31647f49: comment clean-up push; merges after 'Loyalty landed'). SV6 follow-ups (after integrity, V0209).
+- In fix rounds: A-PROG2 (274dac72; single-flight double count, edit chain, gift tier), P-SR1b (e017b2d7; QC locked-Cancel crash and stale state). A-GATE8 fd6825d4 (7 of 10 done, push 3 pending). T-KPI2 on the admin tab (6af9be04). P-TSO fd8625c8 pushed 07:31, 'checked' not yet received (nudge at the next check if still silent). L-A11: push (B) not yet pushed. P-AMO3 ff9fb511.
+- Usage: seven_day 'allowed_warning' seen on L-A11 at 08:07 (not rejected).
+
+### Lane check 2026-11-18 10:47 UTC
+- Dev health ok, "build":"4d310d8c0 (train 119 server; train 120 was Android-only). Integration a4691a061.
+- Train 121 (android-integrity) STOPPED before any push: lane ci 44284944308 red only at the gitleaks step ("leaks found: 1", log redacted, nothing named). SV6 asked to run the pinned scanner and report rule, file, line, commit (never the value).
+- Owner message 10:40: final Azure ready, Apsis dump on the organisation's FTP (D-OWNER-FINAL-AZURE-01). Lanes F-INFRA1 and M-APSIS1 started; owner asked for size/budget, release flow, bootstrap login, region, Google project, dump format.
+- P-SR1b push of 41ee52a1 denied by its classifier twice; owner approval asked. P-SR2b still blocked the same way.
+- Reviews passed and waiting to land after 121: gates-2 (A-GATE8), look train 2 (SR d60e2e2f, TSO), Loyalty push B (hygiene fix with L-A12), SV6 follow-ups (V0209). In work: A-PROG2 (5xx release rule, slice 7), T-KPI2 (admin tab), L-A12 (points adjustment), SV6 ops-diagnose-api (second re-check running).
+
+- 2026-11-18T12:46Z lane check: health build ce6792f67 ok; INT ce6792f67 (train 121). All lanes active within the last 90 min except loyalty (L-A12) and P-TSO (ci running). Blocker for every lane ci: one gitleaks false positive (bfd0087c8), owner asked.
+
+- 2026-11-18T14:46Z lane check: health build ffbe8d6fd (train 122) ok. All active lanes reported within 90 min. Usage not re-read (no rejection seen on any session start today).
+
+- 2026-11-18T16:46Z lane check: INT 0aa547b62 (train 124 pushed; integration ci 44344358786 green; deploy run 44347162539 see state). All active lanes reported within 90 min.

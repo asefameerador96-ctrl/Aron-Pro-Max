@@ -99,8 +99,16 @@ fun ControlCallHost(
     // tso-manual X4a follow-up (R-W-23): a call whose close the route-day refused (the zone's Final Submit, or the supervisor
     // day's Sales Submit) ended on the phone with no close written; the picker shows why, never a crash
     var callEnded by remember { mutableStateOf<DayRefusal?>(null) }
-    val leaveCall: () -> Unit = { scope.launch { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } }
-    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
+    // D-AGATE-19: a close that cannot be written keeps the call on screen (no crash; the rep taps again), the call is never dropped without its close
+    var leaveFailed by remember { mutableStateOf(false) }
+    val leaveCall: () -> Unit = { scope.launch { try { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { leaveFailed = true } } }
+    if (leaveFailed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { leaveFailed = false }, onDismiss = { leaveFailed = false },
+        )
+    }
+    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }, ofCallsDay = true) }
     // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress whose route-day no longer takes
     // its records ends on the phone at once, before any step is drafted
     LaunchedEffect(open) {
@@ -238,6 +246,7 @@ private fun PickStep(
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
         below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) }, belowWhenIdle = salesPath,
+        idleHint = if (joint) stringResource(AmoR.string.amo_cp_route_placeholder) else null, // screenshot 29 right
     )
 }
 
@@ -284,12 +293,22 @@ private fun ManualOverrideStep(day: AmoDay, reason: ForceReason, onStarted: () -
                 LaunchedEffect(Unit) {
                     if (!autoOpened && cap.photo == null) { autoOpened = true; com.aktcl.aron.core.common.orNullKeepingCancellation { capture.shutter() } }
                 }
+                // D-PAR-AMO-06: read again on every resume, so the warning clears when Camera was allowed in the phone's Settings and the user came back
+                var cameraDenied by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) }
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
                 var autoConfirmed by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(cap.complete) { if (cap.complete && !autoConfirmed) { autoConfirmed = true; confirm() } }
                 com.aktcl.aron.feature.amo.ManualOverrideContent(
                     capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } }, onConfirm = confirm,
                     waiting = cap.busy || (cap.complete && missing.isEmpty()),
-                    cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED,
+                    cameraDenied = cameraDenied,
                 )
             }
         }

@@ -35,6 +35,10 @@ data class SaleUiState(
     val committed: CommittedSale? = null,
     /** The one per-SKU QC cap (taka) the review, the commit and the QC screen all read; empty while the basis is unknown (MQ-03). */
     val qcCapMtkBySku: Map<Long, Long> = emptyMap(),
+    /** Why the last save was refused INSIDE the transaction (stock moved, the memo to edit was replaced); the screen words it. Cleared by the next change. */
+    val refusal: List<ReviewProblem> = emptyList(),
+    /** D-AGATE-25: a replayed Save (the memo was already stored) answered with the STORED memo while the draft on screen differed from it: the later changes were not saved; the screen says so. */
+    val laterChangesNotSaved: Boolean = false,
 )
 
 /**
@@ -53,6 +57,12 @@ class SaleFlow(
      * back: the old memo is still live in the stock figure until the new one is saved (D-OWNER-PREREQ-01 rule 2). Production: Room.
      */
     private val ownTaken: suspend (memoUuid: String) -> Map<Long, Long> = { emptyMap() },
+    /**
+     * D-AGATE-19: true when the call this draft belongs to already has its close (the phone ended it, or the rep did). Asked INSIDE the flow's lock, after the "already committed" answer, so a
+     * NEW sale is refused ([ReviewProblem.CallClosed], nothing written) and a retry of a Save that already landed still returns its memo. An edit is never refused for a closed call.
+     * Production: Room (`visit_close` of the draft's visit and date).
+     */
+    private val isCallClosed: suspend (SaleDraft) -> Boolean = { false },
 ) {
     private val lock = Mutex()
     private val ui = MutableStateFlow(SaleUiState())
@@ -65,11 +75,16 @@ class SaleFlow(
     /** [editing] is the memo an edit will supersede (null for a new sale); a resumed edit draft names it itself. */
     suspend fun start(visit: SaleVisit, editing: String? = null) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
-        rawCatalog = catalogSource.skus(visit.businessDate, visit.priceType).associateBy { it.skuId }
-        val loaded = store.load(visit.visitUuid) ?: SaleDraft(
+        // D-AGATE-19: an EDIT starts clean when the stored draft is a leftover SALE draft of a call the phone already closed (a kill between the close and the drop leaves the file): never loaded into the edit
+        val stored = store.load(visit.visitUuid)?.takeUnless { editing != null && it.edit == null && isCallClosed(it) }
+        if (stored == null) store.clear(visit.visitUuid)
+        val loaded = stored ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
             priceType = visit.priceType, memoUuid = ClientIds.newUuid(),
         ).also(store::save)
+        // the stock and prices are read for the DRAFT's own date (the memo's date, which the saving transaction reads too): a draft opened before
+        // midnight and resumed after it still shows the figures the save will check
+        rawCatalog = catalogSource.skus(committer.stockDate(loaded.businessDate, loaded.routeId), loaded.priceType).associateBy { it.skuId }
         val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
         val catalog = withGiveBack(editing ?: draft.edit?.supersedesMemoUuid)
         val landed = committer.existing(draft.memoUuid)
@@ -96,11 +111,12 @@ class SaleFlow(
         set
     }
     suspend fun setSlide(skuId: Long, emptyPackets: Long) = edit { SaleDraftOps.setSlide(it, skuId, emptyPackets) }
-    suspend fun setQc(entry: QcEntry) = edit { SaleDraftOps.setQc(it, entry) }
+    /** A QC write on a draft whose QC is already submitted is ignored (the page is read-only then); the draft ops still refuse it, so nothing can throw into a coroutine of the screen. */
+    suspend fun setQc(entry: QcEntry) = edit { if (it.qcCompleted) it else SaleDraftOps.setQc(it, entry) }
     suspend fun setPaid(paidMtk: Long?) = edit { SaleDraftOps.setPaid(it, paidMtk) }
     suspend fun confirmZeroSale(reasonCode: String? = null) = edit { SaleDraftOps.confirmZeroSale(it, reasonCode) }
     suspend fun startQcOnly() = edit { SaleDraftOps.startQcOnly(it) }
-    suspend fun cancelQcOnly() = edit { SaleDraftOps.cancelQcOnly(it) }
+    suspend fun cancelQcOnly() = edit { if (it.qcCompleted) it else SaleDraftOps.cancelQcOnly(it) }
     suspend fun withEdit(edit: EditContext) = lock.withLock {
         if (givenBackFor != edit.supersedesMemoUuid) {
             val catalog = withGiveBack(edit.supersedesMemoUuid)
@@ -125,35 +141,86 @@ class SaleFlow(
         if (r.problems.any { it is ReviewProblem.QcAboveCap || it is ReviewProblem.NetNegative || it is ReviewProblem.TooManyQcRows }) return@withLock
         editLocked { SaleDraftOps.completeQc(it) }
     }
-    suspend fun restoreQc(entries: List<QcEntry>) = edit { SaleDraftOps.replaceQc(it, entries) }
+    suspend fun restoreQc(entries: List<QcEntry>) = edit { if (it.qcCompleted) it else SaleDraftOps.replaceQc(it, entries) }
 
     /** Commits the sale; [editFix] is required (and only allowed) for an edit. Returns the same result on a repeat call. */
     suspend fun commit(editFix: GeoFixEntity? = null): CommittedSale = lock.withLock {
         val s = ui.value
         s.committed?.let { return it }
         val draft = checkNotNull(s.draft) { "no sale in progress" }
+        // D-AGATE-22 (item 3): a Save that landed in Room but whose coroutine was cancelled before the screen state was set is still a saved memo: look it up by the draft's own memo UUID
+        // (as `start` does) BEFORE the closed-call refusal, so a retry after the call was closed in between answers with the stored memo, never "nothing was saved"
+        committer.existing(draft.memoUuid)?.let { landed ->
+            store.clear(draft.visitUuid)
+            // the stored memo is what was saved; when the draft the rep sees now carries other totals, his later changes are NOT in it, and the screen says so
+            val differs = s.review?.let { it.totals.netMtk != landed.netMtk || it.settlement.dueMtk != landed.dueMtk } == true
+            ui.value = s.copy(committed = landed, laterChangesNotSaved = differs)
+            return landed
+        }
+        if (draft.edit == null && isCallClosed(draft)) {
+            // D-AGATE-19: the call was closed while this sale was open: nothing is written; the rep is told so (never the generic "save failed")
+            val problems = listOf<ReviewProblem>(ReviewProblem.CallClosed)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
+        }
         val result = try {
             committer.commit(draft, s.catalog, editFix, qcCapMtkBySku())
+        } catch (e: com.aktcl.aron.core.database.repo.EditTargetSupersededException) {
+            // another edit already replaced the memo this one would replace: nothing was written, the rep is told what to do
+            val problems = listOf<ReviewProblem>(ReviewProblem.EditTargetSuperseded)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
+        } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            // the check-in gate refused the save inside the transaction: nothing was written; the rep is told what happened and what to do (not "save failed")
+            val problems = listOf<ReviewProblem>(ReviewProblem.AttendanceRefused(e.why))
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
+        } catch (e: ClockMovedBackException) {
+            val problems = listOf<ReviewProblem>(ReviewProblem.ClockMovedBack)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
         } catch (e: OverStockException) {
             // the stock moved since this sale opened (another memo, an edit): nothing was written. Re-read it, republish the
             // screen with the true figures, and report the shortage the TRANSACTION saw, never a guess from the stale catalog.
-            rawCatalog = catalogSource.skus(draft.businessDate, draft.priceType).associateBy { it.skuId }
+            rawCatalog = catalogSource.skus(e.businessDate ?: committer.stockDate(draft.businessDate, draft.routeId), draft.priceType).associateBy { it.skuId }
             val catalog = withGiveBack(givenBackFor)
             publish(checkNotNull(s.visit), draft, catalog, null)
-            throw ReviewNotCommittable(
-                e.shortages.map { sh ->
+            val problems = e.shortages.map { sh ->
                     val sku = catalog[sh.skuId]
                     ReviewProblem.OverStock(
                         sh.skuId, sku?.name ?: sh.skuId.toString(), sh.requestedBase, sh.heldBase,
                         sku?.entry?.fromBase(sh.requestedBase) ?: sh.requestedBase, sku?.entry?.fromBase(sh.heldBase) ?: sh.heldBase,
-                        sku?.entryLabelKey.orEmpty(),
+                        sku?.entryLabelKey.orEmpty(), sku?.nameBn,
                     )
-                },
-            )
+                }
+            ui.value = ui.value.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
         }
         store.clear(draft.visitUuid)
         ui.value = s.copy(committed = result)
         result
+    }
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 3: the phone ends an abandoned call of an earlier day, so that call's UNSAVED draft is dropped. A memo already saved is never touched (it
+     * is in Room; this only clears the draft file and the screen state). Returns true when a draft with something entered was dropped.
+     */
+    suspend fun dropUnsavedDraft(visitUuid: String): Boolean = dropUnsavedDraft(visitUuid) { }
+
+    /**
+     * [dropUnsavedDraft] with [tell] run BEFORE the draft is cleared and only when there is something to drop (D-AGATE-19): the rep's notice is stored first, so a kill between the two can
+     * only show a notice for a draft that is dropped by the next start (never drop it without a word). A [tell] that fails is not allowed to keep the draft (the failure is swallowed, a
+     * cancellation is not).
+     */
+    suspend fun dropUnsavedDraft(visitUuid: String, tell: suspend () -> Unit): Boolean = lock.withLock {
+        val d = store.load(visitUuid)
+        val saved = d != null && committer.existing(d.memoUuid) != null
+        val had = d != null && !saved && (d.lines.isNotEmpty() || d.slide.isNotEmpty() || d.qc.isNotEmpty() || d.paidMtk != null || d.zeroSale)
+        if (had) try { tell() } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { }
+        if (d != null) store.clear(visitUuid)
+        val s = ui.value
+        if (s.visit?.visitUuid == visitUuid && s.committed == null) ui.value = SaleUiState()
+        had
     }
 
     private suspend fun edit(change: (SaleDraft) -> SaleDraft) = lock.withLock { editLocked(change) }

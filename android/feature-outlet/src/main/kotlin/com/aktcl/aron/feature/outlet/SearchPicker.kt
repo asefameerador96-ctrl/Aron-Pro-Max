@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,31 +67,36 @@ fun filterPickItems(items: List<PickItem>, query: String): List<PickItem> {
 fun SearchPickerField(
     title: String, searchHint: String, items: List<PickItem>, selected: PickItem?, onPick: (PickItem) -> Unit, tag: String,
     modifier: Modifier = Modifier, enabled: Boolean = true, emptyText: String? = null, isError: Boolean = false,
-    /** The SR forms draw the manual's purple-outlined box (screenshots 42 to 44); the AMO's form keeps the plain card row. */
-    boxed: Boolean = false,
-    /** The manual's round status marker before a chosen outlet; its colour only repeats what the label already says. */
+    /** The manual's round status marker before a chosen outlet (screenshots 43, 44); its colour only repeats what the label already says. */
     leadingDot: Color? = null,
 ) {
     val look = LocalAronLook.current
     var open by rememberSaveable(tag) { mutableStateOf(false) }
-    val shape = RoundedCornerShape(if (boxed) 10.dp else 12.dp)
-    val outline = if (isError) look.red else look.purple
-    Row(
-        modifier.fillMaxWidth().heightIn(min = if (boxed) 52.dp else AronTokens.Touch.Min).clip(shape).background(look.card)
-            .then(if (boxed) Modifier.border(1.5.dp, outline, shape) else Modifier)
-            .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
-            .padding(horizontal = if (boxed) 14.dp else AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
-        verticalAlignment = Alignment.CenterVertically,
+    val shape = RoundedCornerShape(12.dp)
+    // the old SR's form field (manual 42, 43): a white card, the label above, and the choice in a purple-outlined box with the caret
+    val edge = if (isError) look.red else look.purple
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(look.card).padding(AronTokens.Space.L),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
-        if (leadingDot != null) {
-            Box(Modifier.padding(end = 10.dp).size(14.dp).clip(androidx.compose.foundation.shape.CircleShape).background(leadingDot))
+        // with nothing chosen the box repeats the label as its grey hint, so the label above is for the eye only (one spoken text, as before)
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = if (selected == null) Modifier.clearAndSetSemantics { } else Modifier)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(RoundedCornerShape(8.dp)).border(1.5.dp, edge, RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
+                .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leadingDot != null) {
+                Box(Modifier.padding(end = 10.dp).size(14.dp).clip(androidx.compose.foundation.shape.CircleShape).background(leadingDot))
+            }
+            Text(
+                selected?.label ?: title, Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else look.inkMuted,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.ink)
         }
-        Text(
-            selected?.label ?: title, Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else if (isError) look.red else look.inkMuted,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
-        Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.inkMuted)
     }
     if (open) PickerDialog(title, searchHint, items, emptyText, onDismiss = { open = false }, onPick = { open = false; onPick(it) })
 }

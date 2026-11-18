@@ -88,19 +88,24 @@ data class ZoneFinalDto(val zone_id: Long, val final_submitted: Boolean)
 data class QuarantineItemDto(
     val quarantine_id: Long, val client_uuid: String, val type: String, val code: String, val status: String, val user_id: Long, val device_id: Long?, val route_id: Long?,
     val business_date: String, val received_at: String, val payload: JsonElement, val detail: String?, val resolved_by_user_id: Long?, val resolved_at: String?, val resolution_note: String?,
+    /** Contract 1.20.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0204. */
+    val waiting: Boolean = false, val waits_for_uuid: String? = null, val waits_for_refused: Boolean = false,
 )
 
 @Serializable
-data class QuarantinePage(val items: List<QuarantineItemDto>, val next_cursor: String? = null)
+data class QuarantinePage(val items: List<QuarantineItemDto>, val next_cursor: String? = null, val waiting_count: Int = 0)
 
 @Serializable
 data class QuarantineResolveRequest(val action: String, val fixed_record: JsonElement? = null, val reason: String)
 
 /** Accepting a quarantined record re-ingests it (the sync module owns that path). Until it is wired, accept and accept_with_fix answer 503. */
-fun interface QuarantineAcceptor {
+interface QuarantineAcceptor {
     fun accept(quarantineId: Long, fixedRecord: JsonObject?, resolver: Long, reason: String)
+
+    /** A reviewer DISCARDED the item (called in the same transaction, after the item is closed): records held with it follow the decision (C-R3: a gift photo is stored and flagged). */
+    fun discarded(quarantineId: Long, resolver: Long) {}
     companion object {
-        val UNAVAILABLE = QuarantineAcceptor { _, _, _, _ -> throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "accepting a quarantined record needs the ingest hook (docs/requests/backend-reports-quarantine-accept.md)", retryAfterS = 60, headers = mapOf("Retry-After" to "60")) }
+        val UNAVAILABLE = object : QuarantineAcceptor { override fun accept(quarantineId: Long, fixedRecord: JsonObject?, resolver: Long, reason: String): Unit = throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "accepting a quarantined record needs the ingest hook (docs/requests/backend-reports-quarantine-accept.md)", retryAfterS = 60, headers = mapOf("Retry-After" to "60")) }
     }
 }
 
@@ -315,15 +320,22 @@ class OpsService(
         if (!reach.national) st.bindArray("rz", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         zoneId?.let { st.bind("zid", it) }; status?.let { st.bind("status", it) }; code?.let { st.bind("code", it) }; from?.let { st.bind("from", it) }; to?.let { st.bind("to", it) }; afterId?.let { st.bind("after", it) }
         val rows = st.map { rs, _ -> toDto(rs) }.list()
-        QuarantinePage(rows.take(limit), if (rows.size > limit) rows[limit - 1].quarantine_id.toString() else null)
+        // Contract 1.20.0: the open items waiting for another parent inside the caller's reach, whatever the page and the status/code/date filters.
+        val reachWhere = if (reach.national) "true" else "q.route_id IN (SELECT route_id FROM dw.dim_geo WHERE zone_id = ANY(:rz))"
+        val wq = h.createQuery("SELECT count(*)::int FROM app.sync_quarantine q WHERE q.status = 'open' AND q.waiting_since IS NOT NULL AND $reachWhere")
+        if (!reach.national) wq.bindArray("rz", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
+        QuarantinePage(rows.take(limit), if (rows.size > limit) rows[limit - 1].quarantine_id.toString() else null, wq.mapTo(Int::class.java).one())
     }
 
     private fun toDto(rs: java.sql.ResultSet): QuarantineItemDto {
         fun t(c: String) = rs.getObject(c, OffsetDateTime::class.java)?.toInstant()?.wire()
+        val detail = rs.getString("detail")
+        val waiting = rs.getString("status") == "open" && rs.getObject("waiting_since") != null
         return QuarantineItemDto(
             rs.getLong("id"), rs.getString("client_uuid"), rs.getString("record_type"), rs.getString("code"), rs.getString("status"), rs.getLong("user_id"), rs.getObject("device_id") as Long?,
-            rs.getObject("route_id") as Long?, rs.getObject("business_date", LocalDate::class.java).toString(), t("received_at")!!, Json.parseToJsonElement(rs.getString("payload")), rs.getString("detail"),
+            rs.getObject("route_id") as Long?, rs.getObject("business_date", LocalDate::class.java).toString(), t("received_at")!!, Json.parseToJsonElement(rs.getString("payload")), detail,
             rs.getObject("resolved_by_user_id") as Long?, t("resolved_at"), rs.getString("resolution_note"),
+            waiting, if (waiting) rs.getString("awaited_uuid") else null, waiting && rs.getBoolean("awaited_refused"),
         )
     }
 
@@ -346,9 +358,12 @@ class OpsService(
             }
             when (req.action) {
                 "accept", "accept_with_fix" -> { acceptor.accept(id, req.fixed_record as? JsonObject, p.userId, req.reason) }
-                else -> h.createUpdate(
+                else -> { h.createUpdate(
                     "UPDATE app.sync_quarantine SET status = 'discarded', resolution_uuid = :ru, resolved_by_user_id = :u, resolved_at = now(), resolution_note = :note WHERE id = :id",
                 ).bind("ru", UUID.nameUUIDFromBytes("quarantine:$id:${req.action}:${p.userId}".toByteArray())).bind("u", p.userId).bind("note", (if (req.action == "return_to_device") "return_to_device: " else "") + req.reason.take(470)).bind("id", id).execute()
+                    // C-R3: a gift photo held with the record follows a DISCARD (a return to the device leaves it in review: the phone may send the record again)
+                    if (req.action == "discard") acceptor.discarded(id, p.userId)
+                }
             }
             AuditLog.write(
                 h, p, "quarantine", id.toString(), req.action,

@@ -1,0 +1,51 @@
+path: /v1/admin/devices/{device_id}/lab-exemption
+method: put
+operation:
+  tags:
+  - admin-devices
+  operationId: grantDeviceLabExemption
+  summary: Let ONE phone run with Developer options on for 1 to 14 days (the owner's ADB device walks).
+  description: 'D-OWNER-MDM-02. The field apps refuse to run while Developer options, USB debugging or wireless
+    debugging is on. This signs a grant
+
+    (ECDSA P-256 over the device uuid, the grant time and the expiry, with a server secret that is never stored
+    in the repository) and
+
+    records it; the phone receives it in its next full day bundle as the device-scoped config value `integrity.lab_exemption`
+    (key prefix cfg., see ResolvedConfigValue),
+
+    verifies it offline against a public key built into the app, and never widens it beyond "the gate lets this
+    device run with
+
+    developer options on" (the mock-location refusals still apply). Super Admin and an Admin with the `mdm` write
+    grant only. A new
+
+    grant replaces the old one. 409 when the server has no signing secret (nothing is recorded). Audited; the audit
+    row never carries the token.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/LabExemptionRequest'
+  responses:
+    '200':
+      description: The device with its lab exemption.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Device'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -94,6 +94,7 @@ class AmoTeamScreenshotTests {
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_task_form_en() = shot("amo_team_task_form_en", AppLanguage.EN, "Assign a task") { taskForm() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_task_form_bn() = shot("amo_team_task_form_bn", AppLanguage.BN, "অ্যাসাইন্ড টাস্ক") { taskForm() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_task_form_bn_fs2() = shot("amo_team_task_form_bn_fs2", AppLanguage.BN, "অ্যাসাইন্ড টাস্ক", fontScale = 2f) { taskForm() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_task_form_error_bn() = shot("amo_team_task_form_error_bn", AppLanguage.BN, "অ্যাসাইন্ড টাস্ক") { taskForm(empty = true) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_task_form_sunlight_bn() = shot("amo_team_task_form_sunlight_bn", AppLanguage.BN, "অ্যাসাইন্ড টাস্ক", sunlight = true) { taskForm() }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_live_route_en() = shot("amo_team_live_route_en", AppLanguage.EN, "Live Data") { live(true) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_live_route_bn() = shot("amo_team_live_route_bn", AppLanguage.BN, "লাইভ ডেটা") { live(true) }
@@ -184,10 +185,10 @@ class AmoTeamScreenshotTests {
     private val task = AssignedTask("t1", "general", "General Task", 1, 7, "ongoing", "2025-11-03", null, null, "2026-11-02T01:00:00Z", description = "Test task delegated to my SR")
     private val taskList = listOf(task.copy(uuid = "t0", description = "Improve the sales quality"), task, task.copy(uuid = "t2", status = "completed", description = "Display the new pack"), task.copy(uuid = "t3", status = "cancelled", description = "Cancelled by the office"), task.copy(uuid = "t4", dueDate = "2026-11-01", description = "Check the price list"))
     @Composable private fun tasksList(saved: Boolean) = AssignedTasksContent(taskList, mapOf(7L to "SR-Kakoli - 1"), mapOf(1L to "Afifa Stor"), { it }, false, false, {}, today = "2026-11-06", saved = saved)
-    @Composable private fun taskForm() = TaskFormPageContent(
+    @Composable private fun taskForm(empty: Boolean = false) = TaskFormPageContent(
         listOf("1" to "AgrabadDaily"), "AgrabadDaily", {}, listOf("1" to "Sifat St (Diamond)"), "Sifat St (Diamond)", {}, listOf("A", "B", "D", "E", "G", "H", "S"), null, {},
         TaskOutletInfo("Sifat St", "Nurul Kobir", "SR-Kakoli - 1", "01712345678"), listOf(TaskType("general", "General Task", "সাধারণ টাস্ক")), com.aktcl.aron.core.ui.LocalAppLanguage.current == AppLanguage.BN, "general", {},
-        "2026-11-06", "2026-11-06", {}, "Improve the sales quality", {}, emptySet(), false, false, {},
+        "2026-11-06", "2026-11-06", {}, if (empty) "" else "Improve the sales quality", {}, if (empty) setOf(AssignError.DESCRIPTION_REQUIRED) else emptySet(), false, false, {},
     )
 
     private val liveJson = """{"as_of":"2026-11-06T10:00:00Z","business_date":"2026-11-06","kpis":{"target_routes":1,"logged_in_routes":1,"sales_submitted_routes":0,"target_outlets":641,"successful_calls":259,"active_memo_count":38,"net_mtk":161500},
@@ -226,15 +227,19 @@ class AmoTeamScreenshotTests {
     @Composable private fun stdReport() = StdMatrixContent("2026-11-01", "2026-11-06", "2026-11-06", { _, _ -> }, std, false, false)
     /** What the app feeds today: no month-to-date category memo count exists (D-AMO-TEAM-18), so every Memo cell is a dash and the screen says pending. */
     private val catMemos = TeamReports.categoryMemos(emptyList())
-    private val tillCards = listOf(
-        TeamReports.tillCard("Zone: Dariapur", dariapur, true, catMemos, com.aktcl.aron.rules.UiLocale.EN),
-        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, catMemos, com.aktcl.aron.rules.UiLocale.EN),
-    )
-    @Composable private fun tillNow() = TillNowContent(tillCards, {}, false, false, memoPending = catMemos.isEmpty())
-    @Composable private fun tillRoute() = TillRouteDetailContent(
-        "79.67", "572",
-        listOf(BrandLine("Marise", "88,235.29", "67,120", "76.07%", "279"), BrandLine("Black Diamond", "12,864.71", "53,410", "415.17%", "268"), BrandLine("Existing Abul Bidi/ 42 No. Abul Bidi", "352.94", "500", "141.67%", "1")),
-    )
+    // the app builds the cards with the screen's digits language (AmoReportHub passes `l`): Bangla digits in the Bangla frames, as the old app (screenshot 72); D-PAR-AMO-15
+    @Composable private fun tillCards(): List<TillCard> = teamLocale().let { l -> listOf(
+        TeamReports.tillCard("Zone: Dariapur", dariapur, true, catMemos, l),
+        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, catMemos, l),
+    ) }
+    @Composable private fun tillNow() = TillNowContent(tillCards(), {}, false, false, memoPending = catMemos.isEmpty())
+    @Composable private fun tillRoute() = teamLocale().let { l ->
+        fun d(x: String) = com.aktcl.aron.rules.Formats.digits(x, l)
+        TillRouteDetailContent(
+            d("79.67"), d("572"),
+            listOf(BrandLine("Marise", d("88,235.29"), d("67,120"), d("76.07%"), d("279")), BrandLine("Black Diamond", d("12,864.71"), d("53,410"), d("415.17%"), d("268")), BrandLine("Existing Abul Bidi/ 42 No. Abul Bidi", d("352.94"), d("500"), d("141.67%"), d("1"))),
+        )
+    }
 
     @Composable private fun journeyCards() = SrListContent(members, false, false, {}, openVacant = false)
     private val journey = TeamJourneys.journey(

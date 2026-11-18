@@ -167,7 +167,7 @@ fun SettingsContent(
                                 if (pending) submitWarning = true else confirm = true
                             }
                         },
-                        m.testTag(SettingsTags.LOGOUT),
+                        m.testTag(SettingsTags.LOGOUT), glyph = com.aktcl.aron.core.ui.AronIcons.Logout,
                     )
                 }
                 onUpdateConfig?.let { run ->
@@ -261,7 +261,7 @@ private fun LanguageTile(current: AppLanguage, onSelect: (AppLanguage) -> Unit, 
     val bn = stringResource(CoreR.string.core_ui_language_bangla)
     val en = stringResource(CoreR.string.core_ui_language_english)
     Box(modifier) {
-        AronTile(if (current == AppLanguage.BN) bn else en, null, { open = true }, Modifier.fillMaxWidth().testTag(SettingsTags.LANGUAGE))
+        AronTile(if (current == AppLanguage.BN) bn else en, null, { open = true }, Modifier.fillMaxWidth().testTag(SettingsTags.LANGUAGE), glyph = com.aktcl.aron.core.ui.AronIcons.Language)
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(AppLanguage.BN to bn, AppLanguage.EN to en).forEach { (l, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = { open = false; if (l != current) onSelect(l) })

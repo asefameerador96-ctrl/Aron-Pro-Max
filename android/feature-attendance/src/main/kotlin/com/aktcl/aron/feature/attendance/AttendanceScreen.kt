@@ -108,6 +108,7 @@ object AttendanceTags {
     const val CHECK_IN = "att_check_in"
     const val CHECK_OUT = "att_check_out"
     const val ADDRESS = "att_address"
+    const val SETTLING = "att_settling"
     const val STATUS = "att_status"
     /** The press-and-hold button of the hold sheet (one sheet for check-in and check-out). */
     const val HOLD = "att_hold"
@@ -195,6 +196,7 @@ fun AttendanceContent(
     Box(modifier.fillMaxSize()) {
         ScrollColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (userTitle != null) UserCard(userTitle, userSubtitle, amoStyle)
+            if (state.settling) AronBanner(stringResource(R.string.att_settling), kind = BannerKind.Info, modifier = Modifier.testTag(AttendanceTags.SETTLING))
             if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Warning)
             if (dayComplete && !boxes) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
             if (state.fixFailed && !state.readingFix && !state.busy) {
