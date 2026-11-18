@@ -25,7 +25,7 @@ LoyaltyBalance:
       - string
       - 'null'
       pattern: ^[a-z][a-z0-9_]{1,40}$
-      description: From 1.21.0, additive. The outlet's tier in this programme at the business date (`programme_enrolment.tier_code`,
+      description: From 1.22.0, additive. The outlet's tier in this programme at the business date (`programme_enrolment.tier_code`,
         an Astha tier or Superstar slab); null when the enrolment names none. The phone needs it to judge a gift
         against the tier (`gift.tier_codes`) before the outlet has chosen a gift (a `gift_assignment` row exists
         only after the first choice).

@@ -7,7 +7,7 @@ ProgrammesSection:
     not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`;
     `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends
     no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle''s business date (its three months,
-    so the quarter and month views work offline; from 1.21.0, before that only the current month), only outlets
+    so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets
     enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded
     at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the
     bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is
@@ -58,7 +58,7 @@ ProgrammesSection:
       $ref: '#/components/schemas/Timestamp'
       description: '1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest
         (receipt or status change) among the outlets of the rows actually sent, for the quarter of the business
-        date (before 1.21.0: the month); the Dhaka start of the quarter when there is none. Rows carry no `as_of`
+        date (before 1.22.0: the month); the Dhaka start of the quarter when there is none. Rows carry no `as_of`
         in the bundle, to save bytes.'
     truncated_sections:
       type: array
@@ -76,7 +76,7 @@ ProgrammesSection:
         - pending_gift_verifications
     astha_truncated:
       type: boolean
-      description: 1.15.0. True when the user's routes had more Astha rows (for the quarter from 1.21.0, before
+      description: 1.15.0. True when the user's routes had more Astha rows (for the quarter from 1.22.0, before
         that for the month) than the bound of 1,000 and the list was cut; the phone shows a notice and reads the
         rest with `listAsthaTargets`. `astha_truncated_months` says which months.
     astha_truncated_months:
@@ -84,7 +84,7 @@ ProgrammesSection:
       maxItems: 3
       items:
         $ref: '#/components/schemas/Month'
-      description: From 1.21.0, additive. The months of the quarter whose rows were cut in whole or in part (empty
+      description: From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty
         when `astha_truncated` is false); a month not named here is complete.
     astha_targets:
       type: array

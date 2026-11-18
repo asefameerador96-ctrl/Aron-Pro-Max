@@ -713,7 +713,7 @@ class BundleService(
         return roles.any { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == role }
     }
 
-    /** The names of one zone's own chain (zone, territory, division, wing), Bangla and English (contract 1.21.0, N-9); only the caller's own home zone is ever asked for. */
+    /** The names of one zone's own chain (zone, territory, division, wing), Bangla and English (contract 1.22.0, N-9); only the caller's own home zone is ever asked for. */
     private fun geographyOf(h: Handle, zoneId: Long): BundleGeography? = h.createQuery(
         """
         SELECT z.id zi, z.code zc, z.name zn, z.name_bn zb, t.id ti, t.code tc, t.name tn, t.name_bn tb, d.id di, d.code dc, d.name dn, d.name_bn db, w.id wi, w.code wc, w.name wn, w.name_bn wb

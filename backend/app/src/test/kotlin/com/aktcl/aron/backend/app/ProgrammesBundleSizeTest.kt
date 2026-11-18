@@ -76,7 +76,7 @@ class ProgrammesBundleSizeTest {
                 exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$month', $route, o.id, b.id, 100, 0, 250000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id OFFSET $skip LIMIT $count) b WHERE o.route_id = $route AND o.status = 'active'")
             }
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
-            // A row of the month BEFORE the quarter (since 1.21.0 the bundle carries the whole quarter, so the cut month must lie outside it) per outlet and an all-zero row per outlet: neither may reach the bundle.
+            // A row of the month BEFORE the quarter (since 1.22.0 the bundle carries the whole quarter, so the cut month must lie outside it) per outlet and an all-zero row per outlet: neither may reach the bundle.
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '${com.aktcl.aron.backend.platform.AsthaQuarter.of(month, 1).months.first().minusMonths(1)}', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, (SELECT id FROM app.product_node WHERE code = 'SZB-55'), 0, 0 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
 

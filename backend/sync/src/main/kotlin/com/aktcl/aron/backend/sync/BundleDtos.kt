@@ -92,7 +92,7 @@ data class BundleUser(
     val memo_seq_block_size: Int,
     val zone_id: Long?,
     val territory_id: Long?,
-    /** Contract 1.21.0 (N-9): the names of the user's OWN zone, territory, division and wing, once per bundle (the Astha shop-wise card shows them); null when the user has no zone. */
+    /** Contract 1.22.0 (N-9): the names of the user's OWN zone, territory, division and wing, once per bundle (the Astha shop-wise card shows them); null when the user has no zone. */
     val geography: BundleGeography? = null,
     /** Policy versions the user accepted (F-SYS-075): the phone seeds its consent flag and does not ask again. */
     val consents: List<BundleConsent> = emptyList(),

@@ -30,14 +30,14 @@ AsthaTargetRow:
     brand_name:
       type: string
       maxLength: 120
-      description: From 1.21.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id`
+      description: From 1.22.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id`
         is the product-tree node id of the brand level), sent ONLY when that node is not active, i.e. not among
         the bundle's `products.nodes` (an active brand is named there; a row costs no extra bytes), so the phone
         never shows an id for an inactive brand.
     brand_name_bn:
       type: string
       maxLength: 120
-      description: From 1.21.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name`
+      description: From 1.22.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name`
         when the node has one.
     month:
       $ref: '#/components/schemas/Month'

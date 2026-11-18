@@ -53,7 +53,7 @@ BundleUser:
       oneOf:
       - $ref: '#/components/schemas/BundleGeography'
       - type: 'null'
-      description: From 1.21.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division
+      description: From 1.22.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division
         and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone
         of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them.
     consents:
