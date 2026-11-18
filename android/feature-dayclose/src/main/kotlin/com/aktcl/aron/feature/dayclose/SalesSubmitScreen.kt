@@ -542,8 +542,9 @@ private fun BlueSubmitButton(text: String, onClick: () -> Unit, modifier: Modifi
             .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = AronTokens.Space.M),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Save, contentDescription = null, tint = if (enabled) androidx.compose.ui.graphics.Color.White else look.disabledText, modifier = Modifier.size(20.dp))
+        androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Save, contentDescription = null, tint = if (enabled) androidx.compose.ui.graphics.Color.White else look.inkMuted, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(AronTokens.Space.S))
-        Text(text, color = if (enabled) androidx.compose.ui.graphics.Color.White else look.disabledText, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        // the disabled word is the look's muted ink on its disabled grey (4.5:1 or better, BlueSubmitContrastTest): a "not yet" cue the rep can still read
+        Text(text, color = if (enabled) androidx.compose.ui.graphics.Color.White else look.inkMuted, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }
