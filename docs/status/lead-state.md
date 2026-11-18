@@ -165,3 +165,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - android-gates step 5 (abfa1ef4) PASS on both lenses, 0 blocking; review in docs/reviews/android-gates-step5-2026-11-18.md.
 - Successor lane A-GATE7 started (session_014mnioM2HobwPFoqAjUSGyu) for the closing round: 10 lows and the missing tests. Branch still lands as one unit after train 117 is live, then a final Opus pass on the full diff.
 - Train 116a lane ci 44238626124: 16 of 17 jobs green at 04:51, one still running; integrator pushes on green.
+
+
+### 2026-11-18 05:35 update
+- Train 116a LANDED: integration 874a71c97, ci 44240467287 green (web: build + five e2e shards + aggregator, 372 of 372), deploy #356 (44242257483) success, health build 874a71c97, SR slice smoke passed. The migrate job's console was not in Log Analytics (no migrations in this train).
+- Train 117 built: lane/lead-train117 a5f07f32e = 874a71c97 + docs + sr-server 1c8c3cb0; Opus pass on three lenses, 0 blocking; GO given to the integrator. Expect 0200 -> 0203, contract 1.19.0, 585 D-lines. After landing: read the migrate log through ops-diagnose; tell SV6 (follow-up lows), A-INT3 (renumber to the next free numbers, contract 1.20.0), A-GATE7 (closed_by may go on the wire), L-A11 (numbers), UI lanes (merge).
+- Reviews today: android-integrity slice 3 part 2 PASS (lows sent); AMO slices 10-16 PASS (head now 3eb30f2e, small unchecked change); Loyalty sweep fix 8a90f1b4 FAIL (stale waiting marker after return to device; fix round); SR Sale-page batch FAIL (AMO control call restyled through geoPanel; fix round, slice 4 8377f5c9 checked with it).
+- A-GATE7 (session_014mnioM2HobwPFoqAjUSGyu) on the gates closing round.
