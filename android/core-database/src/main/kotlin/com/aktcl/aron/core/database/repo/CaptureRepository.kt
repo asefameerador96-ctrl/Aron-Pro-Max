@@ -431,7 +431,9 @@ class CaptureRepository(
         check(events.any { it.kind == "check_in" } && events.none { it.kind == "check_out" }) { "a check-out needs an open check-in on $date" }
         val submits = buildSubmits(date)
         require(submits.all { it.meta.businessDate == date }) { "a day's submits carry the day of the open check-in" }
-        submits.forEach { writeDaySubmit(it.copy(pendingCount = outbox.unsentOn(date))) }
+        // one figure for every submit of this check-out: the rows that were waiting BEFORE it, not the submits it is writing (round-3 low)
+        val pendingBefore = outbox.unsentOn(date)
+        submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
         capture.insertFix(fix)
         capture.insertAttendance(event)
         outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))

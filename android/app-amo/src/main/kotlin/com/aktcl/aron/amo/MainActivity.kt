@@ -217,8 +217,8 @@ class MainActivity : ComponentActivity() {
                                 boundaryTick++
                             }
                             // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
-                            val amoCallOpen = day?.visitSession?.current?.collectAsState()?.value != null
-                            val amoEditOpen = day?.sale?.flow?.state?.collectAsState()?.value?.let { it.draft?.edit != null && it.committed == null } == true
+                            val amoCallOpen = day?.visitSession?.current?.collectAsStateWithLifecycle()?.value != null
+                            val amoEditOpen = day?.sale?.flow?.state?.collectAsStateWithLifecycle()?.value?.let { it.draft?.edit != null && it.committed == null } == true
                             var amoWasOpen by remember(s.user.userId) { mutableStateOf(false) }
                             LaunchedEffect(day, amoCallOpen, amoEditOpen) {
                                 val d = day ?: return@LaunchedEffect

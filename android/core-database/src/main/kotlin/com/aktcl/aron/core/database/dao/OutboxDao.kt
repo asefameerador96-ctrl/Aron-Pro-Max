@@ -33,7 +33,9 @@ abstract class OutboxDao {
      *
      * D-AGATE-06 (owner rule 3, check-out submits the sales): the day's `day_submit` is HELD until every EARLIER record of its business
      * date is in a final state (acked, rejected or quarantined: nothing earlier is still pending or in flight), and the `attendance_event`
-     * record (the check-out) is HELD until the date's `day_submit` is final. So the server never sees a day's own records as late, nor a
+     * record (the check-out) is HELD (D-LEAD-PREREQ-03 ruling 5, round 3) until a `day_submit` of its date has been ACCEPTED by the server, when the date has
+     * one: a submit that is pending, in flight, rejected, quarantined or exhausted keeps it held (the rep sends it again, or submits cycle 2, and the check-out
+     * follows the accepted one); a date with NO `day_submit` row releases it at once (a day with no routed captures). So the server never sees a day's own records as late, nor a
      * check-out without its submit, whatever order retries, a bisect-isolated family or a slow batch put the rows in. A row that is held
      * stays pending and is picked again as soon as what it waits for is final.
      */
@@ -42,7 +44,8 @@ abstract class OutboxDao {
            AND NOT (o.record_type = 'day_submit' AND EXISTS (
                SELECT 1 FROM outbox e WHERE e.business_date = o.business_date AND e.seq < o.seq AND e.state IN ('pending', 'in_flight')))
            AND NOT (o.record_type = 'attendance_event' AND EXISTS (
-               SELECT 1 FROM outbox d WHERE d.record_type = 'day_submit' AND d.business_date = o.business_date AND d.seq < o.seq AND d.state IN ('pending', 'in_flight')))
+               SELECT 1 FROM outbox d WHERE d.record_type = 'day_submit' AND d.business_date = o.business_date AND d.seq < o.seq)
+               AND NOT EXISTS (SELECT 1 FROM outbox a WHERE a.record_type = 'day_submit' AND a.business_date = o.business_date AND a.state = 'acked'))
            ORDER BY CASE WHEN o.attempts >= :skipAfter THEN 1 ELSE 0 END, o.seq LIMIT :limit""",
     )
     abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>

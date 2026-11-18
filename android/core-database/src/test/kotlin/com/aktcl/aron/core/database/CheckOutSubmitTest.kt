@@ -191,6 +191,41 @@ class CheckOutSubmitTest {
         assertTrue("day_submit" in sendable())
     }
 
+    /**
+     * D-LEAD-PREREQ-03 ruling 5 (round-3 B5): the check-out goes to the server only after a submit of its date was ACCEPTED, when the date has one. A submit
+     * that is rejected, quarantined (also by the device-integrity hold) or exhausted keeps the check-out held; Send again or a cycle-2 submit that the server
+     * accepts releases it. The old rule released it as soon as the submit was "final", so the server raised CHECKOUT_WITHOUT_SUBMIT against the rep.
+     */
+    @Test fun theCheckOutWaitsForAnAcceptedSubmitWhateverElseHappenedToTheFirstOne() = runTest {
+        val (stock, sub, _) = seedDay()
+        val checkIn = db.outboxDao().nextPending(100).first { it.recordType == "attendance_event" }.clientUuid
+        db.outboxDao().applyAck(checkIn, "acked", null, null, "t"); db.outboxDao().applyAck(stock, "acked", null, null, "t")
+        val sql = db.openHelper.writableDatabase
+        for ((state, code) in listOf("rejected" to "schema_invalid", "quarantined" to "device_integrity_failed", "rejected" to "retry_exhausted", "pending" to "scope_stale")) {
+            sql.execSQL("UPDATE outbox SET state = '$state', last_code = '$code' WHERE client_uuid = '$sub'")
+            assertEquals("a submit that is $state ($code) keeps the check-out held", emptyList<String>().let { if (state == "pending") listOf("day_submit") else it }, sendable())
+        }
+        // a cycle-2 submit the server accepted releases it, although the first one stays refused
+        sql.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'schema_invalid' WHERE client_uuid = '$sub'")
+        db.outboxDao().insert(listOf(OutboxEntity(clientUuid = ClientIds.newUuid(), recordType = "day_submit", familyUuid = ClientIds.newUuid(), rank = 0, businessDate = D, payloadJson = "{}", payloadSha256 = "x", state = "acked", createdAt = "t")))
+        assertEquals(listOf("attendance_event"), sendable())
+    }
+
+    @Test fun theCheckOutOfADayWithNoSubmitIsReleasedAtOnce() = runTest {
+        checkIn("2026-10-09")
+        val (e, f) = checkOutEvent(date = "2026-10-09"); repo.recordCheckOut(e, f) // no captures: no submit
+        val out = db.outboxDao().nextSendable(100, 10, listOf("none")).filter { it.businessDate == "2026-10-09" }.map { it.recordType }
+        assertEquals(listOf("attendance_event", "attendance_event"), out)
+    }
+
+    /** Two route-days: each submit counts what was waiting BEFORE the check-out, not the other submit written in the same transaction. */
+    @Test fun twoSubmitsOfOneCheckOutCarryTheSamePendingCount() = runTest {
+        checkIn(); repo.recordStock(listOf(TestRows.stock()))
+        val waiting = db.outboxDao().unsentOn(D)
+        val (e, f) = checkOutEvent(); repo.recordCheckOut(e, f) { listOf(submit(route = 10231), submit(route = 10232)) }
+        assertEquals(listOf(waiting, waiting), db.captureDao().daySubmitsOn(D).map { it.pendingCount })
+    }
+
     // ---- a refused submit is not a trap
 
     @Test fun aSubmitTheServerRefusedOrHoldsDoesNotLockTheDay() = runTest {

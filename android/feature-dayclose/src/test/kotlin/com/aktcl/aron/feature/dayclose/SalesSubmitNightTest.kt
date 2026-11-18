@@ -104,6 +104,8 @@ class SalesSubmitNightTest {
         show(AppLanguage.EN, owner, afterOut)
         compose.onNodeWithText("You have already checked out", substring = true).assertExists()
         compose.onNodeWithText("Submit again", substring = true).assertExists()
+        compose.onNodeWithText("tap Send again", substring = true).assertExists() // round-3 B5: Send again or a cycle-2 submit is the way forward
+        compose.onNodeWithText("check-out is sent to the server after your sales submit is accepted", substring = true).assertExists()
         compose.onNodeWithText("contact your supervisor", substring = true).assertExists()
         compose.onNodeWithText("you can sell and collect", substring = true).assertDoesNotExist()
     }

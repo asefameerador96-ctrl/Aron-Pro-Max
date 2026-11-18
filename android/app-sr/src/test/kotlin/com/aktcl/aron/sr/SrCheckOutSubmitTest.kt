@@ -139,19 +139,20 @@ class SrCheckOutSubmitTest {
      * (not by deleting rows); the open day's screens stay open and its check-in is still what the Attendance screen restores; when the call ends the close runs.
      */
     @Test fun theAutomaticCloseWaitsForAnOpenCallAcrossMidnightThenRuns() = runBlocking {
-        val date = java.time.LocalDate.parse(f.date)
+        val d0 = f.date // d0 follows the (moved) clock: keep the day of the check-in
+        val date = java.time.LocalDate.parse(d0)
         val v = f.openCall(); f.day.visitSession.restore(v)
         f.trustAt(date.plusDays(1).atTime(0, 5).toInstant(java.time.ZoneOffset.ofHours(6)).toEpochMilli())
         assertEquals(date.plusDays(1).toString(), f.day.businessDate())
         assertEquals("nothing is closed under the open call", emptyList<String>(), f.day.closeForgottenDays())
-        assertEquals(0, f.db.captureDao().daySubmitsOn(f.date).size)
-        assertEquals(0, f.db.captureDao().attendanceOn(f.date).count { it.kind == "check_out" })
+        assertEquals(0, f.db.captureDao().daySubmitsOn(d0).size)
+        assertEquals(0, f.db.captureDao().attendanceOn(d0).count { it.kind == "check_out" })
         f.day.refreshDayGate()
         assertNull("the open call's screens stay open: no midnight check-in is asked for", f.day.dayGate.value)
-        assertTrue("the Attendance screen restores yesterday's open check-in", f.day.attendanceForScreen().any { it.kind == "check_in" && it.meta.businessDate == f.date })
+        assertTrue("the Attendance screen restores yesterday's open check-in", f.day.attendanceForScreen().any { it.kind == "check_in" && it.meta.businessDate == d0 })
         f.day.visitSession.close()
-        assertEquals("when the call ends the close runs", listOf(f.date), f.day.closeForgottenDays())
-        assertEquals(1, f.db.captureDao().attendanceOn(f.date).count { it.kind == "check_out" })
+        assertEquals("when the call ends the close runs", listOf(d0), f.day.closeForgottenDays())
+        assertEquals(1, f.db.captureDao().attendanceOn(d0).count { it.kind == "check_out" })
         f.day.refreshDayGate()
         assertEquals(AttendanceRefusal.NOT_CHECKED_IN, f.day.dayGate.value)
     }
