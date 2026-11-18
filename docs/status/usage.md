@@ -3328,3 +3328,13 @@
 ### Lane check 2026-11-17 20:46 UTC
 - Train 113 on INT a6a1cbf25: ci 44165939686 success; deploy 44170414803 in progress; health still 4e0645556. Integrator 24 watching.
 - Reviews today: sr-server B7 c65fbb84b PASS; android-gates slices 2 and 3 FAIL (6 blocking, D-LEAD-PREREQ-03, round 3 to A-GATE2); android-integrity 791fefae: B1, B2 fixed, new W1 (wireless debugging not read) + 12 lows; masterdata 1cd7892d FAIL on resume (2 blocking), successor MD3 session_014mnioNCrZkAoVLKBo4xoEM; A-GATE1 and MD2 retired; A-GATE2 session_014mnioP8tEWhoSZiEUJjjUx merges A-GATE1's late round-2 pushes (a57c0ed95, e17164070).
+
+### 2026-11-17 22:04 UTC
+- Train 113 deploy FAILED at V0191 (dev data guard); D-LEAD-TRAIN-113-02. Train 114a ee1bedb71 built, GO to integrator 24.
+- Reviews: android-gates round 2 (2eb321bd0) FAIL 4 blocking; android-integrity slice 2 (49e6abc6) PASS; SR-1 2e66b5fbb PASS; sr-server 05d1b3bf8 PASS.
+- Retired: A-INT1 (successor A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM). A-GATE2 writing a handover; successor A-GATE3 to start.
+- P-SR2b push still blocked on the owner's approval (8 commits local only).
+
+### Lane check 2026-11-17 22:47 UTC
+- Train 114a: lane ci 44186232155 success; INT now 9bb7f5cf1 (integrator pushed); deploy pending; health still 4e0645556.
+- Reviews: Loyalty C 1bb516a76 FAIL (1 blocking: released child closed as discarded), fix round with L-A10; AMO ca0071055 PASS; P-AMO2 retired, P-AMO3 session_014mnioQ9FLnKpmmTrqyizwA (b08bc42c lows, slice 3 = AMO Stock screen). SV5 d0618d115 (pre-flight follow-ups) green, unreviewed. Heads: android-gates 9395a341c, android-integrity 8becd888b, masterdata-fit 091f7fddd, TSO f0800021a.

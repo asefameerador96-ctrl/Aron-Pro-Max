@@ -46,6 +46,8 @@ private val VOID_ROLES = setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)
  * Record tables a data void tombstones: every table that carries `route_id`, `business_date`, `client_uuid` and `voided_at`
  * (docs/24 s4.9 rule 5). Those of the web back office are listed in [WEB_TABLES] and are voided when their migration exists.
  */
+// gift_choice is deliberately NOT here (C-R5, D-LOY-API-26): a choice is the outlet's standing pick of its quarterly gift (app.gift_assignment carries the state), not a sale of the route-day; a void of a
+// day's sales must not reset what an outlet chose, and tombstoning the choice rows would not revert the assignment anyway. Redemptions and gift photos of the day are voided as before.
 internal val APP_VOID_TABLES = listOf(
     "attendance_event", "route_day_event", "day_exception", "stock_movement", "visit", "visit_skip", "memo", "memo_line", "memo_discount",
     "qc_entry_line", "print_event", "memo_void", "due_collection", "survey_response", "distribution_check", "distribution_check_line",
@@ -120,6 +122,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val voidedUuids = mutableListOf<String>()
         val voidedMemos = mutableListOf<String>()
         for (t in tables) {
+            // Lock order advisory, then rows (V0193): a gift photo's key locks are taken before its rows are updated, so a void and a concurrent photo insert cannot deadlock.
+            if (t == "gift_photo") h.createQuery("SELECT app.gift_photo_lock_keys(:r, :d)").bind("r", req.route_id).bind("d", date).mapTo(Int::class.java).one()
             val uuids = h.createQuery("UPDATE app.$t SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL RETURNING client_uuid").bind("now", now).bind("r", req.route_id).bind("d", date)
                 .map { rs, _ -> rs.getString(1) }.list()
             if (uuids.isNotEmpty()) counts[t] = uuids.size

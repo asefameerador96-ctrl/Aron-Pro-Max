@@ -400,7 +400,7 @@ class SchemaV1bTest {
     }
 
     @Test
-    fun oneHandOverPhotoPerAsthaAssignmentAndPerRedeemedUnit() = tx { c ->
+    fun theFirstHandOverPhotoByCapturedAtIsTheOnlyWinnerPerAssignmentAndPerRedeemedUnit() = tx { c ->
         c.exec(
             "INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id) " +
                 "VALUES (${fk["programme"]}, '2026-Q4', ${fk["outlet"]}, ${fk["route"]}, ${fk["gift"]})",
@@ -408,15 +408,25 @@ class SchemaV1bTest {
         val assignment = c.scalar("SELECT id FROM app.gift_assignment")!!
         val photo = "INSERT INTO app.gift_photo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, " +
             "programme_kind, outlet_id, gift_id, gift_assignment_id, redemption_client_uuid, unit_no, photo_uuid) VALUES " +
-            "(gen_random_uuid(), gen_random_uuid(), '2026-10-05', ${fk["user"]}, now(), 0, '%s', ${fk["outlet"]}, ${fk["gift"]}, %s, %s, %s, gen_random_uuid())"
-        c.exec(photo.format("astha", assignment, "NULL", "NULL"))
+            "(gen_random_uuid(), gen_random_uuid(), '2026-10-05', ${fk["user"]}, now() - interval '%s', 0, '%s', ${fk["outlet"]}, ${fk["gift"]}, %s, %s, %s, gen_random_uuid())"
+        fun winners(where: String) = c.scalar("SELECT count(*) FROM app.gift_photo WHERE $where AND NOT is_duplicate")!!.toLong()
+        c.exec(photo.format("10 minutes", "astha", assignment, "NULL", "NULL"))
+        c.exec(photo.format("1 minute", "astha", assignment, "NULL", "NULL"))   // later: stored, flagged
+        assertEquals(1L, winners("gift_assignment_id = $assignment"))
+        c.exec(photo.format("20 minutes", "astha", assignment, "NULL", "NULL")) // earlier, arrives last: becomes the winner, the old winner is flagged
+        assertEquals(1L, winners("gift_assignment_id = $assignment"))
+        assertEquals("3", c.scalar("SELECT count(*) FROM app.gift_photo WHERE gift_assignment_id = $assignment"), "nothing is deleted")
+        assertEquals("true", c.scalar("SELECT (captured_at = (SELECT min(captured_at) FROM app.gift_photo WHERE gift_assignment_id = $assignment))::text FROM app.gift_photo WHERE gift_assignment_id = $assignment AND NOT is_duplicate"))
+        // the database still refuses a second winner if a flag is cleared by hand
         c.exec("SAVEPOINT s")
-        assertEquals("23505", assertFailsWith<SQLException> { c.exec(photo.format("astha", assignment, "NULL", "NULL")) }.sqlState)
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec("UPDATE app.gift_photo SET is_duplicate = false WHERE gift_assignment_id = $assignment") }.sqlState)
         c.exec("ROLLBACK TO SAVEPOINT s")
         val redemption = UUID.randomUUID()
-        c.exec(photo.format("campaign", "NULL", "'$redemption'", "1"))
-        c.exec(photo.format("campaign", "NULL", "'$redemption'", "2"))
-        assertEquals("23505", assertFailsWith<SQLException> { c.exec(photo.format("campaign", "NULL", "'$redemption'", "2")) }.sqlState)
+        c.exec(photo.format("1 minute", "campaign", "NULL", "'$redemption'", "1"))
+        c.exec(photo.format("1 minute", "campaign", "NULL", "'$redemption'", "2"))
+        c.exec(photo.format("1 minute", "campaign", "NULL", "'$redemption'", "2"))
+        assertEquals(2L, winners("redemption_client_uuid = '$redemption'"), "one winner per unit")
+        assertEquals("3", c.scalar("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$redemption'"))
     }
 
     @Test
