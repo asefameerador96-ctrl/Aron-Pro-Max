@@ -36,6 +36,16 @@ describe("sub_channel code-list ref", () => {
     raw.data = list([{ id: 1, code: "old", label_en: "Old", sort: 1, valid_to: "2020-01-01" }, { id: 2, code: "new", label_en: "New", sort: 2 }]);
     expect((await loadRefOptionsChecked(subRef, "t")).options.map((o) => o.value)).toEqual(["2"]);
   });
+  it("V0199 (a): a picker hides a retired tier (attrs.retired, Silver) except the one the record holds; a list keeps it so its label stays readable", async () => {
+    raw.ok = true;
+    raw.data = list([
+      { id: 1, code: "gold", label_en: "Gold", sort: 1, attrs: { channel: "Astha" } },
+      { id: 2, code: "silver", label_en: "Silver", sort: 2, attrs: { channel: "Astha", retired: true } },
+    ]);
+    expect((await loadRefOptionsChecked(subRef, "t", { hideRetired: true })).options.map((o) => o.label)).toEqual(["Gold"]);
+    expect((await loadRefOptionsChecked(subRef, "t", { hideRetired: true, keep: ["2"] })).options.map((o) => o.label)).toEqual(["Gold", "Silver"]);
+    expect((await loadRefOptionsChecked(subRef, "t")).options.map((o) => o.label)).toEqual(["Gold", "Silver"]);
+  });
   it("V13-S4: HTTP failure is failed:true", async () => {
     raw.ok = false;
     expect((await loadRefOptionsChecked(subRef, "t")).failed).toBe(true);

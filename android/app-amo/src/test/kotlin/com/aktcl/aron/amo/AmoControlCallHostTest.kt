@@ -45,6 +45,7 @@ class AmoControlCallHostTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private lateinit var f: AmoLockFixture
     private var activity: ComponentActivity? = null
+    private var scenario: ActivityScenario<ComponentActivity>? = null
 
     @Before fun setUp() {
         shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.CAMERA, android.Manifest.permission.POST_NOTIFICATIONS)
@@ -53,7 +54,8 @@ class AmoControlCallHostTest {
 
     private fun show(content: @Composable () -> Unit) {
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
-        f.own(ActivityScenario.launch(ComponentActivity::class.java)).onActivity { a ->
+        scenario = f.own(ActivityScenario.launch(ComponentActivity::class.java))
+        scenario!!.onActivity { a ->
             activity = a
             val ctx = AppLocale.wrap(a, AppLanguage.EN)
             a.setContent { CompositionLocalProvider(LocalContext provides ctx, androidx.activity.compose.LocalActivityResultRegistryOwner provides a) { AronTheme(AppLanguage.EN) { content() } } }
@@ -216,5 +218,51 @@ class AmoControlCallHostTest {
         compose.waitUntil(8_000) { present(com.aktcl.aron.feature.amo.ManualOverrideTags.CAMERA_DENIED) }
         compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO).assertExists()
         assertEquals(0, visits().size)
+    }
+
+    /** Lead low 4 (2026-11-17): Camera allowed in Settings while the page is open: coming back (resume) clears the warning, with no restart. */
+    @Test fun theCameraWarningClearsWhenCameraIsAllowedAndTheUserComesBack() {
+        shadowOf(app).denyPermissions(android.Manifest.permission.CAMERA)
+        f.zone(); f.phoneOffsetLat = 0.01
+        f.day.photoPipeline = FlakyCamera(nulls = 5)
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.amo.ManualOverrideTags.CAMERA_DENIED) }
+        // the user goes to Settings (the activity stops), allows Camera, and returns (resume)
+        scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        shadowOf(app).grantPermissions(android.Manifest.permission.CAMERA)
+        scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        compose.waitUntil(8_000) { !present(com.aktcl.aron.feature.amo.ManualOverrideTags.CAMERA_DENIED) }
+    }
+
+    /**
+     * Lead low 5: the replay through the UI. On the fallback page the retake is tapped twice at once, and the screen is then recreated (rotation):
+     * one photo, one visit, no second commit, and no camera opened again.
+     */
+    @Test fun doubleTapRetakeThenRecreateLeavesOneVisit() {
+        f.zone(); f.phoneOffsetLat = 0.01
+        val camera = FlakyCamera(nulls = 1)
+        f.day.photoPipeline = camera
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO) }
+        val photoButton = compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO)
+        photoButton.performClick(); runCatching { photoButton.performClick() } // the second tap lands while the first is busy, or on a page that is gone
+        compose.waitUntil(8_000) { f.day.visitSession.current.value != null }
+        assertEquals(1, visits().size)
+        val callsBefore = camera.calls
+        scenario!!.recreate(); compose.waitForIdle()
+        f.work.awaitSettled()
+        assertEquals(1, visits().size)
+        assertEquals(callsBefore, camera.calls) // recreating the screen did not open the camera again
     }
 }

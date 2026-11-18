@@ -44,6 +44,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.imePadding
@@ -82,12 +85,17 @@ import com.aktcl.aron.feature.sale.domain.SaleSku
  * confirming turns credit off (the host clears the paid amount).
  */
 @Composable
-fun CreditPrompt(review: SaleReview, onPaid: (Long?) -> Unit, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null) {
+fun CreditPrompt(
+    review: SaleReview, onPaid: (Long?) -> Unit, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null,
+    /** The AMO host (owner screenshot 25, D-PAR-AMO-08): the same prompt as a dialog over the review, with the live due inside the field. Same parser, same bound, one [onPaid] write. */
+    asDialog: Boolean = false,
+) {
     val look = LocalAronLook.current
     var text by remember { mutableStateOf("") }
     val parsed = PaidInput.parse(text)
     val valid = parsed != null && parsed < review.totals.netMtk
     val showError = text.isNotEmpty() && !valid
+    if (asDialog) { CreditDialog(review, text, { text = it }, parsed, valid, showError, onPaid, onCancel); return }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             AronCard(Modifier.fillMaxWidth()) {
@@ -396,3 +404,53 @@ internal fun qcTypeLabel(code: String): String = when (code) {
     else -> code
 }
 
+/** The old paid-amount dialog (screenshot 25): title, question, an outlined field "আদায়কৃত অর্থ" with "বাকিঃ n" inside it, and হ্যাঁ / না at the bottom right. */
+@Composable
+private fun CreditDialog(
+    review: SaleReview, text: String, onText: (String) -> Unit, parsed: Long?, valid: Boolean, showError: Boolean, onPaid: (Long?) -> Unit, onCancel: (() -> Unit)?,
+) {
+    // a tap outside never drops the typed amount or turns credit off: "No" (or the back key) is the only way out
+    androidx.compose.ui.window.Dialog(onDismissRequest = { onCancel?.invoke() }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false)) { CreditDialogCard(review, text, onText, parsed, valid, showError, onPaid, onCancel) }
+}
+
+/** The card inside the paid-amount dialog (public so its golden can render it without a dialog window). */
+@Composable
+fun CreditDialogCard(
+    review: SaleReview, text: String, onText: (String) -> Unit, parsed: Long?, valid: Boolean, showError: Boolean, onPaid: (Long?) -> Unit, onCancel: (() -> Unit)?,
+) {
+    val look = LocalAronLook.current
+    run {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L),
+            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+        ) {
+            Text(stringResource(R.string.credit_title), color = look.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.credit_body), color = look.ink, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            androidx.compose.material3.OutlinedTextField(
+                value = text, onValueChange = onText, singleLine = true, isError = showError,
+                label = { Text(stringResource(R.string.credit_paid_label)) },
+                trailingIcon = {
+                    // the live due, inside the field at the right; blank until the amount is valid
+                    if (valid) Text(stringResource(R.string.credit_due_label, money(review.totals.netMtk - parsed!!)), color = look.purple, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = AronTokens.Space.M))
+                },
+                supportingText = { if (showError) Text(stringResource(R.string.credit_error)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().testTag(CreditTags.PAID),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.End)) {
+                DialogButton(stringResource(R.string.sale_yes), look.primaryStart ?: look.purple, valid, Modifier.testTag(CreditTags.YES)) { onPaid(parsed) }
+                if (onCancel != null) DialogButton(stringResource(R.string.sale_no), look.stopFill ?: look.red, true, Modifier.testTag(CreditTags.NO)) { onCancel() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogButton(label: String, fill: androidx.compose.ui.graphics.Color, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val look = LocalAronLook.current
+    Box(
+        modifier.heightIn(min = AronTokens.Touch.Min).widthIn(min = 72.dp).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(if (enabled) fill else look.disabledFill)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, color = if (enabled) androidx.compose.ui.graphics.Color.White else look.disabledText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = AronTokens.Space.L)) }
+}

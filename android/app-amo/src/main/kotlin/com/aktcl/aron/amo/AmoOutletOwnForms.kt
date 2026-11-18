@@ -409,8 +409,8 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
                     if (routeId != null && letters.isNotEmpty()) AmoFormItem.Letters(letters, chip) { chip = it } else null,
                     retailerItem(Pick(AmoOutletLists.retailers(outlets, null, chip), outletId, { outletId = it }, enabled = routeId != null), emptySet()),
                 ),
-                onSave = {}, modifier = Modifier.fillMaxSize(), bottom = {
-                    AmoPrimary(stringResource(AmoR.string.amo_out_base_button), { ask = true }, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), enabled = outlet != null)
+                onSave = {}, modifier = Modifier.fillMaxSize(), bottomInline = true, bottom = { // screenshot 62: the full-width button right under the fields, grey until a retailer is chosen
+                    AmoPrimary(stringResource(AmoR.string.amo_out_base_button), { ask = true }, Modifier.fillMaxWidth().padding(top = AronTokens.Space.L), enabled = outlet != null)
                 },
             )
         }
