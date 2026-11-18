@@ -58,7 +58,7 @@ object HomeTiles {
             .map { ResolvedTile(it, if (it == HomeTile.TASKS && openTasks > 0) openTasks else null, it in locked) }
 
     /** The tiles whose screens write operational records: locked without an open check-in. Reading screens (Memo, Summary, Journey, KPI, Tutorial, and the Tasks list, whose Resolve is what is gated) and Sales Submit stay open. */
-    val OPERATIONAL: Set<HomeTile> = setOf(HomeTile.STOCK, HomeTile.SALE, HomeTile.OUTLET)
+    val OPERATIONAL: Set<HomeTile> = setOf(HomeTile.STOCK, HomeTile.SALE)
 }
 
 /** Device-health line (F-SR-064): battery, free storage, pending rows, last sync, each with a warning flag. */

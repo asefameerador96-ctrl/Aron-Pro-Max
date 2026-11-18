@@ -127,7 +127,8 @@ import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
 /** The screens that write operational records: closed ("check in first") without an open check-in. Reading screens, Sales Submit, Settings, Support and printer diagnostics stay open. */
-internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.SKIP, SrScreen.EDIT, SrScreen.OUTLET_MENU, SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS)
+// D-LEAD-PREREQ-04 (step 3 S7): the reading screens (the outlet menu and the rep's own request list) stay open before check-in; what they write is refused by the write layer with its own words
+internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.SKIP, SrScreen.EDIT, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS)
 
 /** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
 internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
@@ -457,6 +458,10 @@ fun SrApp(
                     com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover)?.let { t ->
                         com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
                         DisposableEffect(Unit) { onDispose { day.dismissRolloverNotice() } }
+                    }
+                    // after the check-out the day is over: say so on the Attendance screen too (D-LEAD-PREREQ-04 step 3 S7), not only on a gated screen
+                    if (dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) {
+                        com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_out_body), kind = com.aktcl.aron.core.ui.BannerKind.Info)
                     }
                     // arrived from a locked tile: say why (rule 1); gone once the rep has checked in
                     if (checkInNotice && dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN) {

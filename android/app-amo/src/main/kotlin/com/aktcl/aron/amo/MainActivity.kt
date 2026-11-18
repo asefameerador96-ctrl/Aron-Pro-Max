@@ -284,6 +284,12 @@ class MainActivity : ComponentActivity() {
                                                 com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
                                                 androidx.compose.runtime.DisposableEffect(Unit) { onDispose { d.dismissRolloverNotice() } }
                                             }
+                                            // the check-in gate's reason on the Attendance screen, both ways (D-LEAD-PREREQ-04 step 3 S7): check in first, or the day is over after the check-out
+                                            when (d.dayGate.collectAsStateWithLifecycle().value) {
+                                                com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN -> com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                                                com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_out_body), kind = com.aktcl.aron.core.ui.BannerKind.Info)
+                                                else -> Unit
+                                            }
                                             // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
                                             attendance.checkOutBlockedBy?.let { w ->
                                                 com.aktcl.aron.core.ui.AronBanner(
@@ -308,7 +314,8 @@ class MainActivity : ComponentActivity() {
                             // until the day has an open check-in. The write layer refuses regardless; reading screens and Sales Submit stay open.
                             val gateNow by (day?.dayGate ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(null) }).collectAsStateWithLifecycle()
                             val openCallNow by (day?.visitSession?.current ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.outlet.OpenVisit?>(null) }).collectAsStateWithLifecycle()
-                            val gatedScreens = setOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.OUTLET, AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.TASK_DELEGATION, AmoScreen.SR_STOCK, AmoScreen.EXCEPTIONS)
+                            // D-LEAD-PREREQ-04 (step 3 S7): only the screens that exist to write (stock, sale, the two calls) are closed; the reading screens (outlet, tasks, SR stock, exceptions) stay open before check-in, their writes are refused by the write layer
+                            val gatedScreens = setOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL)
                             val gatedScreensMap: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = screens.mapValues { (k, content) ->
                                 if (k !in gatedScreens) content else { back: () -> Unit ->
                                     val why = gateNow
