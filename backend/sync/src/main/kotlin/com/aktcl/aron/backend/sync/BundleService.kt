@@ -67,8 +67,6 @@ class BundleService(
         val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0,
         /** The route-days the bundle carries (F-SYS-025 download log); none for a pre-fetch. */
         val routeIds: List<Long> = emptyList(), val date: LocalDate? = null,
-        /** The identity answer of the phone's probe (SrFigureProbe), computed in the snapshot of the figures; never part of the bundle or its version. */
-        val probe: SrFigureProbe.Answer? = null,
     )
 
     private data class UserRow(
@@ -107,7 +105,7 @@ class BundleService(
     }
 
     /** [prebuild] (the worker's pre-generation) never records a download: it only creates the day's rows and the snapshot, like a pre-fetch. */
-    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false, probe: List<SrFigureProbe.Probe> = emptyList()): Result {
+    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false): Result {
         val now = clock.now()
         val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
         val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
@@ -142,9 +140,8 @@ class BundleService(
         }
 
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
-        val probeOut = arrayOfNulls<SrFigureProbe.Answer>(1)
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
-            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal, probe = probe, probeOut = probeOut)
+            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
             // F-AMO-044: the AMO (and the TSO) also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
             val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
@@ -212,64 +209,9 @@ class BundleService(
             cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
         )
         val result = Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
-            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date, probeOut[0])
+            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
         if (paged.isNotEmpty()) cachePages(p, result, now)
         return result
-    }
-
-    /** The answer of [figures]: the figure sections and the identity answer, read in one snapshot. */
-    class FiguresResult(val date: LocalDate, val through: LocalDate, val routes: List<FigureRoute>, val probe: SrFigureProbe.Answer, val astha: kotlinx.serialization.json.JsonObject?)
-
-    /**
-     * POST /v1/sync/figures (D-TKPI-14): the SR programme figures of the caller's routes for [forDate] and the answer to the phone's identity [probe], from the SAME loaders as
-     * the bundle's route snapshots and read in ONE read-only repeatable-read transaction on the primary, so the answer and the figures can never disagree. Read-only and idempotent:
-     * nothing is written (no login side effect, no download record, no snapshot row). With [includeAsthaProgrammes] the Astha section of the bundle is built in the SAME
-     * transaction by the programmes loader (its identity predicate is the loyalty lane's, `docs/requests/figures-astha-identity.md`).
-     */
-    fun figures(p: AronPrincipal, forDate: LocalDate?, probe: List<SrFigureProbe.Probe>, includeAsthaProgrammes: Boolean = false): FiguresResult {
-        val now = clock.now()
-        val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
-        val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
-        val home = user.homeZoneId?.let { z -> db.jdbi.withHandle<Map<Long, GeoChain>, Exception> { h -> chains(h, listOf(z)) }[z] }
-        val horizonDays = config.int("cfg.sys.schedule_horizon_days").coerceIn(0, 31)
-        val until = now.plusSeconds(horizonDays * 86_400L)
-        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, until) }
-        val roleOrdinal = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", user.role).mapTo(Long::class.java).findOne().orElse(null) }
-        val userChain = ScopedConfig.Chain.of(
-            ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to home?.wingId, ConfigScopeType.DIVISION to home?.divisionId,
-            ConfigScopeType.TERRITORY to home?.territoryId, ConfigScopeType.ZONE to home?.zoneId, ConfigScopeType.USER to user.id, ConfigScopeType.DEVICE to p.deviceId,
-        )
-        val weekend = cfg.value("cfg.calendar.weekend_days", userChain)?.let { v -> runCatching { v.jsonArray.mapNotNull { it.jsonPrimitive.intOrNull }.filter { it in 1..7 } }.getOrNull() }?.toSet() ?: DayPlan.DEFAULT_WEEKEND
-        val date = forDate ?: today
-        if (date.isBefore(today)) throw badFor("for must not be before today ($today)")
-        if (date.isAfter(today)) { val next = nextWorkingDay(today, home, weekend); if (date.isAfter(next)) throw badFor("for must be at most the next working day ($next)") }
-        val plans = db.jdbi.withHandle<List<RouteDayPlan>, Exception> { h -> withScopedWeekend(h, planner.routesFor(user.id, date), date, cfg, roleOrdinal, user.id) }
-        val first = YearMonth.from(date).atDay(1); val through = date.minusDays(1)
-        if (plans.isEmpty()) return FiguresResult(date, through, emptyList(), db.jdbi.withHandle<SrFigureProbe.Answer, Exception> { h -> h.inTransaction<SrFigureProbe.Answer, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { SrFigureProbe.answer(it, user.id, probe, first, through) } }, null)
-        return db.jdbi.withHandle<FiguresResult, Exception> { h ->
-            h.inTransaction<FiguresResult, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
-                th.execute("SET TRANSACTION READ ONLY")
-                val ids = plans.map { it.routeId }
-                val names = th.createQuery("SELECT id, name FROM app.route WHERE id = ANY(:r)").bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list().toMap()
-                val srs = routeSrs(th, ids, date)
-                val outlets = outlets(th, ids, cfg, roleOrdinal, null)
-                val figs = loadFigureSet(th, plans, date, outlets.mapValues { e -> e.value.map { it.outlet_id } }, names, srs)
-                val answer = SrFigureProbe.answer(th, user.id, probe, first, through)
-                val astha = if (!includeAsthaProgrammes || reach == null) null else {
-                    val progReach = reach.reach(user.id, p.role, p.scopeVersion, date)
-                    BundleProgrammes.section(
-                        th, progReach, ids, outlets.values.flatten().map { it.outlet_id }.toSet(), date,
-                        BundleProgrammes.Flags(
-                            loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
-                            astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
-                            superstar = cfg.value("cfg.flag.superstar_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
-                        ),
-                        cfg.value("cfg.astha.quarter_start_month", userChain)?.jsonPrimitive?.intOrNull ?: 1,
-                    )
-                }
-                FiguresResult(date, through, plans.sortedBy { it.routeId }.map { figs.section(it.routeId) }, answer, astha)
-            }
-        }
     }
 
     /**
@@ -557,20 +499,17 @@ class BundleService(
     /**
      * ONE read-only REPEATABLE READ snapshot on the primary around the whole route-snapshot read (rule A of the no-clock design, D-TKPI-12): every SR figure (achievement,
      * KPI, Star, campaigns) and the rest of the route sections see the same committed state, so an upload or a rebuild that commits meanwhile is in all of them or none.
-     * The phone's identity rule (docs/requests/sr-programmes-phone-rule-b.md) needs exactly that: the figures and the answer to its probe (SrFigureProbe) come from one snapshot.
+     * (The identity probe built on this snapshot is PARKED, D-LEAD-FIGURES-SIMPLE-01: docs/requests/sr-programmes-phone-rule-b.md.)
      */
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
         /** F-AMO-044: non-null builds the AMO's and TSO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
         zoneIds: List<Long>? = null,
-        /** The phone's identity probe (SrFigureProbe): answered in THIS snapshot, so figure and answer can never disagree. */
-        probe: List<SrFigureProbe.Probe> = emptyList(), probeOut: Array<SrFigureProbe.Answer?>? = null,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()
         return h.inTransaction<List<RouteSnapshot>, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
             th.execute("SET TRANSACTION READ ONLY")
             val snaps = routeSnapshotsIn(th, userId, plans, date, states, cfg, roleOrdinal, zoneIds)
-            if (zoneIds == null && probeOut != null) probeOut[0] = SrFigureProbe.answer(th, userId, probe, YearMonth.from(date).atDay(1), date.minusDays(1))
             snaps
         }
     }
@@ -579,14 +518,7 @@ class BundleService(
     class FigureSet(
         val sr: Map<Long, SrTargets.Snapshot>, val kpi: Map<Long, kotlinx.serialization.json.JsonObject>, val campaigns: Map<Long, SrCampaigns.Result>,
         val star: Map<Long, kotlinx.serialization.json.JsonObject>, val starDropped: HashSet<Long>,
-    ) {
-        fun section(routeId: Long) = FigureRoute(
-            route_id = routeId, targets = sr[routeId]?.targets.orEmpty(), achievement_mtd = sr[routeId]?.achievement.orEmpty(),
-            calendar = sr[routeId]?.calendar?.takeIf { sr[routeId]!!.hasFigures || kpi[routeId] != null || star[routeId] != null || campaigns[routeId]?.rows.orEmpty().isNotEmpty() },
-            kpi = kpi[routeId], star = star[routeId], campaigns = campaigns[routeId]?.rows?.takeIf { it.isNotEmpty() },
-            campaigns_truncated = campaigns[routeId]?.truncated?.takeIf { it }, targets_truncated = sr[routeId]?.truncated?.takeIf { it }, star_truncated = (routeId in starDropped).takeIf { it },
-        )
-    }
+    )
 
     private fun loadFigureSet(h: Handle, plans: List<RouteDayPlan>, date: LocalDate, outletIdsByRoute: Map<Long, List<Long>>, routeNames: Map<Long, String>, srs: Map<Long, Pair<Long, String>>): FigureSet {
         val srRoutes = plans.map { it.routeId }
@@ -622,7 +554,7 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
-        // Own-route figures straight from the accepted memo tables: the SAME loader as POST /v1/sync/figures (loadFigureSet).
+        // Own-route figures straight from the accepted memo tables: the loader of the bundle's figure sections (loadFigureSet).
         val figs = if (zoneIds == null) loadFigureSet(h, plans, date, outlets.mapValues { e -> e.value.map { it.outlet_id } }, routes.mapValues { it.value.name }, srs) else null
         val sr = figs?.sr ?: emptyMap(); val kpi = figs?.kpi ?: emptyMap(); val campaigns = figs?.campaigns ?: emptyMap(); val star = figs?.star ?: emptyMap(); val starDropped = figs?.starDropped ?: HashSet()
         return plans.sortedBy { it.routeId }.map { r ->

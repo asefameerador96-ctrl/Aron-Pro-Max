@@ -1,49 +1,28 @@
 RouteSnapshot:
   type: object
-  description: 'Per-route section of the bundle; replaced as a whole when the route is added to the user. THE IDENTITY
+  description: 'Per-route section of the bundle; replaced as a whole when the route is added to the user. THE FIGURES
     RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract
-    number provisional, the lead sets it at landing; the ONE place this rule is stated; D-TKPI-14). WHAT THE SERVER
-    FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign
-    STD and memo) is computed from the accepted memos with a business date from the 1st of the bundle `month` up
-    to and including `through_date` (the bundle date minus one day), status active, memo lines not voided, read
-    in ONE repeatable-read snapshot straight from the memo tables. The bundle date''s own memos are never in a figure
-    (a bundle built ahead for tomorrow has `through_date` = the day it was built on). DEFINITIONS, the same on the
-    phone for its local additions: quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star
-    STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once
-    per SKU when it has ANY non-voided line of that SKU (free lines included); a KPI brand `memo_achieved` and a
-    campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign SKU).
-    Brand sums use ONE hierarchy, the current product tree, for target and figure alike. Campaign figures are the
-    outlet''s: every route''s memos at the outlet through `through_date`, plus this phone''s own local memos (another
-    SR''s sales at a shared outlet are in the figure; that SR''s unsynced and today''s memos are not). HOW THE PHONE
-    MERGES: BY IDENTITY, not by inference. With `POST /v1/sync/figures` the phone sends the uuids of its own memos
-    whose status in the figure it does not know and the server answers, in the SAME snapshot as the figures, EXACTLY
-    one of four states for each: IN the figure (with the stored line count, and the stored lines when `removed_locally`),
-    VOIDED (gone for good), REFUSED (the server will never store the record: the phone drops the memo; a refused
-    removal means the phone stops subtracting), or NOT IN (everything else, listed nowhere; NOT IN answers of different
-    requests are never combined into one total). For each own memo of the month: dated after `through_date`: ADD
-    it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of today, drops it).
-    Dated up to `through_date` and live on the phone: IN means add nothing (remember it as confirmed and do not
-    probe it again until the phone itself voids or edits it; a memo dated after the current `through_date` is probed
-    on every request), VOIDED means drop it, NOT IN means ADD it. Dated up to `through_date` and voided or superseded
-    on the phone: IN means SUBTRACT the stored lines the answer lists, otherwise nothing. A memo confirmed IN earlier
-    and untouched that the office later voids leaves the figure by itself and the phone adds nothing for it. A memo
-    whose line the server refused for good is IN with fewer `lines` than the phone sent: the figure holds what the
-    server stored and the phone adds nothing more (server-authoritative). The memo the office keyed from paper is
-    answered through the printed `memo_no` and date (unique per date), so the phone''s own copy is IN when the paper
-    memo is. There are no acknowledgements, resolutions, quarantine states, clocks or single-flight requirements
-    in this rule. When more than 300 memos are unconfirmed the phone cannot get an exact total in one call and shows
-    that it is still syncing until uploads and confirmations bring it under the cap. `as_of` is INFORMATIONAL only
-    (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. OLD-PHONE
-    FALLBACK (the only other case): a phone that has no `/figures` answer uses the bundle''s figures, shows them
-    with their as-of label, adds only memos dated after `through_date` and its never-sent pending memos. The phone
-    uses the newest `/figures` answer it has, else the bundle''s figures. Day counts when today''s local memos are
-    in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when
-    `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner answers question
-    Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero.
-    STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement, slab and status
-    with the shared StarProgress code (last month''s sold quantity `lms` is not merged). Volumes are base units
-    (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack`
-    lists, never converted from a stick sum of mixed pack sizes.'
+    number provisional, the lead sets it at landing; the ONE place this rule is stated; D-LEAD-FIGURES-SIMPLE-01).
+    WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`,
+    Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the 1st of the
+    bundle `month` up to and including `through_date` (the bundle date minus one day), status active, memo lines
+    not voided, read in ONE repeatable-read snapshot straight from the memo tables. The bundle date''s own memos
+    are never in a figure (a bundle built ahead for tomorrow has `through_date` = the day it was built on). DEFINITIONS:
+    quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`)
+    are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided line
+    of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when
+    it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the current
+    product tree, for target and figure alike. Campaign figures are the outlet''s: every route''s memos at the outlet
+    through `through_date`. Another SR''s sales at a shared outlet are in the figure; that SR''s unsynced and today''s
+    memos are not. THE PHONE: the figures are the server''s, COMPLETE through `through_date`; the phone shows them
+    with that date. Separately it may show ''today on this phone'' = its own live memos dated after `through_date`,
+    computed only from local data and labelled as such, and a count of its memos of earlier days that the server
+    has not confirmed. It never adds unconfirmed earlier-day memos into a figure and never subtracts from a server
+    figure. `as_of` is INFORMATIONAL only (the newest `received_at` among the memos read, the epoch when none) and
+    is never used in arithmetic. Day counts: `calendar.elapsed_working_days_before_today`, `calendar.remaining_working_days_after_today`
+    and `calendar.today_is_working` describe the working days; a zero divisor gives no figure, never zero. Volumes
+    are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd`
+    and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.'
   required:
   - route_id
   - route_snapshot_version

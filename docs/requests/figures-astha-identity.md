@@ -1,3 +1,5 @@
+> **PARKED by D-LEAD-FIGURES-SIMPLE-01** (the `/v1/sync/figures` endpoint this file was written for is removed from the landing branch; the Astha identity predicate stays the loyalty lane's open question).
+
 # Request to the loyalty lane: Astha identity answer on `POST /v1/sync/figures` (D-TKPI-14)
 
 From: lane sr-targets-server. Status: the HOOK and the transaction sharing are built; the predicate and the redemption identity are yours (the lead assigns).
