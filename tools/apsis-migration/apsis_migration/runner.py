@@ -614,7 +614,7 @@ def main(argv=None):
         s.add_argument("--cap", type=int, default=50000, help="with profile: distinct-value cap per column (entries; a hash and a count each)")
         s.add_argument("--table", help="with profile-values")
         s.add_argument("--column", help="with profile-values")
-        s.add_argument("--profile-json", help="with profile-values: an existing apsis-profile.json")
+        s.add_argument("--confirm-column", help="with profile-values: type the column name again to confirm")
         s.add_argument("--signoff", help="with cleanup: the owner's sign-off file (Q21-Q33 answered or waived)")
     a = ap.parse_args(argv)
     mapping = staging.load_mapping(a.mapping)
@@ -636,7 +636,8 @@ def main(argv=None):
     if a.cmd == "profile-values":
         from . import profiler
         try:
-            f, n = profiler.profile_values(a.dump_dir, a.profile_json, a.table or "", a.column or "", a.out_dir or "", mapping, charset=a.charset)
+            f, n = profiler.profile_values(a.dump_dir, a.table or "", a.column or "", a.confirm_column or "", a.out_dir or "", mapping, charset=a.charset,
+                                           warn=lambda m: print(m, file=sys.stderr, flush=True))
         except (safety.Refused, KeyError, FileNotFoundError, ValueError) as e:
             sys.exit(str(e) if isinstance(e, safety.Refused) else "refused: cannot read the profile or the dump")
         print(f"profile-values: {n} distinct value(s) written to an owner-only file in the output directory")

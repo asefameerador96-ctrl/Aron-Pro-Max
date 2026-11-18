@@ -76,29 +76,56 @@ class Profile(unittest.TestCase):
 
     def test_column_statistics_shapes_and_ranges(self):
         self.assertEqual(self.col("owner_name")["null_share"], round(1 / 3, 6))
-        self.assertEqual(self.col("outlet_code")["distinct"], 3)
         self.assertEqual((self.col("outlet_code")["min_length"], self.col("outlet_code")["max_length"]), (4, 10))
         self.assertEqual(self.col("mobile_no")["shapes"], {"phone-like": 2})
         self.assertEqual(self.col("email")["shapes"], {"email-like": 2})
         self.assertEqual(self.col("bn_text")["shapes"], {"bengali": 2, "empty": 1})
         self.assertEqual(self.col("pw")["shapes"], {"alnum-code": 3})
-        h = self.col("created_at")["hour_of_day_stored"]
-        self.assertEqual((h[5], h[19], h[10], sum(h)), (1, 1, 1, 3))
+        self.assertEqual(self.col("created_at")["zero_dates"], 0)
 
-    def test_ranges_are_withheld_for_identifying_columns_and_shown_for_harmless_ones(self):
-        self.assertIn("withheld", self.col("phone_num")["value_range"])      # long digit string
-        self.assertIn("withheld", self.col("lat")["value_range"])            # coordinate-like (name and shape)
-        self.assertIn("withheld", self.col("outlet_id")["value_range"])      # id-like by name
-        self.assertIn("withheld", self.col("created_at")["value_range"]) if False else None
-        # a harmless counter column shows its range in the full file
+    def test_small_tables_get_only_type_null_share_lengths_and_shapes(self):
+        for c in self.full["tables"]["master_outlets"]["columns"]:                    # a 3-row table
+            for k in ("number_descriptor", "year_month_range", "hour_of_day_stored"):
+                self.assertNotIn(k, c, (c["name"], k))
+            self.assertIsNone(c["distinct"])
+
+    def test_large_tables_get_coarse_descriptors_never_an_exact_minimum_or_maximum(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "d"
             d.mkdir()
-            write_table(d, "master_sku", ["`sku_code` varchar(5)", "`qty` int", "`day` date"], [(f"S{i % 7}", i % 50 + 1, "2026-03-%02d" % (i % 20 + 1)) for i in range(300)])
+            rows = [(f"S{i % 7}", i % 50 + 1, "2026-03-%02d" % (i % 20 + 1), "-%d.%03d" % (i % 9, i % 100), "2026-0%d-1%d 0%d:00:00" % (i % 3 + 1, i % 9, i % 9)) for i in range(1200)]
+            write_table(d, "master_sku", ["`sku_code` varchar(5)", "`qty` int", "`day` date", "`delta` decimal(8,3)", "`at` datetime"], rows)
             full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+            out = Path(t) / "out"
+            profiler.write_outputs(out, full)
+            text = all_text(out)
+            san = (out / "apsis-profile.sanitised.json").read_text()
         c = {c["name"]: c for c in full["tables"]["master_sku"]["columns"]}
-        self.assertEqual(c["qty"]["value_range"], {"min": "1", "max": "50"})
-        self.assertEqual(c["day"]["value_range"], {"min": "2026-03-01", "max": "2026-03-20"})
+        self.assertEqual(c["qty"]["number_descriptor"], {"integer_digits": [1, 2], "sign": "non-negative", "kind": "integer", "decimal_places": None})
+        self.assertEqual(c["delta"]["number_descriptor"], {"integer_digits": [1, 1], "sign": "mixed", "kind": "decimal", "decimal_places": [3, 3]})
+        self.assertEqual(c["day"]["year_month_range"], ["2026-03", "2026-03"])
+        self.assertEqual(c["at"]["year_month_range"], ["2026-01", "2026-03"])
+        self.assertEqual(sum(c["at"]["hour_of_day_stored"]), 1200)
+        for exact in ('"min"', '"max"', "2026-03-01", "2026-03-20"):
+            self.assertNotIn(exact, text)                                   # no exact minimum, maximum or date anywhere
+        self.assertNotIn("number_descriptor", san); self.assertNotIn("year_month_range", san)       # the sanitised file has no descriptors at all
+
+    def test_one_five_and_forty_row_tables_with_personal_numbers_and_dates_leak_nothing(self):
+        for n in (1, 5, 40):
+            with tempfile.TemporaryDirectory() as t:
+                d = Path(t) / "d"
+                d.mkdir()
+                rows = [(f"P{i}", 19700000 + 31 * i, "1987-0%d-1%d" % (i % 9 + 1, i % 9), "gross_%d" % (7000000 + i * 13), 1700000000 + i * 977, i * 100003) for i in range(n)]
+                write_table(d, "master_sku", ["`sku_code` varchar(9)", "`dob_int` int", "`birthdate` date", "`gross` varchar(20)", "`epoch` int", "`scaled_lat` int"], rows)
+                full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+                out = Path(t) / "out"
+                profiler.write_outputs(out, full)
+                text = all_text(out)
+            for r in rows:
+                for v in r[1:]:
+                    self.assertNotIn(str(v), text.replace(str(n), ""), (n, v)) if len(str(v)) >= 6 else None
+            self.assertNotIn("1987-", text)
+            self.assertNotIn("number_descriptor", text)
 
     def test_no_value_list_exists_anywhere(self):
         for t in self.full["tables"].values():
@@ -114,12 +141,16 @@ class Profile(unittest.TestCase):
         for secret in SECRETS:
             self.assertNotIn(secret, text, secret[:6])
         san = json.loads((out / "apsis-profile.sanitised.json").read_text())
-        self.assertFalse(any("value_range" in c for t in san["tables"].values() for c in t["columns"]))
+        self.assertFalse(any(k in c for t in san["tables"].values() for c in t["columns"] for k in ("number_descriptor", "year_month_range")))
         self.assertEqual(sorted(p.name for p in out.iterdir()), ["apsis-profile.json", "apsis-profile.md", "apsis-profile.sanitised.json", "apsis-profile.sanitised.md"])
 
     def test_distinct_cap_is_a_memory_bound(self):
-        full = profiler.profile_dump(self.d, MAPPING, [], cap=2, order=runner.ORDER)
-        c = {c["name"]: c for c in full["tables"]["master_outlets"]["columns"]}["outlet_code"]
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            write_table(d, "master_sku", ["`sku_code` varchar(12)"], [("C%05d" % i,) for i in range(1200)])
+            full = profiler.profile_dump(d, MAPPING, [], cap=50, order=runner.ORDER)
+        c = full["tables"]["master_sku"]["columns"][0]
         self.assertTrue(c["distinct_capped"]); self.assertIsNone(c["distinct"]); self.assertFalse(c["enum_candidate"])
 
     def test_reference_checks_report_shares_only(self):
@@ -167,27 +198,42 @@ class NoValueLeaks(unittest.TestCase):
             cols = {c["name"]: c for c in prof["tables"]["trans_by_outlet_promotion_data"]["columns"]}
             self.assertTrue(cols["type"]["enum_candidate"])               # 5 names, 1200 rows, each in >= 20 rows: a candidate, as a FLAG only
             self.assertTrue(cols["class"]["enum_candidate"])
-            for n in ("salary", "birth_year", "lat_int", "id"):
-                self.assertIn("withheld", cols[n]["value_range"], n)
+            self.assertNotIn("number_descriptor", cols["id"])                   # near-unique: no descriptor
+            self.assertNotIn("number_descriptor", cols["ref_no"])
+            self.assertEqual(cols["counter"]["number_descriptor"]["integer_digits"], [1, 2])       # coarse only
             self.assertFalse({c["name"]: c for c in prof["tables"]["master_promotion"]["columns"]}["tier"]["enum_candidate"])   # a small master table is never a candidate
 
-    def test_profile_values_is_deliberate_one_column_and_owner_only(self):
+    def test_profile_values_rederives_the_test_asks_for_confirmation_and_is_owner_only(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "d"
             d.mkdir()
             self.build(d)
             out = Path(t) / "out"
-            subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(out)], capture_output=True, check=True)
-            args = CLI + ["profile-values", "--dump-dir", str(d), "--out-dir", str(out), "--profile-json", str(out / "apsis-profile.json"), "--table", "trans_by_outlet_promotion_data"]
-            bad = subprocess.run(args + ["--column", "login"], capture_output=True)
+            base = CLI + ["profile-values", "--dump-dir", str(d), "--out-dir", str(out), "--table", "trans_by_outlet_promotion_data"]
+            bad = subprocess.run(base + ["--column", "login", "--confirm-column", "login"], capture_output=True)
             self.assertNotEqual(bad.returncode, 0)
-            self.assertIn("not flagged enum_candidate", bad.stderr.decode())
-            ok = subprocess.run(args + ["--column", "class"], capture_output=True)
+            self.assertIn("enum-candidate test", bad.stderr.decode())           # no profile file is trusted: login is refused
+            self.assertFalse(out.exists())
+            noconf = subprocess.run(base + ["--column", "class"], capture_output=True)
+            self.assertNotEqual(noconf.returncode, 0)
+            self.assertIn("--confirm-column", noconf.stderr.decode())
+            wrong = subprocess.run(base + ["--column", "class", "--confirm-column", "type"], capture_output=True)
+            self.assertNotEqual(wrong.returncode, 0)
+            ok = subprocess.run(base + ["--column", "class", "--confirm-column", "class"], capture_output=True)
             self.assertEqual(ok.returncode, 0, ok.stderr.decode())
-            self.assertNotIn("qty0", ok.stdout.decode() + ok.stderr.decode())       # the values go to the owner-only file, not to a terminal
+            self.assertIn("WARNING", ok.stderr.decode()); self.assertIn("class", ok.stderr.decode())          # a loud warning naming the column
+            self.assertNotIn("qty0", ok.stdout.decode() + ok.stderr.decode())                                  # values only in the owner-only file
             f = out / "apsis-values-trans_by_outlet_promotion_data-class.OWNER-ONLY.json"
             self.assertEqual(sorted(json.loads(f.read_text())["value_counts"]), ["qty0", "qty1", "qty2"])
-            self.assertNotIn("qty0", (out / "apsis-profile.sanitised.json").read_text())        # never in the sanitised files
+            self.assertEqual([p.name for p in out.iterdir()], [f.name])                                        # nothing else, never the sanitised files
+
+    def test_a_small_table_never_yields_a_value_list_even_when_every_value_looks_like_a_code(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            self.build(d)
+            p = subprocess.run(CLI + ["profile-values", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out"), "--table", "master_promotion", "--column", "tier", "--confirm-column", "tier"], capture_output=True)
+            self.assertNotEqual(p.returncode, 0)
 
 
 class Refusals(unittest.TestCase):
@@ -227,6 +273,57 @@ class Refusals(unittest.TestCase):
         self.assertRefused("master_sku.sql", self.ins("('a',1); trailing secret-row-value"))
         self.assertRefused("master_sku.sql", self.ins("('a',1) secret-row-value;"), must="unmodelled")
 
+    def test_every_line_is_accounted_for(self):
+        for body, must in (
+                (self.CREATE + "/*!40101 INSERT INTO `master_sku` VALUES ('secret-row-value',1) */;\n", "does not recognise"),         # a conditional-comment INSERT
+                (self.CREATE + "SET @a=1; INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n", "does not recognise"),            # INSERT preceded by anything
+                (self.CREATE + "-- c\nINSERT INTO `master_sku` VALUES ('a',1); INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n", None),
+                (self.CREATE + "UPDATE `master_sku` SET n = 1;\n", "does not recognise"), (self.CREATE + "DELETE FROM `master_sku`;\n", "does not recognise"),
+                (self.CREATE + "ALTER TABLE `master_sku` ADD c int;\n", "does not recognise"), (self.CREATE + "TRUNCATE `master_sku`;\n", "does not recognise"),
+                (self.CREATE + self.CREATE, "second CREATE TABLE"),
+                (self.CREATE + "CREATE TABLE `master_routes` (\n `a` int\n) ENGINE=X;\n", "second CREATE TABLE"),
+                ("CREATE TABLE `master_routes` (\n `a` int\n) ENGINE=X;\n", "not the file's name"),
+                (self.ins("('a',1)('secret-row-value',2);"), "missing comma"), (self.ins("('a' 1);"), "unmodelled"),
+                (self.ins("('a',1),,('secret-row-value',2);"), "misplaced comma"), (self.ins("('a',1),('secret-row-value',2),;"), "misplaced")):
+            self.assertRefused("master_sku.sql", body, must=must)
+
+    def test_a_trigger_body_is_skipped_unread_and_never_counted_as_rows(self):
+        body = (self.CREATE + "INSERT INTO `master_sku` VALUES ('a',1);\nDELIMITER ;;\n"
+                "CREATE TRIGGER t1 BEFORE INSERT ON `master_sku` FOR EACH ROW BEGIN INSERT INTO `master_sku` VALUES ('secret-row-value',9); UPDATE x SET y=1; END ;;\nDELIMITER ;\n"
+                "INSERT INTO `master_sku` VALUES ('b',2);\n")
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            (d / "master_sku.sql").write_text(body)
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+            out = Path(t) / "out"
+            profiler.write_outputs(out, full)
+            self.assertNotIn("secret-row-value", all_text(out))
+        self.assertTrue(full["ok"])
+        self.assertEqual(full["tables"]["master_sku"]["rows"], 2)           # the two real rows only: the trigger's INSERT is not a row
+        self.assertRefused("master_sku.sql", self.CREATE + "DELIMITER ;;\nCREATE TRIGGER x ...\n", must="DELIMITER")      # an unclosed block refuses
+
+    def test_the_real_mysqldump_8_directives_are_accepted(self):
+        body = ("-- MySQL dump 10.13\n/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n/*!50503 SET NAMES utf8mb4 */;\nSET @saved = 1;\n\n"
+                "DROP TABLE IF EXISTS `master_sku`;\n/*!40101 SET @saved_cs_client     = @@character_set_client */;\n" + self.CREATE.replace(");\n", ");\n") +
+                "/*!40101 SET character_set_client = @saved_cs_client */;\nLOCK TABLES `master_sku` WRITE;\n/*!40000 ALTER TABLE `master_sku` DISABLE KEYS */;\n"
+                "INSERT INTO `master_sku` VALUES ('a',1),('b',2);\n/*!40000 ALTER TABLE `master_sku` ENABLE KEYS */;\nUNLOCK TABLES;\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n-- Dump completed\n")
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            (d / "master_sku.sql").write_text(body)
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+        self.assertTrue(full["ok"], full["refused"])
+        self.assertEqual(full["tables"]["master_sku"]["rows"], 2)
+
+    def test_a_garbled_2_mb_line_of_escaped_quotes_is_refused_in_seconds(self):
+        t0 = time.time()
+        self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` VALUES ('a'," + "'" + "\\'" * 1_000_000 + ";\n", must="unterminated")
+        self.assertLess(time.time() - t0, 20)
+        t0 = time.time()
+        self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` VALUES ('a','" + "''" * 1_000_000 + ";\n", must="unterminated")
+        self.assertLess(time.time() - t0, 20)
+
     def test_indented_insert_and_a_shifted_or_wide_row(self):
         self.assertRefused("master_sku.sql", self.CREATE + "  INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n")
         self.assertRefused("master_sku.sql", self.ins("('a',1),('secret-row-value',2,3);"), must="3 values but the table has 2")
@@ -245,10 +342,10 @@ class Refusals(unittest.TestCase):
 
     def test_mydumper_compressed_and_split_parts(self):
         self.assertRefused("master_sku.sql", "INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n", must="CREATE TABLE")
-        self.assertRefused("master_sku.00000.sql", "INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n", must="unsupported file shape")
-        self.assertRefused("master_sku-schema.sql", self.CREATE, must="unsupported file shape")
-        self.assertRefused("master_sku.sql.zst", b"\x28\xb5\x2f\xfd secret-row-value", must="unsupported file shape")
-        self.assertRefused("master_sku.sql.bz2", b"BZh9 secret-row-value", must="unsupported file shape")
+        self.assertRefused("master_sku.00000.sql", "INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n", must="mydumper data chunk file")
+        self.assertRefused("master_sku-schema.sql", self.CREATE, must="mydumper schema file")
+        self.assertRefused("master_sku.sql.zst", b"\x28\xb5\x2f\xfd secret-row-value", must="compressed file")
+        self.assertRefused("master_sku.sql.bz2", b"BZh9 secret-row-value", must="compressed file")
 
     def test_non_utf8_text_stops_with_the_character_set_message_and_no_bytes(self):
         full, p = self.run_case("master_sku.sql", (self.ins("('caf\xe9-secret-row-value',1);")).encode("latin-1"))
@@ -281,6 +378,15 @@ class Refusals(unittest.TestCase):
         self.assertEqual(tab["primary_key"], ["[name-1]"])
         self.assertEqual([c["name"] for c in tab["columns"]], ["[name-1]", "sku_code"])
         self.assertEqual(tab["indexes"][0]["name"], "[name-2]")
+        self.assertEqual(tab["indexes"][0]["columns"], ["[name-1]", "sku_code"])         # an index line with non-identifier names is shown with placeholders, not dropped
+
+    def test_identifiers_with_a_long_digit_run_print_as_placeholders(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            write_table(d, "master_sku", ["`col_01711000001` varchar(20)", "`ok_col` varchar(20)"], [("v", "w")])
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+        self.assertEqual([c["name"] for c in full["tables"]["master_sku"]["columns"]], ["[name-1]", "ok_col"])
 
     def test_the_profile_is_never_written_inside_the_repository(self):
         with tempfile.TemporaryDirectory() as t:
@@ -290,10 +396,25 @@ class Refusals(unittest.TestCase):
             inside = ROOT / "tests" / "should-not-exist"
             p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(inside)], capture_output=True)
             self.assertNotEqual(p.returncode, 0)
-            self.assertIn("OUTSIDE the repository", p.stderr.decode())
+            self.assertIn("OUTSIDE any git work tree", p.stderr.decode())
             self.assertFalse(inside.exists())
             ok = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out")], capture_output=True)
             self.assertEqual(ok.returncode, 0, ok.stderr.decode())
+
+
+class OutDir(unittest.TestCase):
+    def test_any_git_work_tree_is_refused_not_only_this_checkout(self):
+        with tempfile.TemporaryDirectory() as t:
+            other = Path(t) / "some-other-clone"
+            (other / ".git").mkdir(parents=True)
+            d = Path(t) / "d"
+            d.mkdir()
+            write_table(d, "master_sku", ["`sku_code` varchar(5)"], [("a",)])
+            for out in (other / "out", other / "deep" / "er"):
+                p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(out)], capture_output=True)
+                self.assertNotEqual(p.returncode, 0)
+                self.assertIn("git work tree", p.stderr.decode())
+                self.assertFalse(out.exists())
 
 
 class Bounds(unittest.TestCase):

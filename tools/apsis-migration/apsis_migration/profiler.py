@@ -1,8 +1,9 @@
 """Phase 1: PRESERVE + PROFILE. Reads the dump files and writes only structure and numbers: table and column names that pass the identifier rule, counts,
-lengths, shape-class histograms, hour-of-day histograms, booleans, and (FULL file only) numeric/date ranges of columns that are not id-, phone-, coordinate-
-or counter-like. NO VALUE LIST of any kind is written by `profile`; a column that looks like a code (status/type) only gets an `enum_candidate` flag.
-A separate, deliberate, owner-run command (`profile-values`) lists the values of ONE flagged column into an owner-only file. Memory is bounded in bytes:
-distinct values are tracked as fixed-size hashes up to a cap; shape classification looks at a 256-character prefix with linear-time rules."""
+lengths, shape-class histograms, booleans, and (FULL file only, tables of at least 1000 rows, columns that are not near-unique) COARSE descriptors: digit-count
+range, sign and integer/decimal kind of numbers, YEAR-MONTH range of dates, hour-of-day histograms. NO EXACT MIN/MAX VALUE and NO VALUE LIST of any kind is written
+by `profile`; a column that looks like a code (status/type) only gets an `enum_candidate` flag. A separate, deliberate, owner-run command (`profile-values`)
+re-derives that test from the dump itself and lists the values of ONE column into an owner-only file. Memory is bounded in bytes: distinct values are tracked as
+fixed-size hashes up to a cap; shape classification looks at a 256-character prefix with linear-time rules."""
 import json
 import re
 import sys
@@ -20,6 +21,7 @@ PREFIX = 256                       # shape classification sees at most this many
 ENUM_MAX = 30
 ENUM_MIN_ROWS = 1000
 ENUM_MIN_PER_VALUE = 20
+DESCRIBE_MIN_ROWS = 1000          # below this a table gets only type, null share, lengths and shape classes
 SHAPES = ["empty", "datetime-like", "date-like", "time-like", "uuid-like", "hash-like", "email-like", "url-like", "phone-like", "digits-only", "decimal",
           "bengali", "bengali-latin-mixed", "latin-text", "alnum-code", "other"]
 SAFE_WORD = re.compile(r"^[A-Za-z0-9_]{1,32}$")
@@ -37,9 +39,6 @@ _R_CODE = re.compile(r"^[A-Za-z0-9._\- /]+$")
 _R_LATIN = re.compile(r"^[A-Za-z .,'()&\-]+$")
 _BENGALI = re.compile(r"[ঀ-৿]")
 _ENUM_VALUE = re.compile(r"^[A-Za-z0-9_]{1,24}$")
-# a column whose NAME says id-, phone-, coordinate-, counter-, birth-, salary-like never gets a numeric/date range in the full file either
-_NAME_NO_RANGE = re.compile(r"((^|_)(id|uid|pk|key|no|num|number|nid|tin|pin|otp|code|phone|mobile|msisdn|cell|contact|lat|lng|lon|latitude|longitude|geo|salary|wage|pay|income|"
-                            r"birth|dob|age|year|password|pass|pwd|token|secret|hash)($|_))|((id|no)$)", re.I)
 
 
 def _is_email(v):
@@ -96,7 +95,7 @@ class Names:
         self.map = {}
 
     def show(self, name):
-        if isinstance(name, str) and safety.IDENT.match(name):
+        if isinstance(name, str) and safety.IDENT.match(name) and not re.search(r"[0-9]{8,}", name):
             return name
         if name not in self.map:
             self.n += 1
@@ -117,14 +116,15 @@ class Col:
         self.all_short = True
         self.minlen = self.maxlen = None
         self.shapes = {s: 0 for s in SHAPES}
-        self.nmin = self.nmax = self.nmin_s = self.nmax_s = None
-        self.longdigits = self.coordlike = False
-        self.dmin = self.dmax = None
+        # coarse descriptors only (never an exact value): digit counts, sign, integer/decimal kind, decimal places, year-month
+        self.dig_min = self.dig_max = None
+        self.neg = self.nonneg = self.saw_int = self.saw_dec = False
+        self.dp_min = self.dp_max = None
+        self.ym_min = self.ym_max = None
         self.zero_dates = 0
         self.hours = [0] * 24
         self.numeric = base in ("tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bit", "year")
         self.temporal = base in ("date", "datetime", "timestamp")
-        self.name_blocks_range = bool(_NAME_NO_RANGE.search(self.name)) or self.name.startswith("[name-")
 
     def add(self, v):
         self.n += 1
@@ -146,26 +146,29 @@ class Col:
             else:
                 self.distinct[h] = 1
         if self.numeric and L <= 40 and (_R_DIGITS.match(v) or _R_DEC.match(v)):
-            try:
-                d = Decimal(v)
-            except InvalidOperation:
-                d = None
-            if d is not None:
-                if self.nmin is None or d < self.nmin:
-                    self.nmin, self.nmin_s = d, v
-                if self.nmax is None or d > self.nmax:
-                    self.nmax, self.nmax_s = d, v
-                if "." not in v and len(v.lstrip("-")) >= 10:
-                    self.longdigits = True
-                if "." in v and len(v.split(".")[1]) >= 5 and abs(d) <= 180:
-                    self.coordlike = True
+            neg = v.startswith("-")
+            body = v[1:] if neg else v
+            ip, _, fp = body.partition(".")
+            digits = len(ip.lstrip("0")) or 1
+            self.dig_min = digits if self.dig_min is None else min(self.dig_min, digits)
+            self.dig_max = digits if self.dig_max is None else max(self.dig_max, digits)
+            if neg and body.strip("0."):
+                self.neg = True
+            else:
+                self.nonneg = True
+            if fp:
+                self.saw_dec = True
+                self.dp_min = len(fp) if self.dp_min is None else min(self.dp_min, len(fp))
+                self.dp_max = len(fp) if self.dp_max is None else max(self.dp_max, len(fp))
+            else:
+                self.saw_int = True
         elif self.temporal and L <= 40:
             if v.startswith("0000"):
                 self.zero_dates += 1
             elif _R_D.match(v[:10]):
-                dv = v[:19] if len(v) >= 19 else v[:10]
-                self.dmin = dv if self.dmin is None or dv < self.dmin else self.dmin
-                self.dmax = dv if self.dmax is None or dv > self.dmax else self.dmax
+                ym = v[:7]
+                self.ym_min = ym if self.ym_min is None or ym < self.ym_min else self.ym_min
+                self.ym_max = ym if self.ym_max is None or ym > self.ym_max else self.ym_max
                 if self.base in ("datetime", "timestamp") and len(v) >= 19 and v[11:13].isdigit():
                     self.hours[int(v[11:13]) % 24] += 1
 
@@ -174,30 +177,31 @@ class Col:
         return bool(not self.capped and self.distinct and len(self.distinct) < ENUM_MAX and table_rows >= ENUM_MIN_ROWS and self.all_short
                     and min(self.distinct.values()) >= ENUM_MIN_PER_VALUE)
 
-    def range_allowed(self):
-        if self.name_blocks_range or self.longdigits or self.coordlike or self.shapes["phone-like"]:
+    def describable(self, table_rows):
+        """Coarse descriptors only for a table of at least 1000 rows and a column that is not (almost) unique per row."""
+        if table_rows < DESCRIBE_MIN_ROWS:
             return False
         nn = self.n - self.nulls
-        if not self.capped and self.n >= 100 and len(self.distinct) >= 0.9 * nn:
-            return False                       # (almost) unique per row: an identifier or a timestamp stream
-        if self.numeric and self.capped:
-            return False
-        return True
+        return not (not self.capped and nn >= 100 and len(self.distinct) >= 0.9 * nn)
 
     def report(self, table_rows):
-        nn = self.n - self.nulls
+        big = table_rows >= DESCRIBE_MIN_ROWS
         out = {"name": self.name, "type": self.type, "rows": self.n, "null_share": round(self.nulls / self.n, 6) if self.n else None,
-               "distinct": None if self.capped else len(self.distinct), "distinct_capped": self.capped,
+               "distinct": (None if self.capped else len(self.distinct)) if big else None, "distinct_capped": self.capped if big else False,
                "min_length": self.minlen, "max_length": self.maxlen, "shapes": {k: v for k, v in self.shapes.items() if v},
                "enum_candidate": self.enum_candidate(table_rows)}
-        if self.numeric:
-            out["value_range"] = ({"min": self.nmin_s, "max": self.nmax_s} if (self.range_allowed() and self.nmin is not None) else
-                                  ("withheld (id-, phone-, coordinate-, counter-like or near-unique)" if self.nmin is not None else None))
+        if self.describable(table_rows):
+            if self.numeric and self.dig_min is not None:
+                out["number_descriptor"] = {"integer_digits": [self.dig_min, self.dig_max],
+                                            "sign": "mixed" if (self.neg and self.nonneg) else ("negative-only" if self.neg else "non-negative"),
+                                            "kind": "mixed" if (self.saw_int and self.saw_dec) else ("decimal" if self.saw_dec else "integer"),
+                                            "decimal_places": [self.dp_min, self.dp_max] if self.saw_dec else None}
+            if self.temporal:
+                out["year_month_range"] = [self.ym_min, self.ym_max] if self.ym_min else None
+                if sum(self.hours):
+                    out["hour_of_day_stored"] = self.hours
         if self.temporal:
-            out["value_range"] = {"min": self.dmin, "max": self.dmax} if (self.range_allowed() and self.dmin is not None) else ("withheld (near-unique or sensitive name)" if self.dmin is not None else None)
             out["zero_dates"] = self.zero_dates
-            if sum(self.hours):
-                out["hour_of_day_stored"] = self.hours
         return out
 
 
@@ -224,13 +228,22 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
     files, refused_names = {}, 0
     problems = []
     unsupported_ext = re.compile(r"\.(zst|bz2|xz|zip|lz4|7z|tar|tgz|part[0-9]*|[0-9]{5})(\.|$)|-schema(-create)?\.sql|\.[0-9]{5}\.sql", re.I)
+
+    def reason(name):
+        if re.search(r"\.(zst|bz2|xz|zip|lz4|7z|tar|tgz)(\.|$)", name, re.I):
+            return "compressed file: only plain .sql and .sql.gz are read"
+        if re.search(r"-schema(-create)?\.sql", name, re.I):
+            return "mydumper schema file: the mydumper layout (separate schema and data files) is not supported"
+        if re.search(r"\.[0-9]{5}\.sql", name):
+            return "mydumper data chunk file: the split layout is not supported"
+        return "split part file: parts are not read"
     for p in sorted(Path(dump_dir).iterdir()):
         if not p.is_file():
             continue
         m = re.match(r"^(.*)\.(sql|tsv)(\.gz)?$", p.name)
         if unsupported_ext.search(p.name):
             stem = re.split(r"[.\-]", p.name)[0]
-            problems.append({"table": stem if safety.IDENT.match(stem) else "<name not a plain identifier>", "refused": "unsupported file shape (compressed part, mydumper layout or split file)"})
+            problems.append({"table": stem if safety.IDENT.match(stem) and not re.search(r"[0-9]{8,}", stem) else "<name not a plain identifier>", "refused": "unsupported file shape: " + reason(p.name)})
             continue
         if not m:
             continue
@@ -250,9 +263,10 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
         t0 = time.time()
         cols, schema, rows, names = None, None, 0, Names()
         try:
-            for ev in events(files[table], batch_rows=20000, charset=charset, strict=True):
+            for ev in events(files[table], batch_rows=20000, charset=charset, strict=True, expect_table=table):
                 if ev[0] == "schema":
                     schema = ev[1]
+                    rows = 0                      # the row counter and the column statistics are created together, here
                     cols = [Col(names.show(c.name), c.base + c.args + (" unsigned" if c.unsigned else ""), c.base, cap) for c in schema.columns]
                     raw_names = schema.column_names()
                     for rc in ref_by_master.get(table, []):
@@ -339,8 +353,9 @@ def sanitise(full):
     s = json.loads(json.dumps(full))
     for t in s["tables"].values():
         for c in t["columns"]:
-            c.pop("value_range", None)
-    s["_note"] = "sanitised rendering: no value ranges and no values; enum_candidate is a flag only"
+            for k in ("number_descriptor", "year_month_range"):
+                c.pop(k, None)
+    s["_note"] = "sanitised rendering: names, types, counts, shapes and flags only; no descriptors, no ranges, no values"
     return s
 
 
@@ -355,13 +370,14 @@ def render_md(d, title):
                 base = f"{i['kind']} {i['name']}({', '.join(i['columns'])})"
                 return base + (f" -> {i.get('references')}({', '.join(i.get('ref_columns', []))})" if i["kind"] == "foreign" else "")
             L += ["indexes: " + "; ".join(_ix(i) for i in t["indexes"]), ""]
-        L += ["| column | type | null share | distinct | length | shapes | enum candidate | range / hours |", "|---|---|---|---|---|---|---|---|"]
+        L += ["| column | type | null share | distinct | length | shapes | enum candidate | descriptor / hours |", "|---|---|---|---|---|---|---|---|"]
         for c in t["columns"]:
             rng = ""
-            if isinstance(c.get("value_range"), dict):
-                rng = f"{c['value_range']['min']} .. {c['value_range']['max']}"
-            elif c.get("value_range"):
-                rng = str(c["value_range"])
+            nd = c.get("number_descriptor")
+            if nd:
+                rng = f"{nd['kind']}, {nd['sign']}, {nd['integer_digits'][0]}-{nd['integer_digits'][1]} integer digits" + (f", {nd['decimal_places'][0]}-{nd['decimal_places'][1]} decimals" if nd.get("decimal_places") else "")
+            if c.get("year_month_range"):
+                rng = f"{c['year_month_range'][0]} .. {c['year_month_range'][1]} (year-month)"
             if "hour_of_day_stored" in c:
                 rng = (rng + " " if rng else "") + "hours: " + ",".join(map(str, c["hour_of_day_stored"]))
             L.append(f"| {c['name']} | {c['type']} | {c['null_share']} | {c['distinct'] if not c['distinct_capped'] else 'capped'} | {c['min_length']}-{c['max_length']} | "
@@ -373,9 +389,11 @@ def render_md(d, title):
 
 
 def check_out_dir(out_dir):
+    """The profile may be written anywhere EXCEPT inside a git work tree (any repository, not only this copy): walk up for a .git."""
     p = Path(out_dir).resolve()
-    if REPO_ROOT == p or REPO_ROOT in p.parents:
-        raise safety.Refused("refused: the profile must be written OUTSIDE the repository (the repository is public)")
+    for q in [p] + list(p.parents):
+        if (q / ".git").exists():
+            raise safety.Refused("refused: the profile must be written OUTSIDE any git work tree (the repository is public)")
     return p
 
 
@@ -390,21 +408,22 @@ def write_outputs(out_dir, full):
     return p
 
 
-def profile_values(dump_dir, profile_json, table, column, out_dir, mapping, charset="utf-8"):
-    """DELIBERATE, owner-run, one named column: lists the value counts of a column that carries `enum_candidate` in an EXISTING profile. Writes an owner-only
-    file in the output directory (never the sanitised files, never stdout). Refuses anything else."""
+def profile_values(dump_dir, table, column, confirm_column, out_dir, mapping, charset="utf-8", warn=lambda m: None):
+    """DELIBERATE, owner-run, ONE named column. Does NOT trust any profile file: it re-derives the enum-candidate test from the dump itself (fewer than 30 distinct
+    values, table of at least 1000 rows, every value in at least 20 rows, all short codes) and refuses otherwise. The owner must type the column name again
+    (--confirm-column). Writes an owner-only file in the output directory (never the sanitised files, never a terminal); a loud warning names the column."""
     p = check_out_dir(out_dir)
     safety.table(table, set(mapping["allowed_tables"]))
     safety.ident(column, "column name")
-    prof = json.loads(Path(profile_json).read_text(encoding="utf-8"))
-    cols = {c["name"]: c for c in prof["tables"].get(table, {}).get("columns", [])}
-    if column not in cols or not cols[column].get("enum_candidate"):
-        raise safety.Refused("refused: the column is not flagged enum_candidate in the profile (a person must decide it is a status/type code first by re-profiling)")
+    if confirm_column != column:
+        raise safety.Refused("refused: type the column name again with --confirm-column to confirm that a person decides this column holds codes, not people")
+    warn(f"WARNING: listing the values of column {column} of table {table}. A person has decided that this column holds codes, not people. "
+         "The output is an OWNER-ONLY file: never commit it, never share it.")
     files = {m.group(1): f for f in Path(dump_dir).iterdir() if (m := re.match(r"^(.*)\.(sql|tsv)(\.gz)?$", f.name))}
     if table not in files:
         raise safety.Refused("refused: the table's file is not in the dump folder")
-    counts, idx = {}, None
-    for ev in events(files[table], batch_rows=20000, charset=charset, strict=True):
+    counts, idx, rows = {}, None, 0
+    for ev in events(files[table], batch_rows=20000, charset=charset, strict=True, expect_table=table):
         if ev[0] == "schema":
             names = ev[1].column_names()
             if column not in names:
@@ -412,11 +431,16 @@ def profile_values(dump_dir, profile_json, table, column, out_dir, mapping, char
             idx = names.index(column)
             continue
         for r in ev[2]:
+            rows += 1
             v = r[idx]
             counts[v] = counts.get(v, 0) + 1
-            if len(counts) > ENUM_MAX:
-                raise safety.Refused("refused: the column has more than 30 distinct values now")
+            if len(counts) >= ENUM_MAX:
+                raise safety.Refused("refused: the column fails the enum-candidate test (30 or more distinct values)")
+    ok = (rows >= ENUM_MIN_ROWS and counts and all(v is not None and len(v) <= 24 and _ENUM_VALUE.match(v) for v in counts)
+          and min(counts.values()) >= ENUM_MIN_PER_VALUE)
+    if not ok:
+        raise safety.Refused("refused: the column fails the enum-candidate test re-derived from the dump (table of 1000+ rows, fewer than 30 distinct values, each in 20+ rows, all short codes)")
     p.mkdir(parents=True, exist_ok=True)
     f = p / f"apsis-values-{table}-{column}.OWNER-ONLY.json"
-    f.write_text(json.dumps({"table": table, "column": column, "value_counts": {("NULL" if k is None else k): n for k, n in sorted(counts.items(), key=lambda kv: -kv[1])}}, indent=1, ensure_ascii=False), encoding="utf-8")
+    f.write_text(json.dumps({"table": table, "column": column, "value_counts": dict(sorted(counts.items(), key=lambda kv: -kv[1]))}, indent=1, ensure_ascii=False), encoding="utf-8")
     return f, len(counts)

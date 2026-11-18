@@ -115,7 +115,7 @@ class TableStager:
         """Stages one file. `table` is the file's stem and must equal the CREATE TABLE name and be on the allow-list.
         checkpoint(ordinal, rows_parsed_total) is called after each COMPLETE INSERT statement (so a resume redoes at most one statement)."""
         safety.table(table, self.allowed)
-        it = tsv_events(path, table, batch_rows, charset) if tsv else events(path, batch_rows, skip_statements, charset)
+        it = tsv_events(path, table, batch_rows, charset) if tsv else events(path, batch_rows, skip_statements, charset, expect_table=table)
         ts, keep_idx, cols, dropped, key_idx, chunk_idx = None, None, None, [], None, None
         parsed, bad_chars = parsed_before, 0
         for ev in it:
