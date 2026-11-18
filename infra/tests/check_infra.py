@@ -955,6 +955,52 @@ class Workflows(unittest.TestCase):
         self.assertEqual("before\n[line withheld: redaction filter error]\nafter [phone]\n", out)
         self.assertNotIn("pretend-secret", out)
 
+    def test_diagnose_redaction_wide_gaps_and_bounds(self):
+        # Third re-check of ops-diagnose: the bounded patterns must still catch wide gaps, long names, long local parts, wide separators and far-away OTP keywords.
+        import subprocess, time
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text):
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True).stdout.decode("utf-8")
+        # (1) up to 40 spaces or tabs around = and :
+        gaps = {"api" "_key" + "\t" * 4 + "= valueone": "valueone", "api" "_key" + "\t" * 4 + ":\t\t" + "valueone": "valueone", "name" + " " * 5 + ":" + " " * 5 + "Rahimuddin": "Rahimuddin",
+                "pass" "word" + " " * 30 + "=" + " " * 30 + "valueone": "valueone", "to" "ken" + " " * 40 + ":" + " " * 40 + "valueone": "valueone", 'sec' 'ret' + " " * 12 + "=" + " " * 12 + '"two words"': "two words",
+                "otpCode" + " " * 20 + "=" + " " * 20 + "481516": "481516", "user_" "name" + "\t" * 6 + "=" + "\t" * 6 + "rahim": "rahim"}
+        for text, secret in gaps.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # (2) a key name of up to 128 characters before or after the stem, up to 8 segments, a 128-character e-mail local part, phone separators of up to 6 characters
+        long_keys = {"x" * 100 + "tok" "en=valueone": "valueone", "pass" "word" + "y" * 100 + "=valueone": "valueone", "a_b_c_d_e_f_g_pass" "word=valueone": "valueone",
+                     "a_b_c_d_e_f_g_key=valueone": "valueone", "aa" * 60 + "_pin=valueone": "valueone", "key_a_b_c_d_e_f_g=valueone": "valueone",
+                     "a" * 120 + "Key=valueone": "valueone", "pinCode" + "z" * 100 + "=valueone": "valueone"}
+        for text, secret in long_keys.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text[:40]!r}... -> {out[:60]!r}")
+        mail = "a" * 120 + "@example.org"
+        self.assertEqual("mail [email] sent\n", run(f"mail {mail} sent\n"))
+        for phone in ("017 ---- 1234 ---- 5678", "017  /  1234  /  5678", "+88 ( 017 ) 1234 - 5678", "0 1 7  -  1 2 3 4  -  5 6 7 8"):
+            out = run(f"call {phone} done\n")
+            self.assertEqual("call [phone] done\n", out, f"{phone!r} -> {out!r}")
+        # (3) OTP digits up to 60 characters from the keyword; a duration or a count with a unit is never touched
+        self.assertNotIn("481516", run("otp sent to the handset, please enter the code 481516 now\n"))
+        self.assertNotIn("481516", run("your code " + "x" * 50 + " 481516 otp\n"))
+        self.assertNotIn("481516", run("481516 " + "x" * 50 + " verification\n"))
+        keep = "verification " + "x" * 30 + " took 18400 ms, 1500 retries and 20000 bytes"
+        self.assertEqual(keep + "\n", run(keep + "\n"))
+        # (4) a 40- or 64-hex is kept only after an image/digest/sha256/build/commit word or in an image reference on a registry-looking host
+        h40, h64 = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d", "ab12" * 16
+        for line in (f"image acr.example.io/aron/api:{h40} ready", f"pulled acr.example.io:5000/aron/api@sha256:{h64}", f"localhost/aron/api:{h40}", f"digest {h64} ok",
+                     f"sha256:{h64}", f"commit {h40}", f"build {h40}"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        for line in (f"path a/b:{h40}", f"x/y/z:{h40}", f"value {h40}", f"cache a/b@{h64}"):
+            out = run(line + "\n")
+            self.assertNotIn(h40, out, line); self.assertNotIn(h64, out, line)
+        # still linear with the wider bounds
+        n = 100000
+        for name, blob in {"letters": "a" * n, "segments": "a_" * (n // 2), "dots": "a." * (n // 2), "email": "a" * n + "@", "tabs after key": "api" "_key" + "\t" * n, "otp far": "otp " + "x" * n}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n"); dt = time.time() - t0
+            self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         body = d[d.index("# ---"):]
