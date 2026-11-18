@@ -1243,3 +1243,73 @@ Fix: scope the probe to this test's database and lock, for example `AND database
 - low: Stale comment in twoDebitsWithDifferentIdsOnOneBalanceNeverBothPass: it still says "The barrier ... (the barrier then times out for the first, which goes on)". The mechanism is now the pg_locks-condition latch.
 - low: The latch opens a pooled connection every 5 ms while waiting. At most 3 transactions plus 3 pollers is within the Hikari pool of 8, so this is fine today. Adding parties without raising maximumPoolSize could deadlock the test until the 10 s bound.
 - low: AsthaQuarter.from() builds dates with LocalDate.parse("$it-01"). AsthaQuarters.four() pads to 4 digits, but a year above 9999 gives a 5-digit text that LocalDate.parse rejects; the old code handled it. This only matters for unrealistic dates.
+
+## Fourth pass at a7890c654 (lead, 20:25 UTC): PASS
+
+Three Opus lenses (workflow wf_802fc63f-4dd). Read only; slice check exit 0 on an archive; literal day counts worked by hand. No blocking. The branch is accepted for the server train. Reviewers did not run Gradle; the lane reports its full local backend, db, sync and contract suites green and lane CI green except the known push-run migrations step, which skipped the oasdiff, slice and lint steps there; those run on the train branch.
+
+### d1-star — PASS
+
+Checked at a7890c6549 by reading the code. I did not run any tests (the repo was read-only and Gradle was off).
+
+(a) Window and calendar: SrStar.kt:57 now reads last month as `SrMemoFigures.forRoutes(h, progs.keys, last.atDay(1), minOf(last.atEndOfMonth(), through))`. In SrTargets, `lastMonthWorkingDaysThrough(prevCals, path, month.minusMonths(1), through)` returns the full `cals.workingDays(path)` when `through >= end of last month`. Otherwise it counts the working days from the 1st to `through` using `prevCals`. `prevCals` is `WorkingCalendarRepo.load(h, month.minusMonths(1), ...)`, so it is last month's own calendar at the route's zone path, with its weekend and holiday marks. The read window and the day count use the same cutoff, so they cover the same days. SrStar passes `c.last_month_working_days` as lmwd both to StarProgress and to the wire.
+
+(b) Hand-worked with a Friday weekend (1 Jan 2027 is a Friday; January's Fridays are 1, 8, 15, 22 and 29, so January has 26 working days):
+- Built Sun 31 Jan 08:00 Dhaka for Mon 1 Feb: through = min(31 Jan, 30 Jan) = 30 Jan. The window is 1 to 30 Jan and lmwd = 30 - 5 = 25. The Sat 30 Jan memo of 10 is summed and the Sun 31 Jan memo of 40 is not. SrMemoFixture writes `qty_base = qty` with `pack_factor` 1, and the programme rules default to '{}', so the divisor is 1 and the category is match. That gives lms = 10.000 and lmads = 0.400. In February the anchor is 1 Feb, so ewd = 0 and pads, projection and growth are null.
+- Built on 1 Feb: through = 31 Jan, which is the month end, so lmwd = 26, lms = 50.000 and lmads = 1.923.
+The test's literals 10.000/25 and 50.000/26 match the fixture. The test's clock values (2027-01-31T02:00Z, 2027-02-01T02:00Z) are 08:00 Dhaka, as the comments say.
+
+(c) Mid-month bundles: through is in the bundle month, which is past last month's end. minOf then returns last month's end and lmwd takes the early-return full count, so this case behaves exactly as before the fix.
+
+(d) A bundle date can be at most the next working day (BundleService:128-131, nextWorkingDay looks at most 14 days ahead). So through = today - 1 is never before the 1st of last month. Two examples: built Thu 31 Dec 2026 for Sat 2 Jan gives through 30 Dec, all in December; built 20 Jan for 1 Feb gives through 19 Jan. Even an empty window cannot fault: forRoutes returns empty when through is before from, so lms = 0; the loop gives lmwd = 0; StarProgress then returns null lmads and null growth (lines 64-66). There is no division by zero.
+
+(e) Growth = std*lmwd/(ewd*lms) - 1 and lmads = lms/lmwd stay consistent ratios when lmwd is partial; projection does not use lmwd. The RouteSnapshot figures rule in openapi.yaml, the RouteStar.lmwd and RouteCalendar.last_month_working_days descriptions, and D-TKPI-20 all state the closed-days rule. D-TKPI-20 also says LMS is final only once the month has closed.
+
+(f) StarProgress has no day convention of its own. It takes ewd, wd and lmwd as inputs, and its only production caller is SrStar. Nothing outside tests and docs derives lmwd a second way, so the phone and the server cannot diverge.
+
+The D3 literals I could check (1/true/24, 2/true/23, 5/true/20, 0/true/23) are right for a Friday weekend with no January or February holiday.
+
+Files read: backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrStar.kt, SrTargets.kt, SrMemoFigures.kt, BundleService.kt, shared/rules/src/commonMain/kotlin/com/aktcl/aron/rules/StarProgress.kt, backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrBundleThroughAndSnapshotTest.kt, SrMemoFixture.kt, contract/slices/schemas/RouteStar.yaml, RouteCalendar.yaml, contract/openapi.yaml.
+
+- low: The new Star test asserts lms and lmwd but not lmads (expected 0.400 when built ahead on Sun 31 Jan, 1.923 on 1 Feb) or that ewd = 0 and pads/growth_bp are null on the empty February window. The divisor pairing is proven only indirectly.
+- low: The RouteStar.yaml `lms` and `lmads` properties have no description of their own. The 'final only once last month has closed' rule appears only in the RouteSnapshot figures rule, the `lmwd` text and DECISIONS D-TKPI-20.
+- low: The 25/26 literals depend on the seed having no January 2027 holiday and a Friday-only weekend. That holds today: the 06 seed's rolling holidays are Dec 16 and Dec 25 only, and the 04 seed has Victory Day 2026. But the test does not pin this, so a future seed holiday in January would break it without explaining why.
+
+### d2-d3-claims — PASS
+
+D2 is verified. The grep at a7890c654 over openapi.yaml, the slices, the requests doc and backend/sync main found no sentence that gives the day-count anchor without the clamp or with the old bundle-date meaning. The anchor wording is clamped, `max(through_date + 1, 1st of the bundle month)` or the same rule in words, everywhere: RouteCalendar elapsed/remaining/today_is_working (with the Thu-for-Sat and 31 Jan -> 1 Feb examples), RouteStar.ewd, the RouteSnapshot rule text, docs/requests/contract-sr-targets.md line 16 and the SrTargets KDoc plus the inline comment. RouteCalendar.last_month_working_days and RouteStar.lmwd say 'closed at the cut'. Those definitions match SrTargets.lastMonthWorkingDaysThrough (inclusive up to through, whole month once through is past month end) and SrStar's last-month read, which is cut at minOf(last.atEndOfMonth(), through). The other hits are unrelated (late-row anchor_clock, TimeAnchor). The slice check run on the archive printed 'contract/slices is up to date', exit 0. A YAML-vs-d.ts comparison found the RouteSnapshot description and the RouteCalendar and RouteStar field descriptions identical in web/src/contract/openapi.d.ts.
+
+D3 is verified. assertCounts now asserts the literal list [elapsed, today_is_working, remaining] plus the sum. The seed has no holiday in Jan or Feb 2027: 04 adds only 2026-12-16; 06 is a no-op when 04's config exists, and its holidays are Dec only anyway. The weekend is Friday. Hand-worked, with 1 Jan 2027 a Friday (26 working days in Jan) and 1 Feb a Monday (24 in Feb):
+- built Sun 3 for Mon 4 Jan, anchor Sun 3: 1 / true / 24
+- built and for Mon 4 Jan: 2 / true / 23
+- built Thu 7 for Sat 9 Jan, anchor Thu 7: 5 / true / 20
+- built 31 Jan for 1 Feb, anchor 1 Feb: 0 / true / 23
+
+All four match the test literals. The Star test literals are also right: lmwd 25 = Jan 1..30 minus 5 Fridays, and 26 for all of January; lms 10.000 prefetched, 50.000 on the day.
+
+Mutations:
+- anchor = bundle date: caught by Sun-for-Mon (it would give 2/true/23) and Thu-for-Sat (6/true/19).
+- anchor = through+1 without the clamp: caught by the month-end literal. Anchor 31 Jan gives after = 24, and the sum is 25, not 24.
+- a family missing at month end: caught by the presence assertTrue in seen().
+- a family reporting a different through_date: caught by the setOf("2027-01-30") equality.
+- today_is_working read for the bundle date: NOT caught by any test (listed as a low, with a Friday-anchor test that would catch it). The code itself is correct, reading at the anchor.
+
+Ingest test (3) is verified. The standing memo dated today (2027-01-04, uuid ...c0001, 1000 + 500 sticks on the route, the outlet and SKU 0) is created in @BeforeAll and nothing removes or voids it; the last test voids only 2027-01-03. Every assertBundle compares the bundles for 01-04 and for 01-05 (built ahead) with the DB truth through 01-03, so a figure that counted it would differ by 1000 sticks. This covers achievement, campaign and, where the category matches, Star and brand. It is re-proved after every figure step, but two non-figure tests skip assertBundle.
+
+No blocking defects found.
+
+- low: Mutation gap (D3): reading today_is_working for the BUNDLE date instead of the anchor (SrTargets.kt:86) is caught by no test. In every literal case the anchor and the bundle date are both working days: Sun 3 / Mon 4 Jan, Mon 4 / Mon 4, Thu 7 / Sat 9, and in the month-end case anchor and bundle date are the same day (1 Feb). Neither the literal triple nor the sum check can tell them apart. SrTargetsBundleTest:121 also uses bundle date = anchor = 2027-01-03. A test that would catch it: bundle for Sat 9 Jan built on Fri 8 Jan (through Thu 7, anchor Fri 8). Expected 6 / false / 20. With the mutation today_is_working is true, the sum becomes 27 instead of 26, and the test fails.
+- low: SrBundleThroughAndSnapshotTest.seen(): kpi and star through_date are read with `?.get("through_date")?.let`, so a family that DROPS the field is skipped without failing. A family that reports a different value is caught, because the set gets two members. Campaign and achievement rows use `!!` and are strict.
+- low: Month-end test (aBundleBuiltAheadOnTheLastDayOfTheMonthForTheFirstHasAnEmptyWindowAndSaysSo): the message says 'calendar, achievement, kpi, star and campaigns all report through 30 January', but achievement_mtd is empty in February. Achievement contributes nothing to the set there; it is covered in the other tests.
+- low: SrBundleFiguresIngestTest: two tests never call assertBundle, so the standing today-memo is not re-proved in them: theBundleVersionIsStable... and aQuantityFixOfAHeldMemoLineIsRefused.... Every figure-changing step (ingest, duplicate, release, discard, edit, void, data-entry, data-void) does call it.
+- low: contract/openapi.yaml ~line 11031 (outlet_sku_stats ADS/sdlw): still says '30 calendar days before the bundle date' and 'bundle date minus 7 days', but outletSkuStats is now cut at `<= through` (D-TKPI-19). This is outside the anchor lens and was not checked against the code. Worth a look.
+- low: Tests were not executed (no Gradle by brief). The checks above are by reading the code and working the dates by hand.
+
+### round-regression — PASS
+
+Round b792475026..a7890c654 changes 11 files (+88/-36): DECISIONS.md (D-TKPI-20 appended), SrStar.kt, SrTargets.kt, SrBundleThroughAndSnapshotTest.kt, contract/openapi.yaml, contract/slices (INDEX.md, RouteCalendar, RouteSnapshot, RouteStar), web/src/contract/openapi.d.ts and docs/requests/contract-sr-targets.md. Nothing goes beyond D1-D3. `git diff b792475026 a7890c654 -- db/` is empty, so V0210..V0213 are untouched. I parsed both openapi.yaml files and dropped every description/summary key: the trees are equal, so the contract change is description text only (openapi.d.ts and the slices likewise; INDEX.md changes only byte sizes). BundleService.kt is not in the round diff, so the snapshot and cache order, the single read of the request `now`, the inSnapshot guard (BundleService.kt:152/212/864) and its test noCacheLoaderRunsWhileTheBundleSnapshotIsOpen are all as in the previous round. No test was deleted or weakened: assertCounts was the sum-only check and now pins literal values and still checks the sum. I checked the claims against the code. D1: SrStar.kt:57 cuts last month at minOf(last.atEndOfMonth(), through), and lmwd is calendar.last_month_working_days (SrStar.kt:73/87), now computed by SrTargets.lastMonthWorkingDaysThrough over the same closed days. The new test starLastMonthIsCutAtTheLastClosedDayAndLmwdCountsTheSameDays asserts lms 10.000 / lmwd 25 when built ahead and 50.000 / 26 on the day. That matches January 2027 with a Friday weekend: 26 working days, minus the still-open Sunday 31 Jan. D2: the anchor text max(through_date + 1, 1st of the bundle month) is in RouteSnapshot, RouteStar.lmwd and ewd, RouteCalendar.last_month_working_days, the SrTargets KDoc and the request doc. D3: I worked the literals by hand and they are right: 1/true/24, 2/true/23, 5/true/20, and 0/true/23 for February (24 working days). The month-end test calls seen("2027-02-01"), whose assertTrue requires calendar, kpi, star and a non-empty campaigns list, and it asserts through = {2027-01-30}. The probe grep matches only old prose from before this round (low). The merge with 0baf2b4dda conflicts only in DECISIONS.md, where both sides appended (low).
+
+- low: Probe grep is NOT empty, but the matches are old prose, not code. `git grep -n -i -E "sync/figures|FigureProbe|figure_probe|postSyncFigures" a7890c654 -- . ":!docs"` returns 4 lines: DECISIONS.md:2199, 2229 and 2231 (the D-TKPI-14/16/17 history entries) and the KDoc comment at backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrBundleFiguresIngestTest.kt:55, which calls the probe PARKED. The same 4 hits are already at b792475026, so this round added nothing. No code, contract path or schema refers to the probe.
+- low: Merge with integration head 0baf2b4dda is not clean. `git merge-tree --write-tree a7890c654 0baf2b4dda` exits 1. The only conflicted path is DECISIONS.md: both sides appended entries near the file's tail (this branch D-TKPI-20; integration D-PAR-SR1-26..30 and later trains). Fix it by keeping both sides' entries. No code conflict.
+- low: New helper SrTargets.lastMonthWorkingDaysThrough returns 0 when through_date falls before the 1st of last month (a bundle built more than a month ahead). lms is then also 0, so lmads is 0/0. I did not check how StarProgress handles lmwd = 0. The contract text only promises null for the `ewd` divisor. Narrow edge case, and no test covers it.
+- low: The Star month-end test asserts `lmwd` only from the star object, not `calendar.last_month_working_days`. Both come from the same value, because SrStar.kt:73/87 uses `c.last_month_working_days`, so the gap is cosmetic.
