@@ -60,7 +60,8 @@ object FigureRuleB {
         if (ackedBeforeRequest == null) {
             return Delta(live.filter { it.voidOf == null && it.supersedes == null && inMonth(it) && it.uuid !in dead && it.state in NEVER_SENT }, emptyList())
         }
-        val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
+        // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
+        val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
         val byUuid = memos.associateBy { it.uuid }
         val subtract = dead.mapNotNull { id ->
             val m = byUuid[id] ?: return@mapNotNull null
@@ -72,9 +73,12 @@ object FigureRuleB {
     }
 
     /** Sale memos the page must say await confirmation: sent and unanswered, and the edits and voids that depend on one. */
-    fun awaiting(memos: List<LocalMemo>): Int {
+    fun awaiting(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>? = null): Int {
         val taint = tainted(memos)
-        return memos.count { it.voidOf == null && it.memoKind == "sale" && (it.state == "uncertain" || it.uuid in taint) }
+        return memos.count {
+            it.voidOf == null && it.memoKind == "sale" &&
+                (it.state == "uncertain" || it.uuid in taint || (ackedBeforeRequest != null && it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest))
+        }
     }
 
     /**

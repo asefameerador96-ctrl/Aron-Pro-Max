@@ -260,7 +260,11 @@ class BundleDownloader(
             // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
             if (trackUncertain) uncertain = (db.outboxDao().sentUnanswered() + db.outboxDao().quarantinedUuids()).distinct()
             // the records (memos, voids, redemptions, programme records) acknowledged BEFORE this request leaves: the phone's own order for the programme figures (rule B, no clock); no upload can be in flight, the lock is held
-            if (trackUncertain) ackedBefore = db.outboxDao().ackedOrderUuids(forDate.take(7) + "-01")
+            if (trackUncertain) {
+                // memos by the figure window (the quarter at most: two months before the bundle month cover every quarter start), redemptions and gift choices with no date cut
+                val from = runCatching { java.time.LocalDate.parse(forDate).withDayOfMonth(1).minusMonths(2).toString() }.getOrDefault(forDate.take(7) + "-01")
+                ackedBefore = (db.outboxDao().ackedMemoOrderUuids(from) + db.outboxDao().ackedProgrammeOrderUuids()).distinct()
+            }
             api.bundle(forDate, ifNoneMatch, configVersion)
         }
         return when (val r = answer) {

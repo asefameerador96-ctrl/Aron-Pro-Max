@@ -300,4 +300,136 @@ class ProgrammeStoreTest {
         }
         assertTrue(!ProgrammeStore.isDefiniteRefusal(null))
     }
+
+    // ---- real outbox rows written through CaptureRepository: quarantine, the acknowledged set by record type, the read side (final pass, round 3) ----
+    private val astha = com.aktcl.aron.feature.programmes.AsthaModel.parse(
+        """{"astha_as_of":"2026-11-17T10:00:00Z","astha_targets":[
+          {"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-11","std_target":"1000","std_achieved":"100","memo_target":0,"memo_achieved":0,"value_target_mtk":"5000000","value_achieved_mtk":"1000000","by_pack":[]},
+          {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":50,"memo_achieved":10,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]},
+          {"route_id":7,"outlet_id":501,"brand_id":11,"month":"2026-11","std_target":"100","std_achieved":"10","memo_target":0,"memo_achieved":0,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}""",
+        """{"nodes":[{"id":11,"level":"brand","name":"Marise","parent_id":1,"sort":1},{"id":21,"level":"variant","name":"V","parent_id":11,"sort":1}],"skus":[{"sku_id":105,"variant_id":21,"category_code":"cigarette","base_per_pack":20}]}""")!!
+    private fun stdOf(d: com.aktcl.aron.feature.programmes.AsthaData) = d.rows.first { it.outletId == null && it.brandId == 11L }.stdAchievedMilli
+
+    /** A memo captured the way production captures it (visit, memo, line through CaptureRepository), so the outbox rows are the real ones. */
+    private suspend fun captureMemo(date: String = "2026-11-18", route: Long = 7): String {
+        val memoUuid = ClientIds.newUuid(); val lineUuid = ClientIds.newUuid(); val visit = ClientIds.newUuid()
+        val m = meta.meta(route).copy(businessDate = date, capturedAt = "${date}T05:00:00.000Z")
+        val fix = com.aktcl.aron.core.database.entity.GeoFixEntity(ClientIds.newUuid(), visit, "visit_open", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordVisitOpen(com.aktcl.aron.core.database.entity.VisitEntity(visit, m, "sr_call", 501, "${date}T05:00:00.000Z", 1, true, null, fix.clientUuid, "in_range", 18.4, 100, 50, "master", 23.7, 90.4, "sale_allowed"), fix)
+        repo.recordSale(com.aktcl.aron.core.database.repo.SaleCapture(
+            com.aktcl.aron.core.database.entity.MemoEntity(memoUuid, m, visit, 501, "sr334001-261118-${memoUuid.take(3)}", "sale", "${date}T05:05:00.000Z", date, "outlet", 84_000, 0, 0, 0, 0, 84_000, 84_000, 0, false, null, 1, 0, 0),
+            listOf(com.aktcl.aron.core.database.entity.MemoLineEntity(lineUuid, m, memoUuid, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)),
+        ))
+        return memoUuid
+    }
+
+    /** What BundleDownloader.fetch records under the sync lock when it sends a bundle request: the unanswered and quarantined rows and the acknowledged set, from the real outbox. */
+    private suspend fun sendBundleRequest(date: String = "2026-11-18") {
+        val ob = db.outboxDao()
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_BUNDLE_UNCERTAIN, (ob.sentUnanswered() + ob.quarantinedUuids()).distinct().joinToString(",")))
+        val from = java.time.LocalDate.parse(date).withDayOfMonth(1).minusMonths(2).toString()
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE, com.aktcl.aron.core.database.repo.ReferenceRepository.encodeAcked((ob.ackedMemoOrderUuids(from) + ob.ackedProgrammeOrderUuids()).distinct())))
+    }
+    private suspend fun shown(): com.aktcl.aron.feature.programmes.AsthaData {
+        val memos = store.memosOfMonth("2026-11")
+        return com.aktcl.aron.feature.programmes.AsthaLocal.apply(astha, memos, store.ackedBeforeRequest(), "2026-11")
+    }
+    private suspend fun heldAndAwaiting(): Pair<Int, Int> { val memos = store.memosOfMonth("2026-11"); return com.aktcl.aron.feature.programmes.AsthaLocal.heldForReview(memos) to com.aktcl.aron.feature.programmes.AsthaLocal.awaiting(memos, store.ackedBeforeRequest()) }
+
+    @Test fun aPendingMemoIsAddedAnAcknowledgedOneBeforeTheRequestIsNot() = runTest {
+        val a = captureMemo(); val p = captureMemo()
+        db.outboxDao().applyAck(db.outboxDao().nextPending(10).first { it.recordType == "memo" && it.clientUuid == a }.clientUuid, "acked", null, 1L, "2026-11-18T05:10:00.000Z")
+        sendBundleRequest()
+        assertEquals(100_000L + 3_000L, stdOf(shown())) // only the pending memo of the two (3 base units, thousandths)
+    }
+
+    @Test fun aQuarantinedMemoIsShownAsHeldAndNeverAdded() = runTest {
+        val q = captureMemo()
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        for (recordedOrder in listOf(false, true)) {
+            if (recordedOrder) sendBundleRequest()
+            assertEquals(100_000L, stdOf(shown())) // never added, with or without a recorded order
+            assertEquals(1 to 0, heldAndAwaiting().let { it.first to (it.second) }) // its own line; not counted as unanswered
+        }
+    }
+
+    @Test fun releasedOnTheServerBeforeTheSnapshotButHeardAfterTheRequestIsNotAdded() = runTest {
+        val q = captureMemo()
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        sendBundleRequest() // the request leaves while the memo is held (the server may release it at any moment, whenever the phone hears)
+        assertEquals(1, db.outboxDao().applyResolution(q, "acked", "resolved_accepted", "2026-11-18T05:20:00.000Z")) // the resolution reaches the phone AFTER the request
+        assertEquals(100_000L, stdOf(shown())) // not added: the server figure may already hold it
+        assertEquals("uncertain", store.memosOfMonth("2026-11").single().state)
+        assertEquals(1, heldAndAwaiting().second) // awaiting until the next bundle
+        // the next bundle request: it is now acknowledged and in the set, so it is inside the figure
+        sendBundleRequest()
+        assertEquals(100_000L, stdOf(shown())); assertEquals(0, heldAndAwaiting().second)
+    }
+
+    @Test fun aResolutionHeardAfterTheRequestWithNoHeldRecordIsAwaitingNeverAdded() = runTest {
+        val q = captureMemo()
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyResolution(q, "acked", "resolved_accepted_with_fix", "2026-11-18T05:20:00.000Z")
+        // a request that was sent before the resolution was heard and that did not record the held row (an older bundle): the set exists and lacks it
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE, com.aktcl.aron.core.database.repo.ReferenceRepository.encodeAcked(emptyList())))
+        assertEquals(100_000L, stdOf(shown())); assertEquals(1, heldAndAwaiting().second)
+    }
+
+    @Test fun aResolutionHeardBeforeTheRequestIsInTheSetAndInsideTheFigure() = runTest {
+        val q = captureMemo()
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyResolution(q, "acked", "resolved_accepted", "2026-11-18T05:20:00.000Z") // accepted (or accepted with a fix) and heard, then the request
+        sendBundleRequest()
+        assertEquals(100_000L, stdOf(shown())); assertEquals(0 to 0, heldAndAwaiting())
+    }
+
+    @Test fun aDiscardedQuarantinedMemoIsGone() = runTest {
+        val q = captureMemo()
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyResolution(q, "rejected", "resolved_rejected", "2026-11-18T05:20:00.000Z")
+        sendBundleRequest()
+        assertEquals(100_000L, stdOf(shown())); assertEquals(0 to 0, heldAndAwaiting())
+    }
+
+    @Test fun theWireTypesOfARedemptionAndAGiftChoiceAreTheOnesTheOrderListsAndTheirAcknowledgementReachesTheSet() = runTest {
+        val red = ClientIds.newUuid(); val choice = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(red, 1)))
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), listOf(com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(10, 4, "2026-Q4", choice))))
+        val types = db.outboxDao().nextPending(20).associate { it.clientUuid to it.recordType }
+        assertEquals("redemption", types[red]); assertEquals("gift_choice", types[choice]) // there is no amo_record wire type
+        db.outboxDao().applyAck(red, "acked", null, 1L, "2026-11-18T05:10:00.000Z"); db.outboxDao().applyAck(choice, "acked", null, 2L, "2026-11-18T05:10:00.000Z")
+        sendBundleRequest()
+        val set = store.ackedBeforeRequest()!!
+        assertTrue(red in set && choice in set)
+        // the points balance: the redemption is inside the bundle's balance, not subtracted a second time
+        assertEquals(0L, com.aktcl.aron.feature.programmes.LocalRedeemed.points(store.redemptions(), 10, 3, set))
+        val assignment = com.aktcl.aron.feature.programmes.GiftAssignment(10, "2026-Q4", 4, null, false, false, 71)
+        assertEquals(com.aktcl.aron.feature.programmes.GiftState.Chosen(4), com.aktcl.aron.feature.programmes.GiftChoiceData(emptyList(), listOf(assignment)).stateOf(10, "2026-Q4", store.giftChoices(), set)) // the bundle's value wins once the set holds the acknowledged choice
+    }
+
+    @Test fun aRedemptionAcknowledgedLastMonthIsStillInTheSetAndNotSubtractedTwice() = runTest {
+        val red = ClientIds.newUuid()
+        val oldMeta = meta.meta(7).copy(businessDate = "2026-09-20", capturedAt = "2026-09-20T05:00:00.000Z")
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(oldMeta, plan(red, 1)))
+        db.outboxDao().applyAck(red, "acked", null, 1L, "2026-09-20T05:10:00.000Z")
+        sendBundleRequest("2026-11-18") // two months later: the memo window does not reach back, the programme set has no date cut
+        assertTrue(red in store.ackedBeforeRequest()!!)
+        assertEquals(0L, com.aktcl.aron.feature.programmes.LocalRedeemed.points(store.redemptions(), 10, 3, store.ackedBeforeRequest()))
+    }
+
+    @Test fun theReadSideIsCleanOnlyWithNothingOutstandingAndCountsTheMemosNotInTheFigure() = runTest {
+        // an October memo: acknowledged, then pending ones
+        val ok = captureMemo("2026-10-05"); db.outboxDao().applyAck(ok, "acked", null, 1L, "2026-10-05T06:00:00.000Z")
+        sendBundleRequest()
+        assertEquals(true, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.clean) // acknowledged before the last bundle request: nothing outstanding
+        val p = captureMemo("2026-10-06"); val q = captureMemo("2026-10-07")
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, "2026-10-07T06:00:00.000Z")
+        val side = store.readSideOf(listOf("2026-10", "2026-09"), 7)
+        assertEquals(false, side["2026-10"]!!.clean); assertEquals(2, side["2026-10"]!!.awaiting) // a pending one and a quarantined one
+        assertEquals(true, side["2026-09"]!!.clean)
+        assertEquals(true, store.readSideOf(listOf("2026-10"), 9)["2026-10"]!!.clean) // another route's memos are not this route's
+        // acknowledged AFTER the last bundle request: still outstanding for a read
+        db.outboxDao().applyAck(p, "acked", null, 3L, "2026-10-06T07:00:00.000Z")
+        assertEquals(2, store.readSideOf(listOf("2026-10"), 7)["2026-10"]!!.awaiting) // the quarantined one and the one acknowledged after the last bundle request
+    }
 }

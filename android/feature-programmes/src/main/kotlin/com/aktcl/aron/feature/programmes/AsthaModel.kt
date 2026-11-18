@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.programmes
 
+import com.aktcl.aron.rules.AsthaQuarters
 import com.aktcl.aron.rules.EntrySpec
 import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.rules.Formats
@@ -23,10 +24,18 @@ data class PackLine(val packFactor: Int, val packs: Long, val looseMilli: Long, 
 /** Achievement of one pack size of a brand in base units (thousandths as sent), SRM-B-63: one line per pack size, never summed across sizes. */
 data class AsthaPack(val packFactor: Int, val stdAchievedMilli: Long)
 
-/** A month kept from an online read: the server's `as_of` of the read (shown) and the Dhaka DATE of that read, which decides by calendar whether the month had ended: `YYYY-MM-DD` of the same server field. */
-data class FetchedMonth(val asOf: String?, val readDate: String?) {
-    /** True when the read was taken on or before the month's last day (or its date is unknown): the month was still open, so the figure can have grown. */
-    fun openAtRead(month: String): Boolean = readDate == null || readDate <= java.time.YearMonth.parse(month).atEndOfMonth().toString()
+/**
+ * A month kept from an online read: the server's `as_of` of the read (shown) and the Dhaka DATE of that read (`YYYY-MM-DD`, the same server field, compared with the month's last day by calendar).
+ * [clean] was recorded when the read request was SENT, under the sync lock: this phone held no memo of the month that was pending, sent and unanswered, quarantined, or acknowledged after its last bundle
+ * request (null on a file older than this record: not clean). [awaiting] is the number of this phone's own sale memos of the month that were NOT acknowledged then (not in the read's figure); it is
+ * shown until a newer read is stored, even when those memos are acknowledged later.
+ */
+data class FetchedMonth(val asOf: String?, val readDate: String?, val clean: Boolean? = null, val awaiting: Int = 0) {
+    /** True when the read was taken after the month's last day (a calendar comparison of dates; an unknown read date is not). */
+    fun endedAtRead(month: String): Boolean = readDate != null && readDate > java.time.YearMonth.parse(month).atEndOfMonth().toString()
+
+    /** A month is FINAL only when it had ended when it was read AND this phone had nothing of it outstanding when the read was sent. A month that is not final is read again whenever the page is opened online. */
+    fun isFinal(month: String): Boolean = endedAtRead(month) && clean == true
 }
 
 /**
@@ -64,8 +73,8 @@ data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated:
     /** True when the bundle cut this month's rows short: its rows are shown with a "list cut short" note and never replaced by a read (the bundle month always comes from the bundle). */
     fun cutShort(month: String): Boolean = month !in fetchedMonths && cutByBundle(month)
 
-    /** True when a month came from an online read taken while the month was still open (a figure that can have grown since). */
-    fun readWhileOpen(month: String): Boolean = fetchedMonths[month]?.openAtRead(month) == true
+    /** True when a month came from an online read that is not final (read before the month ended, or with memos of this phone outstanding): the figure can have grown. */
+    fun readNotFinal(month: String): Boolean = fetchedMonths[month]?.isFinal(month) == false
 
     /** The bundle says it cut this month: it lists the month, or (an older server that lists none) sets the plain `astha_truncated` flag and holds rows of the month. */
     fun cutByBundle(month: String): Boolean = if (truncatedMonths.isEmpty()) truncated && rows.any { it.month == month } else month in truncatedMonths
@@ -73,8 +82,8 @@ data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated:
     /** Months of the quarter the phone knows nothing of (no row, and no earlier online read that found none). */
     fun missingMonths(months: List<String>): List<String> = months.filter { m -> m !in fetchedMonths && rows.none { it.month == m } }
 
-    /** True when the quarter is worth reading online: a month the phone knows nothing of, or one that was read before its last day (a month is final only when read after it ended, by calendar dates). */
-    fun wantsRead(months: List<String>): Boolean = missingMonths(months).isNotEmpty() || months.any { readWhileOpen(it) }
+    /** True when the quarter is worth reading online: a month the phone knows nothing of, or one that was read before its last day (a month is final only when read after it ended with nothing of this phone outstanding). */
+    fun wantsRead(months: List<String>): Boolean = missingMonths(months).isNotEmpty() || months.any { readNotFinal(it) }
 
     /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
     fun packLine(brandId: Long?, p: AsthaPack): PackLine {
@@ -275,20 +284,17 @@ object AsthaModel {
      */
     fun valueText(mtk: Long, locale: UiLocale): String = Formats.money(mtk, locale, decimals = if (mtk % 1000L == 0L) 0 else 2)
 
-    /** The year of the quarter a month belongs to (the year the quarter series starts in: with start month 7, 2027-02 belongs to 2026). */
-    fun quarterYearOf(month: String, startMonth: Int = 1): Int = month.take(4).toInt() - if (month.substring(5, 7).toInt() < startMonth) 1 else 0
+    // The quarter naming is ONE shared function (shared rules AsthaQuarters, the server's own algorithm): the phone never re-derives it.
 
-    /** The quarter a month belongs to, as the screen's `Q-n` (quarter start month January by default, cfg.astha.quarter_start_month is 1 unless set). */
-    fun quarterOf(month: String, startMonth: Int = 1): Int {
-        val m = month.substring(5, 7).toInt()
-        return ((m - startMonth + 12) % 12) / 3 + 1
-    }
+    /** The year of the quarter key a month belongs to (the year of the quarter's first month). */
+    fun quarterYearOf(month: String, startMonth: Int = 1): Int = AsthaQuarters.of(month, startMonth)?.year ?: month.take(4).toInt()
 
-    /** The three month keys ("2026-01") of quarter [q] (1..4) of [year] for a quarter start month (default January). */
-    fun monthsOfQuarter(year: Int, q: Int, startMonth: Int = 1): List<String> = (0..2).map { i ->
-        val idx = (startMonth - 1) + (q - 1) * 3 + i
-        val y = year + idx / 12
-        val m = idx % 12 + 1
-        "%04d-%02d".format(java.util.Locale.ROOT, y, m)
-    }
+    /** The quarter a month belongs to, as the screen's `Q-n` (n counts from the start month; default January). */
+    fun quarterOf(month: String, startMonth: Int = 1): Int = AsthaQuarters.of(month, startMonth)?.index ?: 1
+
+    /** The three month keys ("2026-01") of quarter [q] (1..4) of key year [year] for a start month, as the server names them. */
+    fun monthsOfQuarter(year: Int, q: Int, startMonth: Int = 1): List<String> = AsthaQuarters.parse(quarterKey(year, q), startMonth)?.months.orEmpty()
+
+    /** The quarter key `YYYY-Qn` the server uses. */
+    fun quarterKey(year: Int, q: Int): String = "%04d-Q%d".format(java.util.Locale.ROOT, year, q)
 }

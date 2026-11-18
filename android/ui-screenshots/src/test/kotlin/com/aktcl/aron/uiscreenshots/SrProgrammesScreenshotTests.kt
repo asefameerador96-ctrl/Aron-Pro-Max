@@ -95,7 +95,7 @@ class SrProgrammesScreenshotTests {
 
     // quarter chips with months read online: loading, failed, a month kept from an online read (light, Sunlight, font 2.0), and a read month with nothing
     private val octRow = """{"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-10","std_target":"21600","std_achieved":"3200","memo_target":0,"memo_achieved":0,"value_target_mtk":"86400000","value_achieved_mtk":"12800000","by_pack":[{"pack_factor":20,"std_achieved":"3200"}]}"""
-    private fun withKept(month: String, rows: String, readDate: String = "2026-11-18") = AsthaFetched.merge(data!!, listOf(CachedMonth(7, month, "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$rows]") as kotlinx.serialization.json.JsonArray, readDate)))
+    private fun withKept(month: String, rows: String, readDate: String = "2026-11-18") = AsthaFetched.merge(data!!, listOf(CachedMonth(7, month, "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$rows]") as kotlinx.serialization.json.JsonArray, readDate, clean = true)))
     private val octPicked = AsthaSelection(2026, 4, "2026-10")
     @Test fun astha_target_bn_month_loading() = shot("astha_target_bn_month_loading") { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = AsthaSelection(2026, 1, "2026-01"), quarterState = mapOf("2026-Q1" to QuarterFetch.LOADING)) } }
     @Test fun astha_target_en_month_failed() = shot("astha_target_en_month_failed", AppLanguage.EN) { Frame { AsthaTargetScreen(data, UiLocale.EN, 2026, initial = AsthaSelection(2026, 1, "2026-01"), quarterState = mapOf("2026-Q1" to QuarterFetch.FAILED)) } }

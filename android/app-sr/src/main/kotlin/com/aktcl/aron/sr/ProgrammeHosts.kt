@@ -62,21 +62,11 @@ internal data class AsthaLoad(
     val base: AsthaData? = null, val outlets: List<ShopOutlet> = emptyList(), val tiers: Map<Long, String> = emptyMap(), val routeIds: List<Long> = emptyList(),
     /** `cfg.astha.quarter_start_month` of the bundle config; null when absent (never assumed). */
     val startMonth: Int? = null,
-    /** Unacknowledged own memos by month, for the months that came from an online read. */
-    val monthAwaiting: Map<String, Int> = emptyMap(),
     /** With no recorded order: acknowledged memos left out of the figures. */
     val unknownOrder: Int = 0,
     /** Memos the server holds for review. */
     val heldForReview: Int = 0,
 )
-
-/** This phone's own memos of the months that came from an online read (not the bundle's month) that the read cannot hold: not acknowledged yet, by month. */
-internal suspend fun monthAwaitingOf(day: SrDay, data: AsthaData?): Map<String, Int> = withContext(Dispatchers.IO) {
-    data?.fetchedMonths?.keys?.take(24)?.associateWith { m ->
-        val ms = day.programmes.memosOfMonth(m)
-        ms.count { it.voidOf == null && it.memoKind == "sale" && it.state != "acked" && it.state != "rejected" } // pending, sent, held or unanswered: the read cannot hold them
-    }?.filterValues { it > 0 }.orEmpty()
-}
 
 /** The quarter start month of the bundle's config, or null when the config has none: never assumed to be January. */
 internal suspend fun astahStartMonth(day: SrDay): Int? = withContext(Dispatchers.IO) {
@@ -97,9 +87,9 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         val server = readAstha(day)
         // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
         val memos = date?.take(7)?.let { day.programmes.memosOfMonth(it) }.orEmpty()
-        awaiting = AsthaLocal.awaiting(memos)
         // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order only memos that never left the phone are added
         val acked = day.programmes.ackedBeforeRequest()
+        awaiting = AsthaLocal.awaiting(memos, acked)
         unknownOrder = AsthaLocal.unknownOrder(memos, acked != null)
         held = AsthaLocal.heldForReview(memos)
         data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, acked, date.take(7)) }
@@ -110,7 +100,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
     // the months read online earlier, from the phone's own files: they are there with no network and after a kill and relaunch
     val merged = data?.let { AsthaFetched.merge(it, day.asthaMonths.readAll(routeIds)) }
     val tiers = ShopModel.tiers(day.reference.section("programmes"))
-    AsthaLoad(merged, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, merged, tiers), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")), data, outlets, tiers, routeIds, astahStartMonth(day), monthAwaitingOf(day, merged), unknownOrder, held)
+    AsthaLoad(merged, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, merged, tiers), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")), data, outlets, tiers, routeIds, astahStartMonth(day), unknownOrder, held)
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): the downloaded data and the months kept from earlier online reads; a quarter with months the phone lacks is read online once, when a connection exists. */
@@ -129,12 +119,12 @@ fun AsthaHost(day: SrDay, locale: UiLocale) {
                     val outcome = runCatching { day.readAsthaQuarter(key, page.routeIds, AsthaModel.monthsOfQuarter(y, q, page.startMonth)) }.getOrElse { QuarterFetch.FAILED }
                     // whatever was kept (even by a partly failed read) is shown; the state says what is still missing
                     val merged = page.base?.let { AsthaFetched.merge(it, withContext(Dispatchers.IO) { day.asthaMonths.readAll(page.routeIds) }) }
-                    kept = page.copy(data = merged, shops = ShopModel.build(page.outlets, merged, page.tiers), monthAwaiting = monthAwaitingOf(day, merged))
+                    kept = page.copy(data = merged, shops = ShopModel.build(page.outlets, merged, page.tiers))
                     states = if (outcome == null) states - key else states + (key to outcome)
                 }
             }
         }
-        AsthaTargetScreen(kept.data, locale, kept.year, shops = kept.shops, currentMonth = kept.month, awaiting = kept.awaiting, geography = kept.geography, quarterState = states, onQuarter = onQuarter, startMonth = kept.startMonth, monthAwaiting = kept.monthAwaiting, unknownOrder = kept.unknownOrder, heldForReview = kept.heldForReview)
+        AsthaTargetScreen(kept.data, locale, kept.year, shops = kept.shops, currentMonth = kept.month, awaiting = kept.awaiting, geography = kept.geography, quarterState = states, onQuarter = onQuarter, startMonth = kept.startMonth, unknownOrder = kept.unknownOrder, heldForReview = kept.heldForReview)
     }
 }
 

@@ -35,7 +35,7 @@ class GiftChoiceModelTest {
     @Test fun theQuarterOfADhakaBusinessDate() {
         assertEquals("2026-Q4", GiftChoiceModel.quarterOf("2026-11-18"))
         assertEquals("2026-Q1", GiftChoiceModel.quarterOf("2026-01-01"))
-        assertEquals("2025-Q4", GiftChoiceModel.quarterOf("2026-02-10", startMonth = 4)) // a fiscal quarter that started in April: Feb is in Q4 of the year before
+        assertEquals("2026-Q4", GiftChoiceModel.quarterOf("2026-02-10", startMonth = 4)) // the server's naming: the year of the quarter's FIRST month (January 2026), Q4 of a series that started in April
         assertEquals("2026-Q1", GiftChoiceModel.quarterOf("2026-04-01", startMonth = 4))
     }
 

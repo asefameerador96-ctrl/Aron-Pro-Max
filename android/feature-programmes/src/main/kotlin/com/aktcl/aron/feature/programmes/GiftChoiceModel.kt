@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import com.aktcl.aron.rules.AsthaQuarters
 import kotlinx.serialization.json.longOrNull
 
 /** The Astha gift an outlet has for a quarter (`programmes.gift_assignments[]`): chosen, photographed (locked) or not. */
@@ -94,11 +95,6 @@ object GiftChoiceModel {
     fun plan(outletId: Long, giftId: Long, quarter: String, uuid: String): PlannedRecord =
         PlannedRecord("gift_choice", uuid, uuid, 0, ProgrammePayloads.giftChoice(outletId, giftId, quarter))
 
-    /** The Astha quarter label `YYYY-Qn` of a Dhaka business date `YYYY-MM-DD`, quarters starting at [startMonth] (cfg.astha.quarter_start_month, default 1). */
-    fun quarterOf(businessDate: String, startMonth: Int = 1): String {
-        val y = businessDate.take(4).toInt(); val m = businessDate.substring(5, 7).toInt()
-        val shifted = (m - startMonth + 12) % 12
-        val year = if (m < startMonth) y - 1 else y
-        return "%04d-Q%d".format(java.util.Locale.ROOT, year, shifted / 3 + 1)
-    }
+    /** The Astha quarter key `YYYY-Qn` of a Dhaka business date `YYYY-MM-DD` for a quarter start month (cfg.astha.quarter_start_month): the shared function, the server's own naming. */
+    fun quarterOf(businessDate: String, startMonth: Int = 1): String = AsthaQuarters.of(businessDate, startMonth)?.key ?: businessDate.take(4) + "-Q1"
 }

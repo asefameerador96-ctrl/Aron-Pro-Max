@@ -29,6 +29,7 @@
     <string name="pg_quarter_unknown">The quarter start month is not known on this phone, so the months it holds are listed as they are.</string>
     <string name="pg_as_of_open">Data as of %1$s; the month was still open then</string>
     <string name="pg_held_review">%1$s memos of this phone are held for review by the server and are not in these figures.</string>
+    <string name="pg_as_of_unsettled">Data as of %1$s; some memos of this month were not confirmed then</string>
     <string name="pg_no_programme">No Astha programme is active for your routes.</string>
     <string name="pg_as_of">Data as of %1$s</string>
     <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>

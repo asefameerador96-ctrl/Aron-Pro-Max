@@ -14,6 +14,7 @@ import com.aktcl.aron.feature.programmes.LocalMemo
 import com.aktcl.aron.feature.programmes.LocalMemoLine
 import com.aktcl.aron.feature.programmes.LocalRedemption
 import com.aktcl.aron.feature.programmes.PlannedRecord
+import com.aktcl.aron.feature.programmes.ReadSide
 import com.aktcl.aron.feature.programmes.SaveOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -169,7 +170,7 @@ class ProgrammeStore(
             LocalMemo(
                 m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, state, ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
-                m.meta.routeId, m.memoKind,
+                m.meta.routeId, m.memoKind, null, ob?.state == "acked" && ob.lastCode?.startsWith("resolved_") == true,
             )
         }
     }
@@ -180,6 +181,27 @@ class ProgrammeStore(
      */
     suspend fun bundleRequestedAt(): String? = withContext(Dispatchers.IO) {
         db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_FULL_TIME)
+    }
+
+    /**
+     * What this phone holds of each of [months] for [routeId] at the moment an online read of the quarter is SENT (call it under the user's sync lock, like the bundle's set): [ReadSide.clean] is
+     * false when it holds a memo of the month that is pending, sent and unanswered, quarantined, or acknowledged after its last bundle request (not in the recorded set; only for months inside
+     * the set's window, older acknowledged memos were certainly committed before any read); [ReadSide.awaiting] counts those sale memos, which are NOT in the read's figure.
+     */
+    suspend fun readSideOf(months: List<String>, routeId: Long): Map<String, ReadSide> = withContext(Dispatchers.IO) {
+        val acked = ackedBeforeRequest()
+        val windowStart = ReferenceRepository(db).businessDate()?.let { runCatching { java.time.LocalDate.parse(it).withDayOfMonth(1).minusMonths(2).toString() }.getOrNull() }
+        months.associateWith { m ->
+            val outstanding = memosOfMonth(m).filter { it.voidOf == null && (it.routeId == null || it.routeId == routeId) }.filter {
+                when (it.state) {
+                    "pending", "in_flight", "quarantined", "uncertain" -> true
+                    // acknowledged after the last bundle request (or with no recorded order: unknown, so outstanding) and inside the set's window
+                    "acked" -> (acked == null || it.uuid !in acked) && (windowStart == null || it.businessDate >= windowStart)
+                    else -> false // refused: gone
+                }
+            }
+            ReadSide(clean = outstanding.isEmpty(), awaiting = outstanding.count { it.memoKind == "sale" })
+        }
     }
 
     /**

@@ -60,11 +60,18 @@ abstract class OutboxDao {
     abstract suspend fun sentUnanswered(): List<String>
 
     /**
-     * The records (memos and their voids, redemptions, programme records) this phone has had `accepted` or `duplicate` for, dated [fromDate] or later (the first of the bundle's month): the order the phone's own figure rules read
-     * (no clock): recorded under the sync lock at the moment a bundle request is sent.
+     * The MEMO records (memos and their voids) this phone has had `accepted` or `duplicate` for (or a resolution accepted), dated [fromDate] or later: the order the phone's memo figure rules read.
+     * The window follows the figure: the month for targets, the quarter for Astha (the caller passes a date early enough for both).
      */
-    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_RECORD_TYPES_SQL + ") AND state = 'acked' AND business_date >= :fromDate")
-    abstract suspend fun ackedOrderUuids(fromDate: String): List<String>
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_MEMO_RECORD_TYPES_SQL + ") AND state = 'acked' AND business_date >= :fromDate")
+    abstract suspend fun ackedMemoOrderUuids(fromDate: String): List<String>
+
+    /**
+     * The PROGRAMME records whose effect is not monthly (redemptions: points balance; gift choices: the choice state) this phone has been acknowledged for: every such row still held in the outbox, NO date
+     * cut (a redemption acknowledged last month is in the balance of every bundle requested after it; cutting the set at the first of the month would subtract it a second time).
+     */
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_PROGRAMME_RECORD_TYPES_SQL + ") AND state = 'acked'")
+    abstract suspend fun ackedProgrammeOrderUuids(): List<String>
 
     /**
      * Memos and redemptions the server QUARANTINED (held for review, or waiting for a parent) at this moment. The server can commit one later with no upload ack (a reviewer accepts, a sweep),
@@ -392,11 +399,13 @@ private const val CHECKOUT_HELD =
 data class StateCount(val state: String, val count: Int)
 
 /**
- * The record types whose acknowledgement ORDER (before or after a bundle request) the phone's figure rules read: memos and their voids (rule B of the programme figures), redemptions (points
- * balance) and the programme records stored as `amo_record` (gift choice). A new record type that feeds such a rule (a void above all: an acknowledged void takes its memo out of the server figure)
- * must be listed here; `OrderRecordTypesTest` fails when a contract record type with `void` in its name is not.
+ * The record types whose acknowledgement ORDER (before or after a bundle request) the phone's figure rules read, by the contract's own wire names (`RecordType`): memos and their voids (rule B of the
+ * programme figures; windowed by the figure) and redemptions and gift choices (points balance, choice state; no date cut). A new record type that feeds such a rule (a void above all: an
+ * acknowledged void takes its memo out of the server figure) must be listed here; `OrderRecordTypesTest` derives the expectation from the contract enum and fails when it is not.
  */
-val ORDER_RECORD_TYPES: List<String> = listOf("memo", "memo_void", "redemption", "amo_record")
+val ORDER_MEMO_RECORD_TYPES: List<String> = listOf("memo", "memo_void")
+val ORDER_PROGRAMME_RECORD_TYPES: List<String> = listOf("redemption", "gift_choice")
 
-/** [ORDER_RECORD_TYPES] as an SQL list (a constant, so the Room query can use it). */
-const val ORDER_RECORD_TYPES_SQL: String = "'memo', 'memo_void', 'redemption', 'amo_record'"
+/** The lists as SQL (constants, so the Room queries can use them). */
+const val ORDER_MEMO_RECORD_TYPES_SQL: String = "'memo', 'memo_void'"
+const val ORDER_PROGRAMME_RECORD_TYPES_SQL: String = "'redemption', 'gift_choice'"

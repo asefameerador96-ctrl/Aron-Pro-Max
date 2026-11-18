@@ -403,13 +403,16 @@ class SrDay(
 
     /** Reads a quarter of Astha rows online for the given routes and keeps its months; null when all came, else why not (offline is "connect once", never an error). */
     suspend fun readAsthaQuarter(quarter: String, routeIds: Collection<Long>, months: List<String>): com.aktcl.aron.feature.programmes.QuarterFetch? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { // parsing and file writes stay off the main thread
+        // what this phone holds of each month is recorded under the sync lock at the moment the read is requested, exactly like the bundle's acknowledged set (no upload batch in flight then)
+        val sides = HashMap<Pair<Long, String>, com.aktcl.aron.feature.programmes.ReadSide>()
+        com.aktcl.aron.core.sync.SyncEngine.underUserLock(userId) { routeIds.distinct().forEach { r -> programmes.readSideOf(months, r).forEach { (m, side) -> sides[r to m] = side } } }
         com.aktcl.aron.feature.programmes.AsthaQuarterFetcher(asthaMonths) { q, route, cursor ->
             when (val r = components.syncApi.listAsthaTargets(q, route, cursor)) {
                 is com.aktcl.aron.core.network.ApiResult.Success -> com.aktcl.aron.feature.programmes.PageOutcome.Page(r.value)
                 is com.aktcl.aron.core.network.ApiResult.Transport -> if (r.failure == com.aktcl.aron.core.network.TransportFailure.MALFORMED) com.aktcl.aron.feature.programmes.PageOutcome.Failed else com.aktcl.aron.feature.programmes.PageOutcome.Offline
                 else -> com.aktcl.aron.feature.programmes.PageOutcome.Failed
             }
-        }.fetch(quarter, routeIds, months)
+        }.fetch(quarter, routeIds, months) { route, month -> sides[route to month] ?: com.aktcl.aron.feature.programmes.ReadSide(null, 0) }
     }
 
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */

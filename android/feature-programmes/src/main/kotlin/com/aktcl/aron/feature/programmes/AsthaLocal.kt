@@ -9,6 +9,8 @@ data class LocalMemo(
     val routeId: Long? = null, val memoKind: String = "sale",
     /** Set on a local VOID record: the uuid of the memo it voids (the record itself has no lines and counts for nothing). This phone has no void write yet; the rule is built for it. */
     val voidOf: String? = null,
+    /** Acknowledged through a RESOLUTION of a held memo (`last_code` resolved_*), not through an upload ack: the server may have committed it any time before the phone heard. */
+    val viaResolution: Boolean = false,
 )
 
 /**
@@ -20,7 +22,7 @@ data class LocalMemo(
  */
 object AsthaLocal {
     /** Memos SENT but unanswered when the held snapshot was requested (state `uncertain`): the server figure may already hold them, so they are never added; the page says so. */
-    fun awaiting(memos: List<LocalMemo>): Int = FigureRuleB.awaiting(memos)
+    fun awaiting(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>? = null): Int = FigureRuleB.awaiting(memos, ackedBeforeRequest)
 
     /** Memos the server holds for review: never added, shown in their own line. */
     fun heldForReview(memos: List<LocalMemo>): Int = FigureRuleB.heldForReview(memos)

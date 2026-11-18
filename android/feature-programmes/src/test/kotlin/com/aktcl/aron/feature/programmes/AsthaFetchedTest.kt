@@ -205,24 +205,52 @@ class AsthaFetchedTest {
         assertEquals("2026-11-17", merged.fetchedMonths.getValue("2026-10").readDate)
     }
 
-    @Test fun aMonthIsFinalOnlyWhenReadAfterItsLastDay() {
-        // read on 20 November: October had ended (final), November had not
-        val oct = FetchedMonth("2026-11-20T01:00:00Z", "2026-11-20")
-        assertFalse(oct.openAtRead("2026-10")); assertTrue(oct.openAtRead("2026-11")); assertTrue(oct.openAtRead("2026-12"))
-        assertTrue(FetchedMonth("2026-11-30T01:00:00Z", "2026-11-30").openAtRead("2026-11")) // read ON the last day: the day was still running
-        assertFalse(FetchedMonth("2026-12-01T01:00:00Z", "2026-12-01").openAtRead("2026-11"))
-        assertTrue(FetchedMonth(null, null).openAtRead("2020-01")) // unknown read date: re-read when online
-        assertTrue(FetchedMonth("2024-03-01T00:00:00Z", "2024-03-01").openAtRead("2024-02").not()) // a leap year's February ends on the 29th
+    @Test fun aMonthIsFinalOnlyWhenReadAfterItsLastDayWithNothingOfThisPhoneOutstanding() {
+        // read on 20 November with nothing outstanding: October had ended (final), November and December had not
+        val oct = FetchedMonth("2026-11-20T01:00:00Z", "2026-11-20", clean = true)
+        assertTrue(oct.isFinal("2026-10")); assertFalse(oct.isFinal("2026-11")); assertFalse(oct.isFinal("2026-12"))
+        assertTrue(oct.endedAtRead("2026-10")); assertFalse(oct.endedAtRead("2026-11"))
+        // a month read ON its last day was still running; the day after it is over
+        assertFalse(FetchedMonth("2026-11-30T01:00:00Z", "2026-11-30", true).isFinal("2026-11"))
+        assertTrue(FetchedMonth("2026-12-01T01:00:00Z", "2026-12-01", true).isFinal("2026-11"))
+        // ended but this phone had a memo of it outstanding when the read was sent: not final
+        val dirty = FetchedMonth("2026-12-01T01:00:00Z", "2026-12-01", clean = false, awaiting = 2)
+        assertTrue(dirty.endedAtRead("2026-11")); assertFalse(dirty.isFinal("2026-11"))
+        // no recorded clean flag (an older file) or an unknown date is never final
+        assertFalse(FetchedMonth("2026-12-01T01:00:00Z", "2026-12-01", null).isFinal("2026-11")); assertFalse(FetchedMonth(null, null, true).isFinal("2020-01"))
+        assertTrue(FetchedMonth("2024-03-01T00:00:00Z", "2024-03-01", true).isFinal("2024-02")) // a leap year's February ends on the 29th
     }
 
-    @Test fun aQuarterWithAMonthReadWhileOpenIsWorthReadingAgainOnlineAndAFinalOneIsNot() {
+    @Test fun aQuarterWithAMonthThatIsNotFinalIsWorthReadingAgainOnlineAndAFinalOneIsNot() {
         val held = AsthaFetched.merge(bundle(), listOf(
-            CachedMonth(7, "2026-10", "2026-11-20T06:00:00Z", arr(item(7, "2026-10")), "2026-11-20"),
-            CachedMonth(7, "2026-12", "2026-11-20T06:00:00Z", arr(), "2026-11-20"),
+            CachedMonth(7, "2026-10", "2026-11-20T06:00:00Z", arr(item(7, "2026-10")), "2026-11-20", clean = true),
+            CachedMonth(7, "2026-12", "2026-11-20T06:00:00Z", arr(), "2026-11-20", clean = true),
         ))
-        assertTrue(held.wantsRead(q4)) // December was read before it began: open
-        val finalOnly = AsthaFetched.merge(bundle(), listOf(CachedMonth(7, "2026-09", "2026-11-20T06:00:00Z", arr(item(7, "2026-09")), "2026-11-20")))
+        assertTrue(held.wantsRead(q4)) // December was read before it began
+        val dirtyEnded = AsthaFetched.merge(bundle(), listOf(CachedMonth(7, "2026-09", "2026-11-20T06:00:00Z", arr(item(7, "2026-09")), "2026-11-20", clean = false, awaiting = 1)))
+        assertTrue(dirtyEnded.wantsRead(listOf("2026-09"))) // ended, but not clean: read again whenever the page is opened online
+        val finalOnly = AsthaFetched.merge(bundle(), listOf(CachedMonth(7, "2026-09", "2026-11-20T06:00:00Z", arr(item(7, "2026-09")), "2026-11-20", clean = true)))
         assertFalse(finalOnly.wantsRead(listOf("2026-09")))
+    }
+
+    @Test fun theOutstandingCountIsKeptWithTheFileUntilANewerReadReplacesIt() {
+        val c = cache()
+        c.put(7, "2026-09", "2026-11-20T06:00:00Z", arr(), clean = false, awaiting = 3)
+        val first = c.read(7, "2026-09")!!
+        assertEquals(false, first.clean); assertEquals(3, first.awaiting)
+        // the memos are acknowledged later: nothing changes the file; only a newer read does
+        assertEquals(3, cache().read(7, "2026-09")!!.awaiting)
+        c.put(7, "2026-09", "2026-11-21T06:00:00Z", arr(), clean = true, awaiting = 0)
+        assertEquals(true, c.read(7, "2026-09")!!.clean); assertEquals(0, c.read(7, "2026-09")!!.awaiting)
+    }
+
+    @Test fun twoRoutesAreCleanOnlyWhenBothAreAndTheirOutstandingCountsAdd() {
+        val merged = AsthaFetched.merge(bundle(), listOf(
+            CachedMonth(7, "2026-09", "2026-11-20T06:00:00Z", arr(), "2026-11-20", clean = true, awaiting = 0),
+            CachedMonth(8, "2026-09", "2026-11-20T06:00:00Z", arr(), "2026-11-20", clean = false, awaiting = 2),
+        ))
+        val f = merged.fetchedMonths.getValue("2026-09")
+        assertEquals(false, f.clean); assertEquals(2, f.awaiting)
     }
 
     @Test fun theCacheKeepsTheReadDateAndOldFilesWithoutOneAreOpen() {

@@ -192,19 +192,19 @@ class BundleDownloaderTest {
         fun row(u: String, date: String, state: String) = com.aktcl.aron.core.database.entity.OutboxEntity(
             clientUuid = u, recordType = "memo", familyUuid = u, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = state, createdAt = "t",
         )
-        db.outboxDao().insert(listOf(row(before, "2026-10-03", "pending"), row(after, "2026-10-04", "pending"), row(lastMonth, "2026-09-30", "pending")))
+        db.outboxDao().insert(listOf(row(before, "2026-10-03", "pending"), row(after, "2026-10-04", "pending"), row(lastMonth, "2026-06-30", "pending")))
         db.outboxDao().applyAck(before, "acked", null, 7L, SyncEngine.iso(Clock.now))
         db.outboxDao().applyAck(lastMonth, "acked", null, 8L, SyncEngine.iso(Clock.now))
         assertEquals(BundleOutcome.APPLIED, downloader().download().outcome)
         val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))
-        assertEquals("only memos of the bundle's month, acknowledged before the request", setOf(before), set)
+        assertEquals("memos inside the figure window (the quarter at most), acknowledged before the request", setOf(before), set)
         db.outboxDao().applyAck(after, "acked", null, 9L, SyncEngine.iso(Clock.now + 1_000L)) // acknowledged after R
         assertEquals(setOf(before), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
     }
 
     @Test fun redemptionsVoidsAndProgrammeRecordsAcknowledgedBeforeTheRequestAreInTheOrderToo() = runBlocking {
         val ids = (1..4).map { com.aktcl.aron.core.common.ClientIds.newUuid() }
-        val types = listOf("redemption", "memo_void", "amo_record", "visit")
+        val types = listOf("redemption", "memo_void", "gift_choice", "visit")
         db.outboxDao().insert(ids.zip(types).map { (u, t) -> com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = u, recordType = t, familyUuid = u, rank = 0, businessDate = "2026-10-03", payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t") })
         ids.forEach { db.outboxDao().applyAck(it, "acked", null, 7L, SyncEngine.iso(Clock.now)) }
         downloader().download()
@@ -218,6 +218,16 @@ class BundleDownloaderTest {
         db.outboxDao().applyAck(q, "quarantined", "late_sync", null, SyncEngine.iso(Clock.now))
         downloader().download()
         assertEquals(q, db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)) // never added by the phone, whenever the resolution is heard
+    }
+
+    @Test fun aRedemptionAcknowledgedLongBeforeIsStillInTheSetNoDateCutForRecordsThatAreNotMonthly() = runBlocking {
+        val old = com.aktcl.aron.core.common.ClientIds.newUuid(); val oldMemo = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, t: String, date: String) = com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = u, recordType = t, familyUuid = u, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t")
+        db.outboxDao().insert(listOf(row(old, "redemption", "2026-01-05"), row(oldMemo, "memo", "2026-01-05")))
+        db.outboxDao().applyAck(old, "acked", null, 1L, SyncEngine.iso(Clock.now)); db.outboxDao().applyAck(oldMemo, "acked", null, 2L, SyncEngine.iso(Clock.now))
+        downloader().download()
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))!!
+        assertEquals(setOf(old), set) // the redemption (balance) has no date cut; the January memo is outside every figure window
     }
 
     @Test fun nothingAcknowledgedYetIsAnEmptySetNotAnUnknownOrder() = runBlocking {
