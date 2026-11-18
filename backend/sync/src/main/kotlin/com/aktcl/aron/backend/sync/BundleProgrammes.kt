@@ -95,6 +95,9 @@ object BundleProgrammes {
         if (enrolled.isNotEmpty()) {
             var remaining = MAX_ASTHA_ROWS
             for (m in listOf(month) + q.months.filter { it != month }) {
+                // The bound is spent: the month cannot send a row, so a cheap EXISTS on its target rows tells whether it is incomplete (named, never silent) without running the memo
+                // aggregation for one row. It is a superset (a month whose rows would all be dropped as empty is named too: conservative, the phone reads it online).
+                if (remaining == 0) { if (monthHasTargets(h, routeIds, enrolled, m)) cutMonths += m; byMonth[m] = emptyList(); continue }
                 val rows = asthaTargets(h, routeIds, enrolled, m, m.plusMonths(1), Instant.EPOCH, remaining + 1, 0, dropEmpty = true, perRowAsOf = false)
                 if (rows.size > remaining) { cutMonths += m; byMonth[m] = rows.take(remaining); remaining = 0 } else { byMonth[m] = rows; remaining -= rows.size }
             }
@@ -256,6 +259,11 @@ object BundleProgrammes {
      * content gives equal bytes and a rebuild moves the bundle version only when a memo arrived (a wall-clock `as_of` would mint a new snapshot on every build). The
      * Dhaka start of the MONTH when there is none. Display only; the achievement rule (what the phone adds) is the ACHIEVEMENT RULE of the contract's `ProgrammesSection`, stated once there.
      */
+    /** True when [month] has any Astha target row for these routes and enrolled outlets (the same filter as [asthaTargets], without the achievement). */
+    internal fun monthHasTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, month: LocalDate): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM app.astha_target WHERE route_id = ANY(CAST(:routes AS bigint[])) AND month >= :first AND month < :after AND (outlet_id IS NULL OR outlet_id = ANY(CAST(:outlets AS bigint[]))))",
+    ).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).bind("first", month).bind("after", month.plusMonths(1)).mapTo(Boolean::class.java).one()
+
     internal fun contentAsOf(h: Handle, outlets: List<Long>, first: LocalDate, after: LocalDate): Instant {
         return h.createQuery(
             "SELECT max(GREATEST(received_at, status_changed_at)) FROM app.memo WHERE business_date >= :first AND business_date < :after AND outlet_id = ANY(CAST(:outlets AS bigint[]))",

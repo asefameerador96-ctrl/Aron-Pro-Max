@@ -84,8 +84,12 @@ ProgrammesSection:
       maxItems: 3
       items:
         $ref: '#/components/schemas/Month'
-      description: From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty
-        when `astha_truncated` is false); a month not named here is complete.
+      description: 'From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty
+        when `astha_truncated` is false); a month not named here is complete FOR THE OUTLETS ENROLLED TODAY ON TODAY''S
+        ROUTES: a row of a past month is not sent (and the month is not named) when the outlet''s enrolment ended
+        earlier in the quarter or its target row still carries an old route; `listAsthaTargets` has the same route
+        and enrolment filter, so the limit is the same online. A month the bound cut is named even when the cut
+        left it with no row sent.'
     astha_targets:
       type: array
       maxItems: 1000

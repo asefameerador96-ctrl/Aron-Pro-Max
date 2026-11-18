@@ -10894,7 +10894,7 @@ export interface components {
             truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments" | "pending_gift_verifications")[];
             /** @description 1.15.0. True when the user's routes had more Astha rows (for the quarter from 1.22.0, before that for the month) than the bound of 1,000 and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. `astha_truncated_months` says which months. */
             astha_truncated: boolean;
-            /** @description From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty when `astha_truncated` is false); a month not named here is complete. */
+            /** @description From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty when `astha_truncated` is false); a month not named here is complete FOR THE OUTLETS ENROLLED TODAY ON TODAY'S ROUTES: a row of a past month is not sent (and the month is not named) when the outlet's enrolment ended earlier in the quarter or its target row still carries an old route; `listAsthaTargets` has the same route and enrolment filter, so the limit is the same online. A month the bound cut is named even when the cut left it with no row sent. */
             astha_truncated_months?: components["schemas"]["Month"][];
             astha_targets: components["schemas"]["AsthaTargetRow"][];
             gift_assignments: components["schemas"]["GiftAssignment"][];
