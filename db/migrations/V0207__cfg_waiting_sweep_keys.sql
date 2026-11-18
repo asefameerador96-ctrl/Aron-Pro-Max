@@ -70,10 +70,12 @@ CREATE TRIGGER sync_quarantine_clear_waiting BEFORE UPDATE ON app.sync_quarantin
   EXECUTE FUNCTION app.sync_quarantine_clear_waiting();
 -- a non-open row never carries a marker (the column is new, so no existing row can break it: NOT VALID then VALIDATE in the same migration)
 ALTER TABLE app.sync_quarantine ADD CONSTRAINT sync_quarantine_waiting_open CHECK (waiting_since IS NULL OR status = 'open') NOT VALID;
+-- the validation reads the table once; the table holds review items only and the column is new (every row is null), so it is instant; the migration runs in one transaction
+-- squawk-ignore constraint-missing-not-valid
 ALTER TABLE app.sync_quarantine VALIDATE CONSTRAINT sync_quarantine_waiting_open;
 
 -- the sweep's order (least recently examined first) and the queue's count read only waiting open items
--- squawk-ignore reason: the rule asks for CREATE INDEX CONCURRENTLY on an existing table; app.sync_quarantine holds review items only (a handful to some thousands of rows, a plain build takes
+-- Why the ignore below: the rule asks for CREATE INDEX CONCURRENTLY on an existing table; app.sync_quarantine holds review items only (a handful to some thousands of rows, so a plain build takes
 -- milliseconds), the migration runs in one transaction (CONCURRENTLY is not possible there), lock_timeout above bounds the wait, and earlier migrations (V0193) use the same inline ignore.
 -- squawk-ignore require-concurrent-index-creation
 CREATE INDEX IF NOT EXISTS sync_quarantine_waiting ON app.sync_quarantine (waiting_checked_at NULLS FIRST, id) WHERE waiting_since IS NOT NULL AND status = 'open';
