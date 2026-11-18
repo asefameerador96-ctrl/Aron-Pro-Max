@@ -65,7 +65,12 @@ android {
     }
     buildFeatures { compose = true }
     // Only the two app languages ship (docs/24 s5.6); drops library translations and keeps the APK lean (s5.7).
-    androidResources { localeFilters += listOf("en", "bn") }
+    androidResources {
+        localeFilters += listOf("en", "bn")
+        // OkHttp's public-suffix list (about 42 KB download): only HttpUrl.topPrivateDomain() reads it, and no phone code calls that
+        // and no CookieJar is installed (default NO_COOKIES), so the asset is never opened (docs/status/apk-size-2026-11-18.md).
+        ignoreAssetsPatterns += "!PublicSuffixDatabase.list"
+    }
     packaging {
         // APK size (docs/31, the +15 % gate): native libraries ship deflated and are extracted at install (about 1.2 MB less to
         // download on a 2 GB/day pack, the same code and the same behaviour); library licence texts and build-only files are dropped.
