@@ -190,4 +190,8 @@ class SrProgrammesScreenshotTests {
     @Test fun campaign_photo_en_sunlight() = shot("campaign_photo_en_sunlight", AppLanguage.EN, sunlight = true) { Campaign(listOf(campaignGroup), ready = true, locale = UiLocale.EN, state = shot1) }
     @Test fun campaign_photo_bn_font20() = shot("campaign_photo_bn_font20", fontScale = 2.0f) { Campaign(listOf(campaignGroup), state = shot1) }
     @Test fun campaign_photo_bn_empty() = shot("campaign_photo_bn_empty") { Campaign(emptyList()) }
+
+    // the awaiting-confirmation line (lost-answer rule), Bangla at font 2.0 and in Sunlight
+    @Test fun astha_target_bn_awaiting_font20() = shot("astha_target_bn_awaiting_font20", fontScale = 2.0f) { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = picked, awaiting = 3) } }
+    @Test fun astha_target_en_awaiting_sunlight() = shot("astha_target_en_awaiting_sunlight", AppLanguage.EN, sunlight = true) { Frame { AsthaTargetScreen(data, UiLocale.EN, 2026, initial = picked, awaiting = 1) } }
 }

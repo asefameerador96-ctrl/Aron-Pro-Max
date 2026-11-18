@@ -32,6 +32,8 @@ class ProgrammeStore(
     private val meta: CaptureMetaProvider,
     /** Claims the compressed photo for its record before the record commits (F-SYS-030), with the shutter fix; a no-op where there is no camera queue (tests). */
     private val claimPhoto: suspend (photoUuid: String, recordUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) -> Unit = { _, _, _ -> },
+    /** Gives the claim back when the record's save was refused after the claim, so a new record uuid can claim the photo (a no-op where there is no camera queue). */
+    private val releasePhoto: suspend (photoUuid: String, recordUuid: String) -> Unit = { _, _ -> },
     private val requestSync: () -> Unit,
 ) {
     /** The redemptions on this phone with their outbox state (a row with no outbox state yet counts as pending). */
@@ -41,7 +43,7 @@ class ProgrammeStore(
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
             fun n(k: String) = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
             val ob = db.outboxDao().byClientUuid(r.clientUuid)
-            val state = if (r.clientUuid in unsure && ob?.state != "rejected") "uncertain" else ob?.state ?: "pending"
+            val state = readState(r.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = false)
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
                 (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt)
         }
@@ -116,7 +118,10 @@ class ProgrammeStore(
         catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
         if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isNotEmpty()) return@withContext saveProgramme(meta, listOf(plan)) // a replay or another basket: the photo stays as it is
         try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
-        saveProgramme(meta, listOf(plan))
+        val out = saveProgramme(meta, listOf(plan))
+        // a refusal after the claim (a gate that closed in between, a conflict race) gives the claim back, so the next record uuid can claim this photo
+        if (out != SaveOutcome.SAVED && out != SaveOutcome.ALREADY_SAVED) runCatching { releasePhoto(photoUuid, plan.clientUuid) }
+        out
     }
 
     /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */
@@ -126,7 +131,7 @@ class ProgrammeStore(
             val ob = db.outboxDao().byClientUuid(m.clientUuid)
             // A row put back to pending by a restore or digest resync keeps its first acknowledgement time: the server already held it once, so it counts as acknowledged
             // then (inside the figure when that was before the request), never as a memo the phone alone holds.
-            val state = if (m.clientUuid in unsure && ob?.state != "rejected") "uncertain" else if (ob?.state == "pending" && ob.ackedAt != null) "acked" else ob?.state ?: "pending"
+            val state = readState(m.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = true)
             LocalMemo(
                 m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, state, ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
@@ -187,4 +192,16 @@ class ProgrammeStore(
     fun metaFor(routeId: Long): CaptureMeta = meta.meta(routeId)
 
     fun newUuid(): String = ClientIds.newUuid()
+
+    companion object {
+        /**
+         * The state a memo or redemption is read in: `uncertain` when it was sent but unanswered when the held snapshot was requested (unless the server refused it since); a row put
+         * back to `pending` by a restore or digest resync that keeps its first acknowledgement time ([restoredIsAcked], memos) reads as acknowledged then; else the outbox state, `pending` for no row.
+         */
+        internal fun readState(sentUnanswered: Boolean, outboxState: String?, ackedAt: String?, restoredIsAcked: Boolean): String = when {
+            sentUnanswered && outboxState != "rejected" -> "uncertain"
+            restoredIsAcked && outboxState == "pending" && ackedAt != null -> "acked"
+            else -> outboxState ?: "pending"
+        }
+    }
 }

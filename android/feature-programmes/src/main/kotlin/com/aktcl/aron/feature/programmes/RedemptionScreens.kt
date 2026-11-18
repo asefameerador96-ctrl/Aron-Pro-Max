@@ -40,6 +40,7 @@ import com.aktcl.aron.rules.UiLocale
 import kotlinx.coroutines.launch
 
 object RedemptionTags {
+    const val AWAITING = "redeem_awaiting"
     const val PICKER = "redeem_picker"
     const val BANNER = "redeem_banner"
     const val OVERDRAWN = "redeem_overdrawn"
@@ -68,6 +69,8 @@ fun RedemptionScreen(
     balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long,
     onConfirm: suspend (Basket, List<LoyaltyGift>) -> SaveOutcome,
     modifier: Modifier = Modifier, initialOutlet: Long? = null, initialQty: Map<Long, Int> = emptyMap(),
+    /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them (the same line as the points page). */
+    awaiting: Int = 0,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -86,6 +89,7 @@ fun RedemptionScreen(
             }
             return@Column
         }
+        if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_redemptions, Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(RedemptionTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val all = stringResource(R.string.pg_all)
         val letters = listOf(all) + withPoints.map { it.chip }.filter { it.isNotBlank() }.distinct().sorted()
         val shownLetter = letter.ifEmpty { all }

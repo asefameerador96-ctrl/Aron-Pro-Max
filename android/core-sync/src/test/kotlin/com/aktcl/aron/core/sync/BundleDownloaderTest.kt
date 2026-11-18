@@ -97,6 +97,8 @@ class BundleDownloaderTest {
     private fun api(body: String, code: Int = 200) = MockResponse.Builder().code(code).addHeader("X-Aron-Api", "1").addHeader("ETag", "\"2026-10-05:3\"").body(body).build()
 
     @Before fun setUp() {
+        Clock.now = 1_791_165_600_000L // the clock is one shared object: every test starts at the same instant
+        tracking = true
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
@@ -124,10 +126,12 @@ class BundleDownloaderTest {
         runCatching { server.close() }
     }
 
+    private var tracking = true // the SR app; the AMO and TSO apps do not track sent-but-unanswered rows
+
     private fun downloader(origin: String = server.url("/").toString().trimEnd('/')): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(origin, allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
-        return BundleDownloader(db, SyncApi(client), staging, Clock, USER)
+        return BundleDownloader(db, SyncApi(client), staging, Clock, USER, trackUncertain = tracking)
     }
 
     /** Contract ACHIEVEMENT RULE, single flight: a sync run in flight when the day request is wanted finishes first, and the request instant is taken after it. */
@@ -180,6 +184,27 @@ class BundleDownloaderTest {
         assertNotNull("answered: one full refetch", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
         assertNull("the refetch renewed the list", db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN))
         assertNull("and nothing waits any more", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
+    }
+
+    /** The AMO and TSO apps never pay a second full download of their large bundle for this: nothing is recorded and nothing is refetched. */
+    @Test fun anAppThatDoesNotTrackRecordsNothingAndNeverRefetches() = runBlocking {
+        tracking = false
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        assertNull(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN))
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_UNCERTAIN, sent)); db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        assertNull(d.refreshIfUncertainResolved())
+    }
+
+    /** Only the held bundle of TODAY is refetched (as refreshDelta); on a later Dhaka day the day start brings its own bundle. */
+    @Test fun theRefetchOnlyAppliesToTheHeldBundleOfToday() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        Clock.now += 24L * 3600 * 1000 // the next Dhaka day: the held bundle is yesterday's
+        assertNull(d.refreshIfUncertainResolved())
     }
 
     @Test fun theRefetchAfterAnAnswerIsRateLimitedSoAFlappingLinkCannotLoop() = runBlocking {

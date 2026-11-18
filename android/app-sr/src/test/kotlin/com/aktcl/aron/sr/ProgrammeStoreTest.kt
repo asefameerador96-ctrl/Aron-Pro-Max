@@ -126,4 +126,22 @@ class ProgrammeStoreTest {
         assertEquals(SaveOutcome.CHECK_IN_FIRST, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
         assertTrue(claims.isEmpty()); assertEquals(0, db.outboxDao().countInState("pending"))
     }
+
+    // ---- the lost-answer rule's read side ----
+    @Test fun rowsSentButUnansweredReadAsUncertainAndARestoredPendingRowKeepsItsFirstAck() {
+        val rs = ProgrammeStore.Companion
+        assertEquals("uncertain", rs.readState(true, "in_flight", null, true)); assertEquals("uncertain", rs.readState(true, "pending", null, true))
+        assertEquals("rejected", rs.readState(true, "rejected", null, true)) // the server's refusal is an answer
+        assertEquals("acked", rs.readState(false, "pending", "2026-11-17T09:00:00Z", true)) // a restore put it back to pending: the server held it once
+        assertEquals("pending", rs.readState(false, "pending", "2026-11-17T09:00:00Z", false)) // not for redemptions
+        assertEquals("pending", rs.readState(false, null, null, true))
+    }
+
+    @Test fun aSavedRedemptionInTheUncertainListReadsAsUncertain() = runTest {
+        val uuid = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(uuid, 1)))
+        assertEquals("pending", store.redemptions().single().state)
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_BUNDLE_UNCERTAIN, uuid))
+        assertEquals("uncertain", store.redemptions().single().state)
+    }
 }

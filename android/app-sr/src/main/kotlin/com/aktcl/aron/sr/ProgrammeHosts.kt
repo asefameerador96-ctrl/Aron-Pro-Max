@@ -118,7 +118,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.builtAt),
+            balanceOf = PointsBalance.function(redeemed, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed),
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = runCatching { day.reference.config("cfg.loyalty.cash_rate_mtk_per_point", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toLongOrNull() }.getOrNull() ?: 0L

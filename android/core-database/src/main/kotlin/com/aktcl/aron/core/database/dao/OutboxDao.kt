@@ -54,10 +54,9 @@ abstract class OutboxDao {
      * `attempts` drives skip-ahead and `row_max_retries` (s4.6); re-batching after a split or a release never counts.
      */
     /**
-     * Memos and redemptions that were SENT at least once and have no answer yet: in a batch (`in_flight`), or back to `pending` after a failed attempt (`attempts` counts
-     * failures). The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
+     * Memos and redemptions that were SENT at least once and have no answer yet: in a batch (`in_flight`), or back to `pending` after an attempt (a failed attempt counts in `attempts`; a batch the server answered with a 5xx or a gateway error is RELEASED to `pending` with `attempts` 0 and only `last_code` set, and the server may hold some of its rows). Over-including is the safe side. The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
      */
-    @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND attempts > 0))")
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND (attempts > 0 OR last_code IS NOT NULL)))")
     abstract suspend fun sentUnanswered(): List<String>
 
     /** How many of [uuids] still wait for an answer (pending or in flight). */

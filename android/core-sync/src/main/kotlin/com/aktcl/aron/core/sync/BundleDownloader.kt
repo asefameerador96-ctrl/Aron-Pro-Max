@@ -95,6 +95,11 @@ class BundleDownloader(
      * (inside the server's figure) or uploaded AFTER the request (not inside it), never both. Null (tests that do not cover it): no ordering.
      */
     private val userId: Long? = null,
+    /**
+     * The SR app only: record the memos and redemptions sent but unanswered when the day bundle is requested, and refetch once when they are answered (the Astha figures and
+     * loyalty balances live in the SR bundle). The AMO and TSO apps leave it off: they never pay a second full download of their large bundle for it.
+     */
+    private val trackUncertain: Boolean = false,
 ) {
     private val repo = ReferenceRepository(db)
     private val meta = db.referenceDao()
@@ -203,14 +208,18 @@ class BundleDownloader(
      * nothing waits, something is still open, or the last such refetch is too recent.
      */
     suspend fun refreshIfUncertainResolved(): BundleReport? {
-        val uuids = meta.meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() } ?: return null
-        val held = repo.businessDate() ?: return null
-        if (uuids.chunked(500).any { db.outboxDao().stillOpen(it) > 0 }) return null
-        val now = clock.nowMs()
-        val last = meta.meta(KEY_UNCERTAIN_REFETCH_AT)?.toLongOrNull()
-        if (last != null && now >= last && now - last < UNCERTAIN_REFETCH_GAP_MS) return null
-        meta.putMeta(SyncMetaEntity(KEY_UNCERTAIN_REFETCH_AT, now.toString()))
-        return lock.withLock { fullOfTheDay(held) }
+        if (!trackUncertain) return null
+        return lock.withLock { // the check and the stamp of the rate limit are one step under the downloader lock: two callers cannot both pass
+            val uuids = meta.meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() } ?: return@withLock null
+            val held = repo.businessDate() ?: return@withLock null
+            val now = clock.nowMs()
+            if (held != BusinessDate.of(now).toString()) return@withLock null // only the held bundle of TODAY (a new day starts with its own download), as refreshDelta
+            if (uuids.chunked(500).any { db.outboxDao().stillOpen(it) > 0 }) return@withLock null
+            val last = meta.meta(KEY_UNCERTAIN_REFETCH_AT)?.toLongOrNull()
+            if (last != null && now >= last && now - last < UNCERTAIN_REFETCH_GAP_MS) return@withLock null
+            meta.putMeta(SyncMetaEntity(KEY_UNCERTAIN_REFETCH_AT, now.toString()))
+            fullOfTheDay(held)
+        }
     }
 
     /**
@@ -246,7 +255,7 @@ class BundleDownloader(
         val answer = underSyncLock {
             requestedAt = iso(clock.nowMs())
             // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
-            uncertain = db.outboxDao().sentUnanswered()
+            if (trackUncertain) uncertain = db.outboxDao().sentUnanswered()
             api.bundle(forDate, ifNoneMatch, configVersion)
         }
         return when (val r = answer) {
@@ -424,6 +433,8 @@ class BundleDownloaders(
     private val databases: com.aktcl.aron.core.database.UserDatabases,
     private val api: SyncApi,
     private val clock: WallClock,
+    /** The SR app passes true (see [BundleDownloader]); the AMO and TSO apps keep false. */
+    private val trackUncertain: Boolean = false,
 ) {
     private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
 
@@ -433,7 +444,7 @@ class BundleDownloaders(
      */
     suspend fun of(userId: Long): BundleDownloader {
         val db = databases.of(userId)
-        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock, id) }!!
+        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock, id, trackUncertain) }!!
     }
 
     /** The AMO and TSO day start runs in this scope, so a rotation or language switch (which cancels the screen's own scope) never aborts it. */

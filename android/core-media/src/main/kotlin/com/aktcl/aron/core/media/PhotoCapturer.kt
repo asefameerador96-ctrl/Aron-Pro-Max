@@ -94,6 +94,18 @@ class PhotoCapturer<I : Any>(
         } ?: throw IllegalArgumentException("no stored photo $mediaUuid")
     }
 
+    /**
+     * Gives a claim back: a photo still ATTACHED to [ref] (not yet uploaded) returns to CAPTURED, free to be claimed by another record. For a record whose save was refused AFTER the
+     * claim; a photo already uploaded or claimed by another record is left alone. True when released.
+     */
+    suspend fun release(mediaUuid: String, ref: MediaRef): Boolean {
+        var released = false
+        store.update(mediaUuid) { cur ->
+            if (cur.state == MediaState.ATTACHED && cur.ref == ref) { released = true; cur.copy(state = MediaState.CAPTURED, ref = null, stamp = null, attachedAtMs = null) } else cur
+        }
+        return released
+    }
+
     /** Drops a photo that was replaced by a retake or abandoned with its form. A claimed photo is never dropped. */
     suspend fun discard(mediaUuid: String): Boolean {
         return store.deleteIf(mediaUuid) { it.state == MediaState.CAPTURED }
