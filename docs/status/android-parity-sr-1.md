@@ -48,7 +48,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | ui-reference | home-1/2, stock, attendance, sale-select, outlet-menu, tasks, astha, summary | as the rows above | |
 
 
-## KNOWN LOWS (lead's check of b08c3782, PASS; open, not done)
+## LOWS from the lead's check of b08c3782 (CLOSED in D-PAR-SR1-31 except item 6, which the gates lane does)
 1. `SaleFlow.commit` success path keeps a stale `notice`: clear it on commit.
 2. `editLocked` turns every ISE on a locked draft into the Locked notice (e.g. zero-sale-with-lines): keep the lock wording for lock refusals only.
 3. `SaleRoute.laterShown` is plain remember: the later-changes dialog shows again after a rotation; use rememberSaveable.
