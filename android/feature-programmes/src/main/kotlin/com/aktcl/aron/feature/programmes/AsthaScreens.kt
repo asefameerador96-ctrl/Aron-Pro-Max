@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronChoiceChip
 import com.aktcl.aron.core.ui.aron.AronDropdown
+import com.aktcl.aron.core.ui.aron.AronTextButton
 import com.aktcl.aron.core.ui.aron.AronTile
 import com.aktcl.aron.rules.UiLocale
 import com.aktcl.aron.core.ui.R as CoreR
@@ -52,6 +54,10 @@ object AsthaTags {
     const val EMPTY = "astha_empty"
     const val TABLE = "astha_table"
     const val AS_OF = "astha_as_of"
+    const val SHOP_BACK = "astha_shop_back"
+    const val SHOP_TITLE = "astha_shop_title"
+    const val SEARCH = "astha_search"
+    fun shop(id: Long) = "astha_shop_$id"
     const val TRUNCATED = "astha_truncated"
     const val SUB_STD = "astha_sub_std"
     const val SUB_MEMO = "astha_sub_memo"
@@ -89,29 +95,46 @@ data class AsthaSelection(val year: Int? = null, val quarter: Int? = null, val m
 /**
  * The Astha target page (manual 48 right, 49, 50). [data] null means no programme is active (the empty state, never a crash). The year,
  * quarter, month and sub-tab survive rotation and process death. The month rows come from the downloaded bundle only; a month the phone
- * does not hold shows "no data found" (server request N-1 asks for the whole quarter). [shopWise] is the second tab (slice 2); without it the
- * tab is not drawn.
+ * does not hold shows "no data found" (server request N-1 asks for the whole quarter). [shops] feeds the second tab, "shop-wise info" (manual 51): a searchable list of the Astha outlets, and a tap opens that outlet's
+ * own target table; without [shops] the tab is not drawn.
  */
 @Composable
 fun AsthaTargetScreen(
     data: AsthaData?, locale: UiLocale, currentYear: Int, modifier: Modifier = Modifier,
-    shopWise: (@Composable () -> Unit)? = null, initial: AsthaSelection = AsthaSelection(),
+    shops: List<ShopInfo>? = null, initial: AsthaSelection = AsthaSelection(), initialShop: Long? = null, startOnShops: Boolean = false,
 ) {
     val look = LocalAronLook.current
-    var tab by rememberSaveable { mutableStateOf(0) }
-    var year by rememberSaveable { mutableStateOf(initial.year) }
-    var quarter by rememberSaveable { mutableStateOf(initial.quarter) }
-    var month by rememberSaveable { mutableStateOf(initial.month) }
-    var memoTab by rememberSaveable { mutableStateOf(initial.memoTab) }
+    var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
+    var shop by rememberSaveable { mutableStateOf(initialShop) }
+    var query by rememberSaveable { mutableStateOf("") }
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (shopWise != null) {
+        if (shops != null) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(look.rowAlt).padding(3.dp)) {
                 SegTab(stringResource(R.string.pg_tab_route), tab == 0, { tab = 0 }, Modifier.weight(1f).testTag(AsthaTags.TAB_ROUTE))
                 SegTab(stringResource(R.string.pg_tab_shop), tab == 1, { tab = 1 }, Modifier.weight(1f).testTag(AsthaTags.TAB_SHOP))
             }
         }
-        if (tab == 1 && shopWise != null) { shopWise(); return@Column }
-        if (data == null) { EmptyNote(stringResource(R.string.pg_no_programme)); return@Column }
+        if (tab == 1 && shops != null) {
+            val chosen = shop?.let { id -> shops.firstOrNull { it.outletId == id } }
+            if (chosen == null) ShopList(shops, query, { query = it }, { shop = it }, locale)
+            else {
+                AronTextButton(stringResource(R.string.pg_all_shops), { shop = null }, Modifier.testTag(AsthaTags.SHOP_BACK))
+                Text(chosen.nameLine, style = label(look.purple), modifier = Modifier.testTag(AsthaTags.SHOP_TITLE))
+                TargetBody(data, locale, currentYear, chosen.outletId, initial)
+            }
+        } else TargetBody(data, locale, currentYear, null, initial)
+    }
+}
+
+/** The pickers, the month chips, the sub-tabs and the table of the route (outletId null) or of one outlet; its own state is kept per outlet. */
+@Composable
+private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYear: Int, outletId: Long?, initial: AsthaSelection) {
+    val look = LocalAronLook.current
+    var year by rememberSaveable(outletId) { mutableStateOf(initial.year) }
+    var quarter by rememberSaveable(outletId) { mutableStateOf(initial.quarter) }
+    var month by rememberSaveable(outletId) { mutableStateOf(initial.month) }
+    var memoTab by rememberSaveable(outletId) { mutableStateOf(initial.memoTab) }
+        if (data == null) { EmptyNote(stringResource(R.string.pg_no_programme)); return }
         val years = (currentYear..currentYear + 4).toList()
         val big = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f
         val yearPicker: @Composable (Modifier) -> Unit = { m ->
@@ -130,26 +153,26 @@ fun AsthaTargetScreen(
         if (big) { yearPicker(Modifier.fillMaxWidth()); quarterPicker(Modifier.fillMaxWidth()) }
         else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { yearPicker(Modifier.weight(1f)); quarterPicker(Modifier.weight(1f)) }
         val y = year; val q = quarter
-        if (y == null || q == null) { EmptyNote(stringResource(R.string.pg_no_data)); return@Column }
+        if (y == null || q == null) { EmptyNote(stringResource(R.string.pg_no_data)); return }
         val months = AsthaModel.monthsOfQuarter(y, q)
         Text(stringResource(R.string.pg_pick_month), style = label(look.ink))
         androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             months.forEach { m -> AronChoiceChip(monthChip(m), month == m, { month = m }, Modifier.testTag(AsthaTags.month(m))) }
         }
         val m = month
-        if (m == null) return@Column
+        if (m == null) return
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(look.rowAlt).padding(3.dp)) {
             SegTab(stringResource(R.string.pg_sub_std), !memoTab, { memoTab = false }, Modifier.weight(1f).testTag(AsthaTags.SUB_STD))
             SegTab(stringResource(R.string.pg_sub_memo), memoTab, { memoTab = true }, Modifier.weight(1f).testTag(AsthaTags.SUB_MEMO))
         }
-        val brandRows = data.brandRows(m, null, locale)
-        val allBrand = data.allBrandRow(m)
-        if (brandRows.isEmpty() && allBrand == null) { EmptyNote(stringResource(R.string.pg_no_data)); return@Column }
+        val brandRows = data.brandRows(m, outletId, locale)
+        val allBrand = data.allBrandRow(m, outletId)
+        if (brandRows.isEmpty() && allBrand == null) { EmptyNote(stringResource(R.string.pg_no_data)); return }
         if (big) StackedCards(data, brandRows, allBrand, memoTab, locale)
         else if (!memoTab) StdTable(data, brandRows, locale) else MemoTable(allBrand, locale)
         data.asOf?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(it.take(10), locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
         if (data.truncated) Text(stringResource(R.string.pg_truncated), Modifier.testTag(AsthaTags.TRUNCATED), style = small(look.inkMuted))
-    }
+
 }
 
 @Composable private fun EmptyNote(text: String) {
@@ -278,5 +301,39 @@ private fun CardLine(labelRes: Int, figures: String) {
     Column(Modifier.fillMaxWidth()) {
         Text(stringResource(labelRes), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Bold))
         Text(figures, style = TextStyle(fontSize = 17.sp, color = look.ink))
+    }
+}
+
+/** The shop-wise list (manual 51 left): a search box (name, code or phone, typed offline) and one card per outlet. */
+@Composable
+private fun ShopList(shops: List<ShopInfo>, query: String, onQuery: (String) -> Unit, onOpen: (Long) -> Unit, locale: UiLocale) {
+    val look = LocalAronLook.current
+    androidx.compose.material3.OutlinedTextField(
+        query, onQuery, Modifier.fillMaxWidth().testTag(AsthaTags.SEARCH), singleLine = true,
+        placeholder = { Text(stringResource(R.string.pg_search_hint), style = TextStyle(fontSize = 15.sp, color = look.hint)) },
+        shape = RoundedCornerShape(12.dp),
+    )
+    val shown = ShopModel.filter(shops, query)
+    if (shown.isEmpty()) { EmptyNote(stringResource(if (shops.isEmpty()) R.string.pg_no_shops else R.string.pg_no_match)); return }
+    shown.forEach { sh ->
+        Column(
+            Modifier.fillMaxWidth().testTag(AsthaTags.shop(sh.outletId)).clip(RoundedCornerShape(12.dp)).background(look.card)
+                .semantics { role = Role.Button }.clickable { onOpen(sh.outletId) }.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ShopLine(R.string.pg_shop_name, sh.nameLine, look.ink)
+            ShopLine(R.string.pg_shop_owner, sh.owner, look.ink)
+            ShopLine(R.string.pg_shop_contact, sh.contact?.let { com.aktcl.aron.rules.Formats.digits(it, locale) }.orEmpty(), look.ink)
+            sh.subChannel?.let { ShopLine(R.string.pg_shop_sub, it, look.red) }
+        }
+    }
+}
+
+@Composable
+private fun ShopLine(labelRes: Int, value: String, valueColor: androidx.compose.ui.graphics.Color) {
+    val look = LocalAronLook.current
+    Column(Modifier.fillMaxWidth()) {
+        Text(stringResource(labelRes), style = TextStyle(fontSize = 13.sp, color = look.inkMuted))
+        Text(value, style = TextStyle(fontSize = 16.sp, color = valueColor, fontWeight = FontWeight.Medium))
     }
 }

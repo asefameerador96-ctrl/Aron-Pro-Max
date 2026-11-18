@@ -27,4 +27,12 @@
     <string name="pg_load_failed">The Astha data could not be read from this phone.</string>
     <string name="pg_pack_line">%1$s per pack of %2$s: %3$s packets</string>
     <string name="pg_back">Back</string>
+    <string name="pg_all_shops">All shops</string>
+    <string name="pg_search_hint">Search by name, code, or phone</string>
+    <string name="pg_no_shops">No Astha shops are on this phone.</string>
+    <string name="pg_no_match">No shop matches your search.</string>
+    <string name="pg_shop_name">Retailer name</string>
+    <string name="pg_shop_owner">Owner name</string>
+    <string name="pg_shop_contact">Contact</string>
+    <string name="pg_shop_sub">Sub-Channel</string>
 </resources>

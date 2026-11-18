@@ -27,4 +27,12 @@
     <string name="pg_load_failed">এই ফোন থেকে আস্থার তথ্য পড়া যায়নি।</string>
     <string name="pg_pack_line">%1$s, প্যাকেট %2$s: %3$s প্যাকেট</string>
     <string name="pg_back">পিছনে</string>
+    <string name="pg_all_shops">সব দোকান</string>
+    <string name="pg_search_hint">নাম, কোড বা ফোন দিয়ে খুঁজুন</string>
+    <string name="pg_no_shops">এই ফোনে কোনো আস্থা দোকান নেই।</string>
+    <string name="pg_no_match">আপনার খোঁজের সাথে কোনো দোকান মেলেনি।</string>
+    <string name="pg_shop_name">খুচরা বিক্রেতার নাম</string>
+    <string name="pg_shop_owner">মালিকের নাম</string>
+    <string name="pg_shop_contact">যোগাযোগ</string>
+    <string name="pg_shop_sub">Sub-Channel</string>
 </resources>

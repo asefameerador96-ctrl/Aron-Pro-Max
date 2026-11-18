@@ -7,7 +7,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -32,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shop: (@androidx.compose.runtime.Composable () -> Unit)? = null) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shopWise = shop) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop) } } }
         compose.waitForIdle()
     }
 
@@ -95,5 +97,45 @@ class AsthaScreensTest {
         compose.onNodeWithTag(AsthaTags.MENU_TARGET).performClick()
         assertEquals(1, target)
         assertEquals(0, compose.onAllNodesWithText("Gift selection").fetchSemanticsNodes().size)
+    }
+
+    private val shops = listOf(
+        ShopInfo(501, "Ajij Tea Store (3700634-01716184335-Pink City Road)", "3700634", "Md.Ajij", "01716184335", "Gold"),
+        ShopInfo(502, "Rubel Tea Store (2681254-01334363419-Agora Road)", "2681254", "Abdul Mannan", "01334363419", null),
+    )
+    private val outletRows = """{"astha_targets":[
+      {"route_id":7,"outlet_id":501,"brand_id":11,"month":"2026-11","std_target":"100","std_achieved":"10","memo_target":2,"memo_achieved":1,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]},
+      {"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-11","std_target":"2240","std_achieved":"390","memo_target":0,"memo_achieved":0,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
+
+    @Test fun shopTabListsCardsSearchesAndOpensTheOutletsOwnTable() {
+        show(AppLanguage.EN, AsthaModel.parse(outletRows, products), shops)
+        compose.onNodeWithTag(AsthaTags.TAB_SHOP).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.shop(501)).assertIsDisplayed()
+        compose.onNodeWithTag(AsthaTags.shop(502)).assertExists() // below the fold of the small test screen
+        compose.onNodeWithText("Gold").assertExists()
+        compose.onNodeWithTag(AsthaTags.SEARCH).performTextInput("0133")
+        compose.waitForIdle()
+        assertEquals(0, compose.onAllNodesWithTag(AsthaTags.shop(501)).fetchSemanticsNodes().size)
+        compose.onNodeWithTag(AsthaTags.shop(502)).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.SHOP_TITLE).assertIsDisplayed()
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-11")).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.EMPTY).assertIsDisplayed() // outlet 502 has no rows: no data, never the route's figures
+        compose.onNodeWithTag(AsthaTags.SHOP_BACK).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.shop(502)).assertIsDisplayed()
+    }
+
+    @Test fun anOutletsTableShowsItsOwnRowsNotTheRoutes() {
+        show(AppLanguage.EN, AsthaModel.parse(outletRows, products), shops, initialShop = 501)
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-11")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("100").assertExists() // the outlet's STD target, not the route's 2,240
+        assertEquals(0, compose.onAllNodesWithText("2,240").fetchSemanticsNodes().size)
+    }
+
+    @Test fun emptyShopListSaysSo() {
+        show(AppLanguage.EN, AsthaModel.parse(outletRows, products), emptyList())
+        compose.onNodeWithTag(AsthaTags.TAB_SHOP).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("No Astha shops are on this phone.").assertExists()
     }
 }
