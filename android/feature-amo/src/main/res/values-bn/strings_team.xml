@@ -5,23 +5,23 @@
     <string name="amo_team_cat_bidi">বিড়ি</string>
     <string name="amo_team_cat_lighter">লাইটার</string>
     <string name="amo_team_cat_match">ম্যাচ</string>
-    <string name="amo_team_perf_monthly">মাসিক লক্ষ্য</string>
-    <string name="amo_team_perf_till_date">এখন পর্যন্ত লক্ষ্য</string>
-    <string name="amo_team_perf_zone">জোন: %1$s</string>
+    <string name="amo_team_perf_monthly">Monthly Target</string>
+    <string name="amo_team_perf_till_date">Till Date Target</string>
+    <string name="amo_team_perf_zone">Zone: %1$s</string>
     <string name="amo_team_perf_route">রুট: %1$s</string>
     <string name="amo_team_perf_details">বিস্তারিত</string>
-    <string name="amo_team_perf_item">আইটেম</string>
+    <string name="amo_team_perf_item">Item</string>
     <string name="amo_team_perf_target">টার্গেট</string>
     <string name="amo_team_perf_achieved">অর্জন</string>
     <string name="amo_team_perf_remaining">বাকি</string>
     <string name="amo_team_perf_items_empty">এই মাসে কোনো ব্র্যান্ডের টার্গেট বা বিক্রয় নেই।</string>
     <string name="amo_team_perf_card_empty">এই মাসের জন্য এখনো টার্গেট নেই।</string>
-    <string name="amo_team_task_tab">বরাদ্দকৃত টাস্ক</string>
+    <string name="amo_team_task_tab">Assigned Tasks</string>
     <string name="amo_team_task_running">চলমান</string>
     <string name="amo_team_task_done">সম্পন্ন</string>
     <string name="amo_team_task_cancelled">বাতিল</string>
     <string name="amo_team_task_overdue">মেয়াদোত্তীর্ণ</string>
-    <string name="amo_team_task_completion">সম্পন্নের তারিখ: %1$s</string>
+    <string name="amo_team_task_completion">Completion on: %1$s</string>
     <string name="amo_team_task_to">প্রাপক: %1$s</string>
     <string name="amo_team_route_out_of_reach">আপনার আওতার বাইরে</string>
     <string name="amo_team_route_unavailable">রুটের বিস্তারিত পাওয়া যাচ্ছে না</string>
@@ -47,7 +47,7 @@
     <string name="amo_live_total_taka">মোট টাকা</string>
     <string name="amo_live_strike_title">লাইভ স্ট্রাইক রেট</string>
     <string name="amo_live_target_outlets">টার্গেট আউটলেট</string>
-    <string name="amo_live_successful_calls">সফল কল</string>
+    <string name="amo_live_successful_calls">Successful Calls</string>
     <string name="amo_live_strike_rate">স্ট্রাইক রেট</string>
     <string name="amo_live_geo_title">জিও ফেন্সিং স্ট্যাটাস</string>
     <string name="amo_live_geo_validation">জিও ভ্যালিডেশন</string>
@@ -77,7 +77,7 @@
     <string name="amo_team_gap_after">%1$s পরে</string>
     <string name="amo_team_distance">দূরত্ব: %1$s মি</string>
     <string name="amo_team_total">মোট: %1$s মি</string>
-    <string name="amo_team_status_new">নতুন বিক্রয়</string>
+    <string name="amo_team_status_new">New Sale</string>
     <string name="amo_team_status_edited">সম্পাদিত বিক্রয়</string>
     <string name="amo_team_status_none">বিক্রয় নেই</string>
     <string name="amo_team_journey_empty">এখনো কোনো কল নেই</string>
@@ -89,7 +89,7 @@
     <string name="amo_team_till_pct" formatted="false">%</string>
     <string name="amo_team_till_memo">মেমো</string>
     <string name="amo_team_till_brand">ব্র্যান্ড</string>
-    <string name="amo_team_till_cpr">সিপিআর</string>
+    <string name="amo_team_till_cpr">CPR</string>
     <string name="amo_team_till_total_memo">মোট মেমো</string>
     <string name="amo_team_lifted_title">লিফটেড স্টক</string>
     <string name="amo_team_sr_list_title">এসআর লিস্ট</string>
@@ -99,4 +99,5 @@
     <string name="amo_team_memo_pending">মেমো: অপেক্ষমাণ</string>
     <string name="amo_team_live_memos">মেমো: %1$s</string>
     <string name="amo_team_live_memos_none">মেমো: —</string>
+    <string name="amo_team_perf_monthly_list">মান্থলি লক্ষ্য</string>
 </resources>
