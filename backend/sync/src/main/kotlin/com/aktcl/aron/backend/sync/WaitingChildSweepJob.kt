@@ -14,7 +14,7 @@ class WaitingChildSweepJob(private val ingest: IngestService, private val everyM
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "waiting-item-sweep").apply { isDaemon = true } }.scheduleWithFixedDelay({
             runCatching { tick() }
-                .onSuccess { if (it.released + it.hinted + it.failed > 0) log.info("waiting-item sweep: {} waiting, {} released, {} hinted, {} still waiting, {} failed", it.waiting, it.released, it.hinted, it.stillWaiting, it.failed) }
+                .onSuccess { if (it.released + it.hinted + it.failed + it.skippedByCap > 0) log.info("waiting-item sweep: {} waiting, {} released, {} hinted, {} still waiting, {} failed, {} skipped by the cap", it.waiting, it.released, it.hinted, it.stillWaiting, it.failed, it.skippedByCap) }
                 .onFailure { it.exitIfFatal(log, "waiting-item sweep"); log.error("waiting-item sweep failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }

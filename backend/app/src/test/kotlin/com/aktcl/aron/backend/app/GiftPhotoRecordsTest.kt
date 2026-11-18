@@ -649,7 +649,7 @@ class GiftPhotoRecordsTest {
     }
 
     // ---- D-LOY-API-28: the worker sweep of WAITING items, the review queue's state and count, and the as-sent hash through every child path ----
-    private fun sweep() = waitingSweepJob(world.wiring, world.clock).tick()
+    private fun sweep() = waitingSweepJob(world.wiring, world.clock, world.fresh.url).tick()
     private suspend fun io.ktor.client.HttpClient.queue(): kotlinx.serialization.json.JsonObject =
         with(world) { kotlinx.serialization.json.Json.parseToJsonElement(getWeb("admin1001", "/v1/admin/quarantine?status=open&limit=200").bodyAsText()).jsonObject }
     private fun queueItem(q: kotlinx.serialization.json.JsonObject, uuid: String) = q["items"]!!.jsonArray.map { it.jsonObject }.single { it["client_uuid"]!!.jsonPrimitive.content == uuid }
@@ -675,7 +675,8 @@ class GiftPhotoRecordsTest {
             // the line arrives; the sweep releases the photo through the accept path, as the reviewer's accept would
             val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
             sweep().also { assertEquals(1, it.released, it.toString()) }
-            assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the sweep")); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
+            assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the waiting-item sweep (job)")); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
+            assertEquals("aron.system", rows("SELECT u.username FROM app.sync_quarantine q JOIN app.app_user u ON u.id = q.resolved_by_user_id WHERE q.client_uuid = CAST('${cu(p)}' AS uuid)").single()["username"], "a job did it: the system actor, not the reviewer of the first parent")
             assertEquals(before - 1, queue()["waiting_count"]!!.jsonPrimitive.content.toInt())
             val feed = sync(sr, listOf(p)); assertEquals("duplicate", ack(feed, cu(p)).status()); assertEquals(listOf("accepted"), phoneResolutions(feed, cu(p)))
             sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p), "a second pass stores nothing more")
@@ -701,7 +702,7 @@ class GiftPhotoRecordsTest {
             // the reviewer's accept wins; the sweep afterwards finds nothing open and stores nothing again
             assertEquals(HttpStatusCode.OK, accept(itemOf(cu(p)))); assertEquals(1L, storedPhoto(p))
             sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p)); assertEquals("accepted", itemRow(cu(p))["status"])
-            assertEquals(false, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the sweep"), "the reviewer's own accept stands")
+            assertEquals(false, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the waiting-item sweep (job)"), "the reviewer's own accept stands")
         }
     }
 

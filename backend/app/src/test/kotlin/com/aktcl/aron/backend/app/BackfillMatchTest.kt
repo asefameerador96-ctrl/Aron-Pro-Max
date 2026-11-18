@@ -272,7 +272,7 @@ class BackfillMatchTest {
         assertEquals("open", status(dueItem)); assertEquals(true, detail.startsWith("waits for another parent: visit_client_uuid $otherVisit"), detail); assertEquals(false, detail.contains("is quarantined"), "no longer names the matched memo as its hold")
         assertEquals(0, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"))
         // the sweep before the visit is stored changes nothing (idempotent, nothing finalised)
-        val job = waitingSweepJob(wiring, clock)
+        val job = waitingSweepJob(wiring, clock, fresh.url)
         job.tick().also { assertEquals(0, it.released); assertEquals(1, it.stillWaiting) }
         assertEquals("open", status(dueItem))
         // the visit syncs; the next pass releases the collection through the real accept path

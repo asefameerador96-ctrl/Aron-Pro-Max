@@ -571,7 +571,7 @@ class IngestService(
     }
 
     /** What one pass of [sweepWaiting] did (counts only: no uuid, no personal data). */
-    data class WaitingSweep(val waiting: Int, val released: Int, val hinted: Int, val stillWaiting: Int, val failed: Int)
+    data class WaitingSweep(val waiting: Int, val released: Int, val hinted: Int, val stillWaiting: Int, val failed: Int, val skippedByCap: Int = 0)
 
     /**
      * D-LOY-API-28: the worker's sweep of WAITING items (a child released with an accepted parent whose other parent was not stored: [markWaiting]). For each open item whose detail
@@ -598,12 +598,16 @@ class IngestService(
                 log.warn("waiting-item sweep failed for one item quarantine_id=$id: ${e.javaClass.simpleName}")
             }
         }
-        if (total > rows.size) log.info("waiting-item sweep: $total waiting, $limit examined this pass")
-        return WaitingSweep(total, released, hinted, still, failed)
+        val skipped = (total - rows.size).coerceAtLeast(0)
+        if (skipped > 0) log.warn("waiting-item sweep: backlog, $skipped of $total waiting items were not examined this pass (cap $limit)")
+        return WaitingSweep(total, released, hinted, still, failed, skipped)
     }
 
     /** 1 = released, 2 = refused hint written, 0 = nothing to do. */
     private fun sweepOne(h: Handle, id: Long): Int {
+        // Lock order of the sync path: the record's uuid advisory lock first, then the item row; the row is taken SKIP LOCKED, so a reviewer (who holds the row and takes the advisory lock inside the release) is never waited for in a cycle.
+        val uuid = h.createQuery("SELECT client_uuid::text FROM app.sync_quarantine WHERE id = :id AND status = 'open'").bind("id", id).mapTo(String::class.java).findOne().orElse(null) ?: return 0
+        h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", uuid)
         val locked = h.createQuery("SELECT detail, record_type, payload::text FROM app.sync_quarantine WHERE id = :id AND status = 'open' FOR UPDATE SKIP LOCKED").bind("id", id)
             .map { rs, _ -> Triple(rs.getString(1), rs.getString(2), ResponseJson.parseToJsonElement(rs.getString(3)) as JsonObject) }.findOne().orElse(null) ?: return 0
         val (detail, type, payload) = locked
@@ -616,13 +620,12 @@ class IngestService(
                 return 2
             }
             Awaited.STORED -> {
-                // The resolver is the reviewer who accepted the first parent (closeItem needs a user); the note says it was the sweep.
-                val accepted = QuarantineWaiting.acceptedParent(detail)
-                val resolver = accepted?.let { a -> h.createQuery("SELECT resolved_by_user_id FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status LIKE 'accepted%' AND resolved_by_user_id IS NOT NULL ORDER BY id DESC LIMIT 1").bind("u", a).mapTo(Long::class.java).findOne().orElse(null) }
-                    ?: h.createQuery("SELECT user_id FROM app.sync_quarantine WHERE id = :id").bind("id", id).mapTo(Long::class.java).one()
+                // An automatic release is done by the system actor (`aron.system`, the user the migrations use), never by the reviewer of the first parent: the item says a job did it.
+                val resolver = h.createQuery("SELECT id FROM app.app_user WHERE username = 'aron.system'").mapTo(Long::class.java).findOne().orElse(null)
+                if (resolver == null) { log.error("waiting-item sweep: the system user aron.system is missing; nothing released"); return 0 }
                 h.savepoint("sweep_waiting")
                 try {
-                    acceptQuarantined(id, null, resolver, "released by the sweep: the awaited parent ${awaited.second} is stored")
+                    acceptQuarantined(id, null, resolver, "released by the waiting-item sweep (job): the awaited parent ${awaited.second} is stored; first parent ${QuarantineWaiting.acceptedParent(detail) ?: "unknown"}")
                     h.release("sweep_waiting")
                     return 1
                 } catch (e: ApiProblem) {
