@@ -348,13 +348,14 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     }
 
     /** Starts the edit draft: the old memo's lines and payment pre-filled, the outlet read-only, the reason recorded. */
-    suspend fun beginEdit(memoUuid: String, reason: EditReason) {
+    suspend fun beginEdit(memoUuid: String, reason: EditReason): Boolean {
         val old = checkNotNull(dao.memo(memoUuid)) { "memo not on this phone" }
         flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire), editing = memoUuid) // the edit gets its own memo's quantity back
         val catalog = flow.state.value.catalog
         dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { sku -> EntryUnits.restore(sku.entry, sku.baseUnit, l.qtyBase).let { (q, u) -> flow.setQuantity(l.skuId, q, u) } } }
         if (old.paidMtk > 0) flow.setPaid(old.paidMtk)
-        flow.withEdit(EditContext(memoUuid, reason.wire))
+        // false (nothing changed) when the draft refused the edit marker; the edit then never opens on a draft that does not carry it
+        return flow.withEdit(EditContext(memoUuid, reason.wire)) && flow.state.value.draft?.edit != null
     }
 
     /**

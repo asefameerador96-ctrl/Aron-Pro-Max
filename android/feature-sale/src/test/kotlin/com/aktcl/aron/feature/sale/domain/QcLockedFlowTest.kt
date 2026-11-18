@@ -84,7 +84,7 @@ class QcLockedFlowTest {
         assertEquals(before, f.state.value.draft)
         assertEquals(SaleNotice.Locked, f.state.value.notice)
         assertEquals("the figure the screen shows is the draft's, not the refused one", 20L, f.state.value.draft!!.lines.single().qtyEntered)
-        assertEquals(5L, set) // the refused call reports what it was asked to set; the draft above is the truth
+        assertEquals("a refused change reports the quantity that stands", 20L, set)
     }
 
     @Test fun aSlideChangeOnALockedSaleIsRefusedWithANotice() = runTest {
@@ -102,9 +102,35 @@ class QcLockedFlowTest {
         assertEquals(null, f.state.value.notice)
     }
 
-    @Test fun aRefusalThatReachesTheViewModelNetIsLockedOnALockedDraftAndRefusedOtherwise() = runTest {
+    @Test fun theViewModelNetSaysRefusedAndTheLockNamesItselfAtItsSource() = runTest {
         val f = lockedFlow(); f.noteRefusal()
+        assertEquals(SaleNotice.Refused, f.state.value.notice)
+        f.setSlide(100, 1)
         assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anotherRefusalOfTheDraftIsADraftRefusedExceptionAndNothingIsWritten() = runTest {
+        val f = flow(LockMemStore()); f.start(visit()); f.setQuantity(100, 20, QtyUnit.STICK)
+        val before = f.state.value.draft
+        val e = runCatching { f.setPaid(-5) }.exceptionOrNull()
+        assertEquals(true, e is DraftRefusedException)
+        assertEquals(before, f.state.value.draft)
+    }
+
+    @Test fun anEditMarkerOnALockedSaleIsRefusedAndTheGiveBackIsNotLeftInTheState() = runTest {
+        val f = lockedFlow(); val before = f.state.value
+        val accepted = f.withEdit(EditContext("00000000-0000-4000-8000-0000000000aa", "wrong_sku"))
+        assertEquals(false, accepted)
+        assertEquals(before.draft, f.state.value.draft)
+        assertEquals(before.catalog, f.state.value.catalog)
+        assertEquals(null, f.state.value.draft!!.edit)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anEditMarkerOnAnOpenSaleIsAccepted() = runTest {
+        val f = flow(LockMemStore()); f.start(visit()); f.setQuantity(100, 20, QtyUnit.STICK)
+        assertEquals(true, f.withEdit(EditContext("00000000-0000-4000-8000-0000000000aa", "wrong_sku")))
+        assertEquals("00000000-0000-4000-8000-0000000000aa", f.state.value.draft!!.edit!!.supersedesMemoUuid)
     }
 
     @Test fun typedQcThatWasNeverSubmittedIsDroppedAtStartWithANotice() = runTest {

@@ -116,7 +116,7 @@ fun SaleRoute(
                             onCreditToggle = { on -> if (on) stage = SaleStage.Credit else vm.setPaid(null) },
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
-                            onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
+                            onSlide = if (!locked && skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
                             printLaterCard = printLaterCard, totalsQuantity = totalsQuantity,
                         )
                     }

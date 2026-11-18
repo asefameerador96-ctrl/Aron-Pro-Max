@@ -3,6 +3,7 @@ package com.aktcl.aron.feature.sale.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
+import com.aktcl.aron.feature.sale.domain.DraftRefusedException
 import com.aktcl.aron.feature.sale.domain.EditContext
 import com.aktcl.aron.feature.sale.domain.QcEntry
 import com.aktcl.aron.feature.sale.domain.SaleFlow
@@ -24,12 +25,10 @@ class SaleViewModel(
 ) : ViewModel() {
     val state: StateFlow<SaleUiState> get() = flow.state
 
-    /** A draft that refuses a change (the sale is locked after QC, a value out of range) is shown as a notice; it never takes the app down. Any other failure is still a crash: it is a bug. */
-    private val guard = CoroutineExceptionHandler { _, e ->
-        if (e is IllegalStateException || e is IllegalArgumentException) flow.noteRefusal() else throw e
-    }
+    /** A change the draft refused ([DraftRefusedException]) is shown as a notice; it never takes the app down. Any other failure, `start` included, is still a crash: it is a bug. */
+    private val guard = refusalGuard(flow)
 
-    fun start(visit: SaleVisit) { viewModelScope.launch(guard) { flow.start(visit) } }
+    fun start(visit: SaleVisit) { viewModelScope.launch { flow.start(visit) } }
     fun setQuantity(skuId: Long, qty: Long, unit: QtyUnit) { viewModelScope.launch(guard) { flow.setQuantity(skuId, qty, unit) } }
     fun setSlide(skuId: Long, empties: Long) { viewModelScope.launch(guard) { flow.setSlide(skuId, empties) } }
     fun setQc(entry: QcEntry) { viewModelScope.launch(guard) { flow.setQc(entry) } }
@@ -46,3 +45,6 @@ class SaleViewModel(
     /** Review's Print button: asks "save?" first; the commit happens on Yes (SaveAndPrint step 1). */
     fun onPrintTapped() = saveAndPrint.onPrintTapped()
 }
+
+/** The view model's net as a handler of its own (see [SaleViewModel]); internal so a test can drive it without a failure going to the process-wide handler. */
+internal fun refusalGuard(flow: SaleFlow) = CoroutineExceptionHandler { _, e -> if (e is DraftRefusedException) flow.noteRefusal() else throw e }

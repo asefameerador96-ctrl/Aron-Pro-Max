@@ -251,7 +251,7 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
         !checked -> AmoEmptyState(stringResource(AmoR.string.amo_edit_checking))
         denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
         else -> {
-            LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }
+            LaunchedEffect(r) { if (kit.beginEdit(memoUuid, r)) ready = true else onDone() }
             if (ready) {
                 val vm = viewModel(key = "edit-" + memoUuid) { kit.newSaleViewModel() }
                 Column(Modifier.fillMaxSize()) {

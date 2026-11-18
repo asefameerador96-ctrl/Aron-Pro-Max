@@ -421,7 +421,7 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
         // SRM-B-16 (shot 37): the reason is a modal with the dropdown, বাতিল and জমা দিন; জমা দিন starts the edit
         r == null -> { Box(Modifier.fillMaxSize()); EditReasonDialog(onSubmit = { reason = it }, onCancel = onDone) }
         else -> {
-            LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }
+            LaunchedEffect(r) { if (kit.beginEdit(memoUuid, r)) ready = true else onDone() }
             if (ready) {
                 val vm = viewModel(key = "edit-" + memoUuid) { kit.newSaleViewModel() }
                 // SRM-B-18: the outlet, route and cluster lines of a normal sale
