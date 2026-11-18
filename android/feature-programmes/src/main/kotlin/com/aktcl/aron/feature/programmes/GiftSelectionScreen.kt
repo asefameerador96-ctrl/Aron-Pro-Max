@@ -66,7 +66,7 @@ object GiftTags {
 @Composable
 fun GiftSelectionScreen(
     shops: List<ShopInfo>, data: GiftChoiceData?, quarter: String, local: List<LocalGiftChoice>, locale: UiLocale,
-    onSubmit: suspend (outletId: Long, giftId: Long) -> SaveOutcome, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null,
+    onSubmit: suspend (outletId: Long, giftId: Long) -> SaveOutcome, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null, bundleRequestedAt: String? = null,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -97,18 +97,22 @@ fun GiftSelectionScreen(
             Detail(R.string.pg_shop_sub, chosen.subChannel ?: "—")
             if (chosen.clusterName.isNotBlank()) Detail(R.string.pg_gift_cluster, chosen.clusterName)
         }
-        val state = data.stateOf(chosen.outletId, quarter, local)
+        val state = data.stateOf(chosen.outletId, quarter, local, bundleRequestedAt)
         val offered = data.offeredTo(chosen.tierCode)
         fun nameOf(id: Long) = data.gifts.firstOrNull { it.id == id }?.name(locale) ?: "#$id"
         when (state) {
             is GiftState.Locked -> Text(stringResource(R.string.pg_gift_locked, nameOf(state.giftId)), Modifier.testTag(GiftTags.LOCKED), style = TextStyle(fontSize = 16.sp, color = look.ink, fontWeight = FontWeight.Medium))
-            is GiftState.OnThisPhone -> if (state.refused) Text(stringResource(R.string.pg_gift_refused, nameOf(state.giftId)), Modifier.testTag(GiftTags.REFUSED), style = TextStyle(fontSize = 15.sp, color = look.red, fontWeight = FontWeight.Medium))
+            is GiftState.Sent -> Text(stringResource(R.string.pg_gift_sent, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
+            is GiftState.OnThisPhone -> if (state.refused) {
+                val why = (if (locale == UiLocale.BN) state.reasonBn ?: state.reasonEn else state.reasonEn ?: state.reasonBn)?.takeIf { it.isNotBlank() }
+                Text(stringResource(R.string.pg_gift_refused, nameOf(state.giftId)) + (why?.let { "\n$it" } ?: ""), Modifier.testTag(GiftTags.REFUSED), style = TextStyle(fontSize = 15.sp, color = look.red, fontWeight = FontWeight.Medium))
+            }
                 else Text(stringResource(R.string.pg_gift_on_phone, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.Chosen -> Text(stringResource(R.string.pg_gift_chosen, nameOf(state.giftId)), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             GiftState.None -> Unit
         }
         if (state is GiftState.Locked) return@Column
-        if (offered.isEmpty()) { Text(stringResource(R.string.pg_gift_none_for_tier), Modifier.testTag(GiftTags.NO_GIFTS), style = TextStyle(fontSize = 16.sp, color = look.ink)); return@Column }
+        if (offered.isEmpty()) { Text(stringResource(if (chosen.tierCode == null && data.gifts.any { it.tierCodes.isNotEmpty() }) R.string.pg_gift_tier_unknown else R.string.pg_gift_none_for_tier), Modifier.testTag(GiftTags.NO_GIFTS), style = TextStyle(fontSize = 16.sp, color = look.ink)); return@Column }
         Text(stringResource(R.string.pg_gift_pick), style = TextStyle(fontSize = 16.sp, color = look.ink, fontWeight = FontWeight.Bold))
         val cols = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f) 1 else 2
         offered.chunked(cols).forEach { row ->

@@ -346,10 +346,12 @@ private fun packText(data: AsthaData, brandId: Long?, p: AsthaPack, locale: UiLo
     val whole = com.aktcl.aron.rules.Formats.integer(l.packs, locale)
     val loose = AsthaModel.stdText(l.looseMilli, locale)
     val hasLoose = l.looseMilli > 0
+    // matches count in dozens (the base unit; a fraction is a fraction of a dozen) and an unknown category in neutral base units: one figure, no pack size
+    if (l.kind == PackKind.DOZEN) return stringResource(R.string.pg_pack_dozens, name, AsthaModel.stdText(p.stdAchievedMilli, locale))
+    if (l.kind == PackKind.UNKNOWN) return stringResource(R.string.pg_pack_unknown, name, AsthaModel.stdText(p.stdAchievedMilli, locale))
     val res = when (l.kind) {
         PackKind.PACKET -> if (hasLoose) R.string.pg_pack_packets_loose else R.string.pg_pack_packets
-        PackKind.DOZEN -> if (hasLoose) R.string.pg_pack_dozens_loose else R.string.pg_pack_dozens
-        PackKind.BOX -> if (hasLoose) R.string.pg_pack_boxes_loose else R.string.pg_pack_boxes
+        else -> if (hasLoose) R.string.pg_pack_boxes_loose else R.string.pg_pack_boxes
     }
     return if (hasLoose) stringResource(res, name, f, whole, loose) else stringResource(res, name, f, whole)
 }

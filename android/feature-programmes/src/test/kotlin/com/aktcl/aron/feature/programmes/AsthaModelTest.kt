@@ -85,19 +85,37 @@ class AsthaModelTest {
         assertEquals(1_500L, AsthaModel.decimal3(kotlinx.serialization.json.JsonPrimitive("1.5")))
     }
 
+    // shaped like the seed: the category and segment nodes carry NO code, the category is on the SKU (docs: products.skus[].category_code)
     private val tree = """{"nodes":[
-      {"id":1,"level":"category","name":"Cigarette","code":"cigarette","sort":1},{"id":2,"level":"segment","name":"Low","parent_id":1,"sort":1},{"id":11,"level":"brand","name":"Marise","parent_id":2,"sort":1},
-      {"id":5,"level":"category","name":"Match","code":"match","sort":2},{"id":15,"level":"brand","name":"Box Match","parent_id":5,"sort":1},
-      {"id":6,"level":"category","name":"Lighter","code":"lighter","sort":3},{"id":16,"level":"brand","name":"Gas Lighter","parent_id":6,"sort":1}],"skus":[]}"""
+      {"id":1,"level":"category","name":"Cigarette","sort":1},{"id":2,"level":"segment","name":"Low","parent_id":1,"sort":1},{"id":11,"level":"brand","name":"Marise","parent_id":2,"sort":1},{"id":31,"level":"variant","name":"V1","parent_id":11,"sort":1},
+      {"id":5,"level":"category","name":"Match","sort":2},{"id":15,"level":"brand","name":"Box Match","parent_id":5,"sort":1},{"id":35,"level":"variant","name":"V5","parent_id":15,"sort":1},
+      {"id":6,"level":"category","name":"Lighter","sort":3},{"id":16,"level":"brand","name":"Gas Lighter","parent_id":6,"sort":1},{"id":36,"level":"variant","name":"V6","parent_id":16,"sort":1},
+      {"id":17,"level":"brand","name":"Mixed","sort":4},{"id":37,"level":"variant","name":"V7","parent_id":17,"sort":1}],
+      "skus":[{"sku_id":901,"variant_id":31,"category_code":"cigarette","base_per_pack":20},{"sku_id":905,"variant_id":35,"category_code":"match","base_per_pack":1},
+              {"sku_id":906,"variant_id":36,"category_code":"lighter","base_per_pack":25},{"sku_id":907,"variant_id":37,"category_code":"match"},{"sku_id":908,"variant_id":37,"category_code":"lighter"}]}"""
 
-    @Test fun packLinesAreWholePacksPlusLooseUnitsInTheCategorysUnitNeverAFraction() {
+    @Test fun theCategoryComesFromTheSkusNotFromNodeCodes() {
         val d = AsthaModel.parse(programmes, tree)!!
-        assertEquals(mapOf(11L to "cigarette", 15L to "match", 16L to "lighter"), d.brandCategory)
-        val cig = d.packLine(11, AsthaPack(20, 300_500)) // 300.5 sticks in packs of 20
+        assertEquals(mapOf(11L to "cigarette", 15L to "match", 16L to "lighter"), d.brandCategory) // 17 has SKUs of two categories: left out, not guessed
+        assertEquals(20, d.skuPack[901L]); assertEquals(1, d.skuPack[905L])
+    }
+
+    @Test fun packLinesFollowTheCategoryUnits() {
+        val d = AsthaModel.parse(programmes, tree)!!
+        val cig = d.packLine(11, AsthaPack(20, 300_500)) // 300.5 sticks in packets of 20
         assertEquals(15L, cig.packs); assertEquals(500L, cig.looseMilli); assertEquals(PackKind.PACKET, cig.kind)
-        assertEquals(PackKind.DOZEN, d.packLine(15, AsthaPack(12, 36_000)).kind); assertEquals(3L, d.packLine(15, AsthaPack(12, 36_000)).packs)
-        assertEquals(PackKind.BOX, d.packLine(16, AsthaPack(25, 60_000)).kind); assertEquals(2L, d.packLine(16, AsthaPack(25, 60_000)).packs); assertEquals(10_000L, d.packLine(16, AsthaPack(25, 60_000)).looseMilli)
-        assertEquals(PackKind.PACKET, d.packLine(99, AsthaPack(10, 5_000)).kind) // category unknown: packets, never a guess of dozens or boxes
-        assertEquals(0L, d.packLine(11, AsthaPack(20, 40_000)).looseMilli) // exact packs: nothing loose
+        assertEquals(0L, d.packLine(11, AsthaPack(20, 40_000)).looseMilli) // exact packets: nothing loose
+        val m = d.packLine(15, AsthaPack(1, 36_000)) // matches: the dozen is the base unit, pack_factor 1
+        assertEquals(PackKind.DOZEN, m.kind); assertEquals(36L, m.packs); assertEquals(0L, m.looseMilli)
+        assertEquals(500L, d.packLine(15, AsthaPack(1, 36_500)).looseMilli) // half a DOZEN, never "pieces"
+        val l = d.packLine(16, AsthaPack(25, 60_000)) // lighters: boxes of 25 plus loose pieces
+        assertEquals(PackKind.BOX, l.kind); assertEquals(2L, l.packs); assertEquals(10_000L, l.looseMilli)
+    }
+
+    @Test fun anUnknownCategoryPrintsNoUnitWord() {
+        val d = AsthaModel.parse(programmes, tree)!!
+        assertEquals(PackKind.UNKNOWN, d.packLine(99, AsthaPack(10, 5_000)).kind)
+        assertEquals(PackKind.UNKNOWN, d.packLine(17, AsthaPack(1, 5_000)).kind) // mixed categories
+        assertEquals(PackKind.UNKNOWN, d.packLine(null, AsthaPack(1, 5_000)).kind)
     }
 }

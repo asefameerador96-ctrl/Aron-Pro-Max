@@ -215,6 +215,7 @@ class BundleDownloader(
     }
 
     private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?, progress: BundleProgress? = null): BundleReport {
+        val requestedAt = iso(clock.nowMs()) // taken BEFORE the request leaves: the memos acknowledged by then are inside the programme figures
         return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
             is ApiResult.NotModified -> {
                 if (onPrefetch) {
@@ -291,7 +292,7 @@ class BundleDownloader(
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
                 }
                 val applied = try {
-                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages))
+                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay })
                 } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                 }

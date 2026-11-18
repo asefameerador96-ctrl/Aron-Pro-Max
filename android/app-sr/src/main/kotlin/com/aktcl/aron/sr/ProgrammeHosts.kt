@@ -47,7 +47,7 @@ internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: Li
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
     // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
-    val data = readAstha(day)?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month)) } ?: d }
+    val data = readAstha(day)?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month), day.programmes.bundleRequestedAt()) } ?: d }
     val outlets = readShopOutlets(day)
     val subs = ShopModel.subChannels(day.reference.section("code_lists"))
     AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale), date?.take(7))
@@ -105,7 +105,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
                 val planned = basket.plan(gifts, uuid, day.programmes::newUuid, meta.capturedAt, rate)
                 val out = day.programmes.saveProgramme(meta, planned)
                 when (out) {
-                    SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { redeemed = day.programmes.redemptions(); uuid = day.programmes.newUuid() }
+                    SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { runCatching { day.programmes.redemptions() }.onSuccess { redeemed = it }; uuid = day.programmes.newUuid() } // the basket is saved: a failing re-read must not crash the screen
                     SaveOutcome.CONFLICT -> uuid = day.programmes.newUuid() // a different basket held the uuid: the next confirm is a new redemption
                     else -> Unit
                 }
@@ -118,7 +118,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
 
 internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val builtAt: String?)
 
-internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String)
+internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String, val requestedAt: String? = null)
 
 /**
  * Astha gift selection (manual 52). The record uuid is fixed when the page opens and renewed only after a save, so a double tap or a replay is one
@@ -134,18 +134,18 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val subs = ShopModel.subChannels(day.reference.section("code_lists"))
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
-            val today = day.reference.businessDate() ?: com.aktcl.aron.rules.BusinessDate.of(System.currentTimeMillis()).toString()
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale, day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth))
+            val today = day.programmes.metaFor(0L).businessDate // the trusted clock's Dhaka date, the one the record carries (never the bundle's date)
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale, day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.bundleRequestedAt())
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var local by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.local) }
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
-        GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, { outletId, giftId ->
+        GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, bundleRequestedAt = page.requestedAt, onSubmit = { outletId, giftId ->
             val shop = page.shops.firstOrNull { it.outletId == outletId }
             val out = day.programmes.saveProgramme(day.programmes.metaFor(shop?.routeId ?: 0L), listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
             when (out) {
-                SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { local = day.programmes.giftChoices(); uuid = day.programmes.newUuid() }
+                SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { runCatching { day.programmes.giftChoices() }.onSuccess { local = it }; uuid = day.programmes.newUuid() }
                 SaveOutcome.CONFLICT -> uuid = day.programmes.newUuid()
                 else -> Unit
             }

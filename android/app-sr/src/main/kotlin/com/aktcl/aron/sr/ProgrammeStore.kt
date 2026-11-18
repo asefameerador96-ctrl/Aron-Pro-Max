@@ -43,10 +43,17 @@ class ProgrammeStore(
 
     /** The gift choices on this phone with their outbox state, oldest first (the last one of an outlet and quarter is its current one). */
     suspend fun giftChoices(): List<LocalGiftChoice> = withContext(Dispatchers.IO) {
+        val reasons = runCatching { Json.parseToJsonElement(ReferenceRepository(db).section("reason_texts") ?: "{}") as? JsonObject }.getOrNull()
+        fun text(code: String?, lang: String): String? = code?.let { ((reasons?.get(it) as? JsonObject)?.get(lang) as? JsonPrimitive)?.content }
         db.captureDao().amoRecordsOfType("gift_choice").mapNotNull { r ->
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
-            LocalGiftChoice((o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
-                (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending")
+            val ob = db.outboxDao().byClientUuid(r.clientUuid)
+            val code = listOf(ob?.lastMessageKey, ob?.lastCode).firstOrNull { it != null && (text(it, "en") != null || text(it, "bn") != null) }
+            LocalGiftChoice(
+                (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
+                (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, ob?.state ?: "pending", ob?.ackedAt,
+                if (ob?.state == "rejected") text(code, "bn") else null, if (ob?.state == "rejected") text(code, "en") else null,
+            )
         }
     }
 
@@ -57,8 +64,17 @@ class ProgrammeStore(
             LocalMemo(
                 m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, ob?.state ?: "pending", ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
+                m.meta.routeId, m.memoKind,
             )
         }
+    }
+
+    /**
+     * The trusted-clock instant the held full snapshot was REQUESTED at: the cut-off of the Astha figure's memos (a memo acknowledged after it is not in the
+     * server figure). After a promoted prefetch it is the snapshot's server time (the same source as the balances); null when neither is held.
+     */
+    suspend fun bundleRequestedAt(): String? = withContext(Dispatchers.IO) {
+        db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_SERVER_TIME)
     }
 
     /** When the bundle that holds the balances was built (the server's clock), or null. */

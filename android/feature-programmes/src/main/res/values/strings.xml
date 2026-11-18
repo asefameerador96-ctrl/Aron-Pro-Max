@@ -28,8 +28,8 @@
     <string name="pg_load_failed">The Astha data could not be read from this phone.</string>
     <string name="pg_pack_packets">%1$s, %2$s per pack: %3$s packets</string>
     <string name="pg_pack_packets_loose">%1$s, %2$s per pack: %3$s packets + %4$s sticks</string>
-    <string name="pg_pack_dozens">%1$s, %2$s per dozen: %3$s dozens</string>
-    <string name="pg_pack_dozens_loose">%1$s, %2$s per dozen: %3$s dozens + %4$s pieces</string>
+    <string name="pg_pack_dozens">%1$s: %2$s dozens</string>
+    <string name="pg_pack_unknown">%1$s: %2$s (base units)</string>
     <string name="pg_pack_boxes">%1$s, %2$s per box: %3$s boxes</string>
     <string name="pg_pack_boxes_loose">%1$s, %2$s per box: %3$s boxes + %4$s pieces</string>
     <string name="pg_back">Back</string>
@@ -75,6 +75,8 @@
     <string name="pg_gift_locked">The gift is locked after the hand-over photo: %1$s</string>
     <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
     <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
+    <string name="pg_gift_sent">Sent to the server: %1$s</string>
+    <string name="pg_gift_tier_unknown">This outlet\'s category is not downloaded yet, so its gifts cannot be shown. Connect once and refresh.</string>
     <string name="pg_gift_chosen">Chosen gift: %1$s</string>
     <string name="pg_gift_none_for_tier">No gift is offered to this outlet\'s category.</string>
     <string name="pg_gift_saved">Gift choice saved on this phone. It goes out with the next sync.</string>

@@ -13,7 +13,11 @@ import kotlinx.serialization.json.longOrNull
 data class GiftAssignment(val outletId: Long, val quarter: String, val giftId: Long, val tierCode: String?, val photoCaptured: Boolean, val locked: Boolean)
 
 /** A gift choice this phone holds (from the stored `gift_choice` record and its outbox state). */
-data class LocalGiftChoice(val outletId: Long, val quarter: String, val giftId: Long, val state: String)
+data class LocalGiftChoice(
+    val outletId: Long, val quarter: String, val giftId: Long, val state: String, val ackedAt: String? = null,
+    /** The server's reason text of a refusal (the bundle's `reason_texts` of the ack's message key or code), Bangla and English; null when it has none. */
+    val reasonBn: String? = null, val reasonEn: String? = null,
+)
 
 /** Where an outlet's Astha gift stands for the quarter, as the screen shows it. */
 sealed interface GiftState {
@@ -22,7 +26,9 @@ sealed interface GiftState {
     /** The server holds the choice; the SR may change it until the hand-over photo locks it. */
     data class Chosen(val giftId: Long) : GiftState
     /** This phone saved a choice that has not reached the server yet (or that the server refused: [refused]). */
-    data class OnThisPhone(val giftId: Long, val refused: Boolean) : GiftState
+    data class OnThisPhone(val giftId: Long, val refused: Boolean, val reasonBn: String? = null, val reasonEn: String? = null) : GiftState
+    /** The server acknowledged this phone's choice and the held bundle was requested before that: the choice is sent, the bundle does not show it yet. */
+    data class Sent(val giftId: Long) : GiftState
     /** The hand-over photo locked the choice: shown, not changeable (the server refuses a later choice with `gift_locked`). */
     data class Locked(val giftId: Long) : GiftState
 }
@@ -37,12 +43,26 @@ data class GiftChoiceData(val gifts: List<LoyaltyGift>, val assignments: List<Gi
 
     fun assignment(outletId: Long, quarter: String): GiftAssignment? = assignments.firstOrNull { it.outletId == outletId && it.quarter == quarter }
 
-    /** The latest local choice that the server did not refuse wins over the bundle's; a refused one is shown as refused. */
-    fun stateOf(outletId: Long, quarter: String, local: List<LocalGiftChoice>): GiftState {
+    /**
+     * The latest local choice wins until the server answers: still on the phone is "not sent yet", a refusal is shown with the server's reason, an
+     * acknowledged one is "sent" while the held bundle ([bundleRequestedAt]) was requested before the ack, and once the bundle was requested after the ack the
+     * bundle's value wins (a TSO's later change shows). A locked assignment always wins.
+     */
+    fun stateOf(outletId: Long, quarter: String, local: List<LocalGiftChoice>, bundleRequestedAt: String? = null): GiftState {
         val a = assignment(outletId, quarter)
         if (a != null && a.locked) return GiftState.Locked(a.giftId)
         val mine = local.lastOrNull { it.outletId == outletId && it.quarter == quarter }
-        if (mine != null) return GiftState.OnThisPhone(mine.giftId, refused = mine.state == "rejected")
+        if (mine != null) {
+            when (mine.state) {
+                "rejected" -> return GiftState.OnThisPhone(mine.giftId, refused = true, mine.reasonBn, mine.reasonEn)
+                "acked" -> {
+                    val ack = DhakaTime.ms(mine.ackedAt); val req = DhakaTime.ms(bundleRequestedAt)
+                    val bundleHasIt = a != null && ack != null && req != null && ack <= req
+                    if (!bundleHasIt) return GiftState.Sent(mine.giftId)
+                }
+                else -> return GiftState.OnThisPhone(mine.giftId, refused = false)
+            }
+        }
         return if (a != null) GiftState.Chosen(a.giftId) else GiftState.None
     }
 }

@@ -15,9 +15,11 @@ data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String
 data class ShopInfo(
     val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannel: String?,
     val chip: String = "", val routeId: Long = 0L, val routeName: String = "", val clusterName: String = "",
+    /** The tier as a language-independent code: the ENGLISH sub-channel label, lower case (never the label in the UI language). */
+    val tier: String? = null,
 ) {
-    /** The Astha tier code the gift lists use: the sub-channel label in lower case (gold, diamond, platinum, titanium); null when the outlet has none. */
-    val tierCode: String? get() = subChannel?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+    /** The Astha tier code the gift lists use (gold, diamond, platinum, titanium); null when the outlet has none. Never taken from the UI-language label. */
+    val tierCode: String? get() = (tier ?: subChannel)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 }
 
 object ShopModel {
@@ -42,7 +44,7 @@ object ShopModel {
     /** The cards of exactly the outlets in [ids] (the gift page adds the outlets that already have a gift assignment): the route being worked first, then by name. */
     fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, subs: Map<Long, BrandName>, locale: UiLocale, preferredRouteId: Long? = null): List<ShopInfo> {
         return outlets.filter { it.outletId in ids }.sortedWith(compareBy<ShopOutlet> { if (preferredRouteId != null && it.routeId == preferredRouteId) 0 else 1 }.thenBy { it.nameLine.lowercase() })
-            .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }, it.chip, it.routeId, it.routeName, it.clusterName) }
+            .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }, it.chip, it.routeId, it.routeName, it.clusterName, it.subChannelId?.let { id -> subs[id]?.en }) }
     }
 
     /** Search by name, code or phone (case-insensitive, any part, digits compared as typed in Latin or Bangla); blank shows everyone. */

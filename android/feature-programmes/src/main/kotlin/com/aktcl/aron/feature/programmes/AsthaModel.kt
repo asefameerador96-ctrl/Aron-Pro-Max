@@ -12,7 +12,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
-enum class PackKind { PACKET, DOZEN, BOX }
+enum class PackKind { PACKET, DOZEN, BOX, UNKNOWN }
 
 /** [packs] whole packs and [looseMilli] loose base units (thousandths) of one pack size. */
 data class PackLine(val packFactor: Int, val packs: Long, val looseMilli: Long, val kind: PackKind)
@@ -37,7 +37,7 @@ data class BrandName(val en: String, val bn: String?) {
 }
 
 /** What the Astha screens read: all rows, the display-only "as of", the cut flag and the brand names. */
-data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap(), val skuBrand: Map<Long, Long> = emptyMap()) {
+data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap(), val skuBrand: Map<Long, Long> = emptyMap(), val skuPack: Map<Long, Int> = emptyMap()) {
     /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
     fun packLine(brandId: Long?, p: AsthaPack): PackLine = AsthaModel.packLine(brandId?.let { brandCategory[it] }, p)
 
@@ -72,7 +72,7 @@ object AsthaModel {
         val rows = (prog["astha_targets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::row) }
         val truncated = (prog["astha_truncated"] as? JsonPrimitive)?.booleanOrNull ?: false
         val asOf = (prog["astha_as_of"] as? JsonPrimitive)?.contentOrNull
-        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson), skuBrands(productsJson))
+        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson), skuBrands(productsJson), skuPackFactors(productsJson))
     }
 
     /** sku id -> its brand node id: the SKU's variant node, walked up the product tree to the brand level; SKUs whose chain has no brand are left out. */
@@ -91,25 +91,50 @@ object AsthaModel {
         }.toMap()
     }
 
-    /** brand node id -> the code of its category ancestor in the product tree (category, segment, brand, variant), lower case; brands without one are left out. */
+    /**
+     * brand node id -> the category code of its SKUs (`products.skus[].category_code`, the seed sets no code on the category nodes), lower case.
+     * A brand whose SKUs disagree, or that has none, is left out: its unit is then not guessed.
+     */
     private fun brandCategories(productsJson: String?): Map<Long, String> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
-        class N(val level: String, val parent: Long?, val code: String?)
-        val nodes = (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
-            val o = n as? JsonObject ?: return@mapNotNull null
-            (o.long("id") ?: return@mapNotNull null) to N(o.str("level")?.lowercase() ?: return@mapNotNull null, o.long("parent_id"), o.str("code")?.lowercase())
-        }.toMap()
-        fun categoryOf(id: Long): String? { var cur = nodes[id]; var guard = 0; while (cur != null && guard++ < 8) { if (cur.level == "category") return cur.code; cur = cur.parent?.let { nodes[it] } }; return null }
-        return nodes.filter { it.value.level == "brand" }.mapNotNull { (id, _) -> categoryOf(id)?.let { id to it } }.toMap()
+        val skuBrand = skuBrands(productsJson)
+        val perBrand = HashMap<Long, MutableSet<String>>()
+        (p["skus"] as? JsonArray).orEmpty().forEach { e ->
+            val o = e as? JsonObject ?: return@forEach
+            val sku = o.long("sku_id") ?: o.long("id") ?: return@forEach
+            val brand = skuBrand[sku] ?: return@forEach
+            val cat = o.str("category_code")?.lowercase()?.takeIf { it.isNotBlank() } ?: return@forEach
+            perBrand.getOrPut(brand) { HashSet() }.add(cat)
+        }
+        return perBrand.filter { it.value.size == 1 }.mapValues { it.value.first() }
     }
 
+    /** sku id -> base units in one pack (`products.skus[].base_per_pack`), the grouping the server uses for `by_pack`. */
+    private fun skuPackFactors(productsJson: String?): Map<Long, Int> {
+        val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
+        return (p["skus"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val sku = o.long("sku_id") ?: o.long("id") ?: return@mapNotNull null
+            sku to (o.long("base_per_pack")?.toInt()?.takeIf { it >= 1 } ?: return@mapNotNull null)
+        }.toMap()
+    }
+
+    private val log = java.util.logging.Logger.getLogger("AsthaModel")
+
     /**
-     * One pack size of a brand as whole packs plus loose units, never a fraction of a pack (the Sale screens' rule): [category] match counts in dozens
-     * (loose pieces), lighter in boxes (loose pieces), everything else in packets (loose sticks). `pack_factor` is the base units in one pack.
+     * One pack size of a brand in the units the field counts (rule 5, docs/34 s4.2). Matches: the dozen IS the base unit (`pack_factor` 1), so the figure is
+     * dozens, whole and fractional, never loose pieces. Lighters: boxes of `pack_factor` plus loose pieces. Cigarettes and bidi: packets of `pack_factor`
+     * plus loose sticks. An unknown category prints the number in neutral base units and is logged, never a unit word that may be wrong.
      */
     fun packLine(category: String?, p: AsthaPack): PackLine {
+        val kind = when (category) {
+            "match" -> PackKind.DOZEN
+            "lighter" -> PackKind.BOX
+            "cigarette", "bidi" -> PackKind.PACKET
+            else -> { log.log(java.util.logging.Level.WARNING, "astha_pack_unknown_category", p.packFactor); PackKind.UNKNOWN }
+        }
+        if (kind == PackKind.DOZEN || kind == PackKind.UNKNOWN) return PackLine(p.packFactor, p.stdAchievedMilli / 1000L, p.stdAchievedMilli % 1000L, kind)
         val unit = p.packFactor * 1000L
-        val kind = when (category) { "match" -> PackKind.DOZEN; "lighter" -> PackKind.BOX; else -> PackKind.PACKET }
         return PackLine(p.packFactor, p.stdAchievedMilli / unit, p.stdAchievedMilli % unit, kind)
     }
 
