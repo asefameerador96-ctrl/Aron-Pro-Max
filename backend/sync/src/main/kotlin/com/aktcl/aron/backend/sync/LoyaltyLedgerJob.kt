@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit
 object LoyaltyLedger {
     /** One balance, one writer at a time (a second worker replica waits here until the first commits). */
     private fun lockPair(h: Handle, outlet: Long, programme: Long) {
-        h.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", "loyalty:$outlet:$programme").mapTo(Int::class.java).one()
+        h.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", com.aktcl.aron.backend.platform.LoyaltyPairLock.key(outlet, programme)).mapTo(Int::class.java).one()
     }
 
     /** One ledger row as the replay sees it. [at] and [id] only break ties deterministically. */

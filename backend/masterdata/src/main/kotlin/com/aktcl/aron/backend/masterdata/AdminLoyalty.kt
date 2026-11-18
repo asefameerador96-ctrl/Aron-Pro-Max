@@ -1063,15 +1063,16 @@ private fun adjOutlets(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, prog: A
 }
 
 /**
- * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key `loyalty:<outlet>:<programme>` and call), for the outlets of EVERY debit row (with or without allow_overdraw: the guard AND the
+ * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key from the shared `LoyaltyPairLock.key` and the same call), for the outlets of EVERY debit row (with or without allow_overdraw: the guard AND the
  * 'overdraw' flag and balance_before are decided under it), in ONE statement over the sorted array (two bulks, and the job, never wait in a cycle). Credits take none (a credit racing a debit only
  * makes the debit's check more conservative). Advisory locks live in the shared lock table, so the caller caps the number (MAX_DEBIT_ROWS); SQLSTATE 53200 is still mapped to a clean refusal (adjDb).
  */
 private fun adjLockPairs(h: Handle, programme: Long, outlets: Collection<Long>) {
     val sorted = outlets.distinct().sorted()
     if (sorted.isEmpty()) return
-    h.createQuery("SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended('loyalty:' || s.o || ':' || CAST(:p AS bigint), 0)) FROM (SELECT o FROM unnest(CAST(:o AS bigint[])) AS u(o) ORDER BY o OFFSET 0) s) x")
-        .bind("p", programme).bindArray("o", Long::class.javaObjectType, sorted).mapTo(Long::class.java).one()
+    // the keys come from the ONE shared function (LoyaltyPairLock), in outlet order; the statement keeps that order (ORDINALITY + OFFSET 0 fence)
+    h.createQuery("SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended(s.k, 0)) FROM (SELECT k FROM unnest(CAST(:k AS text[])) WITH ORDINALITY AS u(k, n) ORDER BY n OFFSET 0) s) x")
+        .bindArray("k", String::class.java, sorted.map { com.aktcl.aron.backend.platform.LoyaltyPairLock.key(it, programme) }).mapTo(Long::class.java).one()
 }
 
 /** The two per-uuid locks in ONE fixed order in both handlers (a uuid is a request or a batch, never both): batch first, then request. */

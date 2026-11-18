@@ -10,11 +10,15 @@ import java.time.LocalDate
  */
 data class AsthaQuarter(val label: String, val months: List<LocalDate>) {
     companion object {
-        fun of(date: LocalDate, startMonth: Int): AsthaQuarter = AsthaQuarters.of(date.year, date.monthValue, startMonth).let(::from)
+        fun of(date: LocalDate, startMonth: Int): AsthaQuarter = from(AsthaQuarters.of(date.year, date.monthValue, startMonth), startMonth)
 
         /** The quarter named by [label] (`YYYY-Qn`, the year of the quarter's first month). Null for a malformed label. */
-        fun parse(label: String, startMonth: Int): AsthaQuarter? = AsthaQuarters.parse(label, startMonth)?.let(::from)
+        fun parse(label: String, startMonth: Int): AsthaQuarter? = AsthaQuarters.parse(label, startMonth)?.let { from(it, startMonth) }
 
-        private fun from(q: AsthaQuarters.Quarter) = AsthaQuarter(q.key, q.months.map { LocalDate.of(it.substringBeforeLast('-').toInt(), it.substringAfterLast('-').toInt(), 1) })   // built from the parts, so any year keeps working (no ISO text parse)
+        // The months are built from the quarter's year and index (no text round trip), so any date works. LIMIT: the LABEL is the shared function's key, written with four digits: dates before year 0 get that function's label.
+        private fun from(q: AsthaQuarters.Quarter, startMonth: Int): AsthaQuarter {
+            val first = LocalDate.of(q.year, (startMonth.coerceIn(1, 12) - 1 + 3 * (q.index - 1)) % 12 + 1, 1)
+            return AsthaQuarter(q.key, (0L..2L).map { first.plusMonths(it) })
+        }
     }
 }
