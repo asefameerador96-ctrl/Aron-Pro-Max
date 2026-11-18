@@ -48,3 +48,7 @@ Done in this round (lead ruling 6): `web/src/lib/admin/op-rules.ts`, `web/src/co
 ## Rollout
 
 Create no 3-character SR or AMO login until the fleet runs the android-gates build (older APKs hold the 4-character memo username rule and throw on the first memo number), or gate it on a minimum app version.
+
+## After train 117 landed
+
+Follow-up (D-SV2-21): the column comment of `closed_by` is corrected by `V0240__attendance_closed_by_comment.sql` (provisional number; V0201 is never edited). No contract change: only descriptions. A `null` `closed_by` is refused (`schema_invalid`, named reason).
