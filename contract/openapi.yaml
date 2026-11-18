@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.19.0
+  version: 1.20.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -125,6 +125,7 @@ info:
       phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
       route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
       `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
+    - 1.20.0 (waiting quarantine items, lane portal-loyalty-api, train 118 landing; migration V0204; request file `docs/requests/contract-1.20-loyalty-waiting.md`; additive only, response members only): `QuarantinePage.waiting_count` (the open items that wait for another parent inside the caller's reach, whatever the page and filters) and, on `QuarantineItem`, `waiting`, `waits_for_uuid` and `waits_for_refused`. A child held with a parent that a reviewer accepted, whose other parent is not stored yet, stays open (the phone is told nothing final); the server's own sweep in the API process releases it when that parent is stored, with exactly the override the reviewer's accept carried for it, and a hash-chained audit row by the system actor; if a check of its own then holds it, it becomes an ordinary held item (`waiting` false). No request or phone-visible record change.
     - 1.19.0 (SR check-out round, lane sr-server SV6, train 117, D-SV2-15; ruling 6 of D-LEAD-PREREQ-03 and `docs/requests/android-gates.md`; request file
       `docs/requests/contract-1.19-sr-server-checkout.md`; additive only): the `attendance_event` payload gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`;
       `phone` only on a `check_out`, absent means `rep`; a real check-out of the same day outranks a phone close whatever the arrival order). `phone` is the phone closing a forgotten day at a
@@ -14081,11 +14082,31 @@ components:
             - { $ref: '#/components/schemas/Timestamp' }
             - type: 'null'
         resolution_note: { type: [string, 'null'], maxLength: 500 }
+        waiting:
+          type: boolean
+          description: >-
+            From 1.20.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the
+            first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`,
+            field names and uuids only). The server's own sweep (in the API process) releases it when that parent is stored, with exactly the override a reviewer's accept carried for it and nothing more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it.
+        waits_for_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+          description: From 1.20.0. The parent a waiting item awaits; null when not waiting.
+        waits_for_refused:
+          type: boolean
+          description: >-
+            From 1.20.0. True when the awaited parent is refused or discarded (refreshed at every pass): the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`) is the way out.
     QuarantinePage:
       type: object
       required: [items, next_cursor]
       additionalProperties: false
       properties:
+        waiting_count:
+          type: integer
+          minimum: 0
+          description: >-
+            From 1.20.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters.
         items:
           type: array
           items: { $ref: '#/components/schemas/QuarantineItem' }
