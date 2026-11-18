@@ -194,4 +194,12 @@ class AttendanceGateTest {
     private companion object {
         const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
     }
+
+    /** D-LEAD-PREREQ-03 ruling 7: ANY stored check-out makes the date checked out, whatever the clock order (a check-out captured on an earlier clock than the check-in). */
+    @Test fun aStoredCheckOutClosesTheDateWhateverTheClockOrder() = runTest {
+        checkIn(at = "2026-10-05T10:00:00.000Z")
+        checkOut(at = "2026-10-05T09:00:00.000Z") // captured on an earlier clock than the check-in
+        assertEquals(AttendanceRefusal.CHECKED_OUT, gated.attendanceRefusal("2026-10-05"))
+        refused(AttendanceRefusal.CHECKED_OUT) { gated.recordStock(listOf(TestRows.stock())) }
+    }
 }

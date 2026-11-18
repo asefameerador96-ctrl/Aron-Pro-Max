@@ -13,7 +13,7 @@ class AttendanceRefusedException(val why: AttendanceRefusal, val businessDate: S
 /**
  * The ONE function that decides "may this operational write happen" (D-OWNER-PREREQ-01 rule 1, D-LEAD-PREREQ-02): read from the phone's
  * STORED attendance (`attendance_event`) by the record's own business date, never from an in-memory copy. A write is allowed
- * only while the date's latest attendance event is a check-in: no check-in, or a check-out after it, refuses it.
+ * only while the date has a check-in and NO check-out stored (any check-out, whatever the clock order, ruling 7 of D-LEAD-PREREQ-03).
  *
  * It is enforced in [CaptureRepository] (the write layer), so no screen, deep link, notification, restored open visit or
  * background path can go round it, and mirrored in the UI (tiles show a lock and lead to check-in). Hard: no config softens it.
@@ -25,9 +25,10 @@ class AttendanceRefusedException(val why: AttendanceRefusal, val businessDate: S
 object AttendanceGate {
     /** Pure: [events] are the date's attendance rows in capture order. Null means the write may happen. */
     fun refusal(events: List<AttendanceEventEntity>): AttendanceRefusal? {
-        val last = events.maxWithOrNull(compareBy({ it.meta.capturedAt }, { if (it.kind == "check_out") 1 else 0 })) ?: return AttendanceRefusal.NOT_CHECKED_IN
         if (events.none { it.kind == "check_in" }) return AttendanceRefusal.NOT_CHECKED_IN
-        return if (last.kind == "check_out") AttendanceRefusal.CHECKED_OUT else null
+        // D-LEAD-PREREQ-03 ruling 7: once ANY check-out is stored for the date the date is checked out, whatever the clock order of the rows
+        // (a check-out captured on an earlier clock than the check-in, after a clock fallback, must not reopen the day)
+        return if (events.any { it.kind == "check_out" }) AttendanceRefusal.CHECKED_OUT else null
     }
 
     suspend fun refusal(dao: CaptureDao, businessDate: String): AttendanceRefusal? = refusal(dao.attendanceOn(businessDate))

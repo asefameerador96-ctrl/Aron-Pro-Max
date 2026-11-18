@@ -133,7 +133,15 @@ class SrDay(
      * start, after every check-in and check-out, on resume and at the Dhaka boundaries; the write layer never trusts it.
      */
     val dayGate = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN)
-    suspend fun refreshDayGate() { dayGate.value = runCatching { capture.attendanceRefusal(businessDate()) }.getOrDefault(dayGate.value) }
+    suspend fun refreshDayGate() {
+        // D-LEAD-PREREQ-03 rulings 1 and 2: while a call or a memo edit of an EARLIER, still open check-in is open, the screens of that work stay open
+        // (its records carry the visit's date); the write layer judges each record by its own date. When the work ends the day is closed and the gate follows today.
+        dayGate.value = runCatching {
+            val today = capture.attendanceRefusal(businessDate())
+            if (today == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN && openWorkNow() != null &&
+                capture.openAttendanceDates().any { it < businessDate() }) null else today
+        }.getOrDefault(dayGate.value)
+    }
     val reference = ReferenceRepository(db)
     val visitSession = VisitSession()
     /** Sale, memo, summary and Sales Submit of android-sr-b on this user's database (one per day object). */
@@ -431,6 +439,8 @@ class SrDay(
      * time on a later date than its business date. Idempotent: a closed day has its check-out and is never found again. Returns the dates closed.
      */
     suspend fun closeForgottenDays(): List<String> {
+        // D-LEAD-PREREQ-03 ruling 1: never while a call or a memo edit is open (it would submit the day under it); it runs again when that work ends
+        if (openWorkNow() != null) return emptyList()
         val today = businessDate()
         val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
         for (d in stale) {
@@ -442,7 +452,7 @@ class SrDay(
             )
             runCatching { commitAttendance(event, fix) }
         }
-        if (stale.isNotEmpty()) { attendance.restore(attendanceToday()); refreshDayGate() }
+        if (stale.isNotEmpty()) { attendance.restore(attendanceForScreen()); refreshDayGate() }
         return stale
     }
 
@@ -666,6 +676,18 @@ class SrDay(
     fun closeSummaryAttempt() { _summaryAttempt.value = null }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
+
+    /**
+     * The events the Attendance screen restores from: today's, or, when today has no check-in and an EARLIER date was never checked out, that open
+     * date's (so after Dhaka midnight the rep's own check-out closes the open check-in's day, D-LEAD-PREREQ-03 ruling 3).
+     */
+    suspend fun attendanceForScreen(): List<com.aktcl.aron.core.database.entity.AttendanceEventEntity> {
+        val today = attendanceToday()
+        if (today.any { it.kind == "check_in" }) return today
+        val open = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < businessDate() }.maxOrNull() ?: return today
+        return db.captureDao().attendanceOn(open)
+    }
+
 
     /** Today's day is open on this phone: attendance recorded and no Sales Submit yet (the updater's day gate, F-SYS-020). */
     suspend fun dayOpen(): Boolean = businessDate().let { d -> db.captureDao().attendanceOn(d).isNotEmpty() && db.captureDao().daySubmitsOn(d).isEmpty() }

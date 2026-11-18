@@ -274,7 +274,7 @@ fun SrApp(
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
         // a day the rep never checked out of is closed by the phone BEFORE anything else (D-AGATE-06): its submits and a flagged check-out
         day.closeForgottenDays()
-        day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate()
+        day.attendance.restore(day.attendanceForScreen()); day.attendance.refreshSubmit(); day.refreshDayGate()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
     }
@@ -283,8 +283,19 @@ fun SrApp(
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
         // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
-        day.closeForgottenDays(); day.attendance.restore(day.attendanceToday()); day.refreshDayGate(); day.reload(); day.taskBoard.load()
+        day.closeForgottenDays(); day.attendance.restore(day.attendanceForScreen()); day.refreshDayGate(); day.reload(); day.taskBoard.load()
         boundary++; resumeTick++
+    }
+    // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
+    val srCallOpen = day.visitSession.current.collectAsState().value != null
+    val srEditOpen = day.sale.flow.state.collectAsState().value.let { it.draft?.edit != null && it.committed == null }
+    var srWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(srCallOpen, srEditOpen) {
+        if (srCallOpen || srEditOpen) { srWasOpen = true; day.refreshDayGate() }
+        else if (srWasOpen) {
+            srWasOpen = false
+            day.closeForgottenDays(); day.attendance.restore(day.attendanceForScreen()); day.refreshDayGate(); day.reload(); resumeTick++
+        }
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
     // A tap is consumed once (reset to 0), and never pulls the rep out of a visit, sale or memo: it waits until they are
@@ -299,7 +310,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.closeForgottenDays(); day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.closeForgottenDays(); day.attendance.restore(day.attendanceForScreen()); day.attendance.refreshSubmit(); day.refreshDayGate(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }

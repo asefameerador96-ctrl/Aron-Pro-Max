@@ -103,12 +103,26 @@ class AmoDay(
 
     /** The UI mirror of the gate (see SrDay.dayGate): starts locked, re-read from Room, never trusted by the write layer. */
     val dayGate = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN)
-    suspend fun refreshDayGate() { dayGate.value = runCatching { capture.attendanceRefusal(businessDate()) }.getOrDefault(dayGate.value) }
+    suspend fun refreshDayGate() {
+        // D-LEAD-PREREQ-03 rulings 1 and 2: while a call or a memo edit of an EARLIER, still open check-in is open, the screens of that work stay open
+        // (its records carry the visit's date); the write layer judges each record by its own date. When the work ends the day is closed and the gate follows today.
+        dayGate.value = runCatching {
+            val today = capture.attendanceRefusal(businessDate())
+            if (today == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN && openWorkNow() != null &&
+                capture.openAttendanceDates().any { it < businessDate() }) null else today
+        }.getOrDefault(dayGate.value)
+    }
     val reference = ReferenceRepository(db)
 
     private val isoMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
+    /** Milliseconds until the next Dhaka midnight on trusted time (at least one second): the AMO's ONE boundary timer, no tick (D-LEAD-PREREQ-03 round 3). */
+    fun millisToNextMidnight(): Long {
+        val dayMs = 24L * 3_600_000L
+        val now = (clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS).mod(dayMs)
+        return (dayMs - now + 1_000L).coerceAtLeast(1_000L)
+    }
     fun dhakaMinutesNow(): Int = ((clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS) / 60_000L).mod(24 * 60L).toInt()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
     /** D-NIGHT-DAYCLOSE-01, contract 1.9 row 4: the Sales Submit digest (`GET /v1/sync/totals`), read when the screen asks. */
@@ -230,6 +244,8 @@ class AmoDay(
 
     /** D-AGATE-06: a day never checked out is closed by the phone at the next start, before a new check-in (see SrDay.closeForgottenDays). */
     suspend fun closeForgottenDays(): List<String> {
+        // D-LEAD-PREREQ-03 ruling 1: never while a call or a memo edit is open (it would submit the day under it); it runs again when that work ends
+        if (openWorkNow() != null) return emptyList()
         val today = businessDate()
         val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
         for (d in stale) {
@@ -240,11 +256,23 @@ class AmoDay(
             )
             runCatching { commitAttendance(event, fix) }
         }
-        if (stale.isNotEmpty()) { attendance.restore(attendanceToday()); refreshDayGate() }
+        if (stale.isNotEmpty()) { attendance.restore(attendanceForScreen()); refreshDayGate() }
         return stale
     }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
+
+    /**
+     * The events the Attendance screen restores from: today's, or, when today has no check-in and an EARLIER date was never checked out, that open
+     * date's (so after Dhaka midnight the rep's own check-out closes the open check-in's day, D-LEAD-PREREQ-03 ruling 3).
+     */
+    suspend fun attendanceForScreen(): List<com.aktcl.aron.core.database.entity.AttendanceEventEntity> {
+        val today = attendanceToday()
+        if (today.any { it.kind == "check_in" }) return today
+        val open = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < businessDate() }.maxOrNull() ?: return today
+        return db.captureDao().attendanceOn(open)
+    }
+
 
     /** "HH:mm" of the configured earliest check-out, for the screen's hint. */
     fun checkoutAtLabel(): String {
