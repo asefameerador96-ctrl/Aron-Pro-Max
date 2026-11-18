@@ -1,0 +1,27 @@
+ProgrammeAdjustmentWrite:
+  type: object
+  required:
+  - request_uuid
+  - outlet_id
+  - points
+  - reason
+  additionalProperties: false
+  description: From 1.23.0.
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    points:
+      type: integer
+      minimum: -1000000
+      maximum: 1000000
+      description: 'Signed, never 0: a credit is positive, a debit negative.'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'
+    expires_on:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Last day the credited points count (not before today, Dhaka); null or absent = no expiry.

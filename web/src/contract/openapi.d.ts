@@ -4168,6 +4168,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/programmes/{id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
+         * @description From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated and the answer reports `valid`, the totals and EVERY row error (`errors[]`: row index, column, code; at most 100, `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`).
+         */
+        put: operations["putProgrammeAdjustments"];
+        /**
+         * Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
+         * @description From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters. IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not).
+         */
+        post: operations["postProgrammeAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The points ledger of a programme (newest first), with the reason of each portal adjustment.
+         * @description From 1.23.0. Ledger rows are outlet data, cut to the caller's server-side reach exactly as `listProgrammeEnrolments`: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the rows of the outlets of their zones and routes; a BRAND user is refused `403`. A programme outside the caller's reach is `404`. Optional filters `outlet_id` and `source_type`. `reason` is set on `adjustment` rows only (from their audit row).
+         */
+        get: operations["listProgrammeLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/gifts": {
         parameters: {
             query?: never;
@@ -10489,6 +10533,108 @@ export interface components {
             batch_uuid: components["schemas"]["Uuid"];
             rows: components["schemas"]["ProgrammeEnrolment"][];
             change_reason: components["schemas"]["ChangeReason"];
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentWrite: {
+            request_uuid: components["schemas"]["Uuid"];
+            outlet_id: components["schemas"]["Id"];
+            /** @description Signed, never 0: a credit is positive, a debit negative. */
+            points: number;
+            reason: components["schemas"]["ChangeReason"];
+            /**
+             * Format: date
+             * @description Last day the credited points count (not before today, Dhaka); null or absent = no expiry.
+             */
+            expires_on?: string | null;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentRow: {
+            outlet_id: components["schemas"]["Id"];
+            points: number;
+            /** Format: date */
+            expires_on?: string | null;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentBatch: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @description true = validate and report, write nothing. */
+            dry_run: boolean;
+            change_reason: components["schemas"]["ChangeReason"];
+            rows: components["schemas"]["ProgrammeAdjustmentRow"][];
+        };
+        ProgrammeAdjustmentRowError: {
+            /** @description Zero-based index in `rows`. */
+            row: number;
+            /** @description The member at fault (`outlet_id`, `points`, `expires_on`) or `row`. */
+            column: string;
+            /** @description Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, invalid_value ... */
+            code: string;
+        };
+        /** @description From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries `posted`. */
+        ProgrammeAdjustmentBatchResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            dry_run: boolean;
+            rows: number;
+            /** @description Apply only: ledger rows written now (0 on a replay). */
+            posted?: number;
+            /** @description The batch was posted before (an apply answers it with posted 0; a dry run says so). */
+            replayed: boolean;
+            /**
+             * Format: int64
+             * @description Sum of the valid rows points.
+             */
+            total_points: number;
+            /** @description Dry run only: no row error and the programme can take the batch (or it is a replay). */
+            valid?: boolean;
+            /** @description Dry run only. */
+            outlets?: number;
+            /**
+             * Format: int64
+             * @description Dry run only.
+             */
+            credit_points?: number;
+            /**
+             * Format: int64
+             * @description Dry run only (negative or 0).
+             */
+            debit_points?: number;
+            /**
+             * @description Dry run only.
+             * @enum {string}
+             */
+            programme_status?: "draft" | "active" | "inactive";
+            /** @description Dry run only. */
+            errors?: components["schemas"]["ProgrammeAdjustmentRowError"][];
+            /** @description Dry run only. */
+            errors_truncated?: boolean;
+        };
+        /** @description From 1.23.0. One row of the append-only points ledger. */
+        LedgerEntry: {
+            /** Format: int64 */
+            ledger_id: number;
+            /** @description adjustment, redemption, redemption_void, expiry, ... */
+            source_type: string;
+            /** @description For an adjustment: the request_uuid, or `<batch_uuid>:<row index>` for a bulk row. */
+            source_id: string;
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            points: number;
+            business_date: components["schemas"]["BusinessDate"];
+            /** Format: date */
+            expires_on: string | null;
+            /** @description Portal adjustments carry `portal`. */
+            flags: string[];
+            /** @description The audit reason of an adjustment; null on other rows. */
+            reason: string | null;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description From 1.23.0. */
+        LedgerPage: {
+            programme_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            programme_status: "draft" | "active" | "inactive";
+            items: components["schemas"]["LedgerEntry"][];
+            next_cursor: string | null;
         };
         Gift: {
             gift_id: components["schemas"]["Id"];
@@ -19827,6 +19973,110 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    putProgrammeAdjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentBatch"];
+            };
+        };
+        responses: {
+            /** @description The dry-run report, or the result of the apply. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeAdjustmentBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    postProgrammeAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentWrite"];
+            };
+        };
+        responses: {
+            /** @description A repeat of the same request; the stored row, nothing added. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            /** @description Posted now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listProgrammeLedger: {
+        parameters: {
+            query?: {
+                outlet_id?: components["schemas"]["Id"];
+                source_type?: string;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of ledger rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listGifts: {

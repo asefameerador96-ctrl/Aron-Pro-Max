@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.platform.AsthaQuarter
 import com.aktcl.aron.backend.sync.BundleProgrammes
+import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -380,5 +381,30 @@ class AsthaBundleSectionTest {
         assertEquals("2026-Q1", q("2026-11-12", 11).label); assertEquals("2026-11-01", q("2026-11-12", 11).months.first().toString())
         assertEquals("2027-Q2", q("2027-01-05", 10).label) // an October-start year: Oct-Dec is its Q1, Jan-Mar its Q2, labelled by the year the quarter starts in
         assertEquals(listOf("2026-10-01", "2026-11-01", "2026-12-01"), q("2026-12-31", 1).months.map { it.toString() })
+    }
+
+    /** D-LOY-API-35: a portal points adjustment, posted through the REAL endpoint of the production wiring, is the plain sum in the bundle's `loyalty[].balance_points` (a debit past zero shows `overdrawn`). */
+    @Test
+    fun aPortalPointsAdjustmentIsInTheBundleBalanceAndOverdrawnShowsBelowZero() {
+        fun row(): JsonObject = assertNotNull(section(setOf(outletB)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single()
+        val before = row().str("balance_points")!!.toLong()
+        fun post(points: Int, request: String = java.util.UUID.randomUUID().toString()) = with(world) {
+            var out: Pair<Int, String>? = null
+            withApi {
+                val r = postWeb("superadmin1001", "/v1/admin/programmes/$programme/adjustments", """{"request_uuid":"$request","outlet_id":$outletB,"points":$points,"reason":"Opening balance loaded by the office"}""")
+                out = r.status.value to r.bodyAsText()
+            }
+            out!!
+        }
+        val rq = java.util.UUID.randomUUID().toString()
+        assertEquals(201, post(25, rq).first, "first post")
+        assertEquals(before + 25, row().str("balance_points")!!.toLong())
+        assertEquals(200, post(25, rq).first, "a resend is a replay")
+        assertEquals(before + 25, row().str("balance_points")!!.toLong(), "a resend never doubles the points")
+        assertEquals(201, post(-(before.toInt() + 40)).first)
+        row().also { assertEquals("-15", it.str("balance_points")); assertEquals("true", it.str("overdrawn")) }
+        assertEquals(201, post(15).first)
+        row().also { assertEquals("0", it.str("balance_points")); assertEquals("false", it.str("overdrawn")) }
+        assertEquals(3L, world.one("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND action = 'post' AND entity_id IN (SELECT source_id FROM app.loyalty_ledger WHERE outlet_id = $outletB AND programme_id = $programme)"))
     }
 }

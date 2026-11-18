@@ -876,4 +876,142 @@ class AdminLoyaltyTest {
         call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", nat, enrolBody(prog, rows = enrolRow(prog, fx["L-O1"]!!))).expect(HttpStatusCode.Forbidden)
         call(HttpMethod.Post, "/v1/admin/programmes/$prog/status", nat, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""").expect(HttpStatusCode.Forbidden)
     }
+
+    // ------------------------------------------------------------------------------------------------ points adjustments (D-LOY-API-35)
+
+    private suspend fun ApplicationTestBuilder.activeProg(scope: String = "[${s("zone", fx["zoneA"]!!)}]"): Long = createId(createBody(scope = scope)).also { activate(it).expect(HttpStatusCode.OK) }
+    private fun adjBody(outlet: Long, points: Int, request: String = uuid(), extra: String = "", reason: String = why) = """{"request_uuid":"$request","outlet_id":$outlet,"points":$points,"reason":"$reason"$extra}"""
+    private suspend fun ApplicationTestBuilder.adj(prog: Long, token: String, body: String) = call(HttpMethod.Post, "/v1/admin/programmes/$prog/adjustments", token, body)
+    private fun bulkBody(batch: String, dry: Boolean, vararg rows: String, reason: String = why) = """{"batch_uuid":"$batch","dry_run":$dry,"change_reason":"$reason","rows":[${rows.joinToString(",")}]}"""
+    private fun brow(outlet: Long, points: Int, exp: String? = null) = """{"outlet_id":$outlet,"points":$points${if (exp != null) ""","expires_on":"$exp"""" else ""}}"""
+    private suspend fun ApplicationTestBuilder.bulk(prog: Long, token: String, body: String) = call(HttpMethod.Put, "/v1/admin/programmes/$prog/adjustments", token, body)
+    private fun ledgerCount(prog: Long) = count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND source_type = 'adjustment'")
+    private fun balance(prog: Long, outlet: Long) = count("SELECT COALESCE(sum(points), 0) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $outlet")
+
+    @Test
+    fun aSingleAdjustmentPostsOneLedgerRowWithAuditAndAReplayNeverDoublesIt() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!
+        val request = uuid()
+        val r = adj(prog, adminW, adjBody(o1, 50, request, ""","expires_on":"$to""""))
+        r.expect(HttpStatusCode.Created)
+        val first = r.obj()
+        assertEquals(50, first.getValue("points").jsonPrimitive.content.toInt()); assertEquals("adjustment", first.getValue("source_type").jsonPrimitive.content)
+        assertEquals(request, first.getValue("source_id").jsonPrimitive.content); assertEquals(why, first.getValue("reason").jsonPrimitive.content)
+        assertEquals(1, ledgerCount(prog)); assertEquals(50, balance(prog, o1))
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$request' AND action = 'post' AND reason = '$why' AND via = 'web'"))
+        assertEquals(to, scalar("SELECT expires_on::text FROM app.loyalty_ledger WHERE source_id = '$request'"))
+        // Replay (also when the programme has ended since): the same row, 200, nothing added.
+        repeat(2) { adj(prog, adminW, adjBody(o1, 50, request, ""","expires_on":"$to"""")).also { it.expect(HttpStatusCode.OK); assertEquals(first.getValue("ledger_id"), it.obj().getValue("ledger_id")) } }
+        assertEquals(1, ledgerCount(prog)); assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$request'"))
+        // The same id with other content is a conflict and changes nothing.
+        adj(prog, adminW, adjBody(o1, 51, request, ""","expires_on":"$to"""")).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.request_uuid")
+        adj(prog, adminW, adjBody(o1, 50, request)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        adj(prog, adminW, adjBody(fx["L-O2"]!!, 50, request, ""","expires_on":"$to"""")).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        assertEquals(1, ledgerCount(prog)); assertEquals(50, balance(prog, o1))
+        // A debit (negative amount) is a row too; the sum is the balance the bundle shows.
+        adj(prog, super1, adjBody(o1, -20)).expect(HttpStatusCode.Created)
+        assertEquals(30, balance(prog, o1))
+        call(HttpMethod.Post, "/v1/admin/programmes/$prog/status", super1, """{"request_uuid":"${uuid()}","to_status":"inactive","reason":"$why"}""").expect(HttpStatusCode.OK)
+        adj(prog, adminW, adjBody(o1, 50, request, ""","expires_on":"$to"""")).expect(HttpStatusCode.OK)
+        adj(prog, adminW, adjBody(o1, 5)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+        // Racing resends of one id post exactly one row.
+        val prog2 = activeProg(); val rq = uuid()
+        val codes = kotlinx.coroutines.coroutineScope { (1..6).map { async(kotlinx.coroutines.Dispatchers.IO) { adj(prog2, adminW, adjBody(o1, 7, rq)).status.value } }.awaitAll() }.sorted()
+        assertEquals(listOf(200, 200, 200, 200, 200, 201), codes); assertEquals(1, ledgerCount(prog2))
+    }
+
+    @Test
+    fun anAdjustmentIsRefusedOutsideTheProgrammeScopeTheRoleAndTheRules() = app {
+        val prog = activeProg(); val oB = fx["L-O3"]!!; val oA = fx["L-O1"]!!
+        adj(prog, adminW, adjBody(oB, 10)).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN", "body.outlet_id")      // the programme is for zone A, the outlet is in zone B
+        adj(prog, adminW, adjBody(99999999, 10)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.outlet_id")
+        adj(prog, adminR, adjBody(oA, 10)).expect(HttpStatusCode.Forbidden)
+        adj(prog, adminNone, adjBody(oA, 10)).expect(HttpStatusCode.Forbidden)
+        adj(prog, nat, adjBody(oA, 10)).expect(HttpStatusCode.Forbidden)
+        adj(prog, tok("lwm1", Role.WM), adjBody(oA, 10)).expect(HttpStatusCode.Forbidden)
+        adj(prog, tok("lamo1", Role.AMO), adjBody(oA, 10)).expect(HttpStatusCode.Forbidden)
+        adj(prog, tok("ltso1", Role.TSO, flavour = "tso"), adjBody(oA, 10)).expect(HttpStatusCode.Unauthorized)   // a phone token stops at the guard
+        adj(prog, adminW, adjBody(oA, 0)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.points")
+        adj(prog, adminW, adjBody(oA, 1_000_001)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.points")
+        adj(prog, adminW, adjBody(oA, 10, extra = ""","expires_on":"$past"""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.expires_on")
+        adj(prog, adminW, adjBody(oA, 10, reason = "short")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.reason")
+        adj(prog, adminW, adjBody(oA, 10, extra = ""","bogus":1""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.bogus")
+        adj(prog, adminW, adjBody(oA, 10).replace("\"points\":10", "\"points\":1.5")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.points")
+        adj(prog, adminW, adjBody(oA, 10, request = "not-a-uuid")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.request_uuid")
+        adj(999999, adminW, adjBody(oA, 10)).expect(HttpStatusCode.NotFound, "ERR_NOT_FOUND")
+        val draft = createId(createBody())
+        adj(draft, adminW, adjBody(oA, 10)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+        assertEquals(0, ledgerCount(prog) + ledgerCount(draft))
+        val refused = uuid(); adj(prog, adminW, adjBody(oB, 10, refused)).expect(HttpStatusCode.Forbidden)
+        assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$refused'"), "a refused request leaves no audit row and no ledger row")
+        // A programme without a scope covers every outlet.
+        val open = activeProg("[]"); adj(open, adminW, adjBody(oB, 10)).expect(HttpStatusCode.Created)
+    }
+
+    @Test
+    fun theBulkUploadHasADryRunThatWritesNothingThenAnAllOrNothingIdempotentApply() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!; val o2 = fx["L-O2"]!!; val oB = fx["L-O3"]!!
+        val batch = uuid()
+        // Dry run: counts and per-row errors, nothing written, no audit.
+        val dry = bulk(prog, adminW, bulkBody(batch, true, brow(o1, 100, to), brow(o2, -30), brow(oB, 5), brow(o1, 1), brow(99999999, 1), brow(o2, 0), brow(o1, 3, past)))
+        dry.expect(HttpStatusCode.OK)
+        val d = dry.obj()
+        assertEquals("false", d.getValue("valid").jsonPrimitive.content)
+        val errs = d.getValue("errors").jsonArray.map { it.jsonObject.let { e -> "${e.getValue("row").jsonPrimitive.content}:${e.getValue("column").jsonPrimitive.content}:${e.getValue("code").jsonPrimitive.content}" } }
+        assertEquals(listOf("2:outlet_id:out_of_scope", "3:outlet_id:duplicate", "4:outlet_id:not_found", "5:points:zero", "6:outlet_id:duplicate"), errs)
+        assertEquals(0, ledgerCount(prog)); assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
+        bulk(prog, adminW, bulkBody(uuid(), true, brow(o2, 3, past))).obj().getValue("errors").jsonArray.single().jsonObject.also { assertEquals("expires_on:in_the_past", it.getValue("column").jsonPrimitive.content + ":" + it.getValue("code").jsonPrimitive.content) }
+        // Apply of an invalid file is refused whole (nothing written).
+        bulk(prog, adminW, bulkBody(batch, false, brow(o1, 100), brow(oB, 5))).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN", "body.rows[1].outlet_id")
+        bulk(prog, adminW, bulkBody(batch, false, brow(o1, 100), brow(o2, 0))).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[1].points")
+        assertEquals(0, ledgerCount(prog))
+        // A clean dry run, then the apply.
+        val rows = arrayOf(brow(o1, 100, to), brow(o2, -30))
+        bulk(prog, adminW, bulkBody(batch, true, *rows)).also { it.expect(HttpStatusCode.OK); it.obj().let { o -> assertEquals("true", o.getValue("valid").jsonPrimitive.content); assertEquals(70, o.getValue("total_points").jsonPrimitive.content.toInt()); assertEquals(100, o.getValue("credit_points").jsonPrimitive.content.toInt()) } }
+        assertEquals(0, ledgerCount(prog))
+        bulk(prog, adminR, bulkBody(batch, false, *rows)).expect(HttpStatusCode.Forbidden)
+        bulk(prog, nat, bulkBody(batch, true, *rows)).expect(HttpStatusCode.Forbidden)
+        bulk(prog, adminW, bulkBody(batch, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals(2, it.obj().getValue("posted").jsonPrimitive.content.toInt()); assertEquals("false", it.obj().getValue("replayed").jsonPrimitive.content) }
+        assertEquals(2, ledgerCount(prog)); assertEquals(100, balance(prog, o1)); assertEquals(-30, balance(prog, o2))
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch' AND action = 'post_batch' AND reason = '$why'"))
+        // Replay: nothing added, nothing doubled; another file under the same id is 409; a dry run of the posted batch says replayed.
+        repeat(2) { bulk(prog, adminW, bulkBody(batch, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals("true", it.obj().getValue("replayed").jsonPrimitive.content); assertEquals(0, it.obj().getValue("posted").jsonPrimitive.content.toInt()) } }
+        bulk(prog, adminW, bulkBody(batch, false, brow(o1, 101, to), brow(o2, -30))).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.batch_uuid")
+        bulk(prog, adminW, bulkBody(batch, true, *rows)).obj().also { assertEquals("true", it.getValue("replayed").jsonPrimitive.content) }
+        assertEquals(2, ledgerCount(prog)); assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
+        // Racing applies of one batch post once.
+        val prog2 = activeProg(); val b2 = uuid()
+        val codes = kotlinx.coroutines.coroutineScope { (1..5).map { async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog2, adminW, bulkBody(b2, false, *rows)).status.value } }.awaitAll() }
+        assertTrue(codes.all { it == 200 }); assertEquals(2, ledgerCount(prog2))
+        // Shape errors of the whole request.
+        bulk(prog, adminW, """{"batch_uuid":"${uuid()}","change_reason":"$why","rows":[${brow(o1, 1)}]}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.dry_run")
+        bulk(prog, adminW, bulkBody(uuid(), false)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows")
+        // An ended programme takes no new batch.
+        call(HttpMethod.Post, "/v1/admin/programmes/$prog2/status", super1, """{"request_uuid":"${uuid()}","to_status":"inactive","reason":"$why"}""").expect(HttpStatusCode.OK)
+        bulk(prog2, adminW, bulkBody(uuid(), false, *rows)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+    }
+
+    @Test
+    fun theLedgerViewShowsAdjustmentsWithTheirReasonWithinTheReadersScope() = app {
+        val prog = activeProg("[]"); val o1 = fx["L-O1"]!!; val oB = fx["L-O3"]!!
+        adj(prog, adminW, adjBody(o1, 40)).expect(HttpStatusCode.Created)
+        adj(prog, adminW, adjBody(oB, 60)).expect(HttpStatusCode.Created)
+        val b = uuid(); bulk(prog, adminW, bulkBody(b, false, brow(fx["L-O2"]!!, 5), brow(oB, 6), reason = "Bulk load of the October credit")).expect(HttpStatusCode.OK)
+        suspend fun view(t: String, qs: String = "") = call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger$qs", t).also { it.expect(HttpStatusCode.OK) }.obj()
+        val all = view(super1).getValue("items").jsonArray
+        assertEquals(4, all.size); assertEquals(setOf(why, "Bulk load of the October credit"), all.map { it.jsonObject.getValue("reason").jsonPrimitive.content }.toSet())
+        assertTrue(all.any { it.jsonObject.getValue("source_id").jsonPrimitive.content == "$b:0" })
+        assertEquals(4, view(nat).getValue("items").jsonArray.size)
+        assertEquals(setOf(o1, fx["L-O2"]!!), view(tok("lwm1", Role.WM)).getValue("items").jsonArray.map { it.jsonObject.getValue("outlet_id").jsonPrimitive.content.toLong() }.toSet().also { assertEquals(setOf(o1, fx["L-O2"]!!), it) })
+        assertEquals(listOf(oB), view(tok("ldmo1", Role.DMO)).getValue("items").jsonArray.map { it.jsonObject.getValue("outlet_id").jsonPrimitive.content.toLong() }.distinct())
+        assertEquals(0, view(tok("ltso3", Role.TSO)).getValue("items").jsonArray.size)
+        assertEquals(2, view(super1, "?outlet_id=$oB").getValue("items").jsonArray.size)
+        val page = view(super1, "?limit=3"); assertEquals(3, page.getValue("items").jsonArray.size)
+        assertEquals(1, view(super1, "?limit=3&cursor=${page.getValue("next_cursor").jsonPrimitive.content}").getValue("items").jsonArray.size)
+        call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger", brand1).expect(HttpStatusCode.Forbidden)
+        call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger", tok("lamo1", Role.AMO)).expect(HttpStatusCode.Forbidden)
+        call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger", adminNone).expect(HttpStatusCode.Forbidden)
+        call(HttpMethod.Get, "/v1/admin/programmes/999999/ledger", super1).expect(HttpStatusCode.NotFound)
+        call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger?source_type=Bad!", super1).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "query.source_type")
+    }
 }

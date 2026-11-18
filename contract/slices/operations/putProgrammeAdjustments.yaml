@@ -1,0 +1,41 @@
+path: /v1/admin/programmes/{id}/adjustments
+method: put
+operation:
+  tags:
+  - admin-content
+  operationId: putProgrammeAdjustments
+  summary: Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
+  description: 'From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows
+    `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated
+    and the answer reports `valid`, the totals and EVERY row error (`errors[]`: row index, column, code; at most
+    100, `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false`
+    the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with
+    the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row
+    index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with
+    `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme
+    takes no new batch (`409`).'
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProgrammeAdjustmentBatch'
+  responses:
+    '200':
+      description: The dry-run report, or the result of the apply.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeAdjustmentBatchResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

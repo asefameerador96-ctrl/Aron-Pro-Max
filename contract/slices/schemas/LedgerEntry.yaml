@@ -1,0 +1,52 @@
+LedgerEntry:
+  type: object
+  required:
+  - ledger_id
+  - source_type
+  - source_id
+  - outlet_id
+  - programme_id
+  - points
+  - business_date
+  - expires_on
+  - flags
+  - reason
+  - created_at
+  additionalProperties: false
+  description: From 1.23.0. One row of the append-only points ledger.
+  properties:
+    ledger_id:
+      type: integer
+      format: int64
+    source_type:
+      type: string
+      description: adjustment, redemption, redemption_void, expiry, ...
+    source_id:
+      type: string
+      maxLength: 64
+      description: 'For an adjustment: the request_uuid, or `<batch_uuid>:<row index>` for a bulk row.'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    points:
+      type: integer
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    expires_on:
+      type:
+      - string
+      - 'null'
+      format: date
+    flags:
+      type: array
+      items:
+        type: string
+      description: Portal adjustments carry `portal`.
+    reason:
+      type:
+      - string
+      - 'null'
+      description: The audit reason of an adjustment; null on other rows.
+    created_at:
+      $ref: '#/components/schemas/Timestamp'

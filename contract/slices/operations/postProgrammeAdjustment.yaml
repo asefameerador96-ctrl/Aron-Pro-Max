@@ -1,0 +1,50 @@
+path: /v1/admin/programmes/{id}/adjustments
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: postProgrammeAdjustment
+  summary: Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
+  description: 'From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other
+    role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit,
+    or a debit with a negative sign), the optional `expires_on` (not before today''s Dhaka business date; an expiring
+    credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same
+    transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters.
+    IDEMPOTENT by `request_uuid` (the ledger''s `source_id`): a repeat of the same request is `200` with the stored
+    row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered
+    even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme
+    must be in the caller''s reach (else `404`) and the outlet must exist (`400`) and lie in the programme''s scope
+    (the current version''s wing, division, territory, zone or route nodes; a programme with none covers every outlet)
+    and the caller''s reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409`
+    `ERR_REQUEST_STATE`; a draft or an ended one does not).'
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProgrammeAdjustmentWrite'
+  responses:
+    '201':
+      description: Posted now.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LedgerEntry'
+    '200':
+      description: A repeat of the same request; the stored row, nothing added.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LedgerEntry'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

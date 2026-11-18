@@ -1,0 +1,23 @@
+ProgrammeAdjustmentBatch:
+  type: object
+  required:
+  - batch_uuid
+  - dry_run
+  - change_reason
+  - rows
+  additionalProperties: false
+  description: From 1.23.0.
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    dry_run:
+      type: boolean
+      description: true = validate and report, write nothing.
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'
+    rows:
+      type: array
+      minItems: 1
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/ProgrammeAdjustmentRow'
