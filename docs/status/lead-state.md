@@ -366,3 +366,12 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - apsis phase 1 profile 9b0556171: FAIL (value lists leak; parser skips; quadratic regex; unbounded memory) -> ruling: NO value lists in automatic output; profile-values per named column, owner-run.
 - F-INFRA1 asked for a 'Whole-subscription move' section (D-OWNER-AZURE-MOVE-01).
 - 15:15 train 122 migrate console read (ops-diagnose 44324055563): schema was 0208, migrated to "0209 - attendance closed by comment", "Successfully applied 1 migration ... now at version v0209", 187 validated, exit 0; no ERROR in the migrate console or the worker section.
+
+## 2026-11-18 16:30
+- Train 123 (ops-diagnose-api 7b8e22c6f): lane/lead-train123 a442f89cd ci green (44329850806); integrator pushed INT = 77873a8ea; report (deploy, migrate console) pending. First live run of the NEW ops-diagnose owed after it.
+- Train 124 (Android) BUILT, NOT yet GO: lane/lead-train124 0433b5511 = INT 77873a8ea + docs + android-gates-2 c64e60fb (final check PASS) + android-sr-programmes 1f9e2fa7d (final delta PASS, lane ci 44336641888 green). 687 D-lines. Five files changed by both lanes auto-merged: combined-merge check running (wf_6376a3c2-b55). GO only after that check, the train branch ci, and the train 123 cycle is complete.
+- Loyalty aae4a9648: landing gate PASS, one blocking (allow_overdraw bulk debit unlocked) -> L-A13 round; then server train (contract 1.23.0, no migration).
+- sr-targets-server b24178100: identity design + POST /v1/sync/figures; final numbers given: migrations V0210..V0213, contract 1.24.0 after loyalty lands; full review running (wf_bee42ccd-516).
+- apsis phase 1 profile 83d1f1ba9: NO LEAK; fails on usability (triggers, binary literals, partitions, column-list INSERT, single-file dump) -> round sent.
+- A-PROG3 holds the phone side of the identity probe locally (not pushed) until train 124 lands.
+- Owner still owes: two push approvals (P-SR1b, P-SR2b), laptop Azure inventory, old-account end date, same-tenant yes/no, FTP reachability, dump form (one file or per table), the 17 decisions (tomorrow).
