@@ -150,4 +150,20 @@ class SrParity1bMoreTests {
     @Test fun saleDataSunlight() = shot("srp1b_sale_data_sunlight", sunlight = true, titleText = "সেল ডাটা") { SaleData() }
     @Test fun saleDataFont20() = shot("srp1b_sale_data_font20", fontScale = 2.0f, titleText = "সেল ডাটা") { SaleData() }
     @Test fun saleDataNone() = shot("srp1b_sale_data_none", titleText = "সেল ডাটা") { SaleData(SaleHistory(emptyList(), 0, false)) }
+
+    // ---- today's target pop-up (manual 21) and the outlet photo step (manual 20) ----
+    private val target = com.aktcl.aron.feature.sale.domain.OutletTarget("Super Star Low", "November", 2240, 390, 18, 7)
+    private val callLabel = "Ruku Store (2681268-01778553683-Agora Goli, Gulshan-2)"
+    @Test fun outletTarget() = shot("srp1b_outlet_target", titleText = "বিক্রয়", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.OutletTargetPopup(callLabel, target, {})
+    }
+    @Test fun outletTargetNone() = shot("srp1b_outlet_target_none", titleText = "বিক্রয়", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.OutletTargetPopup(callLabel, null, {})
+    }
+    @Test fun outletTargetSunlight() = shot("srp1b_outlet_target_sunlight", sunlight = true, titleText = "বিক্রয়", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.OutletTargetPopup(callLabel, target, {})
+    }
+    @Test fun callPhotoStep() = shot("srp1b_call_photo_step", titleText = "বিক্রয়", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.outlet.CallPhotoStep(com.aktcl.aron.feature.outlet.GeoPhotoState(), {}, {}, {})
+    }
 }
