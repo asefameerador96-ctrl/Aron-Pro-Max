@@ -332,9 +332,7 @@ fun QcScreen(
                             QcEntryModel.typesOf(group).forEach { type ->
                                 Text(qcTypeLabel(type.code), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val otherQc = review.qc.filterNot { it.entry.skuId == sku.skuId && it.entry.faultTypeCode == type.code }.sumOf { it.settlementMtk }
-                                    val memoRoom = QcEntryModel.memoRoomMtk(review.totals.grossMtk, review.totals.offerDiscountMtk + review.totals.drpDiscountMtk, otherQc)
-                                    val max = if (locked) 0 else QcEntryModel.maxQty(sku, entries, type.code, cap, memoRoom).coerceAtMost(QcEntryModel.MAX_QTY).toInt()
+                                    val max = qcMax(sku, review, entries, type.code, cap, locked) // one formula for both screens
                                     val cur = qtyOf(sku.skuId, type.code).toInt()
                                     AronMinus({ if (!locked) onQty(sku.skuId, type.code, (cur - 1).coerceAtLeast(0).toLong()) }, stringResource(R.string.sale_less), enabled = !locked && cur > 0)
                                     AronPlus({ if (!locked) onQty(sku.skuId, type.code, (cur + 1).coerceAtMost(max).toLong()) }, stringResource(R.string.sale_more), enabled = !locked && cur < max)
@@ -423,9 +421,11 @@ private fun QcTwoStepScreen(
     val c = LocalAronColors.current
     val look = LocalAronLook.current
     var askSubmit by remember { mutableStateOf(false) }
-    var selected by rememberSaveable { mutableStateOf<Long?>(null) }
+    // not saved across a restart on purpose: an unsubmitted QC does not survive one (SaleFlow.start drops it), so a restored open page would be stale
+    var selected by remember { mutableStateOf<Long?>(null) }
     // "code=qty;code=qty" of the page as it opened, to put back on বাতিল
-    var opened by rememberSaveable { mutableStateOf("") }
+    var opened by remember { mutableStateOf("") }
+    var askDiscard by remember { mutableStateOf(false) }
     val entries = review.qc.map { it.entry }
     val sku = selected?.let { id -> skus.firstOrNull { it.skuId == id } }
     if (selected != null && sku == null) selected = null
@@ -460,9 +460,11 @@ private fun QcTwoStepScreen(
                         Text(stringResource(R.string.qc_col_qctype), Modifier.weight(1.4f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
                         Text(stringResource(R.string.qc_col_qty), Modifier.weight(0.8f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
                     }
+                    if (review.qc.isEmpty()) Text(stringResource(R.string.qc_summary_none), Modifier.fillMaxWidth().padding(12.dp), color = look.inkMuted, textAlign = TextAlign.Center)
                     QcEntryModel.summary(entries).forEach { r ->
                         val rowSku = skus.firstOrNull { it.skuId == r.skuId }
-                        val types = listOfNotNull(if (r.mfcQty > 0) stringResource(R.string.qc_col_mfc) else null, if (r.mktQty > 0) stringResource(R.string.qc_col_mkt) else null).joinToString(",")
+                        // the fault names are the old app's English words on every language (manual 25)
+                        val types = listOfNotNull(if (r.mfcQty > 0) "MFC Fault" /* i18n-ignore: fault code names as the manual prints them */ else null, if (r.mktQty > 0) "MKT Fault" /* i18n-ignore */ else null).joinToString(",")
                         Row(Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).padding(horizontal = 12.dp, vertical = 6.dp).testTag(QcTags.SUMMARY_ROW), verticalAlignment = Alignment.CenterVertically) {
                             Text(rowSku?.let { skuDisplayName(it) } ?: r.skuId.toString(), Modifier.weight(1.2f), color = look.purple, maxLines = 3)
                             Text(types, Modifier.weight(1.4f), color = look.purple, maxLines = 3)
@@ -477,7 +479,8 @@ private fun QcTwoStepScreen(
             }
             Column(Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (onCancel != null) AronSecondaryButton(stringResource(R.string.qc_cancel), onCancel, Modifier.weight(1f))
+                    // বাতিল drops every SKU already saved on step 2: with QC entered it asks first
+                    if (onCancel != null) AronSecondaryButton(stringResource(R.string.qc_cancel), { if (review.qc.isNotEmpty() && !locked) askDiscard = true else onCancel() }, Modifier.weight(1f))
                     AronPrimaryButton(stringResource(R.string.qc_done), { askSubmit = true }, Modifier.weight(1f), enabled = !locked, glyph = ButtonGlyph.Arrow)
                 }
             }
@@ -485,6 +488,7 @@ private fun QcTwoStepScreen(
             val cap = capMtkOf(sku.skuId)
             val done = QcEntryModel.doneMtk(sku, entries)
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                Text(stringResource(R.string.qc_entry_title), color = look.purple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(PopupTint).padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
@@ -501,7 +505,7 @@ private fun QcTwoStepScreen(
                     Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 12.dp, vertical = 12.dp)) {
                         Text(stringResource(R.string.qc_col_fault), Modifier.weight(0.8f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
                         Text(stringResource(R.string.qc_col_type), Modifier.weight(1.3f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
-                        Text(stringResource(R.string.qc_col_qty), Modifier.weight(0.9f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+                        Text(stringResource(R.string.qc_col_qty) + " (" + unitLabel(sku.baseUnit) + ")", Modifier.weight(0.9f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
                     }
                     listOf(QcEntryModel.PRODUCTION to R.string.qc_production, QcEntryModel.TRANSPORT to R.string.qc_transport).forEach { (group, label) ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -534,8 +538,8 @@ private fun QcTwoStepScreen(
                 AronSecondaryButton(
                     stringResource(R.string.qc_cancel),
                     {
-                        // put back what the page opened with, then leave it
-                        opened.split(';').filter { it.contains('=') }.forEach { kv -> onQty(sku.skuId, kv.substringBefore('='), kv.substringAfter('=').toLongOrNull() ?: 0L) }
+                        // put back what the page opened with, then leave it; a locked QC writes nothing (the draft refuses it), the page only closes
+                        if (!locked) opened.split(';').filter { it.contains('=') }.forEach { kv -> onQty(sku.skuId, kv.substringBefore('='), kv.substringAfter('=').toLongOrNull() ?: 0L) }
                         selected = null
                     },
                     Modifier.fillMaxWidth(),
@@ -549,6 +553,13 @@ private fun QcTwoStepScreen(
             stringResource(R.string.qc_confirm_title), stringResource(R.string.qc_confirm_message),
             stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
             onConfirm = { askSubmit = false; onDone() }, onDismiss = { askSubmit = false }, manual = true,
+        )
+    }
+    if (askDiscard && onCancel != null) {
+        AronConfirmDialog(
+            stringResource(R.string.qc_confirm_title), stringResource(R.string.qc_discard_message),
+            stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
+            onConfirm = { askDiscard = false; onCancel() }, onDismiss = { askDiscard = false }, manual = true,
         )
     }
 }

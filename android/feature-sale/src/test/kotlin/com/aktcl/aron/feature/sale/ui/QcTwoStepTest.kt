@@ -128,14 +128,82 @@ class QcTwoStepTest {
         assertEquals(1, done)
     }
 
-    @Test fun theOpenSkuSurvivesAKillAndRelaunch() {
+    // ---- with a REAL draft (the draft ops throw on a locked QC, as the sale does) ----
+    private fun real(initial: com.aktcl.aron.feature.sale.domain.SaleDraft, locked: Boolean = false, onCancel: (() -> Unit)? = null, onDone: () -> Unit = {}): androidx.compose.runtime.MutableState<com.aktcl.aron.feature.sale.domain.SaleDraft> {
+        val st = mutableStateOf(initial)
+        compose.setContent {
+            AronTheme(AppLanguage.EN) {
+                val d = st.value
+                QcScreen(
+                    skus, SaleReviewCalculator.review(d, Fx.catalog), { id, code -> d.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
+                    { id, code, q -> st.value = SaleDraftOps.setQc(st.value, QcEntry(id, code, com.aktcl.aron.feature.sale.domain.QcEntryModel.groupOf(code)!!, q)) },
+                    locked, onDone, onCancel = onCancel, onClearSku = { id -> com.aktcl.aron.feature.sale.domain.QcEntryModel.APP_TYPES.forEach { t -> st.value = SaleDraftOps.setQc(st.value, QcEntry(id, t.code, t.group, 0)) } }, twoStep = true,
+                )
+            }
+        }
+        return st
+    }
+
+    @Test fun cancelOnALockedPageWritesNothingAndDoesNotThrow() {
+        val locked = SaleDraftOps.completeQc(draft(QcEntry(100, "taste", "MKT", 2)))
+        val st = real(locked, locked = true)
+        compose.onAllNodesWithTag(QcTags.CARD)[0].performClick()
+        compose.onNodeWithText("Cancel").performScrollTo().performClick() // would throw "QC is locked once completed" if it wrote
+        assertEquals(locked, st.value)
+        compose.onAllNodesWithTag(QcTags.CARD).assertCountEquals(2)
+    }
+
+    @Test fun cancelRestoresZeroRowsAfterTheRepTypedAnEntry() {
+        val st = real(draft())
+        compose.onAllNodesWithTag(QcTags.CARD)[0].performClick()
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD)[0].performTextInput("4")
+        assertTrue("an entry was written", st.value.qc.any { it.defectQty == 4L })
+        compose.onNodeWithText("Cancel").performScrollTo().performClick()
+        assertTrue("every row back to zero", st.value.qc.all { it.defectQty == 0L })
+    }
+
+    @Test fun saveKeepsTheTypedEntryInTheDraft() {
+        val st = real(draft())
+        compose.onAllNodesWithTag(QcTags.CARD)[0].performClick()
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD)[0].performTextInput("4")
+        compose.onNodeWithText("Save").performScrollTo().performClick()
+        assertEquals(4L, st.value.qc.single { it.defectQty > 0 }.defectQty)
+    }
+
+    @Test fun deleteClearsEverythingOfTheSkuInTheDraft() {
+        val st = real(draft(QcEntry(100, "taste", "MKT", 2), QcEntry(100, "damaged_crushed", "MFC", 1)))
+        compose.onAllNodesWithTag(QcTags.CARD)[0].performClick()
+        compose.onNodeWithText("Delete").performScrollTo().performClick()
+        assertTrue(st.value.qc.none { it.skuId == 100L && it.defectQty > 0 })
+    }
+
+    @Test fun stepOneCancelAsksBeforeDiscardingWhatWasEntered() {
+        var cancelled = 0
+        real(draft(QcEntry(100, "taste", "MKT", 2)), onCancel = { cancelled++ })
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("nothing is dropped before the answer", 0, cancelled)
+        compose.onNodeWithText("No").performClick()
+        assertEquals(0, cancelled)
+        compose.onNodeWithText("Cancel").performClick(); compose.onNodeWithText("Yes").performClick()
+        assertEquals(1, cancelled)
+    }
+
+    @Test fun stepOneCancelWithNothingEnteredLeavesAtOnce() {
+        var cancelled = 0
+        real(draft(), onCancel = { cancelled++ })
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(1, cancelled)
+    }
+
+    @Test fun aRestoredOpenPageIsNotKeptAcrossARestart() {
+        // an open page is not saved: after a restoration the QC opens on step 1 (the draft's unsubmitted QC is dropped on a restart, so a restored page would be stale)
         val restoration = StateRestorationTester(compose)
         val d = draft()
         restoration.setContent { AronTheme(AppLanguage.EN) { QcScreen(skus, SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, {}, twoStep = true) } }
         compose.onAllNodesWithTag(QcTags.CARD)[1].performClick()
         compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(6)
         restoration.emulateSavedInstanceStateRestore()
-        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(6) // still on the Aster page
-        compose.onAllNodesWithTag(QcTags.CARD).assertCountEquals(0)
+        compose.onAllNodesWithTag(QcTags.CARD).assertCountEquals(2)
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(0)
     }
 }
