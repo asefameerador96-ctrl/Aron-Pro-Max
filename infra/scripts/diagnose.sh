@@ -307,7 +307,8 @@ la() { laq "$1" "$2" && printf '%s\n' "$LA_OUT" | showm "$3"; return 0; }
 # script sends, not a parse proof. A column that must keep a reserved name would need ['name'] quoting; none does.
 # KQL_RESERVED: kind, type, hint, with, by, on, in, of, to, from, table, database, cluster, range, order, top, take, limit, count, sum, title, access, alias, set, let, pattern, step, policy, externaldata,
 # KQL_RESERVED: as, and, or, not, where, extend, project, summarize, union, join, distinct, sort, print, datatable, parse, evaluate, invoke, contains, has, startswith, endswith, matches, between, asc, desc,
-# KQL_RESERVED: first, last, bin, ago, now, view, function, scan, partition, serialize, facet, find, search, lookup, render, sample, make, reduce, regex, default, declare, restrict, materialize, toscalar
+# KQL_RESERVED: first, last, bin, ago, now, view, function, scan, partition, serialize, facet, find, search, lookup, render, sample, make, reduce, regex, default, declare, restrict, materialize, toscalar,
+# KQL_RESERVED: true, false, null, nulls, mv, ingestion_time, query_parameters, tabular, external_data, getschema, consume, fork, relaxed, simple, wildcard, isfuzzy, macro, mv_expand
 # KQL_FUNCTIONS (the only functions the script may call; each is a documented KQL scalar or aggregation function, Microsoft Learn "Kusto query language / scalar functions" and "aggregation functions"):
 # KQL_FUNCTION extract            https://learn.microsoft.com/kusto/query/extract-function
 # KQL_FUNCTION extract_all        https://learn.microsoft.com/kusto/query/extract-all-function
@@ -324,9 +325,10 @@ la() { laq "$1" "$2" && printf '%s\n' "$LA_OUT" | showm "$3"; return 0; }
 # KQL_FUNCTION isnotempty         https://learn.microsoft.com/kusto/query/isnotempty-function
 # KQL_FUNCTION gettype            https://learn.microsoft.com/kusto/query/gettype-function
 # KQL_FUNCTION column_ifexists    https://learn.microsoft.com/kusto/query/column-ifexists-function
-# KQL_FUNCTION datetime           https://learn.microsoft.com/kusto/query/datetime-data-type
 # KQL_FUNCTION not                https://learn.microsoft.com/kusto/query/not-function
-# (The doc pages were checked by the review lenses; they could not be fetched from the build container.)
+# KQL_LITERAL datetime            https://learn.microsoft.com/kusto/query/scalar-data-types/datetime   (datetime('...') is a LITERAL of the datetime type, not a function)
+# Verified facts behind the queries (Microsoft Learn): (1) coalesce() returns the first non-null expression, or the first NON-EMPTY one for strings, so no nullif is needed (coalesce-function);
+# (2) tostring() of a null value is an empty string (tostring-function). The pages could not be fetched from the build container; both facts were checked by the review of 531cf508.
 # One row = one log line, newlines and tabs folded in the query. A line that is a JSON object (logback) gives level, logger, message and stack trace; any other line is "plain".
 # The structured columns below are the ONLY thing printed by default: the exception and cause CLASS (first token of the stack trace, "Caused by:"), SQLSTATE, a duration in ms,
 # and a fixed label for the known operational lines. A JSON line with no message is "(no message)", never the raw JSON with its stack.
@@ -348,7 +350,7 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
      | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, mst), '')
      | extend what = case(
          msg startswith 'pre-flight: nothing to do', strcat('pre-flight nothing to do ', tostring(extract_all(@'(V[0-9]{4}-[A-Za-z0-9-]+=(?:clean|not pending|repaired))', msg))),
-         msg startswith 'pre-flight', 'pre-flight line',
+         msg matches regex @'^pre-?flight\b', strcat('pre-flight line ', coalesce(extract(@'^pre-?flight (V[0-9]{4}-[a-z0-9-]+)', 1, msg), '?')),
          msg startswith 'waiting-item sweep enabled', strcat('sweep enabled, interval ', coalesce(extract(@'interval ([0-9]+) s', 1, msg), '?'), ' s, batch ', coalesce(extract(@'batch ([0-9]+)', 1, msg), '?')),
          msg startswith 'waiting-item sweep disabled by', strcat('sweep disabled by ', coalesce(extract(@'disabled by (ARON_WAITING_SWEEP=off|cfg[.]sync[.]waiting_sweep_enabled)', 1, msg), '?')),
          msg matches regex @'^Current version of schema', strcat('flyway current version ', coalesce(extract(@'^Current version of schema [^:]*: v?([0-9][0-9.]*)', 1, msg), '?')),
@@ -362,6 +364,7 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
          msg matches regex @'(?i)(bundle|lapsed|aggregat|geo re-check|retention|risk signal|route-day)', 'job-run line',
          msg matches regex @'(?i)(error|failed|exception)', 'error line',
          '-')
+     | extend what = iff(mst matches regex @'pre-flight V[0-9]{4}-[a-z0-9-]+(?: failed|:)', strcat('pre-flight FAILED ', coalesce(extract(@'pre-flight (V[0-9]{4}-[a-z0-9-]+)(?: failed|:)', 1, mst), '?')), what)
      | extend what = iff(mst matches regex @'Migration V[0-9]+__[A-Za-z0-9_.]+ failed', strcat('flyway FAILED at ', coalesce(extract(@'Migration V([0-9]+)__', 1, mst), '?')), what)
      | extend lg = iff(lg == '' or lg matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', lg, '[text]'),
               lvl = iff(lvl matches regex @'^([A-Z]{3,8}|\(plain\))$', lvl, '[text]'),

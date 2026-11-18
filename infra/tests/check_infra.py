@@ -1174,6 +1174,29 @@ exit 0
         for bad in ("Rahim Uddin", "user 01712345678", "x" * 170, "a b", "name=abu"):
             self.assertFalse(_re.match(shape, bad), bad)
         self.assertTrue(_re.match(lvl_shape, "ERROR")); self.assertTrue(_re.match(lvl_shape, "(plain)")); self.assertFalse(_re.match(lvl_shape, "Rahim"))
+        # Pre-flight ACTION lines (review of 531cf508): MigrationPreflight.report writes "preflight <id>: ..." and "preflight <id> (dev): ..." (no hyphen); only the nothing-to-do line has one. The strings are READ FROM
+        # THE KOTLIN SOURCE so they cannot drift; every report string must get a label that starts with "pre-flight", and the failure text of PreflightFailed ("pre-flight <id> failed ...") is labelled FAILED.
+        kt = (ROOT / "backend" / "platform" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "platform" / "MigrationPreflight.kt").read_text(encoding="utf-8")
+        reports = _re.findall(r'report\("([^"]*)"\)', kt)
+        self.assertGreaterEqual(len(reports), 4, reports)
+        def fill(t):
+            t = t.replace("${check.id}", "V0191-cluster-names")
+            return _re.sub(r"\$\{[^}]*\}|\$[A-Za-z_]+", "x 3", t)
+        for tpl in reports:
+            msg = fill(tpl)
+            lab = label(msg)
+            self.assertTrue(lab.startswith("pre-flight line V0191-cluster-names"), f"{msg!r} -> {lab!r}")
+            self.assertNotIn("x 3", lab)
+        self.assertEqual("pre-flight line V0191-cluster-names", label("preflight V0191-cluster-names (dev): 2 clusters; repairing the test data"))
+        self.assertTrue(label("pre-flight: nothing to do (checks: V0191-cluster-names=clean)").startswith("pre-flight nothing to do"))
+        thrown = _re.findall(r'PreflightFailed\("(pre-flight \$\{check\.id\}[^"]*)"', kt)
+        self.assertGreaterEqual(len(thrown), 2)
+        pf_fail = _re.search(r"iff\(mst matches regex @'(pre-flight V[^']*)', strcat\('pre-flight FAILED ', coalesce\(extract\(@'([^']*)', 1, mst\)", sh)
+        self.assertTrue(pf_fail)
+        for tpl in thrown:
+            t = fill(tpl) + " rest"
+            self.assertTrue(_re.search(pf_fail.group(1), "migrate failed " + t), t)
+            self.assertEqual("V0191-cluster-names", _re.search(pf_fail.group(2), "migrate failed " + t).group(1))
         # An INFO line with a label is never dropped by the row filter (what != '-' is one of the three conditions).
         self.assertIn("what != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
         self.assertIn("where what != '-' or lvl in", sh)
@@ -1418,6 +1441,12 @@ exit 0
         return reserved, funcs
 
     @staticmethod
+    def _kql_literals():
+        import re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        return dict(_re.findall(r"^# KQL_LITERAL (\S+)\s+(https://\S+)", sh, _re.M))
+
+    @staticmethod
     def _kql_strip(q):
         import re as _re
         return _re.sub(r"@'[^']*'|'[^']*'", "''", q)
@@ -1456,7 +1485,8 @@ exit 0
         # top, take, ...) is only allowed in its operator position: after the contexts of the real operators are removed no such word may remain.
         import re as _re
         reserved, funcs = self._kql_lists()
-        self.assertTrue({"kind", "type", "step", "policy", "externaldata", "count", "by", "in", "order", "top", "take"} <= reserved)
+        self.assertTrue({"kind", "type", "step", "policy", "externaldata", "count", "by", "in", "order", "top", "take", "true", "false", "null", "nulls", "mv", "ingestion_time", "query_parameters",
+                         "tabular", "external_data", "getschema", "consume", "fork", "relaxed", "simple", "wildcard", "isfuzzy"} <= reserved)
         self.assertFalse([w for w in reserved if "-" in w], "hyphenated operators can never match the token regex: they are not in the list")
         allowed_ctx = [r"(?<=\s)(?:asc|desc)(?=\s*(?:\||$|\)))", r"\|\s*order\s+by\b", r"\|\s*top\s+[0-9]+\s+by\b", r"\|\s*take\s+[0-9]+\b", r"\|\s*(?:where|extend|project|summarize)\b", r"^\s*union\s+isfuzzy\s*=\s*true\b",
                        r"\bin\s*\(", r"\bbetween\s*\(", r"\bnot\s*\(", r"(?<=\s)(?:and|or)(?=\s)", r"\bmatches\s+regex\b", r"(?<=[\s!])(?:startswith|contains|has)(?=\s)",
@@ -1480,14 +1510,17 @@ exit 0
         import re as _re
         reserved, funcs = self._kql_lists()
         self.assertGreaterEqual(len(funcs), 15)
-        for name, url in funcs.items():
-            self.assertRegex(url, r"^https://learn\.microsoft\.com/kusto/query/[a-z0-9\-]+$", name)
+        literals = self._kql_literals()
+        self.assertEqual({"datetime"}, set(literals), "datetime('...') is a literal of the datetime type, not a function")
+        self.assertNotIn("datetime", funcs)
+        for name, url in {**funcs, **literals}.items():
+            self.assertRegex(url, r"^https://learn\.microsoft\.com/kusto/query/[a-z0-9\-]+(?:/[a-z0-9\-]+)?$", name)
         operators = {"in", "between", "and", "or", "not"}
         seen = set()
         for q in self._diagnose_queries():
             for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(q)):
                 seen.add(fn)
-                self.assertTrue(fn in funcs or fn in operators, f"{fn}() is not a listed KQL function (allow-list in diagnose.sh) in\n{q[:300]}")
+                self.assertTrue(fn in funcs or fn in operators or fn in literals, f"{fn}() is not a listed KQL function (allow-list in diagnose.sh) in\n{q[:300]}")
         self.assertTrue({"extract", "coalesce", "iff", "strcat", "tostring", "replace_regex"} <= seen)
         self.assertNotIn("nullif", seen)
         # Mutation check (the review's): a nullif in a query is caught by the same predicate.
