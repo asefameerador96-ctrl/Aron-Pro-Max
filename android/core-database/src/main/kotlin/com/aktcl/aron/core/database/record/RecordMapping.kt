@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.database.record
 
 import com.aktcl.aron.contract.AttendanceEventPayload
+import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.DeviceGeoVerdict
 import com.aktcl.aron.contract.DeviceStatusReport
@@ -40,6 +41,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import java.math.BigDecimal
@@ -106,7 +108,11 @@ object RecordMapping {
 
     fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String) = outbox(
         RecordType.ATTENDANCE_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
-        AttendanceEventPayload.serializer(), AttendanceEventPayload(e.kind, fix(fix), e.addressDisplay),
+        AttendanceEventPayload.serializer(), AttendanceEventPayload(
+            e.kind, fix(fix), e.addressDisplay,
+            // contract 1.19.0 (train 117): the phone's own close of a forgotten day says so, derived from the stored event (never a flag); the rep's own check-out sends nothing (the server reads that as `rep`)
+            closedBy = if (e.closedByPhone()) "phone" else null,
+        ),
     )
 
     /** A breadcrumb (N-035): standalone, rank 0, one embedded fix; the record's client_uuid is its own and the fix is keyed to it. */
@@ -329,7 +335,15 @@ object RecordMapping {
         requireNotNull(RecordType.entries.firstOrNull { it.wire == e.recordType }) { "unknown record type ${e.recordType}" },
         e.clientUuid, e.familyUuid, e.rank, e.meta, createdAt, JsonObject.serializer(),
         json.parseToJsonElement(e.payloadJson) as JsonObject,
+        parentUuid = amoParent(e.recordType, json.parseToJsonElement(e.payloadJson) as JsonObject),
     )
+
+    /** D-AGATE-18 (B2): the record an AMO child depends on, named in its payload: a distribution line's check, an assessment answer's assessment. */
+    internal fun amoParent(type: String, payload: JsonObject): String? = when (type) {
+        "distribution_check_line" -> (payload["check_client_uuid"] as? JsonPrimitive)?.contentOrNull
+        "call_assessment_answer" -> (payload["assessment_client_uuid"] as? JsonPrimitive)?.contentOrNull
+        else -> null
+    }
 
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
@@ -360,12 +374,12 @@ object RecordMapping {
 
     private fun <P> outbox(
         type: RecordType, clientUuid: String, familyUuid: String, rank: Int, meta: CaptureMeta, createdAt: String,
-        serializer: KSerializer<P>, payload: P,
+        serializer: KSerializer<P>, payload: P, parentUuid: String? = null,
     ): OutboxEntity {
         val text = json.encodeToString(JsonElement.serializer(), record(type, clientUuid, familyUuid, rank, meta, serializer, payload))
         return OutboxEntity(
             clientUuid = clientUuid, recordType = type.wire, familyUuid = familyUuid, rank = rank, businessDate = meta.businessDate,
-            payloadJson = text, payloadSha256 = sha256Hex(text), createdAt = createdAt,
+            payloadJson = text, payloadSha256 = sha256Hex(text), createdAt = createdAt, parentUuid = parentUuid,
         )
     }
 

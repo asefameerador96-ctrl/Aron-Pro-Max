@@ -211,12 +211,19 @@ fun PrinterPickerDialog(manager: PrinterManager, onDismiss: () -> Unit) {
  * once after the saved message, with whether paper was confirmed.
  */
 @Composable
-fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit) {
+fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit, saveFailedMessage: String? = null) {
     val step by flow.step.collectAsState()
     var finished by remember(flow) { mutableStateOf(false) }
     when (val s = step) {
         SaveAndPrint.Step.Idle -> Unit
-        SaveAndPrint.Step.SaveFailed -> Info(R.string.ui_sale_save_failed) { flow.onDismissSaveFailed() }
+        // a save the transaction REFUSED for a reason the rep can act on (stock moved, the memo was already edited) says that reason, not "try again"
+        SaveAndPrint.Step.SaveFailed -> if (saveFailedMessage != null) {
+            AlertDialog(
+                onDismissRequest = { flow.onDismissSaveFailed() },
+                text = { Text(saveFailedMessage) },
+                confirmButton = { AronYesButton(stringResource(R.string.dialog_ok), { flow.onDismissSaveFailed() }) },
+            )
+        } else Info(R.string.ui_sale_save_failed) { flow.onDismissSaveFailed() }
         SaveAndPrint.Step.AskSave -> YesNo(R.string.sale_confirm_title, R.string.sale_confirm_text, { scope.launch { flow.onSaveAnswer(it) } })
         SaveAndPrint.Step.Saving -> Busy(R.string.ui_print_saving)
         SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, { scope.launch { flow.onPrintAnswer(it) } })

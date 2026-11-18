@@ -150,6 +150,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit) {
 @Composable
 private fun AmoClusterHost(day: AmoDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     val outlet: OutletEntity = day.requestOutlet ?: run { LaunchedEffect(Unit) { onDone() }; return }
     val draftKey = "own:cluster:${outlet.outletId}"
     var form by remember(outlet.outletId) {
@@ -171,7 +172,7 @@ private fun AmoClusterHost(day: AmoDay, onDone: () -> Unit) {
         form = form, errors = errors, clusters = clusters, capture = cap, saved = false, warnOpenDues = false,
         onChange = { form = it }, onShutter = { scope.launch { capture.shutter() } },
         onSave = {
-            if (!busy) {
+            if (!busy && !writeGuard.refused()) {
                 busy = true
                 scope.launch {
                     if (cap.fix?.isMock == true) { errors = setOf(com.aktcl.aron.feature.outlet.RequestError.MOCK_FIX); busy = false; return@launch }

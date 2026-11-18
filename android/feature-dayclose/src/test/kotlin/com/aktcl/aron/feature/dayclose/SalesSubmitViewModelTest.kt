@@ -47,7 +47,7 @@ class SalesSubmitViewModelTest {
         val old = RejectedRow("u1", "media_meta", "2026-09-01", "schema_invalid", RejectedOutcome.DROPPED)
         val sale = RejectedRow("u2", "memo", "2026-09-01", "schema_invalid", RejectedOutcome.DROPPED)
         val base = Day().apply { states = OutboxStates(0, 0, 10, 2, 0) }
-        class Rej : DaySource by base { override suspend fun rejectedRows(businessDate: String) = listOf(old, sale) }
+        class Rej : DaySource by base { override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> = rejectedRows(businessDate); override suspend fun rejectedRows(businessDate: String) = listOf(old, sale) }
         val q = ArrayList<SubmitGate>()
         val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), { mapOf("memo" to 6) }, { _, g, _ -> q += g }, Sched(), { true })
         v.refresh()
@@ -80,7 +80,7 @@ class SalesSubmitViewModelTest {
     /** D-NIGHT-DAYCLOSE-01: rejected rows are listed with or without a digest; a type only the server has shows device 0, in sync. */
     @Test fun rejectedRowsAreListedAndTheServerOnlyTypesAreInformation() {
         val listed = listOf(RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED))
-        class Rej : DaySource by Day() { override suspend fun rejectedRows(businessDate: String) = listed }
+        class Rej : DaySource by Day() { override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> = rejectedRows(businessDate); override suspend fun rejectedRows(businessDate: String) = listed }
         var digest: Map<String, Int>? = null
         val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), { digest }, { _, _, _ -> }, Sched(), { true })
         v.refresh()
@@ -94,7 +94,7 @@ class SalesSubmitViewModelTest {
     /** The server's list adds only rows this install does not hold; the phone's own row wins. */
     @Test fun serverRowsMergeAfterThePhonesOwn() {
         val mine = RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED)
-        class Rej : DaySource by Day() { override suspend fun rejectedRows(businessDate: String) = listOf(mine) }
+        class Rej : DaySource by Day() { override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> = rejectedRows(businessDate); override suspend fun rejectedRows(businessDate: String) = listOf(mine) }
         val server = object : ServerCounts {
             override suspend fun counts(businessDate: String) = mapOf("memo" to 6)
             override suspend fun serverRejected(businessDate: String) = listOf(
@@ -104,5 +104,41 @@ class SalesSubmitViewModelTest {
         val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), server, { _, _, _ -> }, Sched(), { true })
         v.refresh()
         assertEquals(listOf(mine, server.let { RejectedRow("u9", "memo", "2026-10-05", "memo_no_duplicate", RejectedOutcome.DROPPED, fromThisPhone = false) }), v.state.value.rejected)
+    }
+
+    /** D-AGATE-04: a failed read of the refused list is NOT an empty list: it is flagged for the screen (error plus retry), and a retry reads again. */
+    @Test fun aFailedReadIsFlaggedNotSwallowedAndARetryReadsAgain() {
+        val base = Day().apply { states = OutboxStates(0, 0, 10, 2, 0) }
+        var fail = true
+        class Flaky : DaySource by base {
+            override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> = rejectedRows(businessDate); override suspend fun rejectedRows(businessDate: String): List<RejectedRow> =
+                if (fail) throw IllegalStateException("disk") else listOf(RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED))
+        }
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Flaky(), { mapOf("memo" to 6) }, { _, _, _ -> }, Sched(), { true })
+        v.refresh()
+        assertTrue("the screen is told the read failed", v.state.value.rejectedReadFailed)
+        assertTrue(v.state.value.rejected.isEmpty())
+        assertFalse("fail closed: Submit is not offered on data the phone could not read", v.state.value.gate.enabled)
+        assertTrue(v.state.value.gate.blocks.single() is SubmitBlock.Unreadable); assertFalse(v.state.value.uploadGate.enabled)
+        fail = false; v.refresh()
+        assertFalse(v.state.value.rejectedReadFailed); assertEquals(1, v.state.value.rejected.size)
+    }
+
+    /** Seen rows are listed apart and send-again asks for a sync; the day source does the real work (RefusedRecordsTest). */
+    @Test fun markSeenAndSendAgainAreForwardedAndSendAgainAsksForASync() {
+        val seenCalls = ArrayList<String>(); val againCalls = ArrayList<String>()
+        val base = Day()
+        val row = RejectedRow("u1", "memo", "2026-10-05", "retry_exhausted", RejectedOutcome.PHONE_GAVE_UP)
+        class Acting : DaySource by base {
+            override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> = rejectedRows(businessDate); override suspend fun rejectedRows(businessDate: String) = listOf(row, RejectedRow("u2", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED, seen = true))
+            override suspend fun markSeen(clientUuid: String) { seenCalls += clientUuid }
+            override suspend fun sendAgain(clientUuid: String): Boolean { againCalls += clientUuid; return true }
+        }
+        val s = Sched()
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Acting(), { mapOf("memo" to 6) }, { _, _, _ -> }, s, { true })
+        v.refresh()
+        assertEquals(listOf("u1"), v.state.value.rejected.map { it.clientUuid }); assertEquals(listOf("u2"), v.state.value.seen.map { it.clientUuid })
+        v.markSeen("u1"); v.sendAgain("u1")
+        assertEquals(listOf("u1"), seenCalls); assertEquals(listOf("u1"), againCalls); assertEquals(listOf(SyncTrigger.MANUAL), s.calls)
     }
 }

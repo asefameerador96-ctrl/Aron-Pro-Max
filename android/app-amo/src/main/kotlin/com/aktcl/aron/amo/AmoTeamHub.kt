@@ -98,6 +98,7 @@ private fun leafLabel(l: AmoLeaf): Int = when (l) {
 @Composable
 private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen: (RiskSignalRow) -> Unit, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     var rows by remember { mutableStateOf<List<RiskSignalRow>?>(null) }
     var names by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var reload by remember { mutableStateOf(0) }
@@ -118,7 +119,7 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
     val context = androidx.compose.ui.platform.LocalContext.current
     val savedText = stringResource(AmoR.string.amo_exc_saved)
     ExceptionDetailContent(row, row.userId?.let { names[it] }, note.take(500), busy, failed, { note = it.take(500) }, onAction = { action ->
-        if (busy) return@ExceptionDetailContent
+        if (busy || writeGuard.refused()) return@ExceptionDetailContent
         busy = true; failed = false
         scope.launch {
             val ok = try {

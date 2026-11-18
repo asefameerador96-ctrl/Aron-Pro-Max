@@ -66,13 +66,16 @@ class StockLoad(
      * never enters a Save. Null = the host has no on-hand figure and the screen says "total load" instead of "stock".
      */
     currentBaseBySku: Map<Long, Long>? = null,
+    /** D-AGATE-07: the attempt's UUIDs survive a process kill; with [businessDate] a re-entry after a relaunch cannot double an issue that landed. */
+    private val attemptStore: StockAttemptStore = NoStockAttemptStore,
+    private val businessDate: String = "",
 ) {
     private val loaded = loadedBaseBySku.toMutableMap()
     private val current = currentBaseBySku?.toMutableMap()
     private val entered = linkedMapOf<Long, Long>()
     private var inFlightSignature: String? = null
     /** The client UUID of each (SKU, quantity) of the Save in progress: a retry of the same Save posts the same UUIDs, a changed quantity a new one. */
-    private val attemptUuids = HashMap<String, String>()
+    private val attemptUuids = HashMap<String, String>().also { it.putAll(attemptStore.load(businessDate)) }
 
     val rows: List<StockRow>
         get() = skus.filter { it.status == "active" }.sortedBy { it.sort }
@@ -108,6 +111,7 @@ class StockLoad(
                 slipPrinted = slipPrinted,
             )
         }
+        attemptStore.save(meta.businessDate, attemptUuids.toMap()) // labelled with the date the MOVEMENTS carry (a Save across midnight and a kill still matches the relaunched day); before the commit: a kill between the commit and the screen's answer still leaves the key
         return SaveOutcome.Saved(movements)
     }
 
@@ -117,14 +121,19 @@ class StockLoad(
         inFlightSignature = null
     }
 
-    /** Call after the committer succeeded: folds the increment into today's loaded totals. */
-    fun committed(saved: SaveOutcome.Saved, nowMs: Long) {
-        saved.movements.forEach {
+    /**
+     * Call after the committer succeeded: folds the increment into today's loaded totals. [alreadyStored] are movements the repository
+     * already held before this Save (the same UUID from an attempt that landed before a kill): they are in the loaded figure already and
+     * are not added a second time.
+     */
+    fun committed(saved: SaveOutcome.Saved, nowMs: Long, alreadyStored: Set<String> = emptySet()) {
+        saved.movements.filter { it.clientUuid !in alreadyStored }.forEach {
             loaded[it.skuId] = (loaded[it.skuId] ?: 0L) + it.qtyBase
             current?.let { c -> c[it.skuId] = (c[it.skuId] ?: 0L) + it.qtyBase }
         }
         inFlightSignature = null
         attemptUuids.clear() // a later Save, even of the same quantities, is a new issue
+        attemptStore.clear()
         entered.clear()
     }
 

@@ -60,10 +60,18 @@ internal object SrLockGate {
      * A skip from the outlet list ([write] queues its `visit_skip`): true when queued, false when the route-day refused it
      * (nothing stored; [onRefused] is told why: the lock, or since the follow-up the rep's own Sales Submit, R-W-23).
      */
-    suspend fun skip(onRefused: (DayRefusal) -> Unit = {}, write: suspend () -> Unit): Boolean =
+    suspend fun skip(
+        onRefused: (DayRefusal) -> Unit = {},
+        /** The check-in gate refused the skip (no check-in on its date, or checked out): the caller refreshes its gate mirror so the rep SEES why, never silence (round-3 low). */
+        onAttendanceRefused: suspend (com.aktcl.aron.core.database.repo.AttendanceRefusal) -> Unit = {},
+        write: suspend () -> Unit,
+    ): Boolean =
         try {
             write()
             true
+        } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            onAttendanceRefused(e.why) // D-OWNER-PREREQ-01 rule 1: no check-in on this date; nothing stored; the caller refreshes the UI mirror (CheckInFirst) that says why
+            false
         } catch (e: Exception) {
             onRefused(DayRefusal.of(e) ?: throw e)
             false
@@ -107,4 +115,17 @@ fun SrRefusalDialog(why: DayRefusal, onOk: () -> Unit) {
         DayRefusal.FINAL_SUBMIT -> SrDayLockDialog(onOk)
         DayRefusal.SALES_SUBMIT -> SrDaySubmittedDialog(onOk)
     }
+}
+
+/**
+ * D-AGATE-19 (step-5 low 3): the words for a call the phone ended without writing its close because the route-day refused it (the Final Submit lock, or the SR's own Sales Submit): the rep
+ * is told the call is over and why nothing was recorded, never sent Home in silence. Bangla and English in the localisation layer.
+ */
+@Composable
+fun SrCallEndedDialog(why: DayRefusal, onOk: () -> Unit) {
+    com.aktcl.aron.core.ui.aron.AronDialog(
+        stringResource(R.string.sr_call_ended_title),
+        stringResource(if (why == DayRefusal.FINAL_SUBMIT) R.string.sr_call_ended_final else R.string.sr_call_ended_submit),
+        stringResource(R.string.sr_ok), onConfirm = onOk, onDismiss = onOk,
+    )
 }

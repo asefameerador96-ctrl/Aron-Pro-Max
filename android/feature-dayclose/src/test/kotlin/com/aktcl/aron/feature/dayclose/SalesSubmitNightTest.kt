@@ -20,6 +20,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performClick
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -56,6 +58,16 @@ class SalesSubmitNightTest {
         compose.waitForIdle()
     }
 
+    /** D1-6: a record the server did NOT store can be sent to support with one tap from its own entry. */
+    @Test fun aNotStoredRecordCanBeSentToSupportWithOneTap() {
+        var taps = 0
+        val gate = SalesSubmitRules.gate(clean, owner, DuesAtSubmit(0, 0), false)
+        compose.setContent { Lang(AppLanguage.EN) { SalesSubmitScreen(true, owner, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, rejected = rejected, onSupport = { taps++ }) } }
+        compose.waitForIdle()
+        compose.onAllNodesWithTag(SalesSubmitTags.SUPPORT)[0].performScrollTo().performClick()
+        assertEquals(1, taps)
+    }
+
     @Test fun theServerAboveThePhoneIsInformationAndSubmitIsOn() {
         show(AppLanguage.EN, owner, rejected)
         compose.onNodeWithText("Not matching").assertDoesNotExist()
@@ -71,9 +83,56 @@ class SalesSubmitNightTest {
         compose.onNodeWithText("This memo number was already used; held for review.").assertExists()
         compose.onNodeWithText("Stored on the server and flagged for review. Submit is not blocked.").assertExists()
         compose.onNodeWithText("Sale line · Asef Home").assertExists() // a type the host has no label for still reads in words
-        compose.onNodeWithText("Reason code: price_invalid").assertExists()
-        compose.onNodeWithText("Not stored on the server. Submit is not blocked.").assertExists()
+        // D-AGATE-04: a code without a bundle text reads in words (every known code has Bangla and English), never "Reason code: x"
+        compose.onNodeWithText("A price on the record is not valid.").assertExists()
+        compose.onNodeWithText("Reason code: price_invalid").assertDoesNotExist()
+        compose.onNodeWithText("NOT on the server", substring = true).assertExists()
         compose.onNodeWithText("5 records were rejected by the server.").assertDoesNotExist() // the bare count gave way to the list
+    }
+
+    /** D-AGATE-06: the day's own submit (sent by the check-out) was refused: the reason, and the way out (the day is open again, submit again). */
+    @Test fun aRefusedDaySubmitSaysThePhoneIsOpenAgainAndHowToSubmitAgain() {
+        val daySubmit = listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED))
+        show(AppLanguage.EN, owner, daySubmit)
+        compose.onNodeWithText("The record is not in the shape the server accepts.").assertExists()
+        compose.onNodeWithText("Your day's sales submit was not accepted by the server. The day is open again on this phone: you can sell and collect, then submit again from Sales Submit.").assertExists()
+    }
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 6: after the check-out the text never tells the rep to sell, and names only actions that exist in that state. A submit the server
+     * refused for good has no Send again and no "Submit again" (a cycle 2 is only possible on its own date): it says the check-out goes on its own and who to
+     * contact; a submit the phone gave up on offers Send again (which exists); a held one says there is nothing to do.
+     */
+    @Test fun aRefusedDaySubmitAfterCheckOutNamesOnlyActionsThatExistInThatState() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true)))
+        compose.onNodeWithText("You have already checked out", substring = true).assertExists()
+        compose.onNodeWithText("check-out is sent to the server on its own", substring = true).assertExists()
+        compose.onNodeWithText("Contact your supervisor", substring = true).assertExists()
+        compose.onNodeWithText("Send again", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Submit again", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("you can sell and collect", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun aSubmitThePhoneGaveUpOnAfterCheckOutOffersSendAgainAndAHeldOneSaysNothingToDo() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "retry_exhausted", RejectedOutcome.PHONE_GAVE_UP, afterCheckOut = true)))
+        compose.onNodeWithText("Tap Send again on this record", substring = true).assertExists()
+        compose.onNodeWithText("sent to the server after the submit is accepted or refused", substring = true).assertExists()
+    }
+
+    @Test fun aHeldDaySubmitAfterCheckOutSaysThereIsNothingToDoOnThePhone() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "payload_conflict", RejectedOutcome.STORED_FLAGGED, afterCheckOut = true)))
+        compose.onNodeWithText("nothing to do on the phone", substring = true).assertExists()
+    }
+
+    @Test fun theAfterCheckOutTextsReadInBanglaToo() {
+        show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true)))
+        compose.onNodeWithText("আপনি আগেই চেক-আউট করেছেন", substring = true).assertExists()
+        compose.onNodeWithText("এই ফোনে দিনটি আবার খোলা", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun aRefusedDaySubmitReadsInBanglaToo() {
+        show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED)))
+        compose.onNodeWithText("সার্ভার আপনার দিনের বিক্রয় জমা গ্রহণ করেনি।", substring = true).assertExists()
     }
 
     @Test fun banglaFirstReasonAndTheListShowsBeforeAnyDigest() {
