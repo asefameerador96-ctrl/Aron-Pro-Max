@@ -208,7 +208,8 @@ class AttendanceFlow(
                 return AttendanceResult.Failed
             }
             if (kind == "check_in") openDate = event.meta.businessDate
-            val at = nowIso()
+            // a check-out shows the STORED press time (what a restore shows and what is uploaded), not the time the fix came back
+            val at = if (kind == "check_out") event.meta.capturedAt else nowIso()
             val cur = ui.value
             ui.value = recompute(
                 if (kind == "check_in") at else cur.checkedInAt,

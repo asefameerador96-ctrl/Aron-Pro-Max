@@ -308,6 +308,8 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        // D-AGATE-25: an audit record of a visit (its family) is refused once the call has its close: the close classified the call without it. A replay (above) still answers false.
+        if (!own && capture.visitCloseCount(record.familyUuid) > 0) throw CallAlreadyClosedException(record.familyUuid)
         requireCheckedIn(record.meta.businessDate) // rule 1: every AMO record is operational
         requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
@@ -375,6 +377,7 @@ class CaptureRepository(
         requireCheckedIn(answer.meta.businessDate)
         requireOpenRouteDay(answer.meta)
         requireSurveyVisit(answer.visitClientUuid)
+        if (capture.visitCloseCount(answer.visitClientUuid) > 0) throw CallAlreadyClosedException(answer.visitClientUuid) // D-AGATE-25
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }

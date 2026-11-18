@@ -168,6 +168,7 @@ class AttendanceFlowTest {
         assertEquals("check_out", out.kind)
         assertEquals("the stamp is the press", "2026-10-07T17:59:45.000Z", out.meta.capturedAt)
         assertEquals("2026-10-07", out.meta.businessDate)
+        assertEquals("D-AGATE-25: the screen shows the STORED press time, not the time the fix came back", "2026-10-07T17:59:45.000Z", f.state.value.checkedOutAt)
     }
 
     /** D-AGATE-22 (item 6): the transaction found work opened in the gap: the press is refused with the open-work answer, nothing is shown as checked out, and the buttons stay. */

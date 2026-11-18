@@ -237,21 +237,21 @@ class AmoRecordWriterReplayTest {
     private val brands = listOf(AmoBrand(1, "A", null), AmoBrand(2, "B", null))
 
     /**
-     * D-AGATE-22 (item 7): an audit record of a call is written under the lock every close of the call takes. While a close holds it, the Save waits (nothing is written); when the close is
-     * done the Save goes on. So a close that read "no audit record" cannot end the call as abandoned with a record saved a moment before.
+     * D-AGATE-25 (lead low 4): an audit record of a CLOSED call is refused inside the transaction (`CallAlreadyClosedException`) and nothing is stored or queued; a replay of a stored
+     * record still answers quietly. (The lock the audit saves run under is proved on the production wiring: `AmoAuditLockWiringTest`.)
      */
-    @Test fun anAuditSaveWaitsForTheCloseLockAndLandsAfterIt() = runBlocking {
-        val v = visit(); val lock = kotlinx.coroutines.sync.Mutex()
-        val locked = AmoRecordWriter(db, capture, metaProvider, { route }, { ClientIds.newUuid() }, { syncs++ }, { ok }, { _, _, _, _, _ -> }, { _, _ -> stamped }, callLock = lock)
-        val base = outbox("distribution_check").size
-        lock.lock() // a close of the call holds the lock
-        val save = launch(kotlinx.coroutines.Dispatchers.Default) { locked.saveAssessment(v, brands, PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true)) }
-        kotlinx.coroutines.delay(300)
-        assertFalse("the Save is waiting", save.isCompleted)
-        assertEquals("nothing is written while the close holds the lock", base, outbox("distribution_check").size)
-        lock.unlock()
-        save.join()
-        assertEquals("the Save went on after the close", base + 1, outbox("distribution_check").size)
+    @Test fun anAuditRecordOfAClosedCallIsRefusedAndStoresNothing() = runBlocking {
+        val v = visit()
+        capture.recordVisitClose(com.aktcl.aron.core.database.entity.VisitCloseEntity(
+            clientUuid = ClientIds.newUuid(), meta = metaProvider.meta(route), visitClientUuid = v, outcomeCode = "abandoned",
+            callStartedAt = null, callDeclined = false, endedAt = "2026-10-17T04:30:00.000Z", isZeroSale = true,
+        ))
+        val base = outbox().size
+        val state = PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true)
+        assertTrue(runCatching { writer.saveAssessment(v, brands, state) }.exceptionOrNull() is com.aktcl.aron.core.database.repo.CallAlreadyClosedException)
+        assertTrue(runCatching { writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4, 2L to 5)), 7L) }.exceptionOrNull() is com.aktcl.aron.core.database.repo.CallAlreadyClosedException)
+        assertEquals("nothing was queued", base, outbox().size)
+        assertEquals("nothing was stored", 0, db.captureDao().amoRecordsOfFamily(v).size)
     }
 
     @Test fun assessmentSurvivesRelaunchAndReplayWritesNothingMore() = runBlocking {

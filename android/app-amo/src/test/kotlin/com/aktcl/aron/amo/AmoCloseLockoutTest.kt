@@ -38,15 +38,19 @@ class AmoCloseLockoutTest {
 
     private fun at(date: String, h: Int, m: Int) = LocalDate.parse(date).atTime(h, m).toInstant(ZoneOffset.ofHours(6)).toEpochMilli()
     private fun next() = LocalDate.parse(d0).plusDays(1).toString()
+    private var base = 0L
+    private var n = 0
+    /** One resume a minute later than the last (failures within seconds count as ONE attempt, D-AGATE-25). */
+    private suspend fun resume() { n++; f.trustAt(base + n * 60_000L); f.day.resumeDay() }
     private fun sql(q: String) = f.db.openHelper.writableDatabase.execSQL(q)
     private fun checkOuts(date: String) = runBlocking { f.db.captureDao().attendanceOn(date).filter { it.kind == "check_out" } }
 
     @Test fun aForgottenDayThatKeepsFailingToCloseRaisesTheScreenAfterThreeAttemptsAndTryAgainClearsIt() = runBlocking {
         sql("CREATE TRIGGER fail_close BEFORE INSERT ON geo_fix BEGIN SELECT RAISE(ABORT, 'disk says no, payload 017'); END")
-        f.trustAt(at(next(), 10, 0))
-        f.day.resumeDay(); assertNull("1 failure: nothing shown", f.day.closeLockout.value)
-        f.day.resumeDay(); assertNull("2 failures: nothing shown", f.day.closeLockout.value)
-        f.day.resumeDay()
+        base = at(next(), 10, 0); f.trustAt(base)
+        resume(); assertNull("1 failure: nothing shown", f.day.closeLockout.value)
+        resume(); assertNull("2 failures: nothing shown", f.day.closeLockout.value)
+        resume()
         val l = f.day.closeLockout.value
         assertNotNull("3 failures: the plain screen", l)
         assertEquals(d0, l!!.businessDate)
@@ -54,7 +58,7 @@ class AmoCloseLockoutTest {
         assertTrue("no message, no payload", !l.code.contains("017") && !l.code.contains("disk"))
         assertTrue("the day is still open", checkOuts(d0).isEmpty())
         // Try again while it still fails: stays up
-        f.day.resumeDay(); assertNotNull(f.day.closeLockout.value)
+        resume(); assertNotNull(f.day.closeLockout.value)
         // the cause goes away; Try again runs the resume once and the close succeeds
         sql("DROP TRIGGER fail_close")
         f.day.resumeDaySafely()
@@ -66,8 +70,8 @@ class AmoCloseLockoutTest {
     @Test fun anEarlierCallThatKeepsFailingToCloseRaisesTheScreenAndClearsOnSuccess() = runBlocking {
         val v = f.controlCall()
         sql("CREATE TRIGGER fail_call BEFORE INSERT ON visit_close BEGIN SELECT RAISE(ABORT, 'no'); END")
-        f.trustAt(at(next(), 8, 0)) // past the 04:00 limit
-        repeat(3) { f.day.resumeDay() }
+        base = at(next(), 8, 0); f.trustAt(base) // past the 04:00 limit
+        repeat(3) { resume() }
         val l = f.day.closeLockout.value
         assertNotNull(l); assertTrue(l!!.code.startsWith("E-CLOSE-CALL/")); assertEquals(d0, l.businessDate)
         assertNotNull("the call is still there, nothing lost", f.day.visitSession.current.value)
@@ -81,10 +85,10 @@ class AmoCloseLockoutTest {
 
     @Test fun aSingleFailureNeverShowsTheScreenAndASuccessResetsTheCount() = runBlocking {
         sql("CREATE TRIGGER fail_close BEFORE INSERT ON geo_fix BEGIN SELECT RAISE(ABORT, 'x'); END")
-        f.trustAt(at(next(), 10, 0))
-        f.day.resumeDay(); f.day.resumeDay()
+        base = at(next(), 10, 0); f.trustAt(base)
+        resume(); resume()
         sql("DROP TRIGGER fail_close")
-        f.day.resumeDay() // succeeds: counter reset
+        resume() // succeeds: counter reset
         assertNull(f.day.closeLockout.value)
         assertTrue(f.db.referenceDao().metaWithPrefix("day_close_fail:").isEmpty())
     }

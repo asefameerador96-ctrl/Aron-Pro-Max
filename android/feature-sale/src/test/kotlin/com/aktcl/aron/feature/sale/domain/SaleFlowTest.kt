@@ -115,6 +115,25 @@ class SaleFlowTest {
         assertEquals(again, f.state.value.committed)
     }
 
+    /** D-AGATE-25 (lead low 7): the stored memo comes back, and when the draft was changed after the unheard Save the state SAYS the later changes were not saved. */
+    @Test fun aReplayAfterAnUnheardSaveSaysWhenTheDraftWasChangedMeanwhile() = runTest {
+        val store = MemStore(); val v = visit()
+        val changed = flow(store); changed.start(v); changed.setQuantity(100, 5, QtyUnit.STICK)
+        val s = changed.state.value
+        val landed = committer().commit(s.draft!!, s.catalog, null, emptyMap()) // the Save reached Room; the flow never heard of it
+        changed.setQuantity(100, 6, QtyUnit.STICK) // the rep kept editing
+        val back = changed.commit()
+        assertEquals(landed.memoNo, back.memoNo)
+        assertEquals(true, changed.state.value.laterChangesNotSaved)
+        // the same replay with the draft as it was: nothing to say
+        val store2 = MemStore(); val v2 = visit()
+        val same = flow(store2); same.start(v2); same.setQuantity(100, 5, QtyUnit.STICK)
+        val s2 = same.state.value
+        committer().commit(s2.draft!!, s2.catalog, null, emptyMap())
+        same.commit()
+        assertEquals(false, same.state.value.laterChangesNotSaved)
+    }
+
     @Test fun aBlockedVisitCannotSellAndNothingIsCreated() = runTest {
         val store = MemStore(); val f = flow(store)
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { f.start(visit().copy(canSell = false)) } }

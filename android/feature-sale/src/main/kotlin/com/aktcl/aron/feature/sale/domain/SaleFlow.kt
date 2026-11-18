@@ -37,6 +37,8 @@ data class SaleUiState(
     val qcCapMtkBySku: Map<Long, Long> = emptyMap(),
     /** Why the last save was refused INSIDE the transaction (stock moved, the memo to edit was replaced); the screen words it. Cleared by the next change. */
     val refusal: List<ReviewProblem> = emptyList(),
+    /** D-AGATE-25: a replayed Save (the memo was already stored) answered with the STORED memo while the draft on screen differed from it: the later changes were not saved; the screen says so. */
+    val laterChangesNotSaved: Boolean = false,
 )
 
 /**
@@ -149,7 +151,9 @@ class SaleFlow(
         // (as `start` does) BEFORE the closed-call refusal, so a retry after the call was closed in between answers with the stored memo, never "nothing was saved"
         committer.existing(draft.memoUuid)?.let { landed ->
             store.clear(draft.visitUuid)
-            ui.value = s.copy(committed = landed)
+            // the stored memo is what was saved; when the draft the rep sees now carries other totals, his later changes are NOT in it, and the screen says so
+            val differs = s.review?.let { it.totals.netMtk != landed.netMtk || it.settlement.dueMtk != landed.dueMtk } == true
+            ui.value = s.copy(committed = landed, laterChangesNotSaved = differs)
             return landed
         }
         if (draft.edit == null && isCallClosed(draft)) {

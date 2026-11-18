@@ -161,4 +161,6 @@
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">Quantity</string>
     <string name="review_problem_call_closed">This call has already ended, so the sale was not saved. Nothing was recorded for it.</string>
+    <string name="review_later_title">Saved memo shown</string>
+    <string name="review_later_body">The memo had already been saved before your last changes. The saved memo is shown; the changes you made after it were not saved. Edit the memo if they are needed.</string>
 </resources>

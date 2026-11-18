@@ -131,6 +131,7 @@ internal class DrainableExecutor : Executor {
     private val pending = AtomicInteger()
 
     override fun execute(command: Runnable) {
+        submitted.incrementAndGet()
         pending.incrementAndGet()
         try {
             pool.execute {
@@ -151,6 +152,10 @@ internal class DrainableExecutor : Executor {
 
     @Volatile private var held: java.util.concurrent.CountDownLatch? = null
     private val blocked = AtomicInteger()
+    private val submitted = AtomicInteger()
+
+    /** D-AGATE-25: how many Room commands were handed to this executor so far (counted synchronously in [execute]: a deterministic signal that a coroutine reached the database). */
+    fun submittedCount(): Int = submitted.get()
 
     /** From now every Room command waits at its start until [release]. */
     fun hold() { held = java.util.concurrent.CountDownLatch(1) }

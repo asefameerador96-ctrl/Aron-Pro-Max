@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -192,7 +193,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 runCatching { d.reload() }
                                 // D-AGATE-15: the day's resume (a forgotten day's close makes one location attempt) never delays the shell: the gate starts closed and follows
-                                launch { runCatching { d.resumeDay() } }
+                                launch { d.resumeDaySafely() }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
@@ -208,7 +209,7 @@ class MainActivity : ComponentActivity() {
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
                                 // a session left open across Dhaka midnight: yesterday's check-in must not read as today's (rule 1); the AMO had no boundary handling at all
-                                day?.let { d -> dayScopeForResume.launch { runCatching { d.resumeDay() } } }
+                                day?.let { d -> dayScopeForResume.launch { d.resumeDaySafely() } }
                                 if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
                             }
                             // ONE timer for the next Dhaka midnight (no one-minute tick): the day state refreshes then, as the SR boundary effect does; the resume above covers the rest
@@ -216,7 +217,7 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(day, boundaryTick) {
                                 val d = day ?: return@LaunchedEffect
                                 kotlinx.coroutines.delay(d.millisToNextMidnight())
-                                runCatching { d.resumeDay() }
+                                d.resumeDaySafely()
                                 boundaryTick++
                             }
                             // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
@@ -226,7 +227,7 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(day, amoCallOpen, amoEditOpen) {
                                 val d = day ?: return@LaunchedEffect
                                 if (amoCallOpen || amoEditOpen) { amoWasOpen = true; runCatching { d.refreshDayGate() } }
-                                else if (amoWasOpen) { amoWasOpen = false; runCatching { d.resumeDay() } }
+                                else if (amoWasOpen) { amoWasOpen = false; d.resumeDaySafely() }
                             }
                             LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
                                 val d = day ?: return@LaunchedEffect
@@ -344,6 +345,11 @@ class MainActivity : ComponentActivity() {
                             }
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
+                            // D-AGATE-22/25 (item 5): the lock-out fallback state; while it shows Back does nothing and the screens below are hidden from TalkBack (the screen itself takes every touch)
+                            val closeLockout by (day?.closeLockout ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.attendance.DayCloseFailure?>(null) }).collectAsStateWithLifecycle()
+                            var tryingAgain by remember { mutableStateOf(false) }
+                            androidx.activity.compose.BackHandler(enabled = closeLockout != null) { }
+                            Box(Modifier.fillMaxSize().then(if (closeLockout != null) Modifier.clearAndSetSemantics { } else Modifier)) {
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
                                 key = s.user.userId,
                                 load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
@@ -374,9 +380,9 @@ class MainActivity : ComponentActivity() {
                                 banners = amoDayLockBanners(day) + amoRolloverBanners(day),
                             ) }
                             }
+                            }
+
                             // D-AGATE-22 (item 5): the lock-out fallback (see SrApp): a forgotten day or an earlier call that kept failing to close is a plain full-screen message with a short code and Try again
-                            val closeLockout by (day?.closeLockout ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.attendance.DayCloseFailure?>(null) }).collectAsStateWithLifecycle()
-                            var tryingAgain by remember { mutableStateOf(false) }
                             closeLockout?.let { f ->
                                 com.aktcl.aron.feature.attendance.DayCloseFailedScreen(f.code, tryingAgain, onTryAgain = {
                                     dayScope.launch { tryingAgain = true; try { day?.resumeDaySafely() } finally { tryingAgain = false } }

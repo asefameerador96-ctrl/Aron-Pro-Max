@@ -275,6 +275,7 @@ class AmoDay(
         val r = reading ?: readCloseFix()
         val closed = ArrayList<String>()
         for (d in stale) {
+            if (attendance.state.value.busy) break // the rep pressed check-out meanwhile: his press goes first (D-AGATE-25)
             val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
             val fix = r.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
             val coords = if (r.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", r.lat, r.lng) else null
@@ -285,7 +286,7 @@ class AmoDay(
             val res = com.aktcl.aron.feature.attendance.catching { commitAttendance(event, fix, listOf(mark)) }
             // D-AGATE-22 (item 5): the local counter of failed closes per forgotten date; reset on success
             if (res.isSuccess) { closed += d; com.aktcl.aron.feature.attendance.catching { closeFailures.succeeded(com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY, d) } }
-            else res.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY, d, t) } }
+            else res.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY, d, t, clock.nowMs()) } }
         }
         if (closed.isNotEmpty()) {
             attendance.restore(attendanceForScreen()); refreshDayGate()
@@ -297,6 +298,8 @@ class AmoDay(
     /** The earlier dates the phone may close now: none while a call or a memo edit is open (D-LEAD-PREREQ-03 ruling 1). */
     suspend fun forgottenDays(): List<String> {
         if (openWorkNow() != null) return emptyList()
+        // D-AGATE-25: while the rep's own check-out is in flight (its fix is being read) the phone does not start a close of the same day: it could land first and turn the rep's press into a failure
+        if (attendance.state.value.busy) return emptyList()
         val today = businessDate()
         return com.aktcl.aron.feature.attendance.catching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
     }
@@ -337,7 +340,7 @@ class AmoDay(
         val refusal = closeRes.getOrNull()
         if (visitSession.current.value != null) {
             // D-AGATE-22 (item 5): a close that threw counts as one failed attempt for this call's date (a refusal is not a failure)
-            closeRes.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_CALL, vd, t) } }
+            closeRes.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_CALL, vd, t, clock.nowMs()) } }
             return false
         }
         com.aktcl.aron.feature.attendance.catching { closeFailures.succeeded(com.aktcl.aron.feature.attendance.CloseFailures.KIND_CALL, vd) } // the close could not be written: the next start or resume tries again, nothing is lost
@@ -378,7 +381,14 @@ class AmoDay(
     private val fixLock = kotlinx.coroutines.sync.Mutex()
 
     /** D-AGATE-22 (items 4 and 5): [resumeDay] with a Room failure caught (a cancellation is rethrown), as the SR day's `resumeDaySafely`; the lock-out screen's Try again calls it. */
-    suspend fun resumeDaySafely() { com.aktcl.aron.feature.attendance.catching { resumeDay() } }
+    suspend fun resumeDaySafely() {
+        com.aktcl.aron.feature.attendance.catchingLive { resumeDay() }.exceptionOrNull()?.let { android.util.Log.w("AronDay", "resume failed: type=" + it.javaClass.simpleName) } // the class only: no message, no payload
+    }
+
+    /** D-AGATE-25: `reload()` for the composition effects that follow a resume: a Room read failure there must not crash the app either (and is logged by class). */
+    suspend fun reloadSafely() {
+        com.aktcl.aron.feature.attendance.catchingLive { reload() }.exceptionOrNull()?.let { android.util.Log.w("AronDay", "reload failed: type=" + it.javaClass.simpleName) }
+    }
 
     /** The ONE sequence of a start, a resume, the midnight timer and the end of an open call (see SrDay.resumeDay): the location attempt runs outside the resume lock. */
     suspend fun resumeDay() {

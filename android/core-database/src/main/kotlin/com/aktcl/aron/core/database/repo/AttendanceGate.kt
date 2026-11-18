@@ -14,6 +14,9 @@ enum class AttendanceRefusal {
     EARLIER_CALL_OPEN,
 }
 
+/** D-AGATE-25: thrown INSIDE the transaction when an audit record or survey answer is written for a call that already has its `visit_close`; nothing is written. */
+class CallAlreadyClosedException(val visitUuid: String) : IllegalStateException("the call $visitUuid is already closed")
+
 /** Thrown by the write layer INSIDE the saving transaction; nothing is written (D-OWNER-PREREQ-01 rule 1). */
 class AttendanceRefusedException(val why: AttendanceRefusal, val businessDate: String) :
     IllegalStateException("no operational write on $businessDate: $why")

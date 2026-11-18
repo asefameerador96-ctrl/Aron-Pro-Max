@@ -7,8 +7,8 @@ import com.aktcl.aron.feature.sale.domain.ReviewProblem
 import com.aktcl.aron.rules.QtyUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -62,14 +62,14 @@ class AmoSaveCloseRaceTest {
         lateinit var first: kotlinx.coroutines.Deferred<Any?>
         lateinit var second: kotlinx.coroutines.Deferred<Any?>
         try {
-            first = async(Dispatchers.Default) { if (saveFirst) saveFn() else closeFn() }
-            val t0 = System.nanoTime()
-            while (exec.waiting() == 0) { delay(10); check(System.nanoTime() - t0 < 10_000_000_000L) { "the first coroutine never reached the database" } }
+            // UNDISPATCHED: each coroutine runs on this thread up to its first suspension, so the order is exact and nothing here waits on a clock. The first takes the close lock and
+            // hands its first Room command to the (held) executor; the second must then suspend on the LOCK, before any Room command of its own.
+            first = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { if (saveFirst) saveFn() else closeFn() }
             check(f.day.closeLock.isLocked) { "the first coroutine is inside its critical section" }
-            second = async(Dispatchers.Default) { if (saveFirst) closeFn() else saveFn() }
-            delay(300) // the second one has had every chance to run: it must be waiting for the lock, not racing past it
-            assertTrue("the second coroutine waits for the first", second.isActive)
-            assertEquals("and it has not reached the database: only the first one's command is at the hold (the lock, not the executor, is what holds the second back)", 1, exec.waiting())
+            val commandsBefore = exec.submittedCount()
+            second = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { if (saveFirst) closeFn() else saveFn() }
+            assertEquals("the second coroutine suspended on the lock: it handed no Room command to the executor", commandsBefore, exec.submittedCount())
+            assertTrue("and it is waiting", second.isActive)
             assertEquals("nothing is stored while the first one holds the lock", 0, count("SELECT COUNT(*) FROM visit_close WHERE visit_client_uuid = '${v.visitUuid}'"))
         } finally {
             // an assertion above must never leave the held commands waiting for ever (runBlocking would wait for them): release first, then the assertion fails

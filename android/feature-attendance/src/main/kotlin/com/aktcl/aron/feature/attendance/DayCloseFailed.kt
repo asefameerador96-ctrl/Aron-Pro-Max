@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.database.dao.ReferenceDao
@@ -28,16 +29,23 @@ data class DayCloseFailure(val kind: String, val businessDate: String, val code:
 /**
  * D-AGATE-22 (item 5, the lead's approved design): a LOCAL counter of failed attempts to close a forgotten day ([KIND_DAY]) or an earlier open call ([KIND_CALL]), one row per
  * (kind, date) in `sync_meta`, reset when the close succeeds. After [LIMIT] failures the app shows a plain full-screen "the day could not be closed on this phone" with the short
- * code and a Try again button (see [DayCloseFailedScreen]); the check-in is never silently off. The stored value is `count|code`; the code is the step plus the exception CLASS name
+ * code and a Try again button (see [DayCloseFailedScreen]); the check-in is never silently off. The stored value is `count|code|lastAttemptMs`; the code is the step plus the exception CLASS name
  * (never a message: it can carry SQL or a payload).
  */
 class CloseFailures(private val dao: ReferenceDao) {
-    /** One more failed attempt at closing [kind] of [date] with [t]; returns the new count. */
-    suspend fun failed(kind: String, date: String, t: Throwable): Int {
+    /**
+     * One more failed attempt at closing [kind] of [date] with [t] at [nowMs]; returns the count. Failures within [SAME_ATTEMPT_MS] of the last counted one are ONE attempt (a start effect
+     * and the first ON_RESUME both resume the day within a second or two of a launch), so three transient failures at launch never raise the screen.
+     */
+    suspend fun failed(kind: String, date: String, t: Throwable, nowMs: Long): Int {
         val key = key(kind, date)
-        val n = (dao.meta(key)?.substringBefore('|')?.toIntOrNull() ?: 0) + 1
-        dao.putMeta(SyncMetaEntity(key, "$n|${codeOf(kind, t)}"))
-        return n
+        val parts = dao.meta(key)?.split('|').orEmpty()
+        val n = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val last = parts.getOrNull(2)?.toLongOrNull()
+        val code = codeOf(kind, t)
+        if (last != null && nowMs - last in 0 until SAME_ATTEMPT_MS) { dao.putMeta(SyncMetaEntity(key, "$n|$code|$last")); return n }
+        dao.putMeta(SyncMetaEntity(key, "${n + 1}|$code|$nowMs"))
+        return n + 1
     }
 
     /** The close of [kind] of [date] succeeded (or is no longer needed): its counter goes. */
@@ -52,7 +60,7 @@ class CloseFailures(private val dao: ReferenceDao) {
             val parts = r.key.removePrefix(PREFIX).split(':', limit = 2)
             if (parts.size != 2) return@mapNotNull null
             val n = r.value.substringBefore('|').toIntOrNull() ?: return@mapNotNull null
-            Triple(DayCloseFailure(parts[0], parts[1], r.value.substringAfter('|', "")), n, r.key)
+            Triple(DayCloseFailure(parts[0], parts[1], r.value.split('|').getOrNull(1).orEmpty()), n, r.key)
         }
         var out: DayCloseFailure? = null
         for ((f, n, key) in rows.sortedBy { it.first.businessDate }) {
@@ -64,6 +72,8 @@ class CloseFailures(private val dao: ReferenceDao) {
 
     companion object {
         const val LIMIT = 3
+        /** Failures this close together count as one attempt. */
+        const val SAME_ATTEMPT_MS = 10_000L
         const val KIND_DAY = "day"
         const val KIND_CALL = "call"
         private const val PREFIX = "day_close_fail:"
@@ -87,7 +97,8 @@ object DayCloseFailedTags {
  */
 @Composable
 fun DayCloseFailedScreen(code: String, busy: Boolean, onTryAgain: () -> Unit, modifier: Modifier = Modifier) {
-    AronScreen(modifier.fillMaxSize()) {
+    // D-AGATE-25: the screen takes EVERY touch (nothing underneath is reachable); the host also takes Back and hides the screens below from TalkBack
+    AronScreen(modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent().changes.forEach { it.consume() } } } }) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen).testTag(DayCloseFailedTags.ROOT),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.CenterVertically),

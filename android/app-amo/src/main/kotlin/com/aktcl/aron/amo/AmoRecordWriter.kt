@@ -35,7 +35,7 @@ class AmoRecordWriter(
     /**
      * D-AGATE-22 (item 7): the SAME lock every close of a call takes (`AmoDay.closeLock`). The audit records of a call (joint-call assessment, SR assessment, price check, survey) are
      * written under it, so a close that reads "no memo, no audit record" and ends the call as abandoned can never run in between an audit Save and its own commit: the Save lands first
-     * and the close sees it (zero-sale call), or the close lands first and the write is refused by the closed-call guards. Null in a test that has no close to race.
+     * and the close sees it (zero-sale call), or the close lands first and the write is refused inside its transaction (`CallAlreadyClosedException`, D-AGATE-25: `recordAmo` and `recordSurveyResponse` refuse a visit that has a `visit_close`). Null in a test that has no close to race.
      */
     private val callLock: kotlinx.coroutines.sync.Mutex? = null,
 ) {

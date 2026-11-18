@@ -160,4 +160,6 @@
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">পরিমাণ</string>
     <string name="review_problem_call_closed">এই কলটি আগেই শেষ হয়েছে, তাই বিক্রিটি সংরক্ষণ হয়নি। এর জন্য কিছুই লেখা হয়নি।</string>
+    <string name="review_later_title">সংরক্ষিত মেমো দেখানো হচ্ছে</string>
+    <string name="review_later_body">আপনার শেষ পরিবর্তনের আগেই মেমোটি সংরক্ষিত হয়েছিল। সংরক্ষিত মেমোটি দেখানো হচ্ছে; এর পরে করা পরিবর্তনগুলো সংরক্ষিত হয়নি। প্রয়োজন হলে মেমো এডিট করুন।</string>
 </resources>
