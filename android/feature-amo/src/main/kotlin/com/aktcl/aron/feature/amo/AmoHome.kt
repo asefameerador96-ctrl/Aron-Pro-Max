@@ -114,8 +114,8 @@ internal fun amoTileIcon(tileId: String): Int? = when (tileId) {
 private fun tilePainter(tileId: String): Painter? = amoTileIcon(tileId)?.let { painterResource(it) }
 
 @Composable
-private fun inkStyle(size: Int, bold: Boolean = false, color: Color = LocalAronLook.current.ink) =
-    TextStyle(fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color)
+private fun inkStyle(size: Int, bold: Boolean = false, color: Color = LocalAronLook.current.ink, align: androidx.compose.ui.text.style.TextAlign = androidx.compose.ui.text.style.TextAlign.Unspecified) =
+    TextStyle(fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color, textAlign = align)
 
 /** A notice on the grey or white page: a white card with a red or purple edge. Replaces the glass banners on the parity screens. */
 @Composable
@@ -166,9 +166,9 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier,
     val look = LocalAronLook.current
     val dash = stringResource(R.string.amo_shell_no_target)
     val cards = listOf(
-        Card("today", R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
+        Card("today", R.string.amo_shell_target_today, AronIcons.Target, targets?.today), // the bullseye of screenshot 09
         Card("total", R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
-        Card("control", R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
+        Card("control", R.string.amo_shell_target_control, SmartphoneIcon, targets?.control), // the phone outline of screenshot 09, not the cart
         Card("joint", R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
     )
     Column(
@@ -182,11 +182,11 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier,
                     Column(
                         Modifier.weight(1f).testTag(AmoHomeTags.target(key)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
                             .semantics(mergeDescendants = true) { },
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally, // screenshot 09: icon, label and figure centred
                     ) {
                         androidx.compose.material3.Icon(icon, contentDescription = null, tint = look.onPanel, modifier = Modifier.size(24.dp))
-                        Text(stringResource(label), style = inkStyle(14, color = look.onPanel))
-                        Text(figure, style = inkStyle(22, bold = true, color = look.onPanel))
+                        Text(stringResource(label), style = inkStyle(14, color = look.onPanel, align = androidx.compose.ui.text.style.TextAlign.Center))
+                        Text(figure, style = inkStyle(22, bold = true, color = look.onPanel, align = androidx.compose.ui.text.style.TextAlign.Center))
                     }
                 }
             }
@@ -243,7 +243,7 @@ fun AmoHomeContent(
     AronScaffold(
         topBar = {
             AronHomeHeader(
-                header.title, localizedDigits(header.subtitle), onSettings, stringResource(HomeR.string.set_open),
+                header.title, header.subtitle /* screenshot 09: the header date keeps Latin digits, as the attendance header does */, onSettings, stringResource(HomeR.string.set_open),
                 Modifier.testTag(HomeTags.HEADER).semantics { contentDescription = header.title + ", " + dateSpoken },
                 showSettings = false,
             )
@@ -403,7 +403,7 @@ fun AmoSettingsContent(
     val language = LocalAppLanguage.current
     var confirm by rememberSaveable { mutableStateOf(false) }
     AronScaffold(
-        topBar = { AronTopBar(stringResource(HomeR.string.set_title), icon = painterResource(CoreR.drawable.aron_ic_gear), onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
+        topBar = { AronTopBar(stringResource(HomeR.string.set_title), icon = null, onBack = onBack, /* screenshot 75: the bar is the arrow and the centred title only (D-PAR-AMO-30) */ backLabel = stringResource(CoreR.string.core_ui_back)) },
         modifier = modifier,
     ) {
         Column(
@@ -513,4 +513,13 @@ private fun AmoDialogButton(label: String, fill: Color, tag: String, onClick: ()
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center,
     ) { Text(label, style = inkStyle(16, bold = true, color = Color.White)) }
+}
+
+
+/** The phone outline of the Control Call target card (Material "smartphone" outline, drawn here because the shared icon set has none). */
+private val SmartphoneIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("smartphone", 24.dp, 24.dp, 24f, 24f).addPath(
+        androidx.compose.ui.graphics.vector.PathParser().parsePathString("M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z").toNodes(),
+        fill = androidx.compose.ui.graphics.SolidColor(androidx.compose.ui.graphics.Color.Black),
+    ).build()
 }

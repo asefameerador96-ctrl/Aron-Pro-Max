@@ -26,7 +26,15 @@ class AmoRecordWriter(
     private val claimPhoto: suspend (photoUuid: String, purpose: String, refType: String, refUuid: String, fix: GeoFixEntity?) -> Unit,
     /** The fix uuid already stamped on a photo that belongs to this request (a claim of an earlier attempt), or null. */
     private val stampedFixUuid: suspend (photoUuid: String, requestUuid: String) -> String? = { _, _ -> null },
+    /**
+     * D-LEAD-PREREQ-04 ruling 5: the business date of the VISIT of [visitUuid] when that is the open call (its records carry it, also after Dhaka midnight), else null (the
+     * clock's date). Production: the open call's date; a test without midnight passes none.
+     */
+    private val callDate: (visitUuid: String) -> String? = { null },
 ) {
+    /** The meta of a record of the call [visitUuid]: the route of the open call and the VISIT's date (never later than the clock's, so a record is never future-dated). */
+    private fun callMeta(visitUuid: String) = meta.meta(routeOfCall()).let { m -> callDate(visitUuid)?.takeIf { it < m.businessDate }?.let { m.copy(businessDate = it) } ?: m }
+
     /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
     suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) {
         // the writer enforces what the screen enables: with no default star every scored item must be rated (no 0 -> 1 star through coerceIn)
@@ -36,7 +44,7 @@ class AmoRecordWriter(
         val wrote = db.withTransaction {
             if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "call_assessment" }) return@withTransaction false
             for (p in planned) capture.recordAmo(
-                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), p.type, p.familyUuid, p.rank, p.payload.toString()),
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, callMeta(visitUuid), p.type, p.familyUuid, p.rank, p.payload.toString()),
             )
             true
         }
@@ -140,7 +148,7 @@ class AmoRecordWriter(
             for (r in stored) r.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
             return
         }
-        val meta = meta.meta(routeOfCall())
+        val meta = callMeta(visitUuid)
         db.withTransaction {
             for (r in rows) {
                 val a = r.answer
@@ -163,7 +171,7 @@ class AmoRecordWriter(
                 .mapNotNull { runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["sku_id"].toString().toLong() }.getOrNull() }.toSet()
             val planned = com.aktcl.aron.feature.amo.PriceCompliance.records(visitUuid, rows.filter { it.skuId !in done }, typed, toleranceBp, newUuid)
             for (p in planned) capture.recordAmo(
-                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), "price_compliance_check", p.familyUuid, p.rank, p.payload.toString()),
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, callMeta(visitUuid), "price_compliance_check", p.familyUuid, p.rank, p.payload.toString()),
             )
         }
         runCatching { requestSync() }
@@ -178,7 +186,7 @@ class AmoRecordWriter(
         val wrote = db.withTransaction {
             if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return@withTransaction false
             for (p in planned) capture.recordAmo(
-                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), p.type, p.familyUuid, p.rank, p.payload.toString()),
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, callMeta(visitUuid), p.type, p.familyUuid, p.rank, p.payload.toString()),
             )
             true
         }

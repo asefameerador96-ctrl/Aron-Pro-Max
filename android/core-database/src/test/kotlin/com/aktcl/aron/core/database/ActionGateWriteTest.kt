@@ -40,6 +40,23 @@ class ActionGateWriteTest {
         assertEquals(0, db.captureDao().outletRequestCount(id))
     }
 
+    /**
+     * The Developer options gate is independent of, and FIRST before, the check-in gate (D-OWNER-MDM-02; lead 2026-11-18): a rep who is not checked in and has Developer options
+     * on sees the developer-options block, not "check in first". With the gate open the check-in gate answers as before. Integrity events and device status are exempt like
+     * breadcrumbs (they describe the phone, they are not operational records).
+     */
+    @Test fun theDeveloperOptionsGateComesBeforeTheCheckInGate() = runTest {
+        val strict = CaptureRepository(db, requireCheckIn = true) { "2026-11-12T04:00:00.000Z" }
+        ActionGate.check = { false }
+        val closed = runCatching { strict.recordOutletRequest(request(), fix()) }
+        assertTrue("gate closed, not checked in: the developer-options block first", closed.exceptionOrNull() is GateClosedException)
+        val co = runCatching { strict.recordCheckOut(com.aktcl.aron.core.database.entity.AttendanceEventEntity(clientUuid = id, meta = meta, kind = "check_out", fixClientUuid = fixId, addressDisplay = null), fix()) }
+        assertTrue("a check-out is gated too", co.exceptionOrNull() is GateClosedException)
+        ActionGate.check = { true }
+        val open = runCatching { strict.recordOutletRequest(request(), fix()) }
+        assertTrue("gate open, not checked in: the check-in gate answers", open.exceptionOrNull() is com.aktcl.aron.core.database.repo.AttendanceRefusedException)
+    }
+
     @Test fun anOpenGateWritesAsBefore() = runTest {
         repo.recordOutletRequest(request(), fix())
         assertEquals(1, db.captureDao().outletRequestCount(id))

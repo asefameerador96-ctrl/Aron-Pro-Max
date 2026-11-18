@@ -57,6 +57,8 @@ fun EditReasonScreen(denied: EditDenied?, onReason: (EditReason) -> Unit, modifi
                         EditDenied.OutsideGeofence -> R.string.edit_denied_outside
                         EditDenied.MockLocation -> R.string.edit_denied_mock
                         EditDenied.QcDone -> R.string.edit_denied_qc
+                        EditDenied.NotCheckedIn -> R.string.edit_denied_checkin
+                        EditDenied.DayClosed -> R.string.edit_denied_day_closed
                         EditDenied.AlreadySuperseded, EditDenied.NoLiveMemo -> R.string.edit_denied_superseded
                     },
                 ),

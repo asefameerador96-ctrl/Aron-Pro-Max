@@ -165,3 +165,49 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - android-gates step 5 (abfa1ef4) PASS on both lenses, 0 blocking; review in docs/reviews/android-gates-step5-2026-11-18.md.
 - Successor lane A-GATE7 started (session_014mnioM2HobwPFoqAjUSGyu) for the closing round: 10 lows and the missing tests. Branch still lands as one unit after train 117 is live, then a final Opus pass on the full diff.
 - Train 116a lane ci 44238626124: 16 of 17 jobs green at 04:51, one still running; integrator pushes on green.
+
+
+### 2026-11-18 05:35 update
+- Train 116a LANDED: integration 874a71c97, ci 44240467287 green (web: build + five e2e shards + aggregator, 372 of 372), deploy #356 (44242257483) success, health build 874a71c97, SR slice smoke passed. The migrate job's console was not in Log Analytics (no migrations in this train).
+- Train 117 built: lane/lead-train117 a5f07f32e = 874a71c97 + docs + sr-server 1c8c3cb0; Opus pass on three lenses, 0 blocking; GO given to the integrator. Expect 0200 -> 0203, contract 1.19.0, 585 D-lines. After landing: read the migrate log through ops-diagnose; tell SV6 (follow-up lows), A-INT3 (renumber to the next free numbers, contract 1.20.0), A-GATE7 (closed_by may go on the wire), L-A11 (numbers), UI lanes (merge).
+- Reviews today: android-integrity slice 3 part 2 PASS (lows sent); AMO slices 10-16 PASS (head now 3eb30f2e, small unchecked change); Loyalty sweep fix 8a90f1b4 FAIL (stale waiting marker after return to device; fix round); SR Sale-page batch FAIL (AMO control call restyled through geoPanel; fix round, slice 4 8377f5c9 checked with it).
+- A-GATE7 (session_014mnioM2HobwPFoqAjUSGyu) on the gates closing round.
+
+
+### 2026-11-18 05:48 update: SR programme screens were never built on the phone
+- Found by P-SR1b, confirmed by the lead in code: the SR app's Astha, Loyalty Point, Photo Capture and Match Program tiles open ComingSoonContent. D-OWNER-SR-PROGRAMMES-01 (2026-11-12) put these screens in scope; the server side partly landed (trains 112, 115), but no Android lane was ever assigned (the SR manual brief gave Android lanes S1, S3..S6 other rows). This is the lead's planning miss.
+- New build lane A-PROG1 (session_014mnioPwjnzZjvN6ZbTva5k, branch lane/android-sr-programmes): step 1 scoping file docs/status/android-sr-programmes.md and server needs docs/requests/sr-programmes-server-needs.md; step 2 screens whose data is on the wire. No Room bump until the lead gives a number (after gates 10 and integrity 11).
+- Owed to the owner: say this plainly with the new completion date.
+
+
+### 2026-11-18 05:52 update: programme screens scoped
+- A-PROG1 scoping (lane/android-sr-programmes, docs/status/android-sr-programmes.md): 11 screens (manual 48-58) can be built now from the bundle `programmes` section, no schema change; 4 screens (10 SKU target, 21 outlet target, 61 brand-wise KPI, 62 Match Box Lifting Star) have no data on the wire.
+- New server lane T-KPI1 (session_014mnioNUHWh5TpUbp7V4JwN, branch lane/sr-targets-server) for N-2, N-3, N-5, N-8; provisional contract 1.22.0, migrations from V0230, renumbered at landing; design file docs/status/sr-targets-server.md first, with owner questions (formulas for PADS, LMS, LMWD, EWD, LMADS, growth, slab projection).
+- N-1, N-4, N-6, N-7 routed to L-A11 after its fix round; answers to be passed to A-PROG1.
+- Room order: gates 10, integrity 11, programmes 12 (if needed), SR ADS consumer after that.
+
+
+### 2026-11-18 05:55 update: T-KPI1 design in (lane/sr-targets-server 2f6bb8ac)
+- N-2 needs no new table (route_monthly_target is per SKU; working-day calendar with admin GUI exists). N-5, N-8, N-3 need new tables and admin tabs.
+- Owner questions Q-A..Q-K (defaults built meanwhile) are in docs/status/sr-targets-server.md on that branch; passed to the owner 05:55. Server month-to-date is through yesterday; today's memos are added on the phone.
+
+
+### 2026-11-18 06:20 update: train 117 LANDED
+- Integration 39db6c734 = lane/lead-train117 a5f07f32e + train row; lane ci 44242714300 green; integration ci 44245077961 (#2303) green (372 of 372 e2e); deploy #357 (44246946165) success; PITR 2026-11-18T05:56:34Z; migrate job caj-aron-dev-migrate-gyoweox 'migrations succeeded' but its console was not in the deploy log; health build 39db6c734; SR smoke passed. APK of record aron-release-signed-dev-2303. ops-diagnose run 44249846071 dispatched to read the migrate console (0200 -> 0203) and worker errors.
+- Numbers now: integrity V0204..V0207 + contract 1.20.0 (A-INT3 told to merge and renumber the server part; Room 10 -> 11 waits for gates); Loyalty V0208 + 1.21.0 (not yet renumbered); SV6 follow-ups provisional V0240+; T-KPI1 provisional V0230+ and 1.22.0.
+- Told: A-GATE7 (merge, closed_by on the wire, then final pass and landing as one unit), SV6, L-A11, T-KPI1, P-AMO3, A-PROG1, P-TSO (nudged for its missing 'checked').
+- P-SR1b: four messages had not reached its turn; fifth sent as an interrupt 06:11 (fix the AMO out-of-range defect first).
+- gates closing round d9997b8a PASS (7 small follow-ups sent); integrity lows closed at 4bd1b1aa (final pass owed, incl. the removed test D-AINT-13).
+
+
+### 2026-11-18 06:25 update: train 117 migrate console read (ops-diagnose 44249846071)
+- Flyway on dev, verbatim: 'Current version of schema "public": 0200'; migrating to 0201, 0202, 0203; 'Successfully applied 3 migrations to schema "public", now at version v0203'; container exit code 0 (05:58:41 to 05:58:47 UTC).
+- No ERROR lines in the window; no SQLTransientConnectionException, no 'aggregation pass failed', no CHECKOUT_WITHOUT_SUBMIT text. Worker revision --0000226 running, first aggregation pass 20098 ms.
+- Not seen: any pre-flight line (the log has none of the words preflight, V0191, V0199, repair). To check: whether the pre-flight logs at all when it has nothing to do (backlog, low).
+- Loyalty fix round 2 (d88b751b) and TSO slice 1 (bfea7197) under review.
+
+
+### 2026-11-18 06:35 update: order changed, Loyalty lands next
+- Loyalty sweep fix round 2 (d88b751b) PASS; TSO slice 1 (bfea7197) PASS (lows sent).
+- NEW ORDER AND NUMBERS: train 118 = Loyalty sweep (V0204, contract 1.20.0; L-A11 merging 39db6c734 and renumbering; then a delta check and GO). Then gates (Android, Room 10, closed_by on the wire, no migration). Then integrity V0205..V0208 + contract 1.21.0 + Room 11 (A-INT3 told). SV6 follow-ups provisional V0240+; T-KPI1 V0230+ / 1.22.0.
+- Loyalty facts (from code): no earning rule, no earning job, balances 0; postAdjustment has no caller or portal route -> L-A11 to build an audited portal points adjustment with N-1 (quarter rows) and tier_code on loyalty[]. Owner asked for the earning rule 06:30.

@@ -10,7 +10,10 @@ import com.aktcl.aron.core.database.entity.StockMovementEntity
 data class StockShortage(val skuId: Long, val requestedBase: Long, val heldBase: Long)
 
 /** Thrown inside the saving transaction when a sale would take more of a SKU than the phone holds; nothing is written. */
-class OverStockException(val shortages: List<StockShortage>) : IllegalStateException("sale exceeds the stock held: $shortages")
+class OverStockException(val shortages: List<StockShortage>, val businessDate: String? = null) : IllegalStateException("sale exceeds the stock held: $shortages")
+
+/** Thrown when an edit's target memo was already replaced by another edit: the rep opens the latest version instead. Nothing is written. */
+class EditTargetSupersededException(val targetMemoUuid: String) : IllegalStateException("memo $targetMemoUuid was already replaced by another edit")
 
 /**
  * The stock the rep holds, from stored rows only (D-OWNER-PREREQ-01 rule 2): `issue + adjustment - qc_return - sold - reward packs`
@@ -29,6 +32,11 @@ object StockHeld {
         discounts.filter { it.memoClientUuid in live && it.kind == "drp" && it.skuId != null }
             .groupBy { it.skuId!! }.mapValues { (_, v) -> v.sumOf { it.qtyBase ?: 0L } }
 
+    /** What the stock movements added to the bag per SKU: `issue` and `adjustment` add, `qc_return` subtracts, every other kind counts zero. The ONE definition (D-AGATE-02): the held figure and the `issued_qty_base_by_sku` the server is told both use it. */
+    fun movedBySku(movements: List<StockMovementEntity>): Map<Long, Long> = movements.groupBy { it.skuId }.mapValues { (_, m) ->
+        m.sumOf { when (it.kind) { "issue", "adjustment" -> it.qtyBase; "qc_return" -> -it.qtyBase; else -> 0L } }
+    }
+
     fun held(
         movements: List<StockMovementEntity>, memos: List<MemoEntity>, lines: List<MemoLineEntity>,
         discounts: List<MemoDiscountEntity> = emptyList(), ignoring: String? = null,
@@ -36,11 +44,7 @@ object StockHeld {
         val live = liveMemos(memos, ignoring)
         val sold = lines.filter { it.memoClientUuid in live }.groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
         val free = rewardsBySku(discounts, live)
-        val moved = movements.groupBy { it.skuId }.mapValues { (_, m) ->
-            m.sumOf {
-                when (it.kind) { "issue", "adjustment" -> it.qtyBase; "qc_return" -> -it.qtyBase; else -> 0L }
-            }
-        }
+        val moved = movedBySku(movements)
         return (moved.keys + sold.keys + free.keys).associateWith { (moved[it] ?: 0L) - (sold[it] ?: 0L) - (free[it] ?: 0L) }
     }
 

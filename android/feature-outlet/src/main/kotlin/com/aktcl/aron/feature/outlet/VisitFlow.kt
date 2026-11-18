@@ -61,6 +61,12 @@ enum class CommitFailure {
     /** The rep's own Sales Submit stands for the route-day: the submit text. */
     DAY_SUBMITTED,
 
+    /** D-LEAD-PREREQ-04 ruling 4: the check-in gate refused (no check-in on the call's date): the card says to check in, never the generic failure. */
+    NOT_CHECKED_IN,
+
+    /** The date is already checked out: the card says so. */
+    CHECKED_OUT,
+
     /** Any other failure (storage, a constraint): nothing was stored, try again. */
     STORAGE,
 }
@@ -300,7 +306,9 @@ class VisitFlow(
 
     companion object {
         /** The words for [t]: the zone lock, the rep's own submit, or a plain storage failure. */
-        fun commitFailureOf(t: Throwable): CommitFailure = when (com.aktcl.aron.core.database.repo.DayRefusal.of(t)) {
+        fun commitFailureOf(t: Throwable): CommitFailure = if (t is com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            if (t.why == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) CommitFailure.CHECKED_OUT else CommitFailure.NOT_CHECKED_IN
+        } else when (com.aktcl.aron.core.database.repo.DayRefusal.of(t)) {
             com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT -> CommitFailure.LOCKED
             com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT -> CommitFailure.DAY_SUBMITTED
             null -> CommitFailure.STORAGE

@@ -195,7 +195,7 @@ fun AmoSummaryHost(day: AmoDay) {
 
 /** Sales Submit with the reconciliation table and the Sync data button (F-SR-034/035). */
 @Composable
-fun AmoSubmitHost(day: AmoDay) {
+fun AmoSubmitHost(day: AmoDay, onSupport: (() -> Unit)? = null) {
     // a call in progress must be closed first: its records belong before the day's last record
     val openCall by day.visitSession.current.collectAsState()
     if (openCall != null) {
@@ -220,6 +220,7 @@ fun AmoSubmitHost(day: AmoDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
+        seen = st.seen, rejectedReadFailed = st.rejectedReadFailed, onMarkUnseen = vm::markUnseen, onSupport = onSupport, refusedNotShown = st.refusedNotShown, onShowMore = vm::showMoreRefused,  onRetryRead = vm::refresh, onMarkSeen = vm::markSeen, onSendAgain = vm::sendAgain, outbox = st.outbox, // D-AGATE-04
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, blueSubmit = true, // D-NIGHT-DAYCLOSE-01; row 66
     )
 }

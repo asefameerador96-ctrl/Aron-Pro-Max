@@ -2,6 +2,7 @@ package com.aktcl.aron.amo
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,6 +13,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.amo.CorrectionReason
 import com.aktcl.aron.feature.amo.CorrectionRow
+import com.aktcl.aron.feature.amo.AmoScreen
 import com.aktcl.aron.feature.amo.StockCorrectionContent
 import com.aktcl.aron.feature.stock.StockAdjustments
 import com.aktcl.aron.feature.stock.StockTracker
@@ -25,7 +27,17 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
+    // D-AGATE-19: the screen guards ITSELF from the day's gate when the app gave it no guard (an open fallback would let a Save through before check-in); the app's own guard still wins
+    if (com.aktcl.aron.feature.attendance.LocalWriteGuard.current != null) { AmoStockCorrectBody(day, onDone); return }
+    val gate by day.dayGate.collectAsState()
+    val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+    com.aktcl.aron.feature.attendance.ProvideWriteGuard(gate, null, onCheckIn = { navigate(AmoScreen.ATTENDANCE) }) { AmoStockCorrectBody(day, onDone) }
+}
+
+@Composable
+private fun AmoStockCorrectBody(day: AmoDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var rows by remember { mutableStateOf<List<CorrectionRow>?>(null) }
     var selected by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -50,7 +62,7 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
         onText = { text = it }, onReason = { reason = it },
         onSave = {
             val id = selected; val r = reason; val sku = list.firstOrNull { it.skuId == id }
-            if (!saving && !saved && id != null && r != null && sku != null) {
+            if (!saving && !saved && id != null && r != null && sku != null && !writeGuard.refused()) {
                 saving = true
                 scope.launch {
                     val result = runCatching {
