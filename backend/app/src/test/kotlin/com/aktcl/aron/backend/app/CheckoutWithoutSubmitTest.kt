@@ -39,7 +39,7 @@ class CheckoutWithoutSubmitTest : NightSyncHarness() {
     fun aCheckOutWithoutSalesSubmitRaisesOneSignalPerUserDayAndIsStoredUnchanged() = testApplication {
         application { aronApi(wiring) }
         val t = client.token("sr1001", phone)
-        seedCapture(day) // round 1.20.0: only a day with route captures is judged
+        seedCapture(day) // train 117 (contract 1.19.0): only a day with route captures is judged
         val out = attendance("check_out")
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(out)))
         assertEquals(1, stored(out), "the check-out is stored unchanged")

@@ -275,7 +275,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
 
     /**
      * The mirror of the withdrawal, so the rule is complete in both directions (lead review of 2f5922ee, low 4): a REAL check-out (`closed_by = 'rep'`) of an SR or AMO whose
-     * user-day has route captures in the ingest registry ([ROUTE_CAPTURE_TYPES]) but NO Sales Submit at all, and has no `CHECKOUT_WITHOUT_SUBMIT` signal yet, raises it. The ingest
+     * user-day has route captures in the ingest registry ([ROUTE_CAPTURE_TYPES]; a web paper backfill, registry flag `manual_entry`, is not one: it stays exempt) but NO Sales Submit at all, and has no `CHECKOUT_WITHOUT_SUBMIT` signal yet, raises it. The ingest
      * judges only at the moment the check-out is stored, so captures first registered in a later batch were never judged; this catches them. Decisions (lead review of ee82e904):
      * (a) GRACE: a check-out received less than `cfg.day.submit_settle_timeout_min` (30) minutes before [now] is not judged yet, so a rep whose captures and submit arrive in a later batch is
      * not flagged and then withdrawn; (b) a day with ANY `day_submit` record (even one an admin later data-voided) is not raised: the rep did submit, the void is the admin's act and its
@@ -297,7 +297,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
                                       'day_submit_found', false, 'raised_by', 'worker'), :cv
               FROM app.attendance_event e JOIN app.app_user u ON u.id = e.user_id AND u.role IN ('SR', 'AMO')
              WHERE e.kind = 'check_out' AND e.closed_by = 'rep' AND e.voided_at IS NULL AND e.business_date >= :since AND e.received_at <= :cutoff
-               AND EXISTS (SELECT 1 FROM app.ingest_registry r WHERE r.user_id = e.user_id AND r.business_date = e.business_date AND r.record_type = ANY(:types))
+               AND EXISTS (SELECT 1 FROM app.ingest_registry r WHERE r.user_id = e.user_id AND r.business_date = e.business_date AND r.record_type = ANY(:types) AND NOT ('manual_entry' = ANY(coalesce(r.flags, '{}'))))
                AND NOT EXISTS (SELECT 1 FROM app.route_day_event x WHERE x.kind = 'day_submit' AND x.user_id = e.user_id AND x.business_date = e.business_date)
             ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
             RETURNING user_id, business_date
