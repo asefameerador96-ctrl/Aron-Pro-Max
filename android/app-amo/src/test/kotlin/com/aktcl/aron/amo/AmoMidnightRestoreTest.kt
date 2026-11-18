@@ -148,4 +148,21 @@ class AmoMidnightRestoreTest {
         assertNotNull("D's submit closes the call; D+1's clock date would have found nothing", f.day.sale.endCallIfClosed())
         assertNull(f.day.visitSession.current.value)
     }
+    /** D-AGATE-15: the notice survives a process kill: rebuilt from the phone's check-out and the phone's call end, shown once, gone after the rep has seen it. */
+    @Test fun theRolloverNoticeIsRebuiltAfterAKillAndShownOnce() = runBlocking {
+        val v = f.controlCall()
+        f.trustAt(at(next(), 8, 0))
+        f.day.resumeDay()
+        assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
+        // the process dies before the screen: the in-memory notice is gone, the records are in Room
+        f.day.rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice()
+        f.day.resumeDay()
+        val n = f.day.rolloverNotice.value
+        assertEquals("the closed day is told again", listOf(d0), n.closedDates)
+        assertEquals("and the call the phone ended", d0, n.abandonedDate); assertEquals(v.outletId, n.abandonedOutletId)
+        f.day.dismissRolloverNotice()
+        f.day.resumeDay()
+        assertFalse("told once: after the rep has seen it, a later start does not show it again", f.day.rolloverNotice.value.any)
+    }
+
 }

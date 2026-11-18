@@ -488,7 +488,29 @@ class SrDay(
 
     /** What the phone did for the rep after Dhaka midnight (day closed, an earlier call ended, an unsaved draft dropped), told once until dismissed. */
     val rolloverNotice = kotlinx.coroutines.flow.MutableStateFlow(com.aktcl.aron.feature.attendance.RolloverNotice())
-    fun dismissRolloverNotice() { rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice() }
+    private val rolloverPrefs = context.getSharedPreferences("aron-rollover-$userId", Context.MODE_PRIVATE)
+    /** The rep has seen the notice: it is gone, and what the phone did up to now is not told again after a kill (D-AGATE-15). */
+    fun dismissRolloverNotice() {
+        rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice()
+        runCatching { rolloverPrefs.edit().putString("seen_up_to", iso(clock.nowMs())).apply() }
+    }
+
+    /**
+     * D-AGATE-15: a notice that did not survive a kill (the phone closed the day while the app was in the background, or the process died before the screen) is rebuilt from the stored
+     * check-outs of the phone and call ends of the phone, for today and yesterday, and shown once. Idempotent: it only adds what is missing.
+     */
+    suspend fun restoreRolloverNotice() {
+        runCatching {
+            val today = java.time.LocalDate.parse(businessDate())
+            val found = com.aktcl.aron.core.database.repo.RolloverRestore.unseen(db, listOf(today.toString(), today.minusDays(1).toString()), rolloverPrefs.getString("seen_up_to", "") ?: "")
+            if (found.any) rolloverNotice.value = rolloverNotice.value.let { n ->
+                n.copy(
+                    closedDates = (n.closedDates + found.closedDates).distinct().sorted(),
+                    abandonedDate = n.abandonedDate ?: found.abandonedDate, abandonedOutletId = n.abandonedOutletId ?: found.abandonedOutletId,
+                )
+            }
+        }
+    }
 
     /**
      * D-LEAD-PREREQ-04 ruling 3 (step 3 S3): an open call of an EARLIER day has a limit. At the first start or resume at or after 04:00 Dhaka of the next day the phone
@@ -539,6 +561,7 @@ class SrDay(
         } finally {
             runCatching { attendance.restore(attendanceForScreen()) }
             refreshDayGate()
+            restoreRolloverNotice()
         }
     }
 
