@@ -3,9 +3,9 @@
 // The API stays the authority on scope, programme state, overdraw and replay; this only spares a round trip and places the errors.
 export const ADJ_POINTS_MAX = 1_000_000;
 export const ADJ_MAX_ROWS = 20_000;
-/** Guarded debit rows (a debit WITHOUT allow_overdraw) per file: each needs a database lock, so the API caps them (D-LOY-API-38); credits and flagged debits are not counted. */
-export const ADJ_MAX_GUARDED_DEBITS = 2_000;
-export const guardedDebits = (rows: readonly { points: number }[], allowOverdraw: boolean): number => (allowOverdraw ? 0 : rows.reduce((n, r) => n + (r.points < 0 ? 1 : 0), 0));
+/** Debit rows (ALL of them, allow_overdraw or not) per file: each debit outlet needs a database lock, so the API caps them (D-LOY-API-40); credits are not counted. */
+export const ADJ_MAX_DEBITS = 2_000;
+export const debitRows = (rows: readonly { points: number }[]): number => rows.reduce((n, r) => n + (r.points < 0 ? 1 : 0), 0);
 /** A file of 20,000 short rows is under 1 MB; beyond 2 MiB it is not an adjustment file (the BFF refuses a body over the same limit). */
 export const ADJ_MAX_FILE_BYTES = 2 * 1024 * 1024;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;

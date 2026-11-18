@@ -115,8 +115,8 @@ private val LOY_PRODUCT_LEVELS = setOf("category", "brand", "variant", "sku")
 private val LOY_SCOPE_TYPES = setOf("wing", "division", "territory", "zone", "route", "channel", "sub_channel")
 private const val LOY_MODULE = "loyalty"
 private const val MAX_BATCH_ROWS = 20_000
-/** Guarded debit rows (a debit WITHOUT allow_overdraw) per adjustment file: each one needs its pair lock, and advisory locks live in the shared lock table (D-LOY-API-38). */
-private const val MAX_GUARDED_DEBIT_ROWS = 2_000
+/** Debit rows (ALL of them, with or without allow_overdraw) per adjustment file: each debit outlet needs its pair lock, and advisory locks live in the shared lock table (D-LOY-API-38, D-LOY-API-40). Credits are not capped. */
+private const val MAX_DEBIT_ROWS = 2_000
 private const val MAX_LIST = 500
 
 private enum class Need { READ, READ_ENROLMENTS, WRITE, SUPER }
@@ -1063,9 +1063,9 @@ private fun adjOutlets(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, prog: A
 }
 
 /**
- * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key `loyalty:<outlet>:<programme>` and call), for the outlets that receive a DEBIT WITHOUT allow_overdraw, in ONE
- * statement over the sorted array (two bulks, and the job, never wait in a cycle). Credits take none (a credit racing a debit only makes the debit's check more conservative).
- * Advisory locks live in the shared lock table, so the caller caps the number (MAX_GUARDED_DEBIT_ROWS); SQLSTATE 53200 is still mapped to a clean refusal (adjDb).
+ * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key `loyalty:<outlet>:<programme>` and call), for the outlets of EVERY debit row (with or without allow_overdraw: the guard AND the
+ * 'overdraw' flag and balance_before are decided under it), in ONE statement over the sorted array (two bulks, and the job, never wait in a cycle). Credits take none (a credit racing a debit only
+ * makes the debit's check more conservative). Advisory locks live in the shared lock table, so the caller caps the number (MAX_DEBIT_ROWS); SQLSTATE 53200 is still mapped to a clean refusal (adjDb).
  */
 private fun adjLockPairs(h: Handle, programme: Long, outlets: Collection<Long>) {
     val sorted = outlets.distinct().sorted()
@@ -1147,7 +1147,8 @@ private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): 
                 if (!same) throw loyConflict("request_uuid already used for a different adjustment")
                 return@inTransaction prior to HttpStatusCode.OK
             }
-            if (h.createQuery("SELECT 1 FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id LIKE :pre LIMIT 1").bind("pre", "$request:%").mapTo(Int::class.java).findOne().isPresent)
+            // A batch's rows are `<uuid>:0..n-1` and all-or-nothing, so row 0 is always there: an EQUALITY probe on the unique index (no LIKE prefix, which cannot seek under a non-C collation).
+            if (h.createQuery("SELECT 1 FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id = :s").bind("s", "$request:0").mapTo(Int::class.java).findOne().isPresent)
                 throw loyConflict("this uuid is already a batch_uuid")
             val ao = adjOutlets(h, p, d, prog, id, listOf(row.outlet))
             if (row.outlet !in ao.known) adminBad("body.outlet_id", "not_found")
@@ -1182,8 +1183,8 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
     val reason = loyReason(o)
     val allow = adjAllow(o)
     val (parsed, shapeErrs) = adjRows(o, bulk = true)
-    // The cap on GUARDED debit rows (a debit without allow_overdraw: each needs its pair lock), judged at the dry run too and before any database work.
-    if (!allow && parsed.count { it != null && it.points < 0 } > MAX_GUARDED_DEBIT_ROWS) adminBad("body.rows", "too_many_debit_rows")
+    // The cap on DEBIT rows (every debit outlet needs its pair lock, allow_overdraw or not), judged at the dry run too and before any database work; counted on the raw rows (a malformed row still counts), like the mock.
+    if ((o["rows"] as? JsonArray).orEmpty().count { r -> ((r as? JsonObject)?.get("points") as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()?.let { it < 0 } == true } > MAX_DEBIT_ROWS) adminBad("body.rows", "too_many_debit_rows")
     val today = today(d)
     return adjDb {
         d.db.jdbi.inTransaction<JsonObject, Exception> { h ->
@@ -1193,8 +1194,9 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             val ok = parsed.withIndex().filter { it.value != null }.map { it.index to it.value!! }
             // Replay FIRST: the rows of this batch uuid already exist (all-or-nothing, so all or none); equal = replayed (answered even when the scope or the state has changed since),
             // other rows = 409. A replay is judged on the stored rows, not on today's dates, scope or balances.
-            val prior = h.createQuery("SELECT source_id, outlet_id, programme_id, points, expires_on FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id LIKE :pre")
-                .bind("pre", "$batch:%").map { rs, _ -> rs.getString(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getInt(4).toLong(), rs.getObject(5, LocalDate::class.java)?.toString()) }.list().toMap()
+            // The rows are looked up by EQUALITY on the unique index: `<batch>:0..n` (n = the size of THIS file, so a stored batch of any other size shows up as a different row count or as row n).
+            val prior = h.createQuery("SELECT source_id, outlet_id, programme_id, points, expires_on FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id = ANY(CAST(:ids AS text[]))")
+                .bindArray("ids", String::class.java, (0..parsed.size).map { "$batch:$it" }).map { rs, _ -> rs.getString(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getInt(4).toLong(), rs.getObject(5, LocalDate::class.java)?.toString()) }.list().toMap()
             val replayed = prior.isNotEmpty()
             if (replayed) {
                 val same = errs.isEmpty() && prior.size == parsed.size && parsed.withIndex().all { (i, r) -> r != null && prior["$batch:$i"] == listOf(r.outlet, id, r.points.toLong(), r.expires?.toString()) }
@@ -1212,10 +1214,12 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             // The balances under the job's pair locks (sorted) and in ONE statement; a debit row is checked against the balance BEFORE the file (an outlet appears once per file).
             val debitOutlets = ok.filter { it.second.points < 0 && it.second.outlet in ao.enrolled }.map { it.second.outlet }.distinct()
             val flagged = HashSet<Int>()
-            // ONLY the outlets that receive a debit WITHOUT allow_overdraw are locked (one statement, sorted); a credit-only file takes no pair lock at all.
-            if (!replayed && !dry && !allow && debitOutlets.isNotEmpty()) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, debitOutlets) }
+            // The outlets of EVERY debit row are locked (one statement, sorted), allow_overdraw or not, and the balances, the guard and the 'overdraw' flag are decided AFTER the lock;
+            // a credit-only file takes no pair lock at all.
+            if (!replayed && !dry && debitOutlets.isNotEmpty()) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, debitOutlets) }
+            var bal = emptyMap<Long, Long>()
             if (!replayed) {
-                val bal = adjBalances(h, id, debitOutlets)
+                bal = adjBalances(h, id, debitOutlets)
                 d.adjustHook?.invoke("after_balance_read", h)
                 for ((i, r) in ok) if (r.points < 0 && r.outlet in ao.enrolled) bal[r.outlet]?.let { b -> if (b + r.points < 0) { if (allow) flagged += i else errs += AdjErr(i, "points", "would_overdraw", b) } }
             }
@@ -1249,7 +1253,9 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
                 .bindArray("fl", String::class.java, flags).execute()
             check(n1 == n) { "adjustment batch wrote $n1 of $n rows" }
             AuditWriter.write(h, p, "programme_adjustment", batch.toString(), "post_batch", null,
-                auditObj("programme_id" to id, "rows" to n, "total_points" to total, "business_date" to today.toString(), "allow_overdraw" to allow, "overdrawn_rows" to flagged.size), reason, call.requestId)
+                auditObj("programme_id" to id, "rows" to n, "total_points" to total, "business_date" to today.toString(), "allow_overdraw" to allow, "overdrawn_rows" to flagged.size,
+                    // which outlets went below zero and what each held before the file (at most 200, in row order; the count above is the whole)
+                    "overdrawn" to buildJsonArray { flagged.sorted().take(MAX_ADJ_ERRORS).forEach { i -> val r = parsed[i]!!; add(buildJsonObject { put("row", i); put("outlet_id", r.outlet); put("balance_before", bal[r.outlet] ?: 0L) }) } }), reason, call.requestId)
             buildJsonObject { put("batch_uuid", batch.toString()); put("dry_run", false); put("rows", n); put("posted", n1); put("replayed", false); put("total_points", total) }
         }
     }

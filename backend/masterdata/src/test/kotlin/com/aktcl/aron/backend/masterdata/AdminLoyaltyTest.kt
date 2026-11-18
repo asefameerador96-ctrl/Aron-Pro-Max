@@ -1119,12 +1119,12 @@ class AdminLoyaltyTest {
 
     @Test
     fun aDebitHeldBehindALedgerJobPassSeesTheRedemptionThePassStored() {
-        val reached = java.util.concurrent.CountDownLatch(1); val holderDone = java.util.concurrent.CountDownLatch(1)
+        val reached = java.util.concurrent.CountDownLatch(1); val holderDone = java.util.concurrent.CountDownLatch(1); val readDone = java.util.concurrent.CountDownLatch(1)
         val armed = java.util.concurrent.atomic.AtomicBoolean(false)
         app(hook = { stage, _ ->
             if (armed.get()) when (stage) {
                 "before_pair_lock" -> reached.countDown()                                       // the debit is at the lock
-                "after_balance_read" -> holderDone.await(5, java.util.concurrent.TimeUnit.SECONDS)   // WITHOUT the lock it has read BEFORE the pass committed and waits for it here, then posts
+                "after_balance_read" -> { readDone.countDown(); holderDone.await(5, java.util.concurrent.TimeUnit.SECONDS) }   // WITHOUT the lock it has read BEFORE the pass commits (the pass waits for this read) and posts after it
             }
         }) {
             val prog = activeProg(); val o1 = fx["L-O1"]!!
@@ -1139,6 +1139,7 @@ class AdminLoyaltyTest {
                 val pending = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -15)).status.value }
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS), "the debit reached the pair lock")
+                    readDone.await(2, java.util.concurrent.TimeUnit.SECONDS)   // WITH the lock the debit cannot read yet (this times out and the pass goes on); WITHOUT it the debit has read 30 by now: the commit below comes AFTER its read, for certain
                     holder.execute("INSERT INTO app.redemption (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) " +
                         "VALUES ('$u', '$u', (now() AT TIME ZONE 'Asia/Dhaka')::date, ${ids.getValue("lamo1")}, now(), 0, $o1, $prog, 0, 20, 0, 0, 2000, 1, now())")
                     holder.commit(); holder.close(); holderDone.countDown()
@@ -1154,7 +1155,7 @@ class AdminLoyaltyTest {
     private fun heldAdvisory(h: org.jdbi.v3.core.Handle) = h.createQuery("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()").mapTo(Long::class.java).one().toInt()
 
     @Test
-    fun onlyOutletsThatReceiveAGuardedDebitTakeAPairLockAndACreditOnlyFileOf20000RowsTakesNone() {
+    fun onlyOutletsOfDebitRowsTakeAPairLockAndACreditOnlyFileOf20000RowsTakesNone() {
         val seen = java.util.concurrent.ConcurrentHashMap<String, Int>()
         app(hook = { stage, h -> if (stage == "before_insert") seen["held"] = heldAdvisory(h) }) {
             val big = 20_000
@@ -1175,9 +1176,9 @@ class AdminLoyaltyTest {
                 // A file whose three debits need the guard: exactly three pair locks, taken in one statement.
                 bulk(prog, adminW, bulkBody(uuid(), false, brow(outlets[0], -1), brow(outlets[1], -1), brow(outlets[2], -1), brow(outlets[3], 7))).expect(HttpStatusCode.OK)
                 assertEquals(2 + 3, seen["held"], "one pair lock per guarded debit outlet, none for the credit")
-                // allow_overdraw: nothing to guard, no pair lock (the flag still shows the rows that went below zero).
-                bulk(prog, adminW, bulkBody(uuid(), false, brow(outlets[4], -9), allow = true)).expect(HttpStatusCode.OK)
-                assertEquals(2, seen["held"], "a debit with allow_overdraw takes no pair lock")
+                // allow_overdraw: the debit's outlet is locked too (the flag and balance_before are decided under the lock), credits still are not.
+                bulk(prog, adminW, bulkBody(uuid(), false, brow(outlets[4], -9), brow(outlets[6], 4), allow = true)).expect(HttpStatusCode.OK)
+                assertEquals(2 + 1, seen["held"], "a debit with allow_overdraw takes its pair lock, a credit none")
                 assertEquals("true", scalar("SELECT ('overdraw' = ANY(flags))::text FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = ${outlets[4]} AND points = -9"))
                 // A single credit takes none either; a single debit takes its one.
                 adj(prog, adminW, adjBody(outlets[5], 3)).expect(HttpStatusCode.Created); assertEquals(2, seen["held"] ?: -1)
@@ -1196,7 +1197,7 @@ class AdminLoyaltyTest {
     }
 
     @Test
-    fun aFileWithMoreThan2000GuardedDebitRowsIsRefusedAtTheDryRunAndTheApplyAndAFlaggedOrCreditFileIsNot() = app {
+    fun aFileWithMoreThan2000DebitRowsIsRefusedAtTheDryRunAndTheApplyWithOrWithoutAllowOverdrawAndACreditFileIsNot() = app {
         val prog = activeProg(); val o1 = fx["L-O1"]!!
         fun debits(n: Int) = (1..n).map { brow(o1 + 1_000_000L + it, -1) }.toTypedArray()      // outlets that do not exist: the cap is judged before any database work
         for (dry in listOf(true, false)) {
@@ -1204,24 +1205,69 @@ class AdminLoyaltyTest {
             r.expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows")
             assertTrue(r.obj().getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content == "too_many_debit_rows")
         }
-        // 2,000 is allowed by the cap (the rows then fail on their own, as nonexistent outlets), and credits and allow_overdraw debits are not counted.
+        // 2,000 is allowed by the cap (the rows then fail on their own, as nonexistent outlets), and credits are not counted.
         val atCap = bulk(prog, adminW, bulkBody(uuid(), true, *debits(2000))).obj()
         assertEquals("not_found", atCap.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content)
-        val flagged = bulk(prog, adminW, bulkBody(uuid(), true, *debits(2001), allow = true)).obj()
-        assertEquals("not_found", flagged.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content)
+        // allow_overdraw does not lift the cap (every debit outlet is locked); 2,001 credits are not counted.
+        bulk(prog, adminW, bulkBody(uuid(), true, *debits(2001), allow = true)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows")
+        val credits = bulk(prog, adminW, bulkBody(uuid(), true, *(1..2001).map { brow(o1 + 1_000_000L + it, 1) }.toTypedArray())).obj()
+        assertEquals("not_found", credits.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content)
         assertEquals(0, ledgerCount(prog))
     }
 
     @Test
     fun aFullSharedLockTableIsACleanRefusalNotA500() = app(hook = { stage, h ->
-        // Really exhaust the shared lock table inside the transaction (released by the rollback): SQLSTATE 53200.
-        if (stage == "before_pair_lock") h.createQuery("SELECT count(pg_advisory_xact_lock(g)) FROM generate_series(1, 2000000) g").mapTo(Long::class.java).one()
+        // SQLSTATE 53200 is SIMULATED (a statement that raises it); the real lock table is never filled, so no other module's test sharing the server can fail.
+        if (stage == "before_pair_lock") h.execute("DO ${'$'}${'$'} BEGIN RAISE EXCEPTION 'out of shared memory' USING ERRCODE = '53200'; END ${'$'}${'$'}")
     }) {
         val prog = activeProg(); val o1 = fx["L-O1"]!!
         adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
-        val r = adj(prog, adminW, adjBody(o1, -10))
-        r.expect(HttpStatusCode.ServiceUnavailable, "ERR_SERVICE_UNAVAILABLE")
+        adj(prog, adminW, adjBody(o1, -10)).expect(HttpStatusCode.ServiceUnavailable, "ERR_SERVICE_UNAVAILABLE")
+        bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -10))).expect(HttpStatusCode.ServiceUnavailable, "ERR_SERVICE_UNAVAILABLE")
         assertEquals(1, ledgerCount(prog), "nothing was posted")
+    }
+
+    @Test
+    fun anAllowedBulkDebitAndAGuardedSingleDebitOnOneOutletAreSerialisedAndTheOverdrawFlagIsRight() {
+        val overlap = Overlap(2)
+        app(hook = { stage, _ -> overlap.hook(stage) }) {
+            val prog = activeProg(); val o1 = fx["L-O1"]!!
+            adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
+            val batch = uuid()
+            overlap.armed = true
+            val (single, bulkCode) = kotlinx.coroutines.coroutineScope {
+                val a = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value }
+                val b = async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, super1, bulkBody(batch, false, brow(o1, -50), allow = true)).status.value }
+                a.await() to b.await()
+            }
+            overlap.armed = false
+            assertEquals(200, bulkCode)
+            // Either the single ran first (201, balance 20, the allowed bulk row then goes below zero and IS flagged with balance_before 20) or the bulk ran first (balance 50, the single is a 409).
+            // WITHOUT the lock both read 100 and both post: balance -30 with no flag on any row.
+            val bal = balance(prog, o1)
+            val flaggedRows = count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points < 0 AND 'overdraw' = ANY(flags)")
+            if (single == 201) { assertEquals(-30, bal); assertEquals(1, flaggedRows, "the bulk row is flagged"); assertEquals("20", scalar("SELECT after->'overdrawn'->0->>'balance_before' FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'")) }
+            else { assertEquals(409, single); assertEquals(50, bal); assertEquals(0, flaggedRows) }
+        }
+    }
+
+    @Test
+    fun twoAllowedBulksOnOneOutletAreSerialisedAndTheSecondIsFlaggedWithItsBalanceBefore() {
+        val overlap = Overlap(2)
+        app(hook = { stage, _ -> overlap.hook(stage) }) {
+            val prog = activeProg(); val o1 = fx["L-O1"]!!
+            adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.Created)
+            overlap.armed = true
+            val codes = kotlinx.coroutines.coroutineScope {
+                listOf(async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -8), allow = true)).status.value },
+                    async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, super1, bulkBody(uuid(), false, brow(o1, -8), allow = true)).status.value }).awaitAll()
+            }
+            overlap.armed = false
+            assertEquals(listOf(200, 200), codes)
+            assertEquals(-6, balance(prog, o1))
+            assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -8 AND 'overdraw' = ANY(flags)"), "exactly the second is flagged (WITHOUT the lock both read 10 and none is)")
+            assertEquals("2", scalar("SELECT after->'overdrawn'->0->>'balance_before' FROM app.audit_log WHERE entity = 'programme_adjustment' AND action = 'post_batch' AND (after->>'overdrawn_rows')::int = 1 AND after->>'programme_id' = '$prog'"))
+        }
     }
 
     @Test

@@ -219,7 +219,7 @@ const pairs = {
   "loy.adj.col.problem": ["Problem", "সমস্যা"],
   "loy.adj.applied": ["The file is applied: {posted} rows posted.", "ফাইল প্রয়োগ হয়েছে: {posted}টি সারি জমা হয়েছে।"],
   "loy.adj.too_many": ["The file has more than 20,000 rows.", "ফাইলে ২০,০০০-এর বেশি সারি আছে।"],
-  "loy.adj.too_many_debits": ["The file has more than 2,000 debit rows. Split it into files of at most 2,000 debits (credits are not counted), or tick the overdraw box if the debits may go below zero.", "ফাইলে ২,০০০-এর বেশি বিয়োগের সারি আছে। ফাইলটি ২,০০০ বিয়োগের ভাগে ভাগ করুন (যোগ গণনা হয় না), অথবা বিয়োগ শূন্যের নিচে যেতে পারলে ওভারড্র বাক্সে টিক দিন।"],
+  "loy.adj.too_many_debits": ["The file has more than 2,000 debit rows. Split it into files of at most 2,000 debits (credits are not counted).", "ফাইলে ২,০০০-এর বেশি বিয়োগের সারি আছে। ফাইলটি ২,০০০ বিয়োগের ভাগে ভাগ করুন (যোগ গণনা হয় না)।"],
   "loy.adj.err.too_many_debit_rows": ["Too many debit rows (at most 2,000 per file).", "বিয়োগের সারি অনেক বেশি (প্রতি ফাইলে সর্বোচ্চ ২,০০০)।"],
   "loy.adj.empty": ["The file has no rows.", "ফাইলে কোনো সারি নেই।"],
   "loy.adj.unreadable": ["The file could not be read.", "ফাইলটি পড়া যায়নি।"],

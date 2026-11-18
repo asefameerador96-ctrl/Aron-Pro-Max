@@ -9,7 +9,7 @@ import type { Problem } from "@/contract/types";
 import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { toFieldErrors } from "@/components/admin/crud/validation";
-import { ADJ_MAX_FILE_BYTES, ADJ_MAX_GUARDED_DEBITS, guardedDebits } from "./loyalty-adjust";
+import { ADJ_MAX_FILE_BYTES, ADJ_MAX_DEBITS, debitRows } from "./loyalty-adjust";
 import { loadGrants } from "./modules";
 import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, ID_RE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
 
@@ -189,7 +189,7 @@ export async function handleAdjustPut(req: NextRequest, id: string): Promise<Nex
   if (body === TOO_BIG) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/", code: "too_large" }] }));
   const parsed = AdjBatch.safeParse(body);
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
-  if (guardedDebits(parsed.data.rows, parsed.data.allow_overdraw === true) > ADJ_MAX_GUARDED_DEBITS) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows", code: "too_many_debit_rows" }] }));
+  if (debitRows(parsed.data.rows) > ADJ_MAX_DEBITS) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows", code: "too_many_debit_rows" }] }));
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
 }
 

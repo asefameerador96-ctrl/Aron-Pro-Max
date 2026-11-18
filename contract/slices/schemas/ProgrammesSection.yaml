@@ -21,19 +21,22 @@ ProgrammesSection:
     is compared anywhere in this rule (`astha_as_of` and a row''s `as_of` are display only, "data as of"); (2) the
     phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone
     subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded
-    locally; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while
-    a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during
-    the request it discards the section''s achievement and refetches; (5) a memo whose last server answer is `quarantined`
-    (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged,
-    and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate`
-    acknowledgement, has reached the phone before a bundle request (a reviewer''s accept and the waiting sweep commit
-    the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution
-    `rejected` removes it. The same rule covers the loyalty balances: every `loyalty` figure includes every redemption
+    locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no
+    bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight
+    (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the
+    section''s achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review,
+    or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the
+    server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement,
+    has reached the phone before a bundle request (a reviewer''s accept and the waiting sweep commit the memo with
+    no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded`
+    (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a
+    redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption
     of this user acknowledged before the request was received (and everything the ledger holds, with no business-date
-    cut), and the phone subtracts its own redemptions that had NOT been acknowledged when it sent the request, keyed
-    by redemption uuid. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000
-    balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated`
-    (with `astha_truncated_months`) the 1,000-row Astha bound.'
+    cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution
+    or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server''s per-uuid
+    answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections`
+    names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications
+    (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty

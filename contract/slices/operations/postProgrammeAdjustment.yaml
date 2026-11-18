@@ -22,13 +22,14 @@ operation:
     outlet with no CURRENT enrolment in the programme (every kind, a campaign programme included) is `400` `not_enrolled`,
     because the bundle shows a balance only for an enrolled outlet; this is the lead''s ruling and the owner may
     change it; a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid`
-    is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. A DEBIT reads the balance
-    under the ledger job''s per-outlet lock in one statement, so two concurrent ADMIN debits (single or bulk) and
-    a ledger-job pass cannot both pass the guard; a phone redemption arriving at the same instant is NOT serialised
-    with it (redemptions are field facts and are never refused): the ledger job''s next pass and the `overdrawn`
-    flag of the bundle show the result. A credit takes no lock. A debit that goes below zero with `allow_overdraw`
-    is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row.
-    A token of an ADMIN without the `modules` claim is refused (`403`) here.'
+    is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. EVERY debit (a guarded
+    one and one with `allow_overdraw`, single or bulk) takes the ledger job''s per-outlet lock and reads the balance
+    in one statement under it, so two concurrent ADMIN debits and a ledger-job pass are serialised: they cannot
+    both pass the guard, and the `overdraw` flag and `balance_before` are decided under the lock; a phone redemption
+    arriving at the same instant is NOT serialised with it (redemptions are field facts and are never refused):
+    the ledger job''s next pass and the `overdrawn` flag of the bundle show the result. A credit takes no lock.
+    A debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`,
+    `balance_before`) in the audit row. A token of an ADMIN without the `modules` claim is refused (`403`) here.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:

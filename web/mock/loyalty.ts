@@ -552,8 +552,8 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       const reason = reasonOf(o);
       const arr = o.rows;
       if (!Array.isArray(arr) || arr.length < 1 || arr.length > 20_000) bad("body.rows", "required");
-      // The API caps the GUARDED debit rows (a debit without allow_overdraw) per file at 2,000, already at the dry run, before any other check.
-      if (!allow && (arr as unknown[]).filter((x) => typeof (x as { points?: unknown } | null)?.points === "number" && (x as { points: number }).points < 0).length > 2_000) bad("body.rows", "too_many_debit_rows");
+      // The API caps ALL debit rows (allow_overdraw or not) per file at 2,000, already at the dry run, before any other check.
+      if ((arr as unknown[]).filter((x) => typeof (x as { points?: unknown } | null)?.points === "number" && (x as { points: number }).points < 0).length > 2_000) bad("body.rows", "too_many_debit_rows");
       const errors: { row: number; column: string; code: string; balance_points?: number }[] = [];
       const parsed: ({ outlet: number; points: number; expires: string | null } | null)[] = [];
       const seen = new Set<number>();

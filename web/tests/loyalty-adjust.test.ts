@@ -7,7 +7,7 @@ import { POST as loginPost } from "@/app/api/bff/login/route";
 import { POST as mfaPost } from "@/app/api/bff/mfa/verify/route";
 import { POST as adjPost, PUT as adjPut } from "@/app/api/bff/admin/loyalty/[id]/adjustments/route";
 import { MFA_COOKIE, RT_COOKIE, SESSION_COOKIE } from "@/lib/auth/cookies";
-import { ADJ_MAX_GUARDED_DEBITS, adjustFailureKey, emptyAdjustForm, guardedDebits, parseAdjustFile, parsePoints, signed, validateAdjust } from "@/lib/admin/loyalty-adjust";
+import { ADJ_MAX_DEBITS, adjustFailureKey, debitRows, emptyAdjustForm, parseAdjustFile, parsePoints, signed, validateAdjust } from "@/lib/admin/loyalty-adjust";
 import { createMock } from "../mock/server";
 
 const TODAY = "2026-11-18";
@@ -40,11 +40,9 @@ describe("form helpers", () => {
     ]);
     expect(parseAdjustFile("﻿101,5", TODAY).rows).toHaveLength(1);
   });
-  it("counts the guarded debit rows: a credit and a debit with allow_overdraw are not counted, and the cap is 2,000", () => {
-    const rows = [{ points: -1 }, { points: 5 }, { points: -9 }];
-    expect(guardedDebits(rows, false)).toBe(2);
-    expect(guardedDebits(rows, true)).toBe(0);
-    expect(ADJ_MAX_GUARDED_DEBITS).toBe(2000);
+  it("counts the debit rows (credits are not counted, allow_overdraw does not lift the cap), and the cap is 2,000", () => {
+    expect(debitRows([{ points: -1 }, { points: 5 }, { points: -9 }])).toBe(2);
+    expect(ADJ_MAX_DEBITS).toBe(2000);
     expect(adjustFailureKey(400, "ERR_VALIDATION", [{ pointer: "body.rows", code: "too_many_debit_rows" }])).toBe("loy.adj.too_many_debits");
   });
   it("maps a refusal to its banner and signs points", () => {
@@ -121,7 +119,7 @@ describe("single adjustment (POST)", () => {
     const big = await post(c, 1, { request_uuid: U(9), outlet_id: 101, points: 5, reason: "x".repeat(3_000_000) });
     expect(big.status).toBe(400);                                                  // a body over the limit is refused before it reaches the API
   });
-  it("caps the body in BYTES (a Bangla body of fewer than 2M characters is over 2 MiB) and the guarded debit rows at 2,000, in the BFF and in the mock", async () => {
+  it("caps the body in BYTES (a Bangla body of fewer than 2M characters is over 2 MiB) and the debit rows at 2,000, in the BFF and in the mock", async () => {
     const c = await superadmin();
     const bangla = await post(c, 1, { request_uuid: U(30), outlet_id: 101, points: 5, reason: "অ".repeat(800_000) });   // 800,000 UTF-16 units, 2.4 million bytes
     expect(bangla.status).toBe(400);
@@ -133,7 +131,9 @@ describe("single adjustment (POST)", () => {
       expect(JSON.stringify(await r.json())).toContain("too_many_debit_rows");
     }
     const flagged = await put(c, 1, { batch_uuid: U(32), dry_run: true, change_reason: WHY, allow_overdraw: true, rows: debits });
-    expect(JSON.stringify(await flagged.json())).not.toContain("too_many_debit_rows");
+    expect(JSON.stringify(await flagged.json())).toContain("too_many_debit_rows");   // allow_overdraw does not lift the cap: every debit outlet is locked
+    const credits = await put(c, 1, { batch_uuid: U(34), dry_run: true, change_reason: WHY, rows: debits.map((r) => ({ ...r, points: 1 })) });
+    expect(JSON.stringify(await credits.json())).not.toContain("too_many_debit_rows");
     // the mock itself (the API's twin) refuses it too, when the BFF is bypassed
     const direct = await fetch(`${base}/v1/admin/programmes/1/adjustments`, { method: "PUT", headers: { authorization: `Bearer ${await tokenOf(c)}`, "content-type": "application/json" }, body: JSON.stringify({ batch_uuid: U(33), dry_run: true, change_reason: WHY, rows: debits }) });
     expect(direct.status).toBe(400);
