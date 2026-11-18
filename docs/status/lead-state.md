@@ -246,3 +246,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - P-SR1b fix round 2 (bd03a20e) PASS; next: merge 29e8d86f3, golden re-verify, SppConnectorTest race fix, KV-POSM, DRP, QC two-step.
 - P-AMO3 0e45f76f (merged 29e8d86f3, green) ready for the next UI train (e5de5162 delta small, unchecked). P-TSO fd8625c8 slice 2 awaiting ci.
 - T-KPI2 session_014mnioPDzJpf5trPvkVf9y2 on the admin web tab. A-GATE8 session_014mnioMzRiTUob1mFun7H6j on the ten follow-ups.
+
+
+### 2026-11-18 08:30 update: train 119 with the integrator
+- Train 119 = lane/lead-train119 c780bdbc0 = 29e8d86f3 + docs + Loyalty 038e3121d (V0204, contract 1.20.0; 620 D-lines). GO given 08:28. After landing: read the migrate console (0203 -> 0204), tell A-INT3 'Loyalty landed' (merge, regenerate), L-A11 (push B: N-1, tier_code, N-9, portal points adjustment; contract number to be given, likely 1.22.0 or later), SV6 waits for integrity.
+- android-integrity bfa5ead5 (train 118 merged, Room 11, V0205..V0208, contract 1.21.0, dispatch ci green): FINAL Opus pass running (four lenses).
+- P-SR1b: QC two-step fa03bcab FAIL (crash on locked Cancel; stale saveable state writes old quantities) -> fix round, then merge 118 and the earlier list.
+- A-PROG2 on B1/B3/B4. T-KPI2 on the admin tab. A-GATE8 pushed 94528a88 (no report yet). P-TSO fd8625c8 awaiting ci. P-AMO3 ff9fb511 (docs) on 0e45f76f.
+- Usage: L-A11's get_session shows seven_day 'allowed_warning' (not rejected) at 08:07; L-A11 context 697k of 1M: recycle it after train 119 lands.
