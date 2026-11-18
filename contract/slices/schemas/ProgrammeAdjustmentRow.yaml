@@ -1,0 +1,19 @@
+ProgrammeAdjustmentRow:
+  type: object
+  required:
+  - outlet_id
+  - points
+  additionalProperties: false
+  description: From 1.23.0.
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    points:
+      type: integer
+      minimum: -1000000
+      maximum: 1000000
+    expires_on:
+      type:
+      - string
+      - 'null'
+      format: date

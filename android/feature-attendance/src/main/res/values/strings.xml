@@ -64,4 +64,9 @@
     <string name="att_settling">One moment: the phone is checking the state of your day. Check in and check out open in a few seconds.</string>
     <string name="att_close_failed_title">The call could not be closed</string>
     <string name="att_close_failed_body">The phone could not write the end of this call. The call is still open and nothing was lost. Try again; if it keeps failing, restart the app.</string>
+    <!-- D-AGATE-22 item 5: the lock-out fallback when the phone keeps failing to close an earlier day or call -->
+    <string name="att_lockout_title">The day could not be closed on this phone</string>
+    <string name="att_lockout_body">An earlier day or call could not be closed, so check-in stays off until it is. Tap Try again. If it keeps failing, tell your supervisor this code.</string>
+    <string name="att_lockout_code">Code: %1$s</string>
+    <string name="att_lockout_retry">Try again</string>
 </resources>

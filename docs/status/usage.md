@@ -3374,3 +3374,7 @@
 - Reviews passed and waiting to land after 121: gates-2 (A-GATE8), look train 2 (SR d60e2e2f, TSO), Loyalty push B (hygiene fix with L-A12), SV6 follow-ups (V0209). In work: A-PROG2 (5xx release rule, slice 7), T-KPI2 (admin tab), L-A12 (points adjustment), SV6 ops-diagnose-api (second re-check running).
 
 - 2026-11-18T12:46Z lane check: health build ce6792f67 ok; INT ce6792f67 (train 121). All lanes active within the last 90 min except loyalty (L-A12) and P-TSO (ci running). Blocker for every lane ci: one gitleaks false positive (bfd0087c8), owner asked.
+
+- 2026-11-18T14:46Z lane check: health build ffbe8d6fd (train 122) ok. All active lanes reported within 90 min. Usage not re-read (no rejection seen on any session start today).
+
+- 2026-11-18T16:46Z lane check: INT 0aa547b62 (train 124 pushed; integration ci 44344358786 green; deploy run 44347162539 see state). All active lanes reported within 90 min.

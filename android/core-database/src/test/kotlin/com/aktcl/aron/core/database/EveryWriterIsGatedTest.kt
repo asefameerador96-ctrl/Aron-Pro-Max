@@ -46,4 +46,31 @@ class EveryWriterIsGatedTest {
         val names = writers().map { it.name }.toSet()
         assertEquals("a stale allow-list hides a renamed writer", emptySet<String>(), exempt - names)
     }
+
+    private fun file(rel: String): String = listOf(File(rel), File("android/$rel"), File("../$rel")).first { it.isFile }.readText()
+
+    /**
+     * D-AGATE-25 (lead, after the integrity train): the gate also guards the writers that live OUTSIDE CaptureRepository: the TSO outbox entry, the TSO Final Submit and the SR and AMO visit
+     * commit (the claim of a photo must not outlive a refused visit). Each must call `ActionGate.requireOpen()`, and where the writer is a single function the call comes before its first write.
+     */
+    @Test fun theWritersOutsideTheRepositoryAreGatedToo() {
+        for (rel in listOf("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt", "app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoReadModels.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt", "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")) {
+            assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in file(rel))
+        }
+        val tsoFile = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
+        val tso = tsoFile.substring(tsoFile.indexOf("suspend fun enqueueAll("))
+        val gate = tso.indexOf("ActionGate.requireOpen()")
+        val firstWrite = tso.indexOf("withTransaction")
+        assertTrue("the TSO outbox entry (enqueueAll) gates before its transaction", gate in 0 until firstWrite)
+        val visitGate = file("app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt")
+        assertTrue("the SR visit commit gates before the photo claim and the visit write", visitGate.indexOf("ActionGate.requireOpen()") < visitGate.indexOf("capture.recordVisitOpen(v, f)"))
+        val amo = file("app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")
+        assertTrue("the AMO visit commit gates before its visit write", amo.indexOf("ActionGate.requireOpen()") < amo.indexOf("capture.recordVisitOpen("))
+    }
+
+    /** D-AGATE-25: the check-out's open-work guard (item 6) runs AFTER the Developer options gate, never before it. */
+    @Test fun theCheckOutGuardRunsAfterTheGate() {
+        val body = writers().first { it.name == "recordCheckOut" }.body
+        assertTrue(body.indexOf("ActionGate.requireOpen()") in 0 until body.indexOf("guard?.invoke()"))
+    }
 }

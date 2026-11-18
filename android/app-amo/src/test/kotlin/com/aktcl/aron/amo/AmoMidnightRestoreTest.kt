@@ -4,10 +4,10 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.database.repo.AttendanceRefusal
-import com.aktcl.aron.core.database.repo.closedByPhone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -42,6 +42,11 @@ class AmoMidnightRestoreTest {
 
     private fun at(date: String, h: Int, m: Int) = LocalDate.parse(date).atTime(h, m).toInstant(ZoneOffset.ofHours(6)).toEpochMilli()
     private fun next() = LocalDate.parse(d0).plusDays(1).toString()
+    /** The `closed_by` member of the QUEUED payload of an attendance record (null when absent): what really goes on the wire. */
+    private fun closedByOnTheWire(uuid: String): String? = runBlocking {
+        val row = f.db.outboxDao().byClientUuid(uuid)!!
+        kotlinx.serialization.json.Json.parseToJsonElement(row.payloadJson).let { it as kotlinx.serialization.json.JsonObject }["payload"]!!.let { it as kotlinx.serialization.json.JsonObject }["closed_by"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+    }
     private fun checkOuts(date: String) = runBlocking { f.db.captureDao().attendanceOn(date).filter { it.kind == "check_out" } }
 
     @Test fun aControlCallOpenedOnDIsRestoredAtStartAfterMidnightAndTheDayIsNotClosedUnderIt() = runBlocking {
@@ -73,7 +78,8 @@ class AmoMidnightRestoreTest {
         f.day.resumeDay()
         val out = checkOuts(d0).single()
         assertEquals(reads + 1, f.fixReads)
-        assertTrue(out.closedByPhone())
+        assertEquals("phone", closedByOnTheWire(out.clientUuid))
+        assertTrue("the local mark agrees", f.day.capture.phoneMarks().any { it.kind == "day_closed" && it.businessDate == d0 })
         assertEquals("ok", f.db.captureDao().fix(out.fixClientUuid)!!.fixStatus)
         assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
     }
@@ -258,5 +264,44 @@ class AmoMidnightRestoreTest {
         f.day.closeVisit(phoneEnd = true)
         assertEquals("the same memo", memo.clientUuid, f.day.sale.commitSale().memoClientUuid)
         assertEquals(1, f.db.captureDao().memosOn(d0).count { it.visitClientUuid == v.visitUuid })
+    }
+
+    /** D-AGATE-25: the Room database closing under the resume (a CancellationException that is not the caller's) is a failure the safe functions swallow, so a timer that calls them re-arms. */
+    @Test fun aDatabaseClosedUnderTheResumeDoesNotStopTheCaller() = runBlocking {
+        f.trustAt(at(next(), 10, 0))
+        f.db.close()
+        val r = runCatching { f.day.resumeDaySafely(); f.day.reloadSafely() }
+        assertNull("no exception, no cancellation reaches the caller (a timer would re-arm)", r.exceptionOrNull())
+    }
+
+    /**
+     * D-AGATE-25 (lead low 1): the rep's check-out is in flight (its commit is held at Room) and Dhaka midnight passes: the phone's `forgottenDays()` returns NOTHING, without even reading Room,
+     * so it cannot start a close that would land first and turn the rep's press into a failure. The press then completes; no phone close, no phone mark.
+     */
+    @Test fun forgottenDaysIsEmptyWhileTheRepsCheckOutIsInFlight() = runBlocking {
+        f.trustAt(at(d0, 18, 0)) // after the AMO's default 17:00 check-out time
+        f.day.attendance.restore(f.day.attendanceToday())
+        f.work.roomExecutor.hold()
+        val press = async(Dispatchers.Default) { f.day.attendance.checkOut() }
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { f.day.attendance.state.first { it.busy } }
+            f.trustAt(at(next(), 0, 0)) // midnight passes while the press is in flight
+            // asked on its own coroutine: if it did need Room (held) the await times out instead of waiting for the held command (the finally below releases it)
+            val asked = async(Dispatchers.Default) { f.day.forgottenDays() }
+            val during = kotlinx.coroutines.withTimeoutOrNull(3_000) { asked.await() }
+            assertEquals("nothing to close while the rep's own check-out runs (and no Room read was needed to know)", emptyList<String>(), during)
+        } finally { f.work.roomExecutor.release() }
+        assertTrue(press.await() is com.aktcl.aron.feature.attendance.AttendanceResult.Done)
+        assertTrue("it is the rep's close: no phone mark", f.day.capture.phoneMarks().none { it.kind == "day_closed" })
+        assertEquals(1, checkOuts(d0).size)
+    }
+
+    /** D-AGATE-25 (lead low 3): resumes within seconds of each other (the start effect and the first ON_RESUME) are ONE attempt. */
+    @Test fun threeResumesWithinSecondsAtLaunchAreOneFailedAttempt() = runBlocking {
+        f.db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_close BEFORE INSERT ON geo_fix BEGIN SELECT RAISE(ABORT, 'x'); END")
+        f.trustAt(at(next(), 10, 0))
+        repeat(3) { f.day.resumeDay() }
+        assertNull("one attempt: no lock-out screen", f.day.closeLockout.value)
+        assertEquals("1", f.db.referenceDao().metaWithPrefix("day_close_fail:").single().value.substringBefore('|'))
     }
 }

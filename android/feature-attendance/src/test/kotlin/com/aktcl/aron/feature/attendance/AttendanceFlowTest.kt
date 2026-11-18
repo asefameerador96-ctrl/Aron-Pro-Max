@@ -150,4 +150,39 @@ class AttendanceFlowTest {
         g.checkIn(); minutes = 10 * 60
         assertTrue(g.checkOut() is AttendanceResult.Ignored)
     }
+
+    /**
+     * D-AGATE-22 item 1: the check-out is stamped when the rep PRESSED the button, before the location read. A press at 23:59:45 whose fix comes back at 00:00:10 is stored with the
+     * time of the press (the day of the open check-in), not the time the fix returned.
+     */
+    @Test fun aCheckOutIsStampedAtThePressNotAfterTheFix() = runTest {
+        var stamp = "2026-10-07T17:59:45.000Z" // 23:59:45 Dhaka
+        val m = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", stamp, 1, 1, 0, true, r, null, "b", false, 5) }
+        val slow = object : LocationFixSource { override suspend fun readFix(purpose: String, refreshCount: Int): FixReading { stamp = "2026-10-07T18:00:10.000Z"; return fixResult } } // 00:00:10 next day
+        minutes = 9 * 60
+        val f = AttendanceFlow(slow, m, { e, fx -> committed += e to fx }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        f.checkIn()
+        minutes = 23 * 60 + 59; stamp = "2026-10-07T17:59:45.000Z"
+        assertTrue(f.checkOut() is AttendanceResult.Done)
+        val out = committed.last().first
+        assertEquals("check_out", out.kind)
+        assertEquals("the stamp is the press", "2026-10-07T17:59:45.000Z", out.meta.capturedAt)
+        assertEquals("2026-10-07", out.meta.businessDate)
+        assertEquals("D-AGATE-25: the screen shows the STORED press time, not the time the fix came back", "2026-10-07T17:59:45.000Z", f.state.value.checkedOutAt)
+    }
+
+    /** D-AGATE-22 (item 6): the transaction found work opened in the gap: the press is refused with the open-work answer, nothing is shown as checked out, and the buttons stay. */
+    @Test fun aCheckOutRefusedInsideItsTransactionIsAnOpenWorkRefusalAndLeavesTheDayOpen() = runTest {
+        minutes = 9 * 60
+        var gap = false
+        val f = AttendanceFlow(fixes, meta, { e, fx -> if (e.kind == "check_out" && gap) throw OpenWorkAtCheckOutException(OpenWork.OPEN_CALL); committed += e to fx }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        f.checkIn(); minutes = 17 * 60 + 5; gap = true
+        val r = f.checkOut()
+        assertTrue(r is AttendanceResult.Refused && r.open == OpenWork.OPEN_CALL)
+        assertEquals(OpenWork.OPEN_CALL, f.state.value.checkOutBlockedBy)
+        assertNull("not checked out", f.state.value.checkedOutAt)
+        assertEquals("only the check-in was written", 1, committed.size)
+        gap = false // the call was closed: the same press goes through
+        assertTrue(f.checkOut() is AttendanceResult.Done)
+    }
 }
