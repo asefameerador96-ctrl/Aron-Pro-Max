@@ -26,6 +26,7 @@ export const SECTION_MEMBER: Record<KpiKind, "brand_rows" | "month_rows" | "prog
 export const MAX_KPI_ROWS = 20_000;
 export const MAX_MEMO_TARGET = 1_000_000;
 export const MAX_MTK = 100_000_000_000;
+const MAX_TAKA_WHOLE = 100_000_000; // MAX_MTK in whole taka (an integer constant, so no division on a money path)
 export const MAX_QTY_BASE = 1_000_000_000;
 const CODE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,39}$/;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -111,7 +112,7 @@ export function dec3Of(cell: unknown): string | null {
 }
 /** Taka cell to integer milli-taka (exact; at most 3 decimals); null when invalid or above the contract maximum. */
 export function takaCellToMtk(cell: unknown): number | null {
-  const p = scaled(cell, 3, MAX_MTK / 1000);
+  const p = scaled(cell, 3, MAX_TAKA_WHOLE);
   if (!p) return null;
   const v = p.whole * 1000 + Number(p.frac);
   return Number.isSafeInteger(v) && v <= MAX_MTK ? v : null;
