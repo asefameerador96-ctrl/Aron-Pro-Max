@@ -156,4 +156,5 @@
     <string name="set_submit_warning_anyway">তবুও লগ আউট</string>
     <string name="set_config_current_title">কনফিগারেশন হালনাগাদ করা আছে</string>
     <string name="set_config_current_message">এই ফোনে সর্বশেষ কনফিগারেশন আগে থেকেই আছে।</string>
+    <string name="hm_tile_locked">বন্ধ: আগে হাজিরা দিন।</string>
 </resources>

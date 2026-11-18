@@ -44,4 +44,24 @@
     <string name="att_amo_out_after">Check Out will be active after %1$s</string>
     <string name="att_amo_already_in">Already Checked-In</string>
     <string name="att_amo_already_out">Already Checked-Out</string>
+    <string name="att_gate_title">Check in first</string>
+    <string name="att_gate_body">Stock, sales, visits and outlet requests open after you check in today. Tap Check in, then come back.</string>
+    <string name="att_gate_go">Go to check-in</string>
+    <string name="att_gate_out_title">You have checked out for today</string>
+    <string name="att_gate_out_body">Stock, sales and visits are closed for today. They open again after tomorrow\'s check-in. You can still read your memos, the summary and the sales submit.</string>
+    <string name="att_gate_ok">OK</string>
+    <string name="att_gate_close_call">Close the open call</string>
+    <string name="att_gate_notice">Check in first. Stock, sales and visits open after you check in.</string>
+    <string name="att_gate_earlier_title">Finish yesterday\'s call first</string>
+    <string name="att_gate_earlier_body">A call from an earlier day is still open. Finish it, or tap Close the open call. Until then only that call can be used; stock, other outlets, tasks and requests wait.</string>
+    <string name="att_gate_earlier_body_at">A call from an earlier day is still open at %1$s. Finish it, or tap Close the open call. Until then only that call can be used; stock, other outlets, tasks and requests wait.</string>
+    <string name="att_rollover_closed">Your day of %1$s was still open, so this phone closed it for you and submitted its sales. Check in to start today.</string>
+    <string name="att_rollover_abandoned">A call from %1$s was still open at 04:00 the next day, so this phone ended it. Sales you had saved were kept.</string>
+    <string name="att_rollover_edit">A memo change you had not saved was dropped at midnight. The memo as saved is unchanged; open it again if you still need to change it.</string>
+    <string name="att_rollover_draft">A sale you had not saved was dropped with it.</string>
+    <string name="att_checkout_open_call">A call is still open. Close it (finish the sale or end the call) before you check out: check-out also submits your sales for the day.</string>
+    <string name="att_checkout_open_edit">A memo edit is still open. Save or cancel it before you check out: check-out also submits your sales for the day.</string>
+    <string name="att_settling">One moment: the phone is checking the state of your day. Check in and check out open in a few seconds.</string>
+    <string name="att_close_failed_title">The call could not be closed</string>
+    <string name="att_close_failed_body">The phone could not write the end of this call. The call is still open and nothing was lost. Try again; if it keeps failing, restart the app.</string>
 </resources>

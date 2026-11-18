@@ -24,7 +24,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -123,6 +125,13 @@ import com.aktcl.aron.feature.tasks.TaskContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
+
+/** The screens that write operational records: closed ("check in first") without an open check-in. Reading screens, Sales Submit, Settings, Support and printer diagnostics stay open. */
+// D-LEAD-PREREQ-04 (step 3 S7): the reading screens (the outlet menu and the rep's own request list) stay open before check-in; what they write is refused by the write layer with its own words
+internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.SKIP, SrScreen.EDIT, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS)
+
+/** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
+internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
 
 enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS }
 
@@ -265,8 +274,12 @@ fun SrApp(
     // Start: local data first (never waits), then the bundle in the background, then a refresh of what Home shows.
     LaunchedEffect(Unit) {
         day.recoverPrinting(); day.resumeMedia()
-        day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
-        day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit()
+        day.reload(); day.nextSequenceFromStore()
+        // the open call is restored from the day of the open check-in, an earlier call past its 04:00 limit is ended, and a day the rep never checked out of is closed by
+        // the phone BEFORE anything else (D-AGATE-06, D-LEAD-PREREQ-04): one function, the same for start, resume, the midnight timer and the end of a call
+        // D-AGATE-15: not awaited (the close of a forgotten day makes one location attempt of up to ~30 s; the shell, the permission redirect and the bundle never wait for it)
+        launch { day.resumeDay(); day.taskBoard.load() }
+        day.attendance.refreshSubmit()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
     }
@@ -274,8 +287,20 @@ fun SrApp(
     var boundary by remember { mutableStateOf(0) }
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
-        day.attendance.tick(); day.reload(); day.taskBoard.load()
+        // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
+        day.resumeDay(); day.reload(); day.taskBoard.load()
         boundary++; resumeTick++
+    }
+    // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
+    val srCallOpen = day.visitSession.current.collectAsState().value != null
+    val srEditOpen = day.sale.flow.state.collectAsState().value.let { it.draft?.edit != null && it.committed == null }
+    var srWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(srCallOpen, srEditOpen) {
+        if (srCallOpen || srEditOpen) { srWasOpen = true; day.refreshDayGate() }
+        else if (srWasOpen) {
+            srWasOpen = false
+            day.resumeDay(); day.reload(); resumeTick++
+        }
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
     // A tap is consumed once (reset to 0), and never pulls the rep out of a visit, sale or memo: it waits until they are
@@ -290,7 +315,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.resumeDay(); day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -335,7 +360,27 @@ fun SrApp(
 
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(stockAttempt, onAnswer = day::answerStockPrint, onClose = day::closeStockAttempt)
+    val dayGate by day.dayGate.collectAsState()
+    val rollover by day.rolloverNotice.collectAsState()
+    val openCallNow by day.visitSession.current.collectAsState()
+    // D-AGATE-15 (T1): an unsaved memo edit dropped at midnight leaves the edit screen for Home, where the notice says so (never a dead screen)
+    LaunchedEffect(rollover.editDropped, screen) { if (rollover.editDropped && screen == SrScreen.EDIT) screen = SrScreen.HOME }
+    var checkInNotice by remember { mutableStateOf(false) }
     AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
+        // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content
+        val closed = dayGate
+        // D-LEAD-PREREQ-04 ruling 4: while an earlier day's call is open only THAT call's screens work; every other gated screen names the reason and offers to close the call
+        val earlierCall = closed == com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN
+        if (closed != null && s in SR_CHECKIN_GATED && !(earlierCall && s in SR_CALL_SCREENS)) {
+            val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { day.database.referenceDao().outlet(id)?.name }.getOrNull() } }
+            SrFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), goBack, sync, openSync) {
+                SrCheckInGate(
+                    day, closed, canCloseCall = openCallNow != null && (earlierCall || s in SR_CALL_SCREENS), earlierOutlet = earlierOutlet,
+                    onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE }, onCallClosed = { screen = SrScreen.HOME },
+                )
+            }
+            return@AronScreenTransition
+        }
         when (s) {
         SrScreen.PERMISSIONS -> {
             LaunchedEffect(permissions) { if (permissions.toAsk.isEmpty()) screen = SrScreen.HOME }
@@ -370,8 +415,11 @@ fun SrApp(
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
             HomeContent(
-                header, HomeTiles.resolve(enabledTiles, tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
+                header, HomeTiles.resolve(enabledTiles, tasks.openCount, locked = when (dayGate) { null -> emptySet(); com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> HomeTiles.OPERATIONAL - HomeTile.SALE; else -> HomeTiles.OPERATIONAL }), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
+                    // check-in gate (rule 1): a locked tile leads straight to check-in, with the reason, never a dead end
+                    // an earlier day's open call (EARLIER_CALL_OPEN) is not a check-in matter: the tile opens its screen, which names the reason
+                    if (dayGate != null && dayGate != com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN && t in HomeTiles.OPERATIONAL) { checkInNotice = true; screen = SrScreen.ATTENDANCE; return@HomeContent }
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
                         HomeTile.STOCK -> { day.forgetStock(); screen = SrScreen.STOCK }
@@ -392,7 +440,7 @@ fun SrApp(
                 },
                 onSettings = { screen = SrScreen.SETTINGS },
                 // tso-manual X4a (R-W-11, A3 ask 1): the download first, else the day lock after the zone's Final Submit (null while open)
-                banner = srHomeBanner(data.downloading) { srDayLockBannerText(day) },
+                banner = srHomeBanner(data.downloading) { com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover) ?: srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
                 sync = sync, onSync = openSync,
@@ -407,12 +455,36 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
-                SrAttendanceContent(
-                    attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
-                    userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
-                    onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
-                    offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
-                )
+                androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+                    // what the phone did after Dhaka midnight (closed the day, ended a call): told here and on Home until the rep has seen the Attendance screen
+                    com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover)?.let { t ->
+                        com.aktcl.aron.core.ui.AronBanner(t, kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                        DisposableEffect(Unit) { onDispose { day.dismissRolloverNotice() } }
+                    }
+                    // after the check-out the day is over: say so on the Attendance screen too (D-LEAD-PREREQ-04 step 3 S7), not only on a gated screen
+                    if (dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) {
+                        com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_out_body), kind = com.aktcl.aron.core.ui.BannerKind.Info)
+                    }
+                    // arrived from a locked tile: say why (rule 1); gone once the rep has checked in
+                    if (checkInNotice && dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN) {
+                        com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                    }
+                    // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
+                    attendance.checkOutBlockedBy?.let { w ->
+                        com.aktcl.aron.core.ui.AronBanner(
+                            stringResource(if (w == com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL) com.aktcl.aron.feature.attendance.R.string.att_checkout_open_call else com.aktcl.aron.feature.attendance.R.string.att_checkout_open_edit),
+                            kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+                        )
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                        SrAttendanceContent(
+                            attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                            userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
+                            onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
+                            offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
+                        )
+                    }
+                }
             }
         }
         SrScreen.SETTINGS -> {
@@ -480,7 +552,7 @@ fun SrApp(
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it }, onOpenStock = { day.forgetStock(); screen = SrScreen.STOCK })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
@@ -509,7 +581,7 @@ fun SrApp(
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
-        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day) }
+        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day, onSupport = { screen = SrScreen.SUPPORT }) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
@@ -543,7 +615,20 @@ fun SrApp(
         }
         SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
-            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } }, onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true)
+            // the list is reading and stays open; RESOLVING a task is an operational write: refused AT THE BUTTON with the NAMED reason (check in first / checked out / finish yesterday's call), never a crash
+            val earlierTaskOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { day.database.referenceDao().outlet(id)?.name }.getOrNull() } }
+            com.aktcl.aron.feature.attendance.ProvideWriteGuard(dayGate, earlierTaskOutlet, onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE }) {
+                val guard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen()
+                TaskContent(
+                    tasks,
+                    onResolve = { id ->
+                        if (!guard.refused()) scope.launch {
+                            try { day.taskBoard.resolve(id) } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { day.refreshDayGate() }
+                        }
+                    },
+                    onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true,
+                )
+            }
         }
         SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             // a failed read is an error with a retry, not an empty list that says "no requests"
@@ -829,3 +914,39 @@ internal fun SrAttendanceContent(
     attendance, checkoutAtLabel, onCheckIn = onCheckIn, onCheckOut = onCheckOut, userTitle = userTitle, userSubtitle = userSubtitle,
     onOpenSalesSubmit = onOpenSalesSubmit, offline = offline, statusBoxes = true,
 )
+
+
+/**
+ * The check-in gate of an operational SR screen with its guided way out (D-AGATE-18): "Close the open call" closes the call through the ONE classification
+ * ([SrSaleKit.closeCall]: a saved sale is `sold`, a saved zero-sale or QC memo is a zero sale, nothing saved is `abandoned`), and a close that cannot be written keeps the call
+ * and tells the rep (no crash, no silent Home).
+ */
+@Composable
+internal fun SrCheckInGate(
+    day: SrDay, why: com.aktcl.aron.core.database.repo.AttendanceRefusal, canCloseCall: Boolean, earlierOutlet: String?, onCheckIn: () -> Unit, onCallClosed: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var failed by remember { mutableStateOf(false) }
+    // D-AGATE-19: the route-day refused the close (Final Submit or Sales Submit): the call is ended on the phone with nothing written, and the rep is told so before Home
+    var ended by remember { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
+    com.aktcl.aron.feature.attendance.CheckInFirst(
+        why, onCheckIn = onCheckIn,
+        onCloseCall = if (canCloseCall) {
+            {
+                scope.launch {
+                    var refusal: com.aktcl.aron.core.database.repo.DayRefusal? = null
+                    val ok = try { refusal = day.sale.closeCall(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
+                    if (!ok) failed = true else if (refusal != null) ended = refusal else onCallClosed()
+                }
+            }
+        } else null,
+        earlierCallOutlet = earlierOutlet,
+    )
+    ended?.let { SrCallEndedDialog(it, onOk = { ended = null; onCallClosed() }) }
+    if (failed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { failed = false }, onDismiss = { failed = false },
+        )
+    }
+}

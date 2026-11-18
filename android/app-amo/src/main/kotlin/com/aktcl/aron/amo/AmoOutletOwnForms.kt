@@ -106,6 +106,7 @@ fun AmoNewShopHost(day: AmoDay) {
 @Composable
 private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4): a write is refused at the button with the named reason
     val bangla = LocalConfiguration.current.locales[0].language == "bn"
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var clusterId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -137,7 +138,7 @@ private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit
             geoClass = geo, onGeoClass = { geo = it }, capture = cap, onShutter = { scope.launch { capture.shutter() } }, errors = formErrors,
         ),
         onSave = {
-            if (!busy) {
+            if (!busy && !writeGuard.refused()) {
                 busy = true
                 scope.launch {
                     if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch } // anti-spoofing: a fake fix is never queued
@@ -173,6 +174,7 @@ fun AmoCloseHost(day: AmoDay) {
 @Composable
 private fun CloseForm(day: AmoDay, onCleared: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4): a write is refused at the button with the named reason
     var clusterId by rememberSaveable { mutableStateOf<Long?>(null) }
     var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
@@ -187,6 +189,7 @@ private fun CloseForm(day: AmoDay, onCleared: () -> Unit) {
     if (saved) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_saved), stringResource(AmoR.string.amo_ok)) { saved = false; onCleared() }; return }
     fun commit() {
         val o = outlet ?: return
+        if (writeGuard.refused()) return
         busy = true
         scope.launch {
             val f = OutletRequestForm(kind = OutletRequestKind.CLOSE, outletId = o.outletId, confirmed = true, openDueMtk = o.openDueMtk)
@@ -233,6 +236,7 @@ fun AmoChangeInfoHost(day: AmoDay) {
 @Composable
 private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4): a write is refused at the button with the named reason
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
     var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
@@ -263,6 +267,7 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     if (photoDone) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_photo_done), stringResource(AmoR.string.amo_ok)) { photoDone = false } }
     fun commit() {
         val o = outlet ?: return
+        if (writeGuard.refused()) return
         busy = true
         scope.launch {
             if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch }
@@ -319,6 +324,7 @@ fun AmoUpdateBaseHost(day: AmoDay) {
 @Composable
 private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4): a write is refused at the button with the named reason
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
     var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
@@ -370,7 +376,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
                 fixLat = fix.lat!!, fixLng = fix.lng!!, pin = pin, maxM = maxM, live = live, onPin = { pinLat = it.first; pinLng = it.second },
                 confirmEnabled = !busy,
                 onConfirm = {
-                    if (!busy) {
+                    if (!busy && !writeGuard.refused()) {
                         busy = true
                         scope.launch {
                             val f = OutletRequestForm(

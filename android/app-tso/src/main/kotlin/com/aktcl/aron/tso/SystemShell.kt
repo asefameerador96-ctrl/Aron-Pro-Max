@@ -135,6 +135,7 @@ class SystemShell(context: Context, private val components: SessionComponents, p
             // No on-device log ring buffer exists yet (docs/24 s5.8); the file then carries counts and payloads only.
             logLines = emptyList(),
             createdAt = SyncEngine.iso(now),
+            outboxCodes = dao.codeSummaries(MAX_CODES).map { com.aktcl.aron.core.system.support.SupportOutboxCode(it.clientUuid, it.recordType, it.businessDate, it.state, it.lastCode, it.lastMessageKey, it.attempts) }, // D-AGATE-04
         )
     }
 
@@ -142,6 +143,7 @@ class SystemShell(context: Context, private val components: SessionComponents, p
         const val RESYNC_WINDOW_MS = 3L * 24 * 3600 * 1000
         const val MAX_UNSENT = 5_000
         const val MAX_ACKED = 2_000
+        const val MAX_CODES = 2_000
         val DHAKA_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.ofHours(6))
         val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneOffset.ofHours(6))
     }

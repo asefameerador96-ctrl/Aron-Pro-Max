@@ -78,6 +78,22 @@ class SupportTest {
         try { SupportBundle.build(input(unsent = tooMuch), pub, 5_000); error("expected too large") } catch (_: SupportFileTooLargeException) { }
     }
 
+    /** D-AGATE-04 round 2: the outcome codes (newest first) are optional: over the cap the OLDEST go, after the acked payloads, and never the unsent rows. */
+    @Test fun theOutcomeCodesAreKeptNewestFirstAndTheOldestAreDroppedOverTheCap() {
+        val codes = (1..600).map { SupportOutboxCode(java.util.UUID.randomUUID().toString(), "memo_line", "2026-11-13", "rejected", "price_invalid", "sync.reject.price_invalid", it) } // attempts = age rank: 1 = newest
+        val whole = input().copy(outboxCodes = codes)
+        val full = Json.parseToJsonElement(open(SupportBundle.build(whole, pub, 20 * 1024 * 1024))).jsonObject
+        assertEquals(600, full["outbox_codes"]!!.jsonArray.size)
+        assertEquals(1, full["outbox_codes"]!!.jsonArray[0].jsonObject["attempts"]!!.jsonPrimitive.content.toInt())
+        assertEquals(0, full["outbox_codes_dropped"]!!.jsonPrimitive.content.toInt())
+        val small = Json.parseToJsonElement(open(SupportBundle.build(whole, pub, 3_000))).jsonObject
+        val kept = small["outbox_codes"]!!.jsonArray
+        assertTrue("some were dropped", kept.size < 600)
+        assertEquals("the newest survive", 1, kept[0].jsonObject["attempts"]!!.jsonPrimitive.content.toInt())
+        assertEquals(600, kept.size + small["outbox_codes_dropped"]!!.jsonPrimitive.content.toInt())
+        assertEquals("the unsent row is never dropped", 1, small["unsent"]!!.jsonArray.size)
+    }
+
     private fun api() = SupportHttpApi(
         AronApiClient(ApiOrigin.parse(server.url("/").toString(), allowCleartextLoopback = true), AronApiClient.defaultOkHttp(), ClientIdentity("1.2.3+12") { "dev-1" }),
         AronApiClient.defaultOkHttp(),
