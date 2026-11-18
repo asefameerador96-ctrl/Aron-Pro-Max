@@ -17,9 +17,9 @@ import java.io.File
 /**
  * Phone rule EXACT BY IDENTITY (docs/requests/sr-programmes-phone-rule-b.md, contract `postSyncFigures` and `RouteSnapshot`): the phone does not infer what the server figure holds from
  * acknowledgements, resolutions, quarantine states or ordering; it asks. Everything the arithmetic needs from the server is behind ONE small interface, [ServerHolds]: for an own memo, IN the figure,
- * VOIDED (gone for good), NOT IN, or UNKNOWN (only a source that cannot tell: the old acknowledged-set inference for a server without the endpoint). Nothing here reads a timestamp or a clock.
+ * VOIDED (gone for good), REFUSED (never stored: a final reject or a reviewer's discard; dropped and never asked again), NOT IN, or UNKNOWN (only a source that cannot tell: the old acknowledged-set inference for a server without the endpoint). Nothing here reads a timestamp or a clock.
  */
-enum class Holds { IN, VOIDED, NOT_IN, UNKNOWN }
+enum class Holds { IN, VOIDED, REFUSED, NOT_IN, UNKNOWN }
 
 /** What the figures figure holds, for an own memo uuid. */
 fun interface ServerHolds { fun of(uuid: String): Holds }
@@ -33,10 +33,13 @@ data class FigureIn(val lines: Int, val storedLines: List<StoredLine>?)
 /** The `/v1/sync/figures` answer: three states per probed uuid, the route sections as sent (parsed by their own readers) and the optional Astha section. */
 class FiguresAnswer(
     val businessDate: String?, val throughDate: String?, val inFigure: Map<String, FigureIn>, val voided: Set<String>, val twinAmbiguous: Set<String>,
-    val routes: JsonArray, val astha: JsonObject?, val raw: String,
+    val refused: Set<String>, val routes: JsonArray, val astha: JsonObject?, val raw: String,
 ) : ServerHolds {
-    /** EXACTLY three states: IN, VOIDED, or NOT IN (listed nowhere: never uploaded, in flight and not committed in the snapshot, held, refused, dated after through_date, or not the caller's own). */
-    override fun of(uuid: String): Holds = when { uuid in voided -> Holds.VOIDED; uuid in inFigure -> Holds.IN; else -> Holds.NOT_IN }
+    /**
+     * EXACTLY four states: IN, VOIDED, REFUSED (also a removal uuid whose removal was refused) or NOT IN (listed nowhere: never uploaded, in flight and not committed in the snapshot, held and open, dated after
+     * through_date, an active memo whose lines are not stored yet, or not the caller's own). The NOT IN answers of different requests are never combined: a total uses ONE answer.
+     */
+    override fun of(uuid: String): Holds = when { uuid in refused -> Holds.REFUSED; uuid in voided -> Holds.VOIDED; uuid in inFigure -> Holds.IN; else -> Holds.NOT_IN }
 }
 
 object FiguresAnswerParser {
@@ -59,7 +62,8 @@ object FiguresAnswerParser {
         }
         val voided = (probe["voided"] as? JsonArray).orEmpty().mapNotNull { s(it) }.toSet()
         val twins = (probe["twin_ambiguous"] as? JsonArray).orEmpty().mapNotNull { s(it) }.toSet()
-        return FiguresAnswer(s(o["business_date"]), s(o["through_date"]), inFigure, voided, twins, (o["routes"] as? JsonArray) ?: JsonArray(emptyList()), o["astha"] as? JsonObject, body)
+        val refused = (probe["refused"] as? JsonArray).orEmpty().mapNotNull { s(it) }.toSet()
+        return FiguresAnswer(s(o["business_date"]), s(o["through_date"]), inFigure, voided, twins, refused, (o["routes"] as? JsonArray) ?: JsonArray(emptyList()), o["astha"] as? JsonObject, body)
     }
 }
 
@@ -80,9 +84,9 @@ object FigureIdentity {
     data class Subtract(val memo: LocalMemo, val lines: List<LocalMemoLine>)
     data class Delta(val add: List<LocalMemo>, val subtract: List<Subtract>, val unknown: List<LocalMemo>)
 
-    /** Memos the phone no longer counts as live: refused by the server, superseded by a live local memo, or voided locally. */
-    private fun removed(memos: List<LocalMemo>): Set<String> {
-        val live = memos.filter { it.state != "rejected" }
+    /** Memos the phone no longer counts as live: superseded or voided locally by a record the server did not REFUSE (a refused void or edit removes nothing: the old memo stays live, the refused edit is dropped). */
+    private fun removed(memos: List<LocalMemo>, holds: ServerHolds): Set<String> {
+        val live = memos.filter { it.state != "rejected" && holds.of(it.uuid) != Holds.REFUSED }
         return live.flatMap { listOfNotNull(it.supersedes, it.voidOf) }.toSet()
     }
 
@@ -93,7 +97,7 @@ object FigureIdentity {
      */
     fun delta(memos: List<LocalMemo>, holds: ServerHolds, month: String?, throughDate: String?, storedLinesOf: (String) -> List<StoredLine>? = { null }, confirmedIn: Set<String> = emptySet()): Delta? {
         if (month == null) return null
-        val gone = removed(memos)
+        val gone = removed(memos, holds)
         val add = ArrayList<LocalMemo>(); val sub = ArrayList<Subtract>(); val unknown = ArrayList<LocalMemo>()
         for (m in memos) {
             if (m.voidOf != null || m.businessDate.take(7) != month) continue
@@ -110,7 +114,7 @@ object FigureIdentity {
             // confirmed IN earlier and not touched since: not asked again; if the office voided it the figure lost it by itself and the phone adds nothing (rule 4)
             if (!after && m.uuid in confirmedIn) continue
             when (holds.of(m.uuid)) {
-                Holds.VOIDED -> Unit
+                Holds.VOIDED, Holds.REFUSED -> Unit // gone for good / never stored: dropped
                 Holds.IN -> if (after) add += m // dated after through_date the figure never holds it (an IN answer for it is not possible; defensive: it is the phone's to add)
                 Holds.NOT_IN -> add += m
                 Holds.UNKNOWN -> if (after) add += m else unknown += m
@@ -144,7 +148,7 @@ object FigureIdentity {
 object FigureProbe {
     const val CAP = 300
 
-    data class Entry(val memoUuid: String, val memoNo: String?, val businessDate: String, val removedLocally: Boolean)
+    data class Entry(val memoUuid: String, val memoNo: String?, val businessDate: String, val removedLocally: Boolean, val removalUuid: String? = null)
 
     /** [entries] and [tooMany]: more than [CAP] unconfirmed memos in the window cannot get an exact total in one call, so the page says it is still syncing until uploads and confirmations bring it under. */
     data class Probe(val entries: List<Entry>, val tooMany: Boolean)
@@ -154,14 +158,15 @@ object FigureProbe {
      * office void of today is seen); a memo removed locally (voided or superseded) that has not been settled ([settledRemoved]: answered VOIDED, or IN once and subtracted by the stored lines is not settled: it is asked
      * with `removed_locally` until the server says VOIDED). A refused memo is not asked about (it is not in any figure).
      */
-    fun build(memos: List<LocalMemo>, month: String, throughDate: String?, confirmedIn: Set<String>, settledRemoved: Set<String> = emptySet()): Probe {
-        val gone = memos.filter { it.state != "rejected" }.flatMap { listOfNotNull(it.supersedes, it.voidOf) }.toSet()
+    fun build(memos: List<LocalMemo>, month: String, throughDate: String?, confirmedIn: Set<String>, settledRemoved: Set<String> = emptySet(), refused: Set<String> = emptySet()): Probe {
+        val removers = memos.filter { it.state != "rejected" && it.uuid !in refused }.flatMap { k -> listOfNotNull(k.supersedes, k.voidOf).map { it to k.uuid } }.toMap()
+        val gone = removers.keys
         val out = ArrayList<Entry>()
         for (m in memos) {
-            if (m.voidOf != null || m.state == "rejected" || m.businessDate.take(7) != month) continue
+            if (m.voidOf != null || m.state == "rejected" || m.uuid in refused || m.businessDate.take(7) != month) continue
             val after = throughDate != null && m.businessDate > throughDate
             val removed = m.uuid in gone
-            if (removed) { if (!after && m.uuid !in settledRemoved) out += Entry(m.uuid, m.memoNo, m.businessDate, true) }
+            if (removed) { if (!after && m.uuid !in settledRemoved) out += Entry(m.uuid, m.memoNo, m.businessDate, true, removers[m.uuid]) }
             else if (after || m.uuid !in confirmedIn) out += Entry(m.uuid, m.memoNo, m.businessDate, false)
         }
         return Probe(out.take(CAP), out.size > CAP)
@@ -171,7 +176,7 @@ object FigureProbe {
     fun requestJson(entries: List<Entry>, forDate: String? = null, includeAstha: Boolean = false): String = buildJsonObject {
         forDate?.let { put("for", it) }
         put("probe", buildJsonArray {
-            entries.forEach { e -> add(buildJsonObject { put("memo_client_uuid", e.memoUuid); e.memoNo?.let { put("memo_no", it) }; put("business_date", e.businessDate); if (e.removedLocally) put("removed_locally", true) }) }
+            entries.forEach { e -> add(buildJsonObject { put("memo_client_uuid", e.memoUuid); e.memoNo?.let { put("memo_no", it) }; put("business_date", e.businessDate); if (e.removedLocally) { put("removed_locally", true); e.removalUuid?.let { put("removal_client_uuid", it) } } }) }
         })
         if (includeAstha) put("include_astha", true)
     }.toString()
@@ -193,6 +198,14 @@ class FiguresStore(private val dir: File) {
 
     fun saveConfirmedIn(uuids: Set<String>) { dir.mkdirs(); val tmp = File(dir, "confirmed_in.txt.tmp"); tmp.writeText(uuids.sorted().joinToString("\n")); java.nio.file.Files.move(tmp.toPath(), confirmedFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
 
+    private val refusedFile get() = File(dir, "refused.txt")
+
+    /** Uuids the server answered REFUSED for: never asked about again, and always REFUSED in the arithmetic. */
+    fun refused(): Set<String> = runCatching { refusedFile.readLines().filter { it.isNotBlank() }.toSet() }.getOrDefault(emptySet())
+
+    /** The holds of the newest answer plus the remembered refusals. */
+    fun holds(answer: FiguresAnswer): ServerHolds { val r = refused(); return ServerHolds { if (it in r) Holds.REFUSED else answer.of(it) } }
+
     fun clear() { dir.deleteRecursively() }
 
     /** Records an answer: keeps it and adds every probed memo it holds IN (and that the phone has not removed) to the confirmed set; a memo answered VOIDED leaves the set. */
@@ -201,6 +214,8 @@ class FiguresStore(private val dir: File) {
         val keep = confirmedIn().toMutableSet()
         probed.forEach { e -> when (answer.of(e.memoUuid)) { Holds.IN -> if (!e.removedLocally) keep += e.memoUuid; Holds.VOIDED -> keep -= e.memoUuid; else -> Unit } }
         saveConfirmedIn(keep)
+        val refusedNow = answer.refused
+        if (refusedNow.isNotEmpty()) { dir.mkdirs(); refusedFile.writeText((refused() + refusedNow).sorted().joinToString("\n")) }
     }
 }
 
@@ -232,7 +247,7 @@ class FiguresRefresher(private val store: FiguresStore, private val call: suspen
 
     suspend fun refresh(memos: List<LocalMemo>, month: String, throughDate: String?, forDate: String? = null, includeAstha: Boolean = false): Outcome {
         if (supported == false) return Outcome.NoEndpoint
-        val probe = FigureProbe.build(memos, month, throughDate, store.confirmedIn())
+        val probe = FigureProbe.build(memos, month, throughDate, store.confirmedIn(), refused = store.refused())
         if (probe.tooMany) return Outcome.TooMany
         return when (val r = call(FigureProbe.requestJson(probe.entries, forDate, includeAstha))) {
             is FiguresCall.Ok -> {

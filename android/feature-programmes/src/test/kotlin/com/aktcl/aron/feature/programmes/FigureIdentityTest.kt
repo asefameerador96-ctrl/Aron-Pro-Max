@@ -29,7 +29,7 @@ class FigureIdentityTest {
                 if (s.active && s.date.take(7) == month && s.date <= through) inF[e.memoUuid] = FigureIn(s.stored.size, if (e.removedLocally) s.stored.map { StoredLine(5, it, "sale") } else null)
                 else if (!s.active) voided += e.memoUuid
             }
-            return FiguresAnswer(null, through, inF, voided, emptySet(), kotlinx.serialization.json.JsonArray(emptyList()), null, "")
+            return FiguresAnswer(null, through, inF, voided, emptySet(), emptySet(), kotlinx.serialization.json.JsonArray(emptyList()), null, "")
         }
     }
 
@@ -96,7 +96,7 @@ class FigureIdentityTest {
     @Test fun aPaperTwinAnswerOfINMakesThePhonesOwnCopyNotBeAddedOnTop() {
         // the server answers for the phone's uuid with the paper twin's state: IN
         val m = lm("phoneCopy", "2026-11-06", 15, no = "SR-1001")
-        val answer = FiguresAnswer(null, through, mapOf("phoneCopy" to FigureIn(1, null)), emptySet(), emptySet(), kotlinx.serialization.json.JsonArray(emptyList()), null, "")
+        val answer = FiguresAnswer(null, through, mapOf("phoneCopy" to FigureIn(1, null)), emptySet(), emptySet(), emptySet(), kotlinx.serialization.json.JsonArray(emptyList()), null, "")
         assertEquals(15L, FigureIdentity.show(FigureRuleB.ServerFigure(15, 1), listOf(m), answer, month, through)!!.qtyBase)
         assertEquals("SR-1001", FigureProbe.build(listOf(m), month, through, emptySet()).entries.single().memoNo) // the memo number is always sent
     }
@@ -206,5 +206,46 @@ class FigureIdentityTest {
         var calls = 0
         val r = FiguresRefresher(FiguresStore(File(tmp.root, "j"))) { calls++; FiguresCall.Ok(okBody) }
         assertEquals(FiguresRefresher.Outcome.TooMany, r.refresh((1..301).map { lm("m$it", "2026-11-05", 1) }, month, through)); assertEquals(0, calls)
+    }
+
+    private fun answerWith(refused: Set<String> = emptySet(), inF: Map<String, FigureIn> = emptyMap(), voided: Set<String> = emptySet()) =
+        FiguresAnswer(null, through, inF, voided, emptySet(), refused, kotlinx.serialization.json.JsonArray(emptyList()), null, "")
+
+    private fun showWith(answer: FiguresAnswer, phone: List<LocalMemo>) =
+        FigureIdentity.show(FigureRuleB.ServerFigure(0, 0, 0L, emptyMap(), "informational"), phone, answer, month, through, { u -> answer.inFigure[u]?.storedLines })!!
+
+    @Test fun aRefusedMemoIsDroppedAndNeverAskedAgain() {
+        val phone = listOf(lm("a", "2026-11-03", 10), lm("b", "2026-11-03", 20))
+        assertEquals(20L, showWith(answerWith(refused = setOf("a")), phone).qtyBase)
+        assertEquals(listOf("b"), FigureProbe.build(phone, month, through, emptySet(), refused = setOf("a")).entries.map { it.memoUuid })
+    }
+
+    @Test fun aRefusedEditLeavesTheOldMemoLiveAndDropsTheEditMemo() {
+        val phone = listOf(lm("old", "2026-11-03", 10), lm("edit", "2026-11-03", 99, supersedes = "old"))
+        val shown = showWith(answerWith(refused = setOf("edit")), phone)
+        assertEquals(10L, shown.qtyBase)
+        val probe = FigureProbe.build(phone, month, through, emptySet(), refused = setOf("edit"))
+        assertEquals(listOf("old"), probe.entries.map { it.memoUuid })
+        assertEquals(false, probe.entries.single().removedLocally)
+    }
+
+    @Test fun anAcceptedEditCarriesItsRemovalUuidInTheProbe() {
+        val phone = listOf(lm("old", "2026-11-03", 10), lm("edit", "2026-11-03", 99, supersedes = "old"))
+        val e = FigureProbe.build(phone, month, through, emptySet()).entries.single { it.memoUuid == "old" }
+        assertEquals("edit", e.removalUuid)
+        assert(FigureProbe.requestJson(listOf(e)).contains("\"removal_client_uuid\":\"edit\""))
+    }
+
+    @Test fun refusedIsParsedFromTheProbeAndRememberedByTheStore() {
+        val body = """{"figure_probe":{"in":[],"voided":[],"refused":["r1"],"twin_ambiguous":[]},"routes":[]}"""
+        val a = FiguresAnswerParser.parse(body)!!
+        assertEquals(Holds.REFUSED, a.of("r1"))
+        assertEquals(Holds.NOT_IN, a.of("other"))
+        val dir = java.nio.file.Files.createTempDirectory("figs").toFile()
+        val store = FiguresStore(dir)
+        store.record(a, emptyList())
+        assertEquals(setOf("r1"), store.refused())
+        assertEquals(Holds.REFUSED, store.holds(answerWith()).of("r1"))
+        dir.deleteRecursively()
     }
 }
