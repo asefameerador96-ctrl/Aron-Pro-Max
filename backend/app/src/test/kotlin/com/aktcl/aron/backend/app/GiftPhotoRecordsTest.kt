@@ -854,7 +854,7 @@ class GiftPhotoRecordsTest {
         }
     }
 
-    // ---- D-LOY-API-31: the second review (a stale marker after a close or a re-open), the backfill, a reviewer racing the sweep, a non-national count ----
+    // ---- D-LOY-API-31: the second review (a stale marker after a close or a re-open), the backfill, a reviewer racing the sweep ----
     private fun markerCols(uuid: String) = world.rows("SELECT waiting_since IS NOT NULL AS w, awaited_uuid IS NOT NULL AS a, awaited_field IS NOT NULL AS f, accepted_parent_uuid IS NOT NULL AS p, waiting_release_code AS rc, awaited_refused AS r, waiting_checked_at IS NOT NULL AS c, status FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) ORDER BY id DESC LIMIT 1").single()
     private suspend fun io.ktor.client.HttpClient.waitingCount(user: String = "admin1001"): Int = with(world) { queueOf(user)["waiting_count"]!!.jsonPrimitive.content.toInt() }
     private suspend fun io.ktor.client.HttpClient.queueOf(user: String): kotlinx.serialization.json.JsonObject =
@@ -921,7 +921,7 @@ class GiftPhotoRecordsTest {
     }
 
     @Test
-    fun theV0207BackfillGivesTrain115WaitingItemsTheirMarkerWithNoWaiverAndUnnamedOnesAPlainDetail() = world.withApi {
+    fun theWaitingMigrationBackfillGivesTrain115WaitingItemsTheirMarkerWithNoWaiverAndUnnamedOnesAPlainDetail() = world.withApi {
         with(world) {
             val awaited = UUID.randomUUID().toString(); val accepted = UUID.randomUUID().toString()
             val named = UUID.randomUUID().toString(); val unnamed = UUID.randomUUID().toString()
@@ -929,7 +929,7 @@ class GiftPhotoRecordsTest {
                 held(u, "due_collection", code = "scope_out_of_reach")
                 exec("UPDATE app.sync_quarantine SET detail = '$d' WHERE client_uuid = CAST('$u' AS uuid)")
             }
-            val updates = File(repoRoot, "db/migrations/V0207__cfg_waiting_sweep_keys.sql").readText().split(Regex(";\\s*\\n")).map { it.lines().filterNot { l -> l.trimStart().startsWith("--") }.joinToString("\n").trim() }.filter { it.startsWith("UPDATE app.sync_quarantine") }
+            val updates = File(repoRoot, "db/migrations").listFiles { f -> f.name.matches(Regex("V\\d+__cfg_waiting_sweep_keys\\.sql")) }!!.single().readText().split(Regex(";\\s*\\n")).map { it.lines().filterNot { l -> l.trimStart().startsWith("--") }.joinToString("\n").trim() }.filter { it.startsWith("UPDATE app.sync_quarantine") }
             assertEquals(2, updates.size, "the migration's two backfill statements")
             for (u in updates) exec(u)
             val n = markerCols(named); assertEquals(true, n["w"], n.toString()); assertEquals(true, n["a"]); assertEquals(true, n["p"]); assertEquals(true, n["f"]); assertEquals(null, n["rc"], "no waiver")
@@ -937,6 +937,23 @@ class GiftPhotoRecordsTest {
             val un = markerCols(unnamed); assertEquals(false, un["w"], un.toString())
             assertEquals(true, (itemRow(unnamed)["detail"] as String).startsWith("held after its first parent was accepted"), itemRow(unnamed).toString())
             exec("DELETE FROM app.sync_quarantine WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid)); DELETE FROM app.ingest_registry WHERE client_uuid IN (CAST('$named' AS uuid), CAST('$unnamed' AS uuid))")
+        }
+    }
+
+    @Test
+    fun aPoisonItemWhoseReleaseThrowsIsStampedInItsOwnTransactionSoItCannotKeepTheHeadOfTheOrder() = world.withApi {
+        with(world) {
+            val p = waitingPhotoWithItsLineStored(lat + 0.0009)
+            exec("CREATE OR REPLACE FUNCTION app.test_poison() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.status = 'accepted' THEN RAISE EXCEPTION 'poison'; END IF; RETURN NEW; END \$\$")
+            exec("CREATE TRIGGER test_poison BEFORE UPDATE ON app.sync_quarantine FOR EACH ROW WHEN (NEW.client_uuid = CAST('${cu(p)}' AS uuid)) EXECUTE FUNCTION app.test_poison()")
+            try {
+                assertEquals(false, rows("SELECT waiting_checked_at IS NOT NULL AS c FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["c"])
+                sweep().also { assertEquals(1, it.failed, it.toString()); assertEquals(0, it.released, it.toString()) }   // the release throws: the whole item transaction rolls back
+                val r = rows("SELECT status, waiting_since IS NOT NULL AS w, waiting_checked_at IS NOT NULL AS c FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()
+                assertEquals("open", r["status"]); assertEquals(true, r["w"], "still waiting"); assertEquals(true, r["c"], "stamped in its own small transaction: it goes to the back of the order")
+                assertEquals(0L, storedPhoto(p))
+            } finally { exec("DROP TRIGGER test_poison ON app.sync_quarantine"); exec("DROP FUNCTION app.test_poison()") }
+            sweep().also { assertEquals(1, it.released, it.toString()) }; assertEquals(1L, storedPhoto(p))
         }
     }
 }

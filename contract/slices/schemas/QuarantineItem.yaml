@@ -64,7 +64,7 @@ QuarantineItem:
       maxLength: 500
     waiting:
       type: boolean
-      description: 'From 1.21.0. True for an OPEN item that waits for another parent: its first parent was accepted
+      description: 'From 1.20.0. True for an OPEN item that waits for another parent: its first parent was accepted
         and the record''s other parent is not stored yet. `code` stays the first parent''s code (the accept waives
         that check) and is not the item''s own state; `detail` says what it waits for (`waits for another parent:
         <field> <uuid> ...`, field names and uuids only). The server''s own sweep (in the API process) releases
@@ -75,9 +75,9 @@ QuarantineItem:
       oneOf:
       - $ref: '#/components/schemas/Uuid'
       - type: 'null'
-      description: From 1.21.0. The parent a waiting item awaits; null when not waiting.
+      description: From 1.20.0. The parent a waiting item awaits; null when not waiting.
     waits_for_refused:
       type: boolean
-      description: 'From 1.21.0. True when the awaited parent is refused or discarded (refreshed at every pass):
+      description: 'From 1.20.0. True when the awaited parent is refused or discarded (refreshed at every pass):
         the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`)
         is the way out.'

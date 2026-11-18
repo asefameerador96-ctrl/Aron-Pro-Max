@@ -4726,6 +4726,11 @@ export interface components {
         StockMovementKind: "issue" | "return" | "adjustment" | "damaged" | "short" | "qc_return";
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
+        /**
+         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
+         * @enum {string}
+         */
+        AttendanceClosedBy: "rep" | "phone";
         /** @enum {string} */
         MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "outlet_call";
         /** @enum {string} */
@@ -5852,6 +5857,8 @@ export interface components {
             fix: components["schemas"]["GeoFix"];
             /** @description Reverse-geocoded text shown on screen; display only, never used for a decision. */
             address_display?: string | null;
+            /** @description Contract 1.19.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted; `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time. */
+            closed_by?: components["schemas"]["AttendanceClosedBy"];
         };
         DayOpenPayload: {
             route_ids: components["schemas"]["Id"][];
@@ -8848,15 +8855,15 @@ export interface components {
             resolved_by_user_id?: number | null;
             resolved_at?: components["schemas"]["Timestamp"] | null;
             resolution_note?: string | null;
-            /** @description From 1.21.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`, field names and uuids only). The server's own sweep (in the API process) releases it when that parent is stored, with exactly the override a reviewer's accept carried for it and nothing more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it. */
+            /** @description From 1.20.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`, field names and uuids only). The server's own sweep (in the API process) releases it when that parent is stored, with exactly the override a reviewer's accept carried for it and nothing more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it. */
             waiting?: boolean;
-            /** @description From 1.21.0. The parent a waiting item awaits; null when not waiting. */
+            /** @description From 1.20.0. The parent a waiting item awaits; null when not waiting. */
             waits_for_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description From 1.21.0. True when the awaited parent is refused or discarded (refreshed at every pass): the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`) is the way out. */
+            /** @description From 1.20.0. True when the awaited parent is refused or discarded (refreshed at every pass): the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`) is the way out. */
             waits_for_refused?: boolean;
         };
         QuarantinePage: {
-            /** @description From 1.21.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters. */
+            /** @description From 1.20.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters. */
             waiting_count?: number;
             items: components["schemas"]["QuarantineItem"][];
             next_cursor: components["schemas"]["PageCursor"] | null;

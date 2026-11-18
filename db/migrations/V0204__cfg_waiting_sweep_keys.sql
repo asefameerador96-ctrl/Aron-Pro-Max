@@ -1,4 +1,4 @@
--- V0207 (PROVISIONAL number, lead 2026-11-18): the waiting-item sweep (D-LOY-API-29, -30).
+-- V0204 (PROVISIONAL number, lead 2026-11-18): the waiting-item sweep (D-LOY-API-29, -30).
 -- (1) the three cfg keys that stop or slow the sweep without a deploy:
 --   cfg.sync.waiting_sweep_enabled    bool, default true  (off = the API process runs no pass)
 --   cfg.sync.waiting_sweep_interval_s int, default 60, 10..3600 (seconds between the end of one pass and the start of the next)
@@ -35,7 +35,7 @@ ALTER TABLE app.sync_quarantine
   ADD COLUMN IF NOT EXISTS waiting_release_code text,
   ADD COLUMN IF NOT EXISTS awaited_refused boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS waiting_checked_at timestamptz;
-COMMENT ON COLUMN app.sync_quarantine.waiting_since IS 'Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item.';
+COMMENT ON COLUMN app.sync_quarantine.waiting_since IS 'Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. The whole marker (this column, awaited_uuid, awaited_field, accepted_parent_uuid, waiting_release_code, awaited_refused, waiting_checked_at) is cleared automatically by a trigger when the item is closed, re-opened or changes its code, and a CHECK refuses a marker on a non-open row (D-LOY-API-31); a re-hold with the same status and code keeps it by design.';
 COMMENT ON COLUMN app.sync_quarantine.awaited_uuid IS 'The parent a waiting item waits for (D-LOY-API-30).';
 COMMENT ON COLUMN app.sync_quarantine.awaited_field IS 'The field of the parent a waiting item waits for, e.g. visit_client_uuid (D-LOY-API-31).';
 COMMENT ON COLUMN app.sync_quarantine.accepted_parent_uuid IS 'The parent whose accept released this child into waiting (D-LOY-API-30).';
@@ -70,7 +70,7 @@ CREATE TRIGGER sync_quarantine_clear_waiting BEFORE UPDATE ON app.sync_quarantin
   EXECUTE FUNCTION app.sync_quarantine_clear_waiting();
 -- a non-open row never carries a marker (the column is new, so no existing row can break it: NOT VALID then VALIDATE in the same migration)
 ALTER TABLE app.sync_quarantine ADD CONSTRAINT sync_quarantine_waiting_open CHECK (waiting_since IS NULL OR status = 'open') NOT VALID;
--- the validation reads the table once; the table holds review items only and the column is new (every row is null), so it is instant; the migration runs in one transaction
+-- the validation reads the table once: every existing row passes (the marker columns are new, so each row's waiting_since is null) and the table holds review items only, so it is instant; the migration runs in one transaction
 -- squawk-ignore constraint-missing-not-valid
 ALTER TABLE app.sync_quarantine VALIDATE CONSTRAINT sync_quarantine_waiting_open;
 

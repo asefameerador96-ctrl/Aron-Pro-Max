@@ -633,7 +633,7 @@ class IngestService(
                 failed++
                 log.warn("waiting-item sweep failed for one item quarantine_id=$id: ${e.javaClass.simpleName}")
                 // a poison item must not keep the head of the order: stamp it in its own small transaction (the failed one rolled back)
-                runCatching { db.jdbi.useHandle<Exception> { h -> h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now() WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).execute() } }
+                runCatching { db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL lock_timeout = '2s'"); h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now() WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).execute() } }   // a short lock timeout: a reviewer holding the row must not stall the sweep thread
             }
         }
         val skipped = (total - rows.size).coerceAtLeast(0)
@@ -656,7 +656,7 @@ class IngestService(
         val state = if (w.awaited.isEmpty()) Awaited.MISSING else awaitedState(h, w.type, field, w.awaited)
         val refused = state == Awaited.REFUSED
         fun touch(newDetail: String? = null) {
-            h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now(), awaited_refused = :r, detail = COALESCE(:d, detail) WHERE id = :id AND status = 'open'")
+            h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now(), awaited_refused = :r, detail = COALESCE(:d, detail) WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL")
                 .bind("r", refused).bind("d", newDetail?.take(1000)).bind("id", id).execute()
         }
         if (state != Awaited.STORED) {
@@ -1018,7 +1018,8 @@ class IngestService(
         runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
             .onFailure { log.error("day states failed batch_uuid=${ctx.batchUuid}", it) }
         // D-NIGHT-CHECKOUT-01: judged after the whole batch, so a Sales Submit sent with the check-out (either order) counts.
-        val checkouts = recs.filter { r -> r.type == "attendance_event" && outcomes[r.index]?.status == "accepted" && (r.json["payload"] as? JsonObject)?.str("kind") == "check_out" }
+        // A check-out the phone made for a forgotten day (closed_by = phone, contract 1.20.0) is "no check-out": nothing to judge.
+        val checkouts = recs.filter { r -> r.type == "attendance_event" && outcomes[r.index]?.status == "accepted" && (r.json["payload"] as? JsonObject)?.str("kind") == "check_out" && !isPhoneClose(r.type, r.json["payload"] as? JsonObject) }
         if (checkouts.isNotEmpty()) checkoutWithoutSubmit(ctx, checkouts)
         return outcomes
     }
@@ -1029,6 +1030,10 @@ class IngestService(
      * route-day or supervisor-day not submit-voided; any scope, any route of the user) raises CHECKOUT_WITHOUT_SUBMIT on
      * the user for that date (one per user-day, ON CONFLICT DO NOTHING). The check-out stays stored unchanged (the phone
      * gate is the rule); each insert runs in its own transaction, so a failed signal never touches the batch.
+     * Contract 1.20.0 (D-SV2-15): a user-day with no route capture at all (no registry row of a [DAY_LOCKED_TYPES] record of the
+     * user and date, whatever its status) has nothing to submit and raises nothing; a later accepted Sales Submit withdraws a
+     * signal that was raised (the worker rule `RiskSignalEvaluator.withdrawCheckoutWithoutSubmit`; this API role may not update
+     * `risk_signal`).
      */
     private fun checkoutWithoutSubmit(ctx: Ctx, checkouts: List<Rec>) {
         if (ctx.up.role != Role.SR && ctx.up.role != Role.AMO) return
@@ -1048,6 +1053,7 @@ class IngestService(
                 """.trimIndent(),
             ).bind("u", ctx.up.userId).bind("d", bd).mapTo(Boolean::class.java).one()
             if (submitted) return@useTransaction
+            if (!routeCapturesExist(h, ctx.up.userId, bd)) return@useTransaction
             h.createUpdate(
                 """
                 INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
@@ -1217,7 +1223,7 @@ class IngestService(
         // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
         // row yet (OpsApi's acceptor is not wired), so the rep's day would end without a check-out: until it can, the row
         // is accepted and flagged (BC-63; the phone enforces the same value offline, so only a hooked clock reaches it).
-        val tooEarly = r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured, bd)
+        val tooEarly = r.type == "attendance_event" && payload.str("kind") == "check_out" && !isPhoneClose(r.type, payload) && checkoutTooEarly(h, ctx.up, captured, bd)
         if (tooEarly) {
             // Stored in app.ingest_registry.flags (V0059); the log line stays.
             log.warn("checkout_too_early client_uuid=${r.clientUuid} user=${ctx.up.userId} business_date=$bd captured_at=$captured")
@@ -1516,8 +1522,8 @@ class IngestService(
                 }
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
-                outOfBounds(h, ctx, r, rule, payload, bd, routeId)
-                gnssConsistency(h, ctx, r, rule, payload, bd, routeId)
+                // A phone close is no location reading of the rep: neither geo risk rule judges its fix (out of bounds, GNSS consistency).
+                if (!isPhoneClose(r.type, payload)) { outOfBounds(h, ctx, r, rule, payload, bd, routeId); gnssConsistency(h, ctx, r, rule, payload, bd, routeId) }
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
@@ -2282,6 +2288,24 @@ class IngestService(
 
     companion object {
         const val CHECKOUT_WITHOUT_SUBMIT = "CHECKOUT_WITHOUT_SUBMIT"
+
+        /**
+         * Whether the user has any route capture on the business date: a registry row (any status: the rep did capture, even if the server held or
+         * refused the record) of a [DAY_LOCKED_TYPES] record. Attendance, `day_open`, `day_submit` and telemetry are not captures.
+         */
+        fun routeCapturesExist(h: Handle, userId: Long, date: LocalDate): Boolean = h.createQuery(
+            "SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE user_id = :u AND business_date = :d AND record_type = ANY(:types))",
+        ).bind("u", userId).bind("d", date).bindArray("types", String::class.java, DAY_LOCKED_TYPES.toList()).mapTo(Boolean::class.java).one()
+
+        /**
+         * Contract 1.20.0 (D-SV2-15): an `attendance_event` check-out the phone itself made for a forgotten day (`closed_by` = `phone`; absent
+         * means `rep`, as every older phone sends it). It is stored and acknowledged like any record, but every reader treats it as "no
+         * check-out": no time, no hours, no supervisor-day check-out, never `checkout_too_early`, never judged for a missing Sales Submit,
+         * and its fix is never a geo_fix (not the user's newest location, no geo risk rule). A real check-out of the same day outranks it.
+         */
+        fun isPhoneClose(type: String, payload: JsonObject?): Boolean =
+            type == "attendance_event" && payload?.str("kind") == "check_out" && payload.str("closed_by") == "phone"
+
         private const val FAMILY_TRIES = 3
         private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
         private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")

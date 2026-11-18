@@ -307,4 +307,31 @@ class BackfillMatchTest {
         assertEquals("open", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.sync_quarantine WHERE id = $qid").mapTo(String::class.java).one() })
         assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE action = 'backfill_matched' AND after->>'phone_memo_uuid' = '$phoneMemo'"))
     }
+
+    @Test
+    fun whenTheAwaitedParentIsStoredButAnotherIsMissingTheWaitingItemFollowsToTheMissingOne() = testApplication {
+        application { aronApi(wiring) }
+        val sr = client.token(); val admin = client.webToken("admin1001")
+        val no = "sr1001-270103-${memoSeq.incrementAndGet()}"
+        assertEquals(HttpStatusCode.OK, client.key(admin, no).status)
+        val family = saleFamily(memoNo = no)
+        val phoneMemo = family[1]["client_uuid"]!!.jsonPrimitive.content
+        val otherVisit = uuid(); val dueCu = uuid()
+        val due = envelope("due_collection", dueCu, dueCu, 2, Json.parseToJsonElement(
+            """{"outlet_id":$outletId,"against_memo_client_uuid":"$phoneMemo","against_memo_no":"$no","against_memo_business_date":"$day","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":5000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
+        ).jsonObject)
+        client.send(sr, batch(family + due))
+        val qid = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$phoneMemo' AS uuid) AND code = 'memo_no_duplicate'")
+        val dueItem = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$dueCu' AS uuid)")
+        assertEquals(HttpStatusCode.OK, client.match(admin, qid).status)
+        assertEquals(otherVisit, str("SELECT awaited_uuid::text FROM app.sync_quarantine WHERE id = $dueItem"))
+        // as if the item awaited the memo (stored) while the visit is the parent still missing (a third parent appearing, a record the parent step does not take)
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.sync_quarantine SET awaited_uuid = CAST(? AS uuid), awaited_field = 'against_memo_client_uuid' WHERE id = ?", phoneMemo, dueItem) }
+        val job = waitingSweepJob(wiring, clock, fresh.url)
+        job.tick()!!.also { assertEquals(0, it.released, it.toString()); assertEquals(1, it.stillWaiting, it.toString()) }
+        assertEquals(otherVisit, str("SELECT awaited_uuid::text FROM app.sync_quarantine WHERE id = $dueItem"), "the item now awaits the parent that is really missing")
+        assertEquals("visit_client_uuid", str("SELECT awaited_field FROM app.sync_quarantine WHERE id = $dueItem"))
+        assertEquals(true, str("SELECT detail FROM app.sync_quarantine WHERE id = $dueItem").contains("visit_client_uuid $otherVisit"), "and says so")
+        assertEquals("open", status(dueItem)); assertEquals(0, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"))
+    }
 }

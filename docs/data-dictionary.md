@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 183 | 3045 |
+| `app` | 183 | 3046 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -587,6 +587,7 @@ One check-in or check-out of a user with its on-demand location fix.
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `address_display` | text | null | personal | Reverse-geocoded address shown for display only; never used for a decision. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `closed_by` | text | not null |  | Who closed a check-out: rep (the rep pressed check-out; every check-in and every record of an older phone) or phone (the phone closed a forgotten day at a later start, no location). A phone close is read everywhere as "no check-out". |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4891,7 +4892,7 @@ Records held for a human decision with their payload and resolution.
 | `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
 | `reopened_at` | timestamp with time zone | null |  | When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never. |
 | `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
-| `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. |
+| `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. The whole marker (this column, awaited_uuid, awaited_field, accepted_parent_uuid, waiting_release_code, awaited_refused, waiting_checked_at) is cleared automatically by a trigger when the item is closed, re-opened or changes its code, and a CHECK refuses a marker on a non-open row (D-LOY-API-31); a re-hold with the same status and code keeps it by design. |
 | `awaited_uuid` | uuid | null |  | The parent a waiting item waits for (D-LOY-API-30). |
 | `awaited_field` | text | null |  | The field of the parent a waiting item waits for, e.g. visit_client_uuid (D-LOY-API-31). |
 | `accepted_parent_uuid` | uuid | null |  | The parent whose accept released this child into waiting (D-LOY-API-30). |

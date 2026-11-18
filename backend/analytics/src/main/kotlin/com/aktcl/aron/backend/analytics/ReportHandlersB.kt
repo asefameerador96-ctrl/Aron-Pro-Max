@@ -98,7 +98,7 @@ object GigoReport : ReportHandler {
         listOf(
             col("business_date", "Date", "date"), col("username", "SR", "string"), col("route_code", "Route", "string"), col("check_in_at", "Check in", "timestamp"),
             col("check_out_at", "Check out", "timestamp"), col("hours", "Hours", "decimal", unit = "h"), col("check_in_fix", "Check-in fix", "string"), col("check_out_fix", "Check-out fix", "string"),
-            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true),
+            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true), col("check_out_note", "Check-out note", "string"),
         ),
         listOf("period", "geo"),
     )
@@ -112,11 +112,13 @@ object GigoReport : ReportHandler {
                            THEN e.business_date - 1 ELSE e.business_date END AS day
             FROM app.attendance_event e WHERE e.voided_at IS NULL AND e.business_date BETWEEN CAST(:from AS date) - 1 AND CAST(:to AS date) + 1)
         SELECT ev.day AS business_date, u.username, (array_agg(g.route_code ORDER BY ev.captured_at) FILTER (WHERE g.route_code IS NOT NULL))[1] AS route_code,
-               min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in') AS check_in_at, max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') AS check_out_at,
-               round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
+               min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in') AS check_in_at, max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') AS check_out_at,
+               round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
                (array_agg(ev.fix_status ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS check_in_fix,
-               (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out'))[1] AS check_out_fix,
-               bool_or(coalesce(ev.fix_is_mock, false)) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address
+               (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep'))[1] AS check_out_fix,
+               coalesce(bool_or(coalesce(ev.fix_is_mock, false)) FILTER (WHERE ev.closed_by = 'rep'), false) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address,
+               CASE WHEN bool_or(ev.kind = 'check_out' AND ev.closed_by = 'phone') AND NOT bool_or(ev.kind = 'check_out' AND ev.closed_by = 'rep')
+                    THEN 'no check-out (closed by the phone)' END AS check_out_note
           FROM ev JOIN app.app_user u ON u.id = ev.user_id LEFT JOIN dw.dim_geo g ON g.route_id = ev.route_id
          WHERE ev.day BETWEEN :from AND :to
          GROUP BY ev.day, u.id, u.username

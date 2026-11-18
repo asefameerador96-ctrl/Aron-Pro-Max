@@ -303,7 +303,7 @@ class SchemaV1aTest {
             // Master-data fit push 1b, lead ruling B2 (V0199, docs/requests/contract-1.18-masterdata-fit.md s3): the gate for 3-character rep ids.
             "cfg.release.short_rep_id_version_code",
 
-            // waiting-item sweep (V0207, D-LOY-API-29, lead ruling 2026-11-18): the keys that stop or slow the sweep without a deploy.
+            // waiting-item sweep (V0204, D-LOY-API-29, lead ruling 2026-11-18): the keys that stop or slow the sweep without a deploy.
             "cfg.sync.waiting_sweep_enabled", "cfg.sync.waiting_sweep_interval_s", "cfg.sync.waiting_sweep_batch")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->

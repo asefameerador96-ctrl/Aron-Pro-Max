@@ -88,7 +88,7 @@ data class ZoneFinalDto(val zone_id: Long, val final_submitted: Boolean)
 data class QuarantineItemDto(
     val quarantine_id: Long, val client_uuid: String, val type: String, val code: String, val status: String, val user_id: Long, val device_id: Long?, val route_id: Long?,
     val business_date: String, val received_at: String, val payload: JsonElement, val detail: String?, val resolved_by_user_id: Long?, val resolved_at: String?, val resolution_note: String?,
-    /** Contract 1.21.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0207. */
+    /** Contract 1.20.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0207. */
     val waiting: Boolean = false, val waits_for_uuid: String? = null, val waits_for_refused: Boolean = false,
 )
 
@@ -320,7 +320,7 @@ class OpsService(
         if (!reach.national) st.bindArray("rz", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         zoneId?.let { st.bind("zid", it) }; status?.let { st.bind("status", it) }; code?.let { st.bind("code", it) }; from?.let { st.bind("from", it) }; to?.let { st.bind("to", it) }; afterId?.let { st.bind("after", it) }
         val rows = st.map { rs, _ -> toDto(rs) }.list()
-        // Contract 1.21.0: the open items waiting for another parent inside the caller's reach, whatever the page and the status/code/date filters.
+        // Contract 1.20.0: the open items waiting for another parent inside the caller's reach, whatever the page and the status/code/date filters.
         val reachWhere = if (reach.national) "true" else "q.route_id IN (SELECT route_id FROM dw.dim_geo WHERE zone_id = ANY(:rz))"
         val wq = h.createQuery("SELECT count(*)::int FROM app.sync_quarantine q WHERE q.status = 'open' AND q.waiting_since IS NOT NULL AND $reachWhere")
         if (!reach.national) wq.bindArray("rz", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) })

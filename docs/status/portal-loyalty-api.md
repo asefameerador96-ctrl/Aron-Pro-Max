@@ -1,5 +1,8 @@
 # Status: lane portal-loyalty-api (Lane L-A), started 2026-11-12
 
+## HANDOVER 2026-11-18 (L-A11), LANDING PUSH: fix round 2 PASSED review; FINAL numbers migration V0204 and contract 1.20.0 (INT 39db6c734 merged); lows of the pass done (D-LOY-API-33)
+Landing push content: merge of 39db6c734, V0207 -> V0204 renamed (file, comments, SchemaV1aTest comment), contract 1.21.0 -> 1.20.0 (openapi, slices, d.ts, AmoManualContractTest history, OpsApi comment), data dictionary regenerated, the lows (migration comment, waiting_since column comment, touch guard, poison-stamp lock timeout, tests for the poison stamp and the awaited-parent follow, backfill test finds the migration by name suffix). NOT in this push (kept on the local branch `slice-n1`, commit e63ffc9c, and for the next slice): N-1 quarter rows + `astha_truncated_months`, `loyalty[].tier_code`, inactive-brand names (D-LOY-API-32, written there), and the portal points adjustment the lead asked for (per outlet and programme, signed, reason required, optional expires_on, module loyalty write grant, scope, audit row, idempotent by a request id, bulk upload with dry-run, visible in the ledger view). The slice branch is based on d88b751b and must be rebased onto the landed integration branch by a MERGE of the integration branch (no force) and its contract number moves above 1.20.0.
+
 ## LEAD REVIEW 2026-11-18 of 55ca113f..8a90f1b4 (copied verbatim from `origin/lane/lead-docs-1022:docs/reviews/loyalty-sweep-fix-2026-11-18.md`; its fix round is the next HANDOVER block)
 
 # Lead review: Loyalty sweep fix round (55ca113f..8a90f1b4)

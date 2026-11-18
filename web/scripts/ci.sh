@@ -6,7 +6,8 @@
 #   typecheck  tsc --noEmit
 #   test       vitest (unit, drift and rule tests)
 #   build      next build (runs lint first via prebuild)
-#   e2e        Playwright smoke tests against the contract mock (needs build)
+#   e2e        Playwright smoke tests against the contract mock (needs build); PW_SHARD=i/n runs one shard (by file, same order)
+#   count-e2e  number of Playwright tests in the full list (no browser, no server)
 #   all        install, generate, lint, typecheck, test, build, e2e
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,7 +18,8 @@ step_lint()      { npm run lint; }
 step_typecheck() { npm run typecheck; }
 step_test()      { npm test; }
 step_build()     { npm run build; }
-step_e2e()       { CI="${CI:-}" npx playwright test; }
+step_e2e()       { CI="${CI:-}" npx playwright test ${PW_SHARD:+--shard="${PW_SHARD}"}; }
+step_e2e_count() { CI=1 npx playwright test --list --reporter=json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.stats.expected+j.stats.skipped+j.stats.unexpected+j.stats.flaky)})'; }
 
 case "${1:-all}" in
   install) step_install ;;
@@ -27,6 +29,7 @@ case "${1:-all}" in
   test) step_test ;;
   build) step_build ;;
   e2e) step_e2e ;;
+  count-e2e) step_e2e_count ;;
   all) step_install; step_generate; step_lint; step_typecheck; step_test; step_build; step_e2e ;;
   *) echo "unknown step: $1" >&2; exit 2 ;;
 esac

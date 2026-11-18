@@ -203,5 +203,16 @@ abstract class NightSyncHarness {
         }
     }
 
+    /**
+     * A route capture of sr1001 on [date] as the ingest registry holds it (round 1.20.0: CHECKOUT_WITHOUT_SUBMIT is judged only for a user-day that has
+     * captures): one accepted registry row of the given record type. The row is the registry's own bookkeeping, so no capture table is touched.
+     */
+    protected fun seedCapture(date: String, type: String = "visit") = fresh.db.jdbi.useHandle<Exception> { h ->
+        h.createUpdate(
+            "INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, business_date, user_id, first_batch_uuid) " +
+                "VALUES (CAST(:c AS uuid), :t, decode(repeat('ab', 32), 'hex'), 'accepted', CAST(:d AS date), :u, gen_random_uuid())",
+        ).bind("c", uuid()).bind("t", type).bind("d", date).bind("u", srId).execute()
+    }
+
     protected fun cu(r: JsonObject) = r["client_uuid"]!!.jsonPrimitive.content
 }

@@ -2,7 +2,7 @@ package com.aktcl.aron.backend.platform
 
 /**
  * The reader text of a quarantine item that WAITS for another parent (D-LOY-API-28, -30). The marker itself is TYPED (columns `waiting_since`, `awaited_uuid`, `accepted_parent_uuid`,
- * `waiting_release_code`, `awaited_refused`, `waiting_checked_at` of `app.sync_quarantine`, V0207); this object only builds and reads the human-readable `detail`, which holds field names,
+ * `waiting_release_code`, `awaited_refused`, `waiting_checked_at` of `app.sync_quarantine`, V0204); this object only builds and reads the human-readable `detail`, which holds field names,
  * codes and uuids only, never personal data and never free text of a handler.
  *
  * A child held with a parent that a reviewer then accepted, whose OTHER parent is not stored yet, stays open with its code and the detail
