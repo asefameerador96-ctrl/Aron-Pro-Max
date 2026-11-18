@@ -59,16 +59,22 @@ class SrSaveCloseRaceTest {
         val saveFn = suspend { runCatching { f.day.sale.commitSale() } }
         val closeFn = suspend { f.day.sale.closeCall(phoneEnd = phoneEnd) }
         exec.hold()
-        val first = async(Dispatchers.Default) { if (saveFirst) saveFn() else closeFn() }
-        val t0 = System.nanoTime()
-        while (exec.waiting() == 0) { delay(10); check(System.nanoTime() - t0 < 10_000_000_000L) { "the first coroutine never reached the database" } }
-        check(f.day.closeLock.isLocked) { "the first coroutine is inside its critical section" }
-        val second = async(Dispatchers.Default) { if (saveFirst) closeFn() else saveFn() }
-        delay(300) // the second one has had every chance to run: it must be waiting for the lock, not racing past it
-        assertTrue("the second coroutine waits for the first", second.isActive)
-        assertEquals("and it has not reached the database: only the first one's command is at the hold (the lock, not the executor, is what holds the second back)", 1, exec.waiting())
-        assertEquals("nothing is stored while the first one holds the lock", 0, count("SELECT COUNT(*) FROM visit_close WHERE visit_client_uuid = '${v.visitUuid}'"))
-        exec.release()
+        lateinit var first: kotlinx.coroutines.Deferred<Any?>
+        lateinit var second: kotlinx.coroutines.Deferred<Any?>
+        try {
+            first = async(Dispatchers.Default) { if (saveFirst) saveFn() else closeFn() }
+            val t0 = System.nanoTime()
+            while (exec.waiting() == 0) { delay(10); check(System.nanoTime() - t0 < 10_000_000_000L) { "the first coroutine never reached the database" } }
+            check(f.day.closeLock.isLocked) { "the first coroutine is inside its critical section" }
+            second = async(Dispatchers.Default) { if (saveFirst) closeFn() else saveFn() }
+            delay(300) // the second one has had every chance to run: it must be waiting for the lock, not racing past it
+            assertTrue("the second coroutine waits for the first", second.isActive)
+            assertEquals("and it has not reached the database: only the first one's command is at the hold (the lock, not the executor, is what holds the second back)", 1, exec.waiting())
+            assertEquals("nothing is stored while the first one holds the lock", 0, count("SELECT COUNT(*) FROM visit_close WHERE visit_client_uuid = '${v.visitUuid}'"))
+        } finally {
+            // an assertion above must never leave the held commands waiting for ever (runBlocking would wait for them): release first, then the assertion fails
+            exec.release()
+        }
         first.await(); second.await()
         v
     }
