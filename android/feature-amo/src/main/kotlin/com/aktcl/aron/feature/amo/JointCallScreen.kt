@@ -43,7 +43,6 @@ object JointTags {
 
 private val LowRed = Color(0xFFC62828)
 private val HighGreen = Color(0xFF2E7D32)
-private val StarOn = Color(0xFFB07A00)
 
 /**
  * F-AMO-011 (screenshots 31-32): the SR call assessment of the open Joint Call. Header card, the two instruction lines, one card per
@@ -66,10 +65,13 @@ fun JointCallContent(
     val editable = !saved && !saving
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            AmoOutletHeader(outletLabel, routeName)
+            // screenshot 31: the shop-icon card, retailer first, then route; without an outlet label the plain header stays
+            if (outletLabel != null) AmoSaleHeaderCard(routeName, outletLabel, padded = false, retailerFirst = true) else AmoOutletHeader(null, routeName)
             if (sr != null) Text(stringResource(R.string.amo_jc_sr, sr.name), style = amoText(15, bold = true), modifier = Modifier.testTag(JointTags.SR))
-            Text(stringResource(R.string.amo_jc_intro1), style = amoText(14, color = look.inkMuted))
-            Text(stringResource(R.string.amo_jc_intro2), style = amoText(14, color = look.inkMuted))
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Info, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(18.dp)) // the (i) of screenshot 31
+                Column { Text(stringResource(R.string.amo_jc_intro1), style = amoText(14, color = look.inkMuted)); Text(stringResource(R.string.amo_jc_intro2), style = amoText(14, color = look.inkMuted)) }
+            }
             rubric.sections.forEachIndexed { i, sec ->
                 val title = (if (bn) sec.titleBn else null) ?: sec.title
                 val body: @Composable () -> Unit = {
@@ -93,8 +95,9 @@ private fun Item(cr: RubricCriterion, bn: Boolean, state: JointState, defaultSta
     val value = if (on) state.of(cr.id, defaultStar) else 0
     val guidance = (if (bn) cr.guidanceBn else null) ?: cr.guidanceEn
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text((if (bn) cr.labelBn else null) ?: cr.labelEn, style = amoText(17, bold = true, color = if (on) look.ink else look.inkMuted))
-        if (guidance != null) Text(guidance, style = amoText(13, color = look.inkMuted))
+        val blue = look.choiceFill ?: look.purple // screenshot 31: dark-blue titles, hints and stars (7:1 on white in the AMO look and Sunlight: JointBlueContrastTest)
+        Text((if (bn) cr.labelBn else null) ?: cr.labelEn, style = amoText(17, bold = true, color = if (on) blue else look.inkMuted))
+        if (guidance != null) Text(guidance, style = amoText(13, color = if (on) blue else look.inkMuted))
         Row(Modifier.fillMaxWidth().testTag(JointTags.rating(cr.id)), horizontalArrangement = Arrangement.SpaceEvenly) {
             (1..5).forEach { n ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
@@ -103,7 +106,7 @@ private fun Item(cr: RubricCriterion, bn: Boolean, state: JointState, defaultSta
                         Modifier.heightIn(min = 44.dp).size(48.dp).testTag(JointTags.star(cr.id, n)).semantics { contentDescription = label }
                             .clickable(enabled = on && editable, role = Role.RadioButton) { onStar(cr.id, n) },
                         contentAlignment = Alignment.Center,
-                    ) { Text(if (n <= value) "★" else "☆", style = amoText(32, color = if (n <= value) StarOn else look.inkMuted)) }
+                    ) { Text(if (n <= value) "★" else "☆", style = amoText(32, color = if (n <= value) blue else look.inkMuted)) }
                     if (n == 1) Badge(stringResource(R.string.amo_jc_low), LowRed, JointTags.LOW)
                     if (n == 5) Badge(stringResource(R.string.amo_jc_high), HighGreen, JointTags.HIGH)
                 }

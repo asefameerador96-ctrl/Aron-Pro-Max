@@ -147,4 +147,8 @@
     <string name="edit_reason_cancel">বাতিল</string>
     <string name="edit_reason_submit">জমা দিন</string>
     <string name="edit_reason_glyph_dropdown">▾</string>
+    <string name="sale_amo_rate">রেট</string>
+    <string name="sale_amo_discount">ডিসকাউন্ট</string>
+    <string name="sale_amo_percent">%1$s%%</string>
+    <string name="review_total_qty">পরিমাণ</string>
 </resources>

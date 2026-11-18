@@ -45,12 +45,8 @@ object PreviousSales {
 
     fun earliest(today: String): String = LocalDate.parse(today).minusDays(WINDOW_DAYS - 1L).toString()
 
-    /** Moves [date] by [days] inside the window [earliest(today), today]; a move outside stays put. */
-    fun shift(date: String, days: Int, today: String): String {
-        val d = LocalDate.parse(date).plusDays(days.toLong())
-        val lo = LocalDate.parse(earliest(today)); val hi = LocalDate.parse(today)
-        return if (d.isBefore(lo) || d.isAfter(hi)) date else d.toString()
-    }
+    /** The date a pick turns into: the pick when it is inside the window, else [current] unchanged (a stale or hand-built pick never reaches the host). */
+    fun accept(picked: String, today: String, current: String): String = if (inWindow(picked, today)) picked else current
 
     fun inWindow(date: String, today: String): Boolean = runCatching { LocalDate.parse(date) }.getOrNull()?.let { !it.isBefore(LocalDate.parse(earliest(today))) && !it.isAfter(LocalDate.parse(today)) } == true
 
@@ -126,7 +122,7 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onP
         if (outletLabel != null) Text(outletLabel, style = amoText(16, bold = true))
         // D-PAR-AMO-05 (screenshot 26): the calendar field ("November 26, 2025") opens a date picker limited to the 90-day window; the ISO date
         // is repeated under it in purple, as the old screen does
-        AmoDateField(date, today, { picked -> if (PreviousSales.inWindow(picked, today)) onPick(picked) }, Modifier.testTag(PreviousSalesTags.DATE), min = PreviousSales.earliest(today), max = today)
+        AmoDateField(date, today, { picked -> PreviousSales.accept(picked, today, date).let { if (it != date) onPick(it) } }, Modifier.testTag(PreviousSalesTags.DATE), min = PreviousSales.earliest(today), max = today)
         Text(Formats.digits(date, loc), style = amoText(16, color = look.purple), modifier = Modifier.testTag(PreviousSalesTags.ISO))
         when {
             history == null -> Text(stringResource(R.string.amo_ps_loading), style = amoText(16, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.LOADING))
