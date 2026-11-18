@@ -1,4 +1,4 @@
--- V0232 (PROVISIONAL number, lane sr-targets-server; the lead renumbers at landing, never run outside lane CI before that)
+-- V0212 (FINAL number, renumbered from V0232 by the lead on 2026-11-18; lane sr-targets-server)
 -- N-3 outlet campaign target of the SR app (screen 21, "Super Star Low (November)", D-OWNER-SR-PROGRAMMES-01; design docs/status/sr-targets-server.md s5, D-TKPI-08).
 -- 1. app.outlet_campaign_target: per campaign programme (kind campaign), month and outlet: the STD target (programme unit, exact decimal) and the memo target.
 --    An outlet is in the campaign for a month exactly when this row exists (the upload is the membership; no second list to keep in step).

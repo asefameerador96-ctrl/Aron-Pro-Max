@@ -408,6 +408,98 @@ class SrFiguresEndToEndTest {
         assertEquals(0L, count("SELECT count(*) FROM app.memo_line WHERE client_uuid = '${cu(line)}'"), "nothing was stored by the refused fix")
     }
 
+    // ---- the device gate holds gated records (memo, memo_void, ...) of a phone that is not enrolled: a reviewer releases them later --------------------------------------------------
+
+    private val gateNow = java.util.concurrent.atomic.AtomicReference(Instant.parse("2027-01-03T04:00:00Z"))
+    private val gateSwitches = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** A second wiring on the same database with a clock the test moves, so a config switch is seen (DbServerConfig caches 30 s by the injected clock). */
+    private fun gateWiring() = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), AronClock { gateNow.get() })
+
+    private fun requireEnrolled(on: Boolean) {
+        val n = gateSwitches.incrementAndGet()
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test gate' FROM app.cfg_version")
+            h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n WHERE key = 'cfg.device.require_enrolled' AND scope_type = 'global' AND effective_to IS NULL")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.device.require_enrolled', 'global', 0, '$on'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n, max(config_version), 'test' FROM app.cfg_version")
+        }
+        gateNow.updateAndGet { it.plusSeconds(31) }
+    }
+
+    @Test
+    fun aHeldVoidReleasedByTheReviewerIsNeverSubtractedTwice() {
+        val w2 = gateWiring()
+        try {
+            testApplication {
+                application { aronApi(w2) }
+                val base = client.baseline()
+                val f1 = saleFamily(); val m1 = PM(cu(f1[1]), day, 20, f1[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+                client.sendOk(f1)
+                client.assertShows(base, "2027-01-04", listOf(m1), "M committed")
+                requireEnrolled(true)
+                try {
+                    val vu = uuid()
+                    val voidRec = envelope("memo_void", vu, vu, 0, Json.parseToJsonElement(
+                        """{"memo_client_uuid":"${m1.uuid}","memo_no":"${m1.memoNo}","reason_code":"retailer_cancelled","retailer_ack":true,"fix":{"purpose":"memo_void","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,"device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+                    ).jsonObject)
+                    m1.removed = true
+                    assertEquals(listOf("quarantined"), statuses(json(client.send(client.token(), batch(listOf(voidRec))).bodyAsText())), "the void is held by the device gate")
+                    client.assertShows(base, "2027-01-04", listOf(m1), "void held: the server still holds M (IN): its stored lines are subtracted, the total is the truth")
+                    assertEquals(HttpStatusCode.OK, client.resolve(item(vu).first, "accept").status)
+                    assertEquals("voided", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.memo WHERE client_uuid = CAST(:c AS uuid)").bind("c", m1.uuid).mapTo(String::class.java).one() }, "the reviewer's release voided M on the server")
+                    client.assertShows(base, "2027-01-04", listOf(m1), "void released before the phone hears: M is VOIDED, nothing is subtracted a second time")
+                } finally { requireEnrolled(false) }
+            }
+        } finally { w2.database?.close() }
+    }
+
+    @Test
+    fun aHeldEditReleasedByTheReviewerIsNeitherDoubleCountedNorLost() {
+        val w2 = gateWiring()
+        try {
+            testApplication {
+                application { aronApi(w2) }
+                val base = client.baseline()
+                val f1 = saleFamily(); val m1 = PM(cu(f1[1]), day, 20, f1[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+                client.sendOk(f1)
+                requireEnrolled(true)
+                try {
+                    val f2 = saleFamily(qty1 = 15, supersedes = m1.uuid); val e = PM(cu(f2[1]), day, 15, f2[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+                    m1.removed = true
+                    val acks = statuses(json(client.send(client.token(), batch(f2)).bodyAsText()))
+                    assertTrue("quarantined" in acks, "the edit memo is held by the device gate: $acks")
+                    client.assertShows(base, "2027-01-04", listOf(m1, e), "edit held: M IN (its lines subtracted), E NOT IN (added): the total is E")
+                    // a device-gate hold is released when the gate clears and the phone's resend is judged again (DeviceGateTest: "released on the resend"); a reviewer's accept is not the path for this code
+                    requireEnrolled(false)
+                    val rel = statuses(json(client.send(client.token(), batch(f2)).bodyAsText()))
+                    assertTrue(rel.none { it == "quarantined" || it == "rejected" }, "the resend after the gate cleared stores the edit: $rel")
+                    assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${e.uuid}'"), "the release stored the edit")
+                    client.assertShows(base, "2027-01-04", listOf(m1, e), "edit released (the phone's answer of the resend is lost): M VOIDED (superseded), E IN: nothing subtracted, nothing added")
+                } finally { requireEnrolled(false) }
+            }
+        } finally { w2.database?.close() }
+    }
+
+    @Test
+    fun aPaperTwinIsStillInAfterThePhonesOwnCopyWasUploadedAndHeldAsAMemoNumberDuplicate() = testApplication {
+        app()
+        val base = client.baseline()
+        val srId = count("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+        val no = "sr1001-270103-${memoSeq.incrementAndGet()}"
+        val paper = client.post("/v1/admin/data-entry") {
+            bearerAuth(client.token("admin1001")); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"${uuid()}","memo_no":"$no","business_date":"$day","user_id":$srId,"route_id":$routeId,"outlet_id":$outletId,"lines":[{"sku_id":${skus[0].first},"qty_base":20,"line_kind":"sale"}],"paid_mtk":0,"reason":"phone died, keyed from the printed memo"}""")
+        }
+        assertEquals(HttpStatusCode.OK, paper.status, paper.bodyAsText())
+        val fam = saleFamily(memoNo = no); val p = PM(cu(fam[1]), day, 20, no)
+        val acks = statuses(json(client.send(client.token(), batch(fam)).bodyAsText()))
+        note("the phone's copy of the paper memo: $acks")
+        assertTrue(acks.any { it == "duplicate" || it == "quarantined" }, "the phone's own copy is held or answered as a memo number duplicate: $acks")
+        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${p.uuid}'"), "the phone's copy is not stored under its own uuid")
+        client.assertShows(client.baseline("2027-01-03"), "2027-01-03", listOf(p), "today's bundle: the paper memo is cut by through_date, the phone's copy is added once (the twin is not IN for a figure that does not hold it)")
+        client.assertShows(base, "2027-01-04", listOf(PM(p.uuid, day, 20, no)), "tomorrow's bundle: the paper memo is in the figure and the phone's held copy is IN through the memo number: counted once, not twice")
+    }
+
     @Test @org.junit.jupiter.api.Order(Int.MAX_VALUE)   // last (unannotated tests default to MAX_VALUE/2): a data void tombstones the route-day and refuses every later upload of it
     fun anAdminDataVoidOfTodaysRouteDayDropsTheMemosOnThePhone() = testApplication {
         app()

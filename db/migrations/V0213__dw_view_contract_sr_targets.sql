@@ -1,5 +1,5 @@
--- V0233 (PROVISIONAL number, lane sr-targets-server; the lead renumbers at landing, never run outside lane CI before that)
--- dw view contract 1.9 -> 1.10 (PROVISIONAL minor; the lead assigns the final number in the contract order): reuse views of the SR target tables of V0230..V0232
+-- V0213 (FINAL number, renumbered from V0233 by the lead on 2026-11-18; lane sr-targets-server)
+-- dw view contract 1.9 -> 1.10 (PROVISIONAL minor; the lead assigns the final number in the contract order): reuse views of the SR target tables of V0210..V0212
 -- (D-TKPI-05, D-TKPI-07, D-TKPI-08). Five new views, nothing existing changes: names instead of ids, data_origin of the route, is_effective = true last.
 -- Request to the lead: docs/requests/dw-view-contract-sr-targets.md (the hash line of DwViewContractTest and the version of dw.view_contract_version()).
 SET lock_timeout = '5s';

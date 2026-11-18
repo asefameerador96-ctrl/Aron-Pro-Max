@@ -47,7 +47,7 @@ class DwViewContractTest {
         "1.7" to "c68e8ac735e7c67f4d5502908f1b662b0367c5caf87ac23fddefb6833fab85dc",           // V0162 dw.v_programme, dw.v_programme_version, dw.v_gift (loyalty portal; additive views)
         "1.8" to "148f72fe6b1bdd11d898b14f138bdf33a8259d2658e14434fef2e2968706d34a",           // V0175 v_visit.zero_sale_reason_code, call_capture_taken (SR manual build, sr-server train 1)
         "1.9" to "02f12e099fb77d7e04cd43a3eff181d2e89bb5585c110889fc157a86e60c0481",           // V0188 v_route_day.late_rows_after_sales_submit, v_survey_response (sr-server train 2, push B)
-        "1.10" to "3777835824588c68004da0e53864333683365195943884e87aac8ec7d54a8c6b",          // V0233 (provisional) SR target views: v_route_brand_kpi_target, v_route_kpi_month, v_route_programme_target, v_outlet_campaign_target, v_outlet_campaign_sku_target
+        "1.10" to "3777835824588c68004da0e53864333683365195943884e87aac8ec7d54a8c6b",          // V0213 (provisional) SR target views: v_route_brand_kpi_target, v_route_kpi_month, v_route_programme_target, v_outlet_campaign_target, v_outlet_campaign_sku_target
     )
 
     private fun views(c: Connection): Map<String, List<String>> =

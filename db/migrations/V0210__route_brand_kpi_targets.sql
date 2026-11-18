@@ -1,4 +1,4 @@
--- V0230 (PROVISIONAL number, lane sr-targets-server; the lead renumbers at landing, never run outside lane CI before that)
+-- V0210 (FINAL number, renumbered from V0230 by the lead on 2026-11-18; lane sr-targets-server)
 -- N-5 brand-wise KPI of the SR app (screens 60 and 61, D-OWNER-SR-PROGRAMMES-01; design docs/status/sr-targets-server.md s3, D-TKPI-05).
 -- The volume target per brand is NOT stored here: it is the sum of app.route_monthly_target over the brand's SKUs (one source, so screen 10
 -- and screen 61 cannot disagree). What did not exist is the memo target and the allocated KPI money:

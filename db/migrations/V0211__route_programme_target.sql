@@ -1,4 +1,4 @@
--- V0231 (PROVISIONAL number, lane sr-targets-server; the lead renumbers at landing, never run outside lane CI before that)
+-- V0211 (FINAL number, renumbered from V0231 by the lead on 2026-11-18; lane sr-targets-server)
 -- N-8 Match Box Lifting Star of the SR app (screen 62, D-OWNER-SR-PROGRAMMES-01; design docs/status/sr-targets-server.md s4, D-TKPI-07).
 -- app.route_programme_target: the monthly target of a route for a programme (kind superstar), in the programme's unit as an exact decimal.
 -- The unit is the base quantity of the programme's SKUs divided by programme.rules.unit_divisor (default 1; owner question Q-H). Slabs, status
