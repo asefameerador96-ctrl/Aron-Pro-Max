@@ -59,6 +59,8 @@ class FakeIngestServer : Dispatcher() {
      * again while [enforce] (or an older server) holds, else released: processed like a new record.
      */
     val integrityHeld = mutableSetOf<String>()
+    /** D-AGATE-24: check-outs the server answers `rejected` / `attendance_duplicate` (it already holds a close for that day); they are not stored in the registry. */
+    val attendanceDuplicate = mutableSetOf<String>()
     var enforce = false
     val pendingResolutions = ArrayList<Pair<String, String>>()
     var holdS = 0
@@ -198,6 +200,7 @@ class FakeIngestServer : Dispatcher() {
                             ack(uuid, type, "rejected", code = "parent_missing", retryable = true)
                         }
                         uuid in rejectFinal -> ack(uuid, type, "rejected", code = "schema_invalid", retryable = false)
+                        uuid in attendanceDuplicate -> ack(uuid, type, "rejected", code = "attendance_duplicate", retryable = false)
                         uuid in integrityHeld && enforce -> ack(uuid, type, "quarantined", code = "device_integrity_failed")
                         uuid in quarantine -> ack(uuid, type, "quarantined", code = "arithmetic_mismatch")
                         else -> {

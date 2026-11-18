@@ -81,6 +81,10 @@ interface CaptureDao {
     )
     suspend fun supersededIn(fromDate: String, toDate: String): List<String>
 
+    /** D-AGATE-25: how many `visit_close` rows a visit has (0 or 1: the call is still open or already closed). */
+    @Query("SELECT COUNT(*) FROM visit_close WHERE visit_client_uuid = :visitClientUuid")
+    suspend fun visitCloseCount(visitClientUuid: String): Int
+
     @Query("SELECT * FROM visit_close WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun visitClosesOn(businessDate: String): List<VisitCloseEntity>
 

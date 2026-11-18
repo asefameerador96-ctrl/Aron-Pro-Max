@@ -350,3 +350,19 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - apsis-migration 610d46d45: third review running (wf_eb8f3954-959).
 - P-SR1b / P-SR2b: both refused the relayed approval (correct); owner must type the push line inside each session; told the owner.
 - Train 122: waiting for the integrator's report.
+
+## 2026-11-18 14:35
+- Train 122b: lane/lead-train122 c13cf70a7, dispatched ci 44314621214 green; integrator pushed INT = ffbe8d6fd; deploy running (report pending). First head 5b379eb52 failed NoSecretsInRepoTest on a sample string in a lead review file (fixed; scratchpad nosecrets.py now run on the docs tree before each docs commit).
+- New lane L-A13 session_014mnioNoE3DBHVP3ANu1PPV (lane/portal-loyalty-api-c; L-A12 retired at 37ddbcbd + handover): bulk lock-table fix + 8 items.
+- Reviews done: loyalty 37ddbcbd (1 blocking: 20,000 advisory locks); sr-targets-server c30c52c63 (5 points: quarantine release, memo_count text, Star rule, status file, truncated tests) -> T-KPI3; android-sr-programmes 6d527e200 (6 blocking in quarter chips / retake) -> A-PROG3; apsis 610d46d45 third FAIL -> plan changed to PHASE 1 preserve + profile only; ops-diagnose-api 4d072962 PASS.
+- Binding rule added for both figure families: a quarantined memo is never added by the phone; awaiting until a resolution/ack reaches it.
+- After 122 lands: merge-INT word to A-GATE8, A-PROG3, T-KPI3, L-A13, SV6 (ops-diagnose-api), M-APSIS1, F-INFRA1, P-TSO; then train 123 = ops-diagnose-api (server, no migration) once merged and green.
+
+## 2026-11-18 15:10
+- TRAIN 122 LANDED: INT ffbe8d6fd (lane/lead-train122 c13cf70a7 + row). Lane run 44314621214 green ("no leaks found", NoSecretsInRepoTest success); integration ci 44317441385 green first attempt; deploy #362 (44320074955) success; SR smoke passed; health build ffbe8d6fd. PITR point 2026-11-18T14:08:32Z. APK aron-release-signed-dev-2446 41980321 B. Migrate console: ops-diagnose run 44324055563 being read (0208 -> 0209 expected).
+- Merge-INT word sent: SV6 (ops-diagnose-api = train 123), A-GATE8, L-A13, M-APSIS1, F-INFRA1, P-TSO (merged: 113f138c, ci running), A-PROG3, T-KPI3.
+- sr-targets-server c6c799b69: server figure holds; phone rule by inference FAILS again (7 holes) -> ruling: EXACT BY IDENTITY (phone sends probe uuids, server answers which are IN the figure in the same snapshot). T-KPI3 to spike/prove first. A-PROG3 told to keep arithmetic behind serverHolds(uuid).
+- android-sr-programmes 85b992cfd: FAIL (5: quarantine added, gift_choice type, redemption set cut by month, quarter key year, final-month rule). Last round on this path, else remove fetched months.
+- apsis phase 1 profile 9b0556171: FAIL (value lists leak; parser skips; quadratic regex; unbounded memory) -> ruling: NO value lists in automatic output; profile-values per named column, owner-run.
+- F-INFRA1 asked for a 'Whole-subscription move' section (D-OWNER-AZURE-MOVE-01).
+- 15:15 train 122 migrate console read (ops-diagnose 44324055563): schema was 0208, migrated to "0209 - attendance closed by comment", "Successfully applied 1 migration ... now at version v0209", 187 validated, exit 0; no ERROR in the migrate console or the worker section.

@@ -289,7 +289,7 @@ fun SrApp(
         // the open call is restored from the day of the open check-in, an earlier call past its 04:00 limit is ended, and a day the rep never checked out of is closed by
         // the phone BEFORE anything else (D-AGATE-06, D-LEAD-PREREQ-04): one function, the same for start, resume, the midnight timer and the end of a call
         // D-AGATE-15: not awaited (the close of a forgotten day makes one location attempt of up to ~30 s; the shell, the permission redirect and the bundle never wait for it)
-        launch { day.resumeDay(); day.taskBoard.load() }
+        launch { day.resumeDaySafely(); day.taskBoard.load() }
         day.attendance.refreshSubmit()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
@@ -299,7 +299,7 @@ fun SrApp(
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
         // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
-        day.resumeDay(); day.reload(); day.taskBoard.load()
+        day.resumeDaySafely(); day.reloadSafely(); day.taskBoard.load()
         boundary++; resumeTick++
     }
     // D-LEAD-PREREQ-03 ruling 1: the automatic close of a day waits for an open call or memo edit and runs when that work ends
@@ -310,7 +310,7 @@ fun SrApp(
         if (srCallOpen || srEditOpen) { srWasOpen = true; day.refreshDayGate() }
         else if (srWasOpen) {
             srWasOpen = false
-            day.resumeDay(); day.reload(); resumeTick++
+            day.resumeDaySafely(); day.reloadSafely(); resumeTick++
         }
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
@@ -326,7 +326,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.resumeDay(); day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.resumeDaySafely(); day.attendance.refreshSubmit(); day.reloadSafely(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -377,7 +377,12 @@ fun SrApp(
     // D-AGATE-15 (T1): an unsaved memo edit dropped at midnight leaves the edit screen for Home, where the notice says so (never a dead screen)
     LaunchedEffect(rollover.editDropped, screen) { if (rollover.editDropped && screen == SrScreen.EDIT) screen = SrScreen.HOME }
     var checkInNotice by remember { mutableStateOf(false) }
-    AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
+    // D-AGATE-22/25 (item 5): the lock-out fallback state; while it shows, Back does nothing and the screens below are hidden from TalkBack (the screen itself takes every touch)
+    val closeLockout by day.closeLockout.collectAsState()
+    var tryingAgain by remember { mutableStateOf(false) }
+    BackHandler(enabled = closeLockout != null) { }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+    AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize().then(if (closeLockout != null) Modifier.clearAndSetSemantics { } else Modifier)) { s ->
         // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content
         val closed = dayGate
         // D-LEAD-PREREQ-04 ruling 4: while an earlier day's call is open only THAT call's screens work; every other gated screen names the reason and offers to close the call
@@ -691,6 +696,13 @@ fun SrApp(
         }
         }
     }
+    // D-AGATE-22 (item 5): the lock-out fallback. A forgotten day or an earlier call that kept failing to close (3 attempts) is a plain full-screen message with a short code and Try again;
+    // check-in is never silently off. It goes the moment a close succeeds.
+    closeLockout?.let { f ->
+        com.aktcl.aron.feature.attendance.DayCloseFailedScreen(f.code, tryingAgain, onTryAgain = { scope.launch { tryingAgain = true; try { day.resumeDaySafely(); day.reloadSafely() } finally { tryingAgain = false }; resumeTick++ } })
+    }
+    }
+
     if (syncSheet) {
         SrSyncSheet(
             snapshot = syncSnap, chip = sync, sunlight = sunlight, onSunlight = onSunlight,

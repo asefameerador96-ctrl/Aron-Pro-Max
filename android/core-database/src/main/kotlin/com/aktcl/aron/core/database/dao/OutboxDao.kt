@@ -174,9 +174,13 @@ abstract class OutboxDao {
     /**
      * F-SYS-080: the acked rows of business dates [from]..[to] (`YYYY-MM-DD`), the phone side of the sync digest. A row the
      * server answered `accepted` or `duplicate`, or a quarantine a reviewer released, is acked; the server counts the same
-     * (registry `accepted` or `voided`).
+     * (registry `accepted` or `voided`). D-AGATE-24 (item 10): a phone close the server answered `rejected` / `attendance_duplicate` is acked here (done) but is NOT in the server's
+     * registry (it holds another close), so it carries `last_code = attendance_duplicate` and is left out of the digest, or every digest would name its bucket.
      */
-    @Query("SELECT business_date AS businessDate, record_type AS recordType, client_uuid AS clientUuid FROM outbox WHERE state = 'acked' AND business_date >= :from AND business_date <= :to")
+    @Query(
+        """SELECT business_date AS businessDate, record_type AS recordType, client_uuid AS clientUuid FROM outbox
+           WHERE state = 'acked' AND business_date >= :from AND business_date <= :to AND IFNULL(last_code, '') != 'attendance_duplicate'""",
+    )
     abstract suspend fun ackedForDigest(from: String, to: String): List<DigestRow>
 
     /**

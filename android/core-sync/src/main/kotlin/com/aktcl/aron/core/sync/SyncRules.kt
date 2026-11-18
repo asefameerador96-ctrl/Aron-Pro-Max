@@ -52,7 +52,9 @@ object AckRules {
     fun target(ack: RecordAck, failures: Int, rowMaxRetries: Int, phoneClose: Boolean = false): AckTarget = when (ack.status) {
         "accepted", "duplicate" -> AckTarget(OutboxState.ACKED, null)
         // contract 1.19.0: the server already holds a check-out for that day (the rep's own, or another phone's close): the phone's close is DONE, never an error shown to the rep
-        "rejected" -> if (phoneClose && ack.code == ATTENDANCE_DUPLICATE) AckTarget(OutboxState.ACKED, null)
+        // D-AGATE-24 (item 10): the row is kept with `last_code = attendance_duplicate` on its ACKED state, so the phone's sync digest can leave it out (the server's registry does not count it: it
+        // holds another close, not this row); no refusal is shown for an acked row
+        "rejected" -> if (phoneClose && ack.code == ATTENDANCE_DUPLICATE) AckTarget(OutboxState.ACKED, ATTENDANCE_DUPLICATE)
             else if (isRetryable(ack)) retry(ack.code, failures + 1, rowMaxRetries) else AckTarget(OutboxState.REJECTED, ack.code)
         "quarantined" -> AckTarget(OutboxState.QUARANTINED, ack.code)
         else -> retry("unknown_status:${ack.status}".take(60), failures + 1, rowMaxRetries)

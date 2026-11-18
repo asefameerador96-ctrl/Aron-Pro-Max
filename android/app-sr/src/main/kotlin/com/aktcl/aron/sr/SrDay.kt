@@ -472,7 +472,9 @@ class SrDay(
     ) {
         if (e.kind == "check_out") {
             sale.prepare()
-            capture.recordCheckOut(e, f, phoneMarks) { date -> sale.autoDaySubmits().build(date) }
+            // D-AGATE-22 (item 6): the rep's check-out looks at the open work AGAIN inside its transaction (a call committed while its fix was read refuses it, nothing written)
+            val guard: (suspend () -> Unit)? = if (phoneMarks.isEmpty()) ({ openWorkStored()?.let { throw com.aktcl.aron.feature.attendance.OpenWorkAtCheckOutException(it) } }) else null
+            capture.recordCheckOut(e, f, phoneMarks, guard) { date -> sale.autoDaySubmits().build(date) }
         } else capture.recordAttendance(e, f)
         refreshDayGate()
         // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
@@ -480,6 +482,15 @@ class SrDay(
         // Play Integrity evidence at check-in (docs/24 s8.7): collected by the next sync run, never awaited here.
         if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
         runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
+    }
+
+    /**
+     * D-AGATE-22 (item 6): [openWorkNow] plus the STORED view of an open call (the lookup [restoreOpenVisit] uses): a call whose visit is committed in Room but not yet in the session
+     * (it opened while the check-out was reading its fix) still counts. Read inside the check-out's transaction.
+     */
+    internal suspend fun openWorkStored(): com.aktcl.aron.feature.attendance.OpenWork? = openWorkNow() ?: run {
+        val last = FinalSubmitLock.callToRestoreAcross(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" }
+        if (last != null && SrCallLock.refusal(capture, last.meta) == null) com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL else null
     }
 
     /** What is still open at check-out: a call in progress, or a memo edit being made. Read at the press. */
@@ -503,6 +514,7 @@ class SrDay(
         val r = reading ?: readCloseFix()
         val closed = ArrayList<String>()
         for (d in stale) {
+            if (attendance.state.value.busy) break // the rep pressed check-out meanwhile: his press goes first (D-AGATE-25)
             val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
             val fix = r.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
             val coords = if (r.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", r.lat, r.lng) else null
@@ -510,7 +522,10 @@ class SrDay(
                 eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, coords,
             )
             val mark = com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED, businessDate = d, createdAt = iso(clock.nowMs()))
-            if (com.aktcl.aron.feature.attendance.catching { commitAttendance(event, fix, listOf(mark)) }.isSuccess) closed += d
+            val res = com.aktcl.aron.feature.attendance.catching { commitAttendance(event, fix, listOf(mark)) }
+            // D-AGATE-22 (item 5): the local counter of failed closes per forgotten date; reset on success
+            if (res.isSuccess) { closed += d; com.aktcl.aron.feature.attendance.catching { closeFailures.succeeded(com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY, d) } }
+            else res.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY, d, t, clock.nowMs()) } }
         }
         if (closed.isNotEmpty()) {
             attendance.restore(attendanceForScreen()); refreshDayGate()
@@ -522,6 +537,8 @@ class SrDay(
     /** The earlier dates whose check-in has no check-out and that the phone may close now: none while a call or a memo edit is open (D-LEAD-PREREQ-03 ruling 1). */
     suspend fun forgottenDays(): List<String> {
         if (openWorkNow() != null) return emptyList()
+        // D-AGATE-25: while the rep's own check-out is in flight (its fix is being read) the phone does not start a close of the same day: it could land first and turn the rep's press into a failure
+        if (attendance.state.value.busy) return emptyList()
         val today = businessDate()
         return com.aktcl.aron.feature.attendance.catching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
     }
@@ -566,8 +583,14 @@ class SrDay(
         val vd = visitDate(v)
         if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
         // a failing write is caught and the call and its draft stay until a close is stored; a cancellation is not swallowed
-        val refusal = com.aktcl.aron.feature.attendance.catching { sale.closeCall(phoneEnd = true) }.getOrNull()
-        if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
+        val closeRes = com.aktcl.aron.feature.attendance.catching { sale.closeCall(phoneEnd = true) }
+        val refusal = closeRes.getOrNull()
+        if (visitSession.current.value != null) {
+            // D-AGATE-22 (item 5): a close that threw counts as one failed attempt for this call's date (a refusal is not a failure)
+            closeRes.exceptionOrNull()?.let { t -> com.aktcl.aron.feature.attendance.catching { closeFailures.failed(com.aktcl.aron.feature.attendance.CloseFailures.KIND_CALL, vd, t, clock.nowMs()) } }
+            return false
+        }
+        com.aktcl.aron.feature.attendance.catching { closeFailures.succeeded(com.aktcl.aron.feature.attendance.CloseFailures.KIND_CALL, vd) } // the close could not be written: the next start or resume tries again, nothing is lost
         // the draft goes only after the close is stored (a close that throws never drops it)
         // D-AGATE-19 (step-5 low 3): the route-day refused the close (Final Submit / Sales Submit): the call ended on the phone with no close, so no marker came with one; the rep is still told
         if (refusal != null) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.CALL_ENDED, businessDate = vd, outletId = v.outletId, createdAt = iso(clock.nowMs()))) }
@@ -588,6 +611,20 @@ class SrDay(
         // D-AGATE-19: the notice is stored BEFORE the draft goes (inside the draft's own lock, and only when something is really there to drop)
         val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(d.visitUuid) { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.EDIT_DROPPED, businessDate = d.businessDate, createdAt = iso(clock.nowMs()))) } }.getOrDefault(false)
         return dropped
+    }
+
+    /** D-AGATE-22 (item 5): the local counters of failed closes (in `sync_meta`), and the lock-out they raise after [com.aktcl.aron.feature.attendance.CloseFailures.LIMIT] failures. */
+    internal val closeFailures = com.aktcl.aron.feature.attendance.CloseFailures(db.referenceDao())
+    val closeLockout = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.attendance.DayCloseFailure?>(null)
+
+    /** Re-reads the lock-out: a counter whose day was closed (or whose call is gone) is deleted and never shown. Never throws (a cancellation propagates). */
+    suspend fun refreshCloseLockout() {
+        closeLockout.value = com.aktcl.aron.feature.attendance.catching {
+            closeFailures.lockedOut { kind, date ->
+                if (kind == com.aktcl.aron.feature.attendance.CloseFailures.KIND_DAY) date in capture.openAttendanceDates()
+                else visitSession.current.value?.let { visitDate(it) == date } == true
+            }
+        }.getOrNull()
     }
 
     private val resumeLock = kotlinx.coroutines.sync.Mutex()
@@ -615,9 +652,23 @@ class SrDay(
                 com.aktcl.aron.feature.attendance.catching { attendance.restore(attendanceForScreen()) }
                 attendance.settle()
                 refreshDayGate()
+                refreshCloseLockout()
                 restoreRolloverNotice()
             }
         }
+    }
+
+    /**
+     * D-AGATE-22 (item 4): what the app's composition effects call. A Room read failure inside [resumeDay] (restoring an open call, reading the attendance) must never crash the
+     * app: it is caught here (cancellation is rethrown, never swallowed) and the next start, resume or boundary tries again, exactly as the AMO does.
+     */
+    suspend fun resumeDaySafely() {
+        com.aktcl.aron.feature.attendance.catchingLive { resumeDay() }.exceptionOrNull()?.let { android.util.Log.w("AronDay", "resume failed: type=" + it.javaClass.simpleName) } // the class only: no message, no payload
+    }
+
+    /** D-AGATE-25: `reload()` for the composition effects that follow a resume: a Room read failure there must not crash the app either (and is logged by class). */
+    suspend fun reloadSafely() {
+        com.aktcl.aron.feature.attendance.catchingLive { reload() }.exceptionOrNull()?.let { android.util.Log.w("AronDay", "reload failed: type=" + it.javaClass.simpleName) }
     }
 
     @Volatile private var nextSequence = 1
@@ -710,7 +761,10 @@ class SrDay(
     }
 
     /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
-    suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
+    suspend fun slipNotPrinted(): Boolean = slipNotPrintedOn(businessDate())
+
+    /** D-AGATE-22 (item 2): the same for ONE date: the automatic Sales Submit of a forgotten day reads the slip of the day it closes, not today's. */
+    suspend fun slipNotPrintedOn(date: String): Boolean = db.captureDao().stockOn(date).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
     private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)

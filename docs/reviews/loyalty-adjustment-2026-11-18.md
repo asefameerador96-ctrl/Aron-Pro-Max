@@ -163,3 +163,245 @@ LOWS:
 - API ADMIN grant check: loyaltyPrincipal applies the module grant only when p.modules is non-null ('when the grants are live'). An ADMIN token with no modules map would pass Need.WRITE. This existed before the lane and the guard checks first, but the adjustment now relies on it as well.
 - The ledger 'more' link keeps only the lc cursor and drops vc/ec, so paging the ledger resets the versions and enrolments pages. The single-adjustment submit button uses only aria-disabled (pointer-events-none); pressing Enter can still submit while busy, which is harmless because the uuid is reused.
 - No web test covers the uuid reuse on a retry inside the component, or the BRAND ledger refusal through the page. nextAttempt itself is unit-tested in web/tests/loyalty.test.ts.
+
+
+## Re-review c4113eed..37ddbcbd, 2026-11-18
+
+Read from code only; nothing built or run.
+
+### lock-and-ledger verdict=pass
+SUMMARY: Lens: the race fix and the ledger lows at 37ddbcbd (delta c4113eed..37ddbcbd). Read-only: I read AdminLoyalty.kt (postAdjustment, putAdjustments, adjOutlets, adjLockPairs, adjBalances, loyaltyPrincipal), LoyaltyLedgerJob.kt, BundleProgrammes.kt (loyalty, pendingGiftVerifications), GiftPhotoRecords.kt, V0193, JdbiStores grantsLive, AdminModules.check, RequestIsolation, postgres.bicep and the new tests in AdminLoyaltyTest. I built and ran nothing.
+
+The previous blocking item is fixed:
+- **Same lock key.** adjLockPairs uses exactly the job's key and call: the string "loyalty:$o:$programme", `pg_advisory_xact_lock(hashtextextended(:k, 0))`, wrapped in the same SELECT.
+- **Lock taken before the balance is read.** Single post: the pair lock is taken after the scope, state and enrolment checks but before adjBalances, then the INSERT runs. Bulk apply: the pair locks are taken over the enrolled outlets, distinct and numerically sorted, before adjBalances. A dry run takes no pair lock and writes nothing, which is fine.
+- **One-statement balance.** adjBalances is one statement: the ledger sum minus the non-voided redemptions that have no 'redemption' ledger row. That is the same figure BundleProgrammes.loyalty sends as balance_points.
+- **New race tests.** Three concurrent -80 debits on 100 (two single posts and one bulk) give exactly one pass, two 409s and a balance of 20. A second test holds the job's pair lock while a redemption is stored, and the debit waits and then sees it.
+
+Lock order:
+- Every adjustment takes its uuid advisory locks first, then FOR SHARE on the programme row, then the pair locks.
+- The ledger job takes one pair lock per transaction and no other explicit lock. Its ledger INSERT takes only FK KEY SHARE on the programme row, which does not conflict with FOR SHARE.
+- Programme status changes take FOR UPDATE on the programme row and no pair lock.
+- Redemption ingest and expiry take no pair lock outside the job (expiry runs inside reconcilePair).
+- So nothing waits in a cycle among pair locks: two bulks lock in the same ascending order, and the job holds at most one pair. Any residual cycle would be caught by the PostgreSQL deadlock detector and answered 40P01, which maps to a transient 503, not a hang. The one real inversion is between the two uuid locks (see the lows).
+
+The other points in this lens:
+- **Replay before scope.** The replay is answered after the strict write-grant check and the programme-visibility 404, so a caller who lost the grant gets 403 or 404 and never the stored row. Another writer who replays someone else's uuid gets only a row they can already read through GET /ledger. Writers are national today.
+- **uuid cross-conflict.** Checked both ways under both uuid locks, and tested.
+- **Overdraw record.** The 'overdraw' flag is set on the ledger row. The single-post audit holds allow_overdraw, balance_before and overdrawn; the bulk audit holds allow_overdraw and overdrawn_rows.
+- **debit_has_no_expiry.** Enforced in adjRow for single and bulk posts, and in the web helper.
+- **Strict modules-claim check.** A claim-less ADMIN token is refused on both adjustment routes. In production the grants are latched live once V0089 exists (it ships), and then AdminModules.check answers 401 ERR_SCOPE_CHANGED for a claim-less ADMIN. The older writers' gap therefore only exists on a database before that migration; I judge it low or nil.
+- **Contract.** The delta is additive: optional `units_captured`, new codes and longer descriptions inside the still-provisional 1.23.0. No migration.
+- **units_captured.** Correct for every row it is sent on: distinct unit_no of photos that are not voided and not duplicates, unit_no not null, filtered to 1..qty. A photo with an out-of-range or missing unit is flagged is_duplicate by GiftPhotoRecords/V0193, so it is excluded.
+- **Tests.** No test was weakened. The removed lines are refactors of app() and activeProg() to take parameters.
+
+No blocking finding. Two lows matter more than the rest:
+- A 20,000-row bulk takes up to 20,000 advisory locks, one round trip each, including outlets that only receive credits.
+- The campaign exemption to not_enrolled contradicts the bundle.
+
+Not verified:
+- Runtime behaviour.
+- The actual lock-table size and max_connections on the B1ms, B2s, D2ds_v5 and D8ds_v5 servers (from memory: about 50, 429, 859 and 3,437 connections at 64 locks per transaction).
+- Row-lock queueing between FOR SHARE, FOR UPDATE and FK KEY SHARE, beyond the deadlock-detector argument above.
+- Query plans for the LIKE prefix lookups.
+- The phone's use of units_captured.
+- The web and e2e changes, beyond the retry-key and size-cap lows.
+
+LOWS:
+- Bulk lock count and hold time (AdminLoyalty.kt putAdjustments -> adjLockPairs). The apply takes one pg_advisory_xact_lock per distinct enrolled outlet: up to 20,000, each its own round trip. That includes credit-only rows, which the guard does not need (a credit racing a debit only makes the debit's check more conservative, and the job already picks up late-committed adjustments through the id window and the daily sweep). Advisory locks never use the fast path, so every one takes a slot in the shared lock table, sized max_locks_per_transaction (64) x (max_connections + background processes). Scenario: on a Burstable B1ms server (dev-lite, about 50 connections, so roughly 3,000 to 5,000 slots), a 20,000-row apply fails with 53200 'out of shared memory' after rollback-safe partial acquisition. While it holds thousands of slots, other sessions that need a lock outside the fast path, such as a sync upload touching more than 16 relations, can fail with the same error. A pair waiter, such as a single debit or the job, can also exceed the api role's 15 s statement_timeout while a large bulk holds its pair, giving a 500 or a failed job pair that is retried next pass. Nothing is double-posted and nothing hangs, and the final D8ds_v5 server has headroom (about 220k slots), so this is low, but it should be bounded. Fix: lock only the debit outlets, take them in one statement (SELECT pg_advisory_xact_lock(hashtextextended('loyalty:'||o||':'||:p,0)) FROM unnest(sorted array) o ORDER BY o), and either cap debit rows per file (for example 2,000) or document the limit.
+- The two uuid advisory locks are taken in opposite orders. postAdjustment locks adjustment_req:U then adjustment_batch:U; putAdjustments locks adjustment_batch:U then adjustment_req:U. Scenario: the same uuid is sent at the same moment as a request_uuid and as a batch_uuid. Each transaction holds its first lock and waits for the other's, PostgreSQL aborts one with 40P01 (mapped to a transient 503), and the retry gets the intended 409. This needs uuid misuse, so impact is minimal. Take the two locks in one fixed order in both handlers.
+- The CAMPAIGN exemption to not_enrolled is wrong. adjOutlets treats every in-scope outlet as enrolled when kind = 'campaign', on the grounds that 'the bundle shows its balance to every outlet in scope'. But BundleProgrammes.loyalty, used by both the bundle and ProgrammesReads, builds its pairs only from app.programme_enrolment, for every kind. Only programmes() exempts campaigns. Scenario: an admin credits +500 to a non-enrolled outlet in a campaign programme. The post is accepted (201), audited and listed in the ledger, but the phone never shows the balance: the exact dead-points case not_enrolled was added to prevent. The contract text ('a campaign programme needs none ... the phone shows a balance only for an enrolled outlet') has the same contradiction, and the test only asserts the 201. Either drop the exemption, or make the bundle's loyalty() include in-scope campaign outlets; then log it in DECISIONS.
+- pending_gift_verifications row selection (BundleProgrammes.pendingGiftVerifications). A row is listed only when `photos < qty`, and `photos` counts every non-duplicate, non-voided photo, including units above the CURRENT qty. units_captured is filtered to 1..qty but photos_captured is not. Scenario: a redemption has two lines of the same gift (qty 4) and photos for units 3 and 4. One line is voided later, so qty becomes 2; the stored photos for units 3 and 4 stay non-duplicate because check_flag is only judged on arrival. Now photos = 2 >= qty = 2, so the row is dropped although units 1 and 2 are open, and the phone skips missing photos. The filter predates S-1 and the case is rare. units_captured is correct on every row that is listed. Fix: select rows where the count of distinct units in 1..qty is below qty, and compute photos_captured the same way.
+- Redemption ingest takes no pair lock. The guard sees redemptions already stored and those the job is posting, but not one that is mid-ingest. A debit can pass at balance B while a field redemption commits a moment later, so the pair ends below zero. This is consistent with the ledger model (redemptions are field facts, never refused, and overdraw is derived), but D-LOY-API-37 and the contract say 'two concurrent debits cannot both pass the guard'. Add one line saying a concurrent field redemption can still overdraw, and that the derived `overdrawn` flag on the phone shows it.
+- Bulk overdraw audit: the audit row records only allow_overdraw and the overdrawn_rows count. Which rows went below zero, and their balance_before, appear only in the ledger flags ('overdraw'), and balance_before is not recorded at all for bulk. An auditor cannot see from audit_log alone what each overdrawn outlet held. Consider adding an array of {outlet_id, balance_before} for flagged rows (bounded at 200).
+- The cross-namespace and replay lookups use `source_id LIKE '<uuid>:%'` on a database collated en_US.utf8. The UNIQUE(source_type, source_id) btree can then only seek on source_type = 'adjustment' and filters every adjustment row, so the cost of every single post and bulk apply grows with the total number of adjustment rows ever posted (20,000 per large file). Not a correctness issue, and I did not check the plan. A range predicate (source_id >= '<uuid>:' AND source_id < '<uuid>;') or a COLLATE "C" comparison would seek.
+- Replay before scope: the replay comes after the strict grant check and the programme-visibility check, so nothing leaks to a caller who lost the grant. Any writer who presents another admin's uuid with the same content gets that admin's stored row and reason; the same writer can already read it through GET /ledger. The replay also skips the outlet-reach check, which matters only once a writer's reach can be narrower than national. Acceptable; note it in the contract.
+- Strict modules check: an ADMIN token without the modules claim fails closed on both adjustment routes, and this is tested both with grants live and not live. In production the grants latch live as soon as app.user_module_grant exists (V0089 ships), and AdminModules.check then answers 401 ERR_SCOPE_CHANGED for a claim-less ADMIN on every module route. The older loyalty writers' gap therefore exists only before that migration. Severity: nil in production, a test-fixture concern only.
+- Not verified: whether the eleven earlier lows are all closed. Seen fixed: the overdraw flag and audit, not_enrolled, debit_has_no_expiry, the retry keys (single post keyed on outlet, points and expires_on; bulk batch uuid keyed on rows only), the uuid cross-check, replay before scope, and the 2 MiB client file cap. Not checked: that the lag of lapsed-but-not-yet-expired credits is now written down for the adjustment, and the ADJ_SELECT audit_log subquery index.
+
+### s1-contract-web-tests verdict=fail
+SUMMARY: Read-only review of 37ddbcbd. I read the delta c4113eed..37ddbcbd (24 files), compared it with the previous review's blocking finding and lows, and read the code paths each check depends on: LoyaltyLedger.lockPair, GiftPhotoRecords.flagUnit, the gift_photo_one_per_unit index and the V0193 election trigger, mapDb, the mock and the BFF. Nothing was built or run.
+
+The previous blocking finding is fixed. The single and bulk paths take the job's pair lock (same key, outlets sorted) before one balance statement, and in that statement the ledger sum and the unposted redemptions are read in one snapshot.
+
+The fix brings in one new blocking problem. A bulk apply takes one transaction-level advisory lock per outlet, and the API allows up to MAX_BATCH_ROWS = 20,000 rows. That can fill Postgres's shared lock table.
+
+S-1 units_captured is correct:
+- Only non-voided, non-duplicate photos of that redemption and gift count. A unit photo with no unit number or outside 1..qty is flagged by flagUnit with is_duplicate = true, so it never counts.
+- The unique per-unit index and the "first wins" election leave one winner per unit, so a duplicate of a unit adds nothing.
+- Refused or quarantined photos are not stored, so they cannot appear.
+- Results are DISTINCT and ascending, with a defensive Kotlin filter to 1..qty.
+- The outlets come from the caller's own outlet list, so scope is the existing one.
+- Cost is one indexed correlated subquery per pending item, with at most 500 items.
+- The bundle version is a digest of the content, so a new photo moves it.
+- The new field is optional in the YAML, in openapi.yaml and in openapi.d.ts. No Kotlin phone DTO reads pending_gift_verifications yet, so nothing can drift.
+
+Other checks:
+- **Contract and schema:** no migration; the contract changes are additive.
+- **Roles:** strict modules fail closed on both adjustment verbs, and that is tested.
+- **Audit:** the audit rows now carry allow_overdraw, balance_before and overdrawn (overdrawn_rows for bulk).
+- **Web retry key:** it resets to null after every success. Two intended +500s on one outlet therefore get two uuids and do not collapse into one. After a refusal the key is kept, so ticking allow_overdraw or editing the reason reuses the uuid, which is safe because nothing was posted.
+- **Tests:** in the delta, outlets were renumbered from 301/401 to 101/102/103 and new assertions were added. I found no assertion removed or loosened. The geography assertion is now an exact equality.
+
+Not verified:
+- Any test run, or the lane's claim that removing the lock made the race test fail.
+- The real max_locks_per_transaction and max_connections on the test Postgres.
+- Whether planner.routesFor returns the first route in route-id order, which the geography test's oracle assumes.
+- Whether a gift-photo arrival marks a pre-generated bundle snapshot dirty. On-request builds rebuild the digest.
+- Row-lock interplay between the adjustment's FOR SHARE on the programme, a concurrent status change's FOR UPDATE, and the job's foreign-key KEY SHARE. Postgres would detect a deadlock rather than hang.
+- The phone side of S-1, which has no consumer yet.
+
+#### BLOCKING upheld=3/3: A large bulk apply takes up to 20,000 advisory locks in one transaction and can run Postgres out of lock memory, failing this write and other sessions' writes
+WHERE: backend/masterdata/src/main/kotlin/com/aktcl/aron/backend/masterdata/AdminLoyalty.kt adjLockPairs (l.1062-1064), called from putAdjustments for every enrolled outlet of a non-dry, non-replayed file; MAX_BATCH_ROWS = 20_000 (l.115); the web ADJ_MAX_ROWS is 20_000 too
+WHY: pg_advisory_xact_lock entries live in the shared lock table, whose size is max_locks_per_transaction (default 64) times (max_connections + max_prepared_transactions). That is about 6,400 slots at 100 connections and about 3,200 on a 50-connection burstable SKU. The Postgres docs warn that filling it leaves the server unable to grant any lock. Each outlet also costs one sequential round trip, so 20,000 statements run while the programme row is held FOR SHARE. The lock is misused in a way that can fail writes: the bulk itself fails, and so do unrelated writers such as sync ingest and the ledger job that need a lock while it is held. The race tests use one outlet, so nothing exercises the contract's documented maximum.
+SCENARIO: An admin uploads a 10,000-row opening-balance CSV for a loyalty programme (allowed up to 20,000). The dry run passes because it takes no pair locks. On apply, the loop reaches about 3,000 to 6,000 locks and Postgres raises 53200 'out of shared memory, increase max_locks_per_transaction'. mapDb does not map that state, so the BFF gets a 500 and nothing is posted. While the transaction is still acquiring, a concurrent sync upload or ledger-job pair lock fails with the same error. Retrying the same batch_uuid fails the same way, so a valid file can never be applied. Possible fixes: one programme-level exclusive advisory lock for a bulk apply, with the job and single adjustments taking that key shared before their pair lock (or the pair lock only below a small row count); or cap a bulk file to a few hundred outlets per transaction and document the limit; plus a test with a file of several thousand rows.
+
+LOWS:
+- The single and bulk paths take the two per-uuid locks in opposite orders. postAdjustment takes adjustment_req then adjustment_batch; putAdjustments takes adjustment_batch then adjustment_req (l.1114-1115 vs l.1160-1161). If the same uuid is sent at once as a request_uuid and as a batch_uuid, the two transactions deadlock. Postgres aborts one with 40P01, which mapDb does not map, so the caller gets a 500 instead of the documented 409. No legitimate write is lost (the loser would have been a 409), but taking the locks in one fixed order everywhere is a one-line fix.
+- Pending-list membership is still decided by the SQL count of all winners (`photos < qty`), while units_captured is filtered to 1..qty in Kotlin. If a redemption has two lines of one gift and one line is voided after its units were photographed, qty drops below the highest photographed unit. Example: qty 3 becomes 2, with photos on units 1 and 3. Then photos = 2 and the item leaves the list although unit 2 has no photo, or photos_captured disagrees with units_captured.size. Count only unit_no BETWEEN 1 AND qty in SQL so both come from one predicate. units_captured itself is never wrong.
+- The S-1 test covers only an empty list and units [1, 2] with one duplicate. It has no voided photo, no gap such as [1, 3], no unit above qty and no refused photo. The contract also does not tell the phone what to do when units_captured is missing (older server); the phone should fall back to photos_captured.
+- DECISIONS.md D-LOY-API-36 says photos without a unit_no 'count in photos_captured only'. In the code such a campaign-unit photo is flagged unit_out_of_range with is_duplicate = true and counts nowhere, so the text is inaccurate.
+- The contract ACHIEVEMENT RULE text in ProgrammesSection repeats itself. The 'astha_as_of / as_of display only' sentence appears twice, and single-flight appears twice: first as 'both directions', then as 'never uploads while a bundle request is in flight'. It also keeps 'if an acknowledgement arrives during the request it discards ... and refetches', which single-flight makes unreachable apart from pushed resolutions. The quarantine carve-out (never added until a resolution or ack reaches the phone) is stated for memos only. The loyalty sentence ('the SAME rule ...') does not say a quarantined redemption is not subtracted twice once a reviewer accepts it without an upload ack. State each rule once and extend the quarantine clause to redemptions explicitly.
+- The race tests are timing-based, not latch-based. Three async calls on Dispatchers.IO have no barrier, so they may run one after another and pass without the lock. The held-lock case relies on Thread.sleep(400): if the request reaches the lock after the holder commits, it reads 10 and is refused anyway, so the test passes without the lock. Make it deterministic by polling pg_locks/pg_stat_activity until the adjustment is waiting on the advisory lock, then insert and commit.
+- The contract says 'two concurrent debits cannot both pass the guard'. That holds for admin debits and job passes, but sync redemption ingest does not take the pair lock. A redemption committing during an admin debit can still take the balance below zero with no overdraw flag. Offline redemptions are unguarded by design, but the wording should say the guard covers admin debits and job passes only.
+- The BFF cap compares raw.length, which counts UTF-16 code units, not bytes. A Bangla-heavy body can be up to about 3 times 2 MiB in bytes. With no Content-Length (chunked), the whole body is read into memory before the check. The browser checks file.size in bytes, so the two caps disagree.
+- The mock does not model the strict modules claim (an ADMIN token with no claim is refused) and its audit rows lack allow_overdraw, balance_before and overdrawn. Those parts of mock = API are not covered by web tests.
+- The geography oracle in BundleProgrammesLowsTest uses CURRENT_DATE (database UTC) and `valid_to >= CURRENT_DATE`. The server uses planner.routesFor(user, Dhaka business date) plus weekend handling. Between 18:00 and 24:00 UTC, or with a weekday-specific plan, the oracle may disagree with the server. The test then fails spuriously; it is not weakened.
+- ProblemTable renders t(`loy.adj.field.${column}`) for any column. A server row error whose pointer ends in an unexpected key falls back to whatever t() returns for a missing key, which I did not check.
+
+
+## Landing review at aae4a9648, 2026-11-18
+
+Read from code only; nothing built or run.
+
+### lock-fix-round verdict=pass
+SUMMARY: Read-only review of lane/portal-loyalty-api-c at aae4a9648, covering the fix-round delta 37ddbcbd..aae4a9648 (lane commits 65dc2a24f and 245880614 plus the base merge) and what would land (ffbe8d6fd...aae4a9648: 48 files). I read AdminLoyalty.kt (adjLockPairs, adjLockUuid, adjDb, postAdjustment, putAdjustments, adjOutlets), LoyaltyLedgerJob.kt (lockPair, reconcilePair, pairsToReconcile), BundleProgrammes.pendingGiftVerifications, the new AdminLoyaltyTest, GiftPhotoRecordsTest and BundleProgrammesLowsTest tests, the contract text (postProgrammeAdjustment, putProgrammeAdjustments, ProgrammesSection ACHIEVEMENT RULE), the BFF boundedJson, the mock, the web helper, and D-LOY-API-38/-39. Nothing was built or run.
+
+No blocking finding. The previous blocking item (up to 20,000 advisory locks) is fixed.
+
+(1) Guarded-debit locking:
+- Bulk: only distinct outlets that get a debit locked when the file has no allow_overdraw.
+- Single post: any debit is locked; a credit is not.
+- One statement over a sorted bigint[] (ORDER BY + OFFSET 0 fence).
+- Key text `'loyalty:'||o||':'||p` and hashtextextended(..,0) match LoyaltyLedger.lockPair exactly. The lock function is volatile, so a count(*) wrapper cannot prune it.
+- The cap (more than 2,000 guarded debit rows, `too_many_debit_rows`) is checked in putAdjustments after the write-grant check and before any database work. It runs on every call, so it holds for a dry run and for an apply sent without one.
+- 53200 is caught inside mapDb and returned as 503 with nothing written.
+- A credit-only file takes no pair lock; the test counts pg_locks.
+- The lens's "1,999 guarded + 18,000 allowed" file cannot exist: allow_overdraw is a file-level flag. The related race (allowed debits take no lock) is the first low.
+
+(2) uuid locks: one fixed order (batch, then request) in both handlers via adjLockUuid.
+
+(3) not_enrolled: now checked for every kind. This matches the bundle's loyalty(), which uses the same valid_from/valid_to predicate. Tested for single and bulk on a campaign programme.
+
+(4) adjustHook: it is a constructor parameter that defaults to null. The only production construction (Wiring.kt:412) does not pass it, and no request or configuration can set it. The barrier test really overlaps the three transactions. Without the lock all three would post, so it can fail (the lane also says it proved this once). The held-lock test is mostly deterministic (see lows).
+
+(5) S-1: one filtered set (not voided, not duplicate, unit present, 1..current qty) decides membership, units_captured and photos_captured. Outlets are the bundle's own. Cost is one correlated subquery per group, capped at 501 rows. The tests cover a gap, a unit above qty, a voided photo, a parent_refused photo and the stale-qty case.
+
+(6) The ACHIEVEMENT RULE now states its five rules once each, and it describes today's inference behaviour correctly in the main. But it names a nonexistent resolution `rejected`, and it inherits holes the lead has already ruled against (see lows).
+
+(7) The BFF cap now counts bytes.
+
+(8) The oracle now uses world.today() (Dhaka date).
+
+Contract: still additive against the deployed 1.21.0. The lines removed on the landing side are rewritten descriptions only; no member, enum value or required flag is removed. No migration. The base merge reverted nothing in the six shared files. No test was weakened: the old timing-based race test was replaced by stricter latch tests, and the campaign test now expects the ruled 400 before enrolment.
+
+Not verified:
+- Any runtime behaviour or CI result.
+- That the latch tests actually fail with the lock removed (the lane's claim).
+- That the test client really runs the three requests concurrently.
+- world.today() and planner.routesFor weekday handling.
+- Whether the earlier lows (bulk per-row balance_before in the audit, the LIKE prefix lookups, the gaps between the mock and the API) are closed.
+- The Bangla strings beyond the two added keys.
+
+LOWS:
+- Overdraw-allowed bulk debits take no pair lock, so under concurrency the guard and the 'overdraw' flag can both be wrong, and neither the contract nor DECISIONS says so. AdminLoyalty.kt putAdjustments locks only when !allow (the single post locks any debit, so the two paths also differ). Scenario: outlet balance 100. Admin A sends a single -80 without allow_overdraw: it takes the pair lock and reads 100. At the same instant admin B applies a bulk file with allow_overdraw containing that outlet at -80: no lock, it also reads 100. Both commit. The balance is -60, yet neither ledger row carries 'overdraw'. A's audit says overdrawn=false with balance_before=100, and B's says overdrawn_rows=0. Two allowed bulks on the same outlet give the same result. This contradicts the contract sentences 'two concurrent ADMIN debits (single or bulk) ... cannot both pass the guard' and 'a debit that goes below zero with allow_overdraw is flagged overdraw', and D-LOY-API-38's 'with allow_overdraw there is nothing to guard'. I judge it not blocking: the negative balance is authorised by an allow_overdraw request recorded in its audit row, the points equal a serial order (A then B), and the bundle's derived overdrawn flag shows the state. Only the per-row marker and the counts are wrong. Fix: either lock the debit outlets of allowed files too (under the same cap) or state that the 'overdraw' flag and overdrawn_rows are best-effort when allowed files run concurrently.
+- ACHIEVEMENT RULE text (ProgrammesSection in contract/openapi.yaml): each of the five rules now appears once. But rule (5) says 'a resolution `rejected` removes it'. The Resolution enum is [accepted, accepted_with_fix, discarded], and return_to_device is also stored as 'discarded'. The lead upheld this as blocking on sr-targets-server for the same wording. A phone built from this text would never see `rejected` and would keep a discarded memo as awaiting. The text calls itself 'the one rule' for the inference model, which the lead has since ruled fails (7 holes; ruling: EXACT BY IDENTITY with probe uuids, lead-state 15:10). At least one of those holes applies here: rule (3) subtracts an acknowledged memo voided or superseded locally, with no held state for the void or edit. If that void is quarantined and a reviewer releases it, the server drops the memo while the phone keeps subtracting it, so it is subtracted twice. As a description of today's server guarantee the text is correct. Change `rejected` to `discarded` (noting that return_to_device arrives as discarded), and add a line saying the phone arithmetic is to be replaced by the probe rule (serverHolds(uuid)). Expect a merge conflict with lane sr-targets-server on the same description.
+- Loyalty in the ACHIEVEMENT RULE: 'the SAME rule covers the loyalty balances', but the quarantine clause (5) is worded for memos only. It does not say that a quarantined redemption is never subtracted again once a reviewer accepts it without an upload acknowledgement. The previous review raised this and D-LOY-API-38 (g) did not address it. The sentence 'the phone subtracts its own redemptions not acknowledged when it sent the request' also appears twice (once in the opening and once in the loyalty sentence).
+- aFullSharedLockTableIsACleanRefusalNotA500 really exhausts the cluster-wide shared lock table (pg_advisory_xact_lock over generate_series(1, 2,000,000)). gradle.properties has org.gradle.parallel=true, so another module's database test running against the same Postgres at that moment can fail with 53200. The lane reports 53200 in V0140/V0118 migration tests in its own container and calls it 'not this change'; that is plausibly this test. Production behaviour is fine, but this is a CI flake source. Suggestion: give the test its own lock-heavy window (a dedicated cluster or a lower max_locks setting), or simulate 53200 by throwing a PSQLException with that SQLSTATE from the hook.
+- aDebitHeldBehindALedgerJobPassSeesTheRedemptionThePassStored is not strictly deterministic in the no-lock case. 'reached' fires before the lock, and without the lock the debit's balance read can still run after the holder's commit, so it reads 10 and gets 409: the test then passes without the lock. Firing the latch at after_balance_read only once the holder has inserted but not yet committed (or holding the commit until after_balance_read) would make the failure certain. The barrier test (twoDebitsWithDifferentIdsOnOneBalanceNeverBothPass) is sound. It does assume the Ktor test client sends the three requests concurrently, which I did not verify.
+- BFF boundedJson (web/src/lib/admin/loyalty-server.ts) now compares Buffer.byteLength, which is correct. Without a Content-Length header (a chunked body), req.text() still reads the whole body into memory before the check. Only authenticated writers reach it. A streaming read that stops at ADJ_MAX_FILE_BYTES would close this.
+- The guarded-debit cap in the API counts only rows that parsed (parsed != null && points < 0), while the mock counts every raw element with a numeric negative points value. A file can hold over 2,000 debits of which some have a shape error (for example a bad expires_on). The mock then answers too_many_debit_rows, while the API reports the shape errors and only applies the cap to valid rows. This is a minor gap between the mock and the API, and it does not affect safety (the API bound on locks holds).
+- The geography oracle now uses the Dhaka date, but it still compares route_assignment.valid_to >= today, while enrolment uses valid_to > today, and the server's planner.routesFor may apply weekday or plan handling that the oracle ignores. I did not verify routesFor; a spurious failure is still possible on a weekday-specific plan. The test is not weakened.
+- Not checked from earlier rounds: whether bulk overdraw rows now get a per-outlet balance_before in the audit; the source_id LIKE '<uuid>:%' lookups, which seek poorly under en_US collation; and the mock gaps (strict modules claim, audit fields, route reach).
+
+### landing-gate verdict=fail
+SUMMARY: This was a read-only landing gate on ffbe8d6fd...aae4a9648: 48 files, +3019/-89. The merge base is ffbe8d6fd itself, so the three-dot diff equals the two-dot diff. I read the lane commits 65dc2a24f (the L-A13 fix round), 2458806140 and aae4a9648, and the merge 5ae8ec29d2. Nothing was built or run.
+
+**(1) Merge.** No base work is lost. Six files changed on both sides since ce6792f67: DECISIONS.md, contract/openapi.yaml, contract/slices/INDEX.md, docs/24-build-spec.md, WireDtos.kt and openapi.d.ts. Against the base:
+- DECISIONS.md, docs/24 and WireDtos have additions only.
+- INDEX.md changes only the version line, the counts and the sizes.
+- `git diff --cc` shows no hand-resolved hunks.
+
+**(2) Contract.** The diff against 1.21.0 is additive. It has exactly 6 removed lines: info.version 1.21.0 -> 1.23.0, and the descriptions of RedemptionPayload.balance_before_points, ProgrammesSection, astha_as_of and astha_truncated.
+- Added paths: POST and PUT /v1/admin/programmes/{id}/adjustments (postProgrammeAdjustment, putProgrammeAdjustments) and GET /v1/admin/programmes/{id}/ledger (listProgrammeLedger, with optional query parameters outlet_id, source_type, Limit and Cursor).
+- Added schemas: BundleGeoName, BundleGeography, ProgrammeAdjustmentWrite, ProgrammeAdjustmentRow, ProgrammeAdjustmentBatch, ProgrammeAdjustmentRowError, ProgrammeAdjustmentBatchResult, LedgerEntry, LedgerPage.
+- Added optional members on existing schemas: BundleUser.geography (nullable), LoyaltyBalance.tier_code, AsthaTargetRow.brand_name and brand_name_bn, PendingGiftVerification.units_captured, ProgrammesSection.astha_truncated_months.
+- No required list on an existing schema changed and no enum value was removed. The only enums are new ones on new schemas (programme_status: draft, active, inactive).
+- Generated artefacts are consistent: all 18 changed slice files match their INDEX.md byte sizes; openapi.d.ts carries the three operations and the new members; WireDtos adds only `geography: JsonElement? = null`; AmoManualContractTest pins 1.23.0.
+- No docs/requests/contract-1.22-*.md or contract-1.23-*.md exists. tools/ci/contract-breaking.sh asks for a request file only when oasdiff reports a breaking (level 3) change, and I found none by reading, so the gate should pass. oasdiff itself was not run.
+- Deployed phones parse with WireJson ignoreUnknownKeys, and no deployed Android code reads astha_targets. So moving the bundle from month rows to quarter rows cannot give a wrong figure on a deployed app.
+
+**(3) Migrations.** `git diff --stat ffbe8d6fd aae4a9648 -- db/migrations` is empty. Every table and column the code relies on exists in shipped migrations:
+- loyalty_ledger: source_type, source_id (length 64 or less; `<uuid>:<row>` is at most 42), expires_on, flags text[], UNIQUE(source_type, source_id). V0007.
+- programme_enrolment: valid_from, valid_to, tier_code. V0007.
+- astha_target, redemption, redemption_line. V0007.
+- gift_photo: unit_no, is_duplicate, voided_at. V0007 and V0193.
+- programme_version. V0158.
+
+**(4) Authorization.**
+- POST and PUT adjustments: SUPERADMIN, or ADMIN with module `loyalty` = `w`. The check is strict, so an ADMIN token without the modules claim gets 403. Phone tokens get 403. The programme must be in the caller's reach (else 404), and the outlet in the programme's scope and the caller's reach (else 403).
+- GET ledger: LOY_READERS minus BRAND (SUPERADMIN, ADMIN with the r grant, NATIONAL, TOP, WM, DMO, TSO). WM, DMO and TSO are cut to the zones and routes of their reach; BRAND and phone tokens get 403.
+- An SR token on these admin routes is refused by the isPhone check. No new phone route is in this diff: the bundle changes reuse the existing token scope.
+
+**(5) Web.** The page shows the form only when canWrite is true, and hides the ledger for BRAND. The BFF goes through gate(req, "programme"), validates with zod, caps the body in bytes and pre-checks the guarded-debit cap. No secret is in client code. Every string is an English and Bangla pair. A unit test file and an e2e spec were added.
+
+**(6) Tests.** Nothing was weakened and nothing is @Disabled.
+- The removed assertions in AsthaBundleSectionTest and ProgrammesBundleSizeTest are month-to-quarter semantics, replaced by quarter assertions.
+- The removed race test in AdminLoyaltyTest was replaced by barrier and latch tests that fail without the lock.
+- AmoManualContractTest is a version pin.
+
+**(7) Outside the lane.** docs/24-build-spec.md only: three rows in the endpoint table. Nothing under android/, infra/, .github/ or tools/ci/.
+
+**The previous blocking finding is fixed.** The bulk apply locks only the outlets that receive a guarded debit, in one statement over a sorted array; guarded debits are capped at 2,000 per file; SQLSTATE 53200 maps to a 503; the two uuid locks are taken in one fixed order. Two items from the last round are also closed: the campaign programme now needs an enrolment, and the S-1 pending list uses one filtered set of units.
+
+**New blocking finding.** The fix goes further than the previous review asked: a bulk apply with allow_overdraw takes NO pair lock at all. That reopens the check-then-insert race of the earlier blocking finding against guarded debits, and leaves a negative balance with no 'overdraw' flag on any ledger row.
+
+**What the deploy does:** no migration, so the database is unchanged. The API image adds the three admin routes and the bundle changes (geography, Astha rows for the whole quarter, tier_code, brand names, units_captured). The web image adds the adjustment form, the ledger card and the BFF route.
+
+**Not verified:**
+- Any build or test run.
+- oasdiff output.
+- The real lock-table size on the test server.
+- Whether the latch tests pass reliably on CI.
+- The phone's use of units_captured.
+- The e2e behaviour.
+
+#### BLOCKING upheld=3/3: A bulk apply with allow_overdraw takes no pair lock, so a concurrent guarded debit can pass and the balance ends below zero with no 'overdraw' flag on any row
+WHERE: backend/masterdata/src/main/kotlin/com/aktcl/aron/backend/masterdata/AdminLoyalty.kt putAdjustments: `if (!replayed && !dry && !allow && debitOutlets.isNotEmpty()) { ...; adjLockPairs(h, id, debitOutlets) }`, then `adjBalances` and the `flagged` computation on an unlocked read. Compare postAdjustment, which locks every debit (`if (row.points < 0) ... adjLockPairs`). The behaviour is pinned by AdminLoyaltyTest.onlyOutletsThatReceiveAGuardedDebitTakeAPairLockAndACreditOnlyFileOf20000RowsTakesNone ("a debit with allow_overdraw takes no pair lock") and justified in D-LOY-API-38 ("with allow_overdraw there is nothing to guard").
+WHY: The reasoning holds for credits, but not for a debit that is allowed to overdraw. Under READ COMMITTED, a guarded debit that holds the pair lock does not see the uncommitted bulk debit, and the bulk debit decides its own 'overdraw' flag from a read nobody serialises. So two admin debits can both pass, and the result is never recorded:
+- the ledger flags on both rows are just {portal};
+- the bulk audit says overdrawn_rows 0;
+- the single post's audit says overdrawn false.
+
+This is exactly the property the previous round's blocking finding restored, and it is the gate criterion 'a balance going negative without the overdraw flag being recorded'. It also contradicts the contract text in this push: 'two concurrent ADMIN debits (single or bulk) and a ledger-job pass cannot both pass the guard'. No test covers a bulk with allow_overdraw against a concurrent debit. The existing test asserts the missing lock as intended behaviour.
+SCENARIO: An outlet's balance is 100.
+1. Admin A uploads a correction file with allow_overdraw: true that contains a -50 row for that outlet. No pair lock is taken; adjBalances reads 100; 100 - 50 >= 0, so the row is not flagged.
+2. Before A commits, admin B posts a single -80 debit without allow_overdraw. B takes the pair lock (nobody else holds it), reads the committed 100, and passes the guard.
+3. Both commit. The balance is -30.
+
+Result: neither ledger row carries 'overdraw', and B's audit row says overdrawn false and allow_overdraw false. Only the derived bundle `overdrawn` flag shows anything.
+
+Two concurrent allow_overdraw bulks on one outlet, or an allow_overdraw single post (which locks) beside an allow_overdraw bulk (which does not), end the same way: negative, with no row flagged.
+
+Fix: lock every debit outlet whether or not allow_overdraw is set (one statement, sorted, as now), and count all debit rows toward the 2,000 cap (or cap allow_overdraw debit rows separately). Update the lock-count assertion in the test, and add a latch test: a bulk with allow_overdraw beside a guarded single debit.
+
+LOWS:
+- The new test aFullSharedLockTableIsACleanRefusalNotA500 really exhausts the SERVER-wide shared lock table: up to 2,000,000 pg_advisory_xact_lock calls until 53200. gradle.properties sets org.gradle.parallel=true, and the jvm job runs :db, :backend:sync, :backend:masterdata and the other modules' builds and tests against one Postgres service. During that window any concurrent test transaction that needs a lock outside the fast path can fail with 53200, which would show up as an unrelated flaky test. Make the module's tests serial for this case, or fill the table with a bounded number of locks and inject the 53200, for example by raising it from the hook.
+- The 2,000 guarded-debit cap is per file, not per server. On a B1ms-class test server (about 50 connections, so roughly 3,000 to 4,000 lock slots), two concurrent 2,000-debit applies, or one apply beside a heavy sync, can still reach 53200. That now gives a clean 503 with nothing written, so this is acceptable; note the per-server figure in the docs/28 profile.
+- Credits, and with this change allow_overdraw debits, no longer take the job's pair lock. The ledger job's expiry correction is a target recomputed each pass (E - L), so a credit that commits during a job pass only delays the correction to the next pass. Not a correctness issue; write it down beside D-LOY-API-38.
+- Still open from the last round: the replay and cross-namespace lookups use `source_id LIKE '<uuid>:%'` (AdminLoyalty.kt l.1150 and l.1196). Under en_US collation this cannot seek on the UNIQUE btree, so the cost grows with every adjustment row ever posted.
+- Still open from the last round: the bulk audit records only allow_overdraw and overdrawn_rows. It does not record the per-outlet balance_before of the flagged rows.
+- The single post reads `balance_before` for a credit without a lock and stores it in the audit row. It is informational only, but it may be stale under concurrency.
+- S-1: photos_captured is now the size of the distinct-unit set in 1..qty rather than a count of all photos. This is correct given V0193, which flags a unit-less or out-of-range photo as a duplicate. A legacy campaign photo with a null unit_no that is not flagged as a duplicate, if one exists in data loaded before V0193, would now not count, and the gift would show as pending again. That is unlikely at pilot size.
+- No docs/requests/contract-1.22-*.md or contract-1.23-*.md exists. The CI gate needs one only for an oasdiff level-3 change, and I found none by reading, but I could not run oasdiff. If the lead wants a request file for every provisional version bump, add one before the train.
+- docs/24-build-spec.md is the only file outside the lane's own area (three endpoint rows). There are no changes under android/, infra/, .github/ or tools/ci/.

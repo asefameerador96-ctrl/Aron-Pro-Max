@@ -13,7 +13,7 @@ class PreflightFailed(message: String) : RuntimeException(message)
  *
  * Outcome by environment, decided from the RAW `ARON_ENV` the deploy itself declares (the job's value, set by the Bicep parameter, never by a caller; [DEV] exactly):
  * everything else, an unset value included, FAILS with what to do; dev ONLY repairs its test data (see [ClusterNames.repair]), re-checks, and fails if anything is left.
- * A check that does not apply (its migration already applied, or the schema is too old / empty) is skipped without a trace.
+ * A check that does not apply (its migration already applied, or the schema is too old / empty) is skipped; when NOTHING needed doing the run reports ONE line saying so ([nothingToDo]), so the migrate console shows that the pre-flight ran.
  * The report lines carry zone codes, counts and ids, never a name.
  */
 object MigrationPreflight {
@@ -43,11 +43,21 @@ object MigrationPreflight {
     /** The only value of the raw `ARON_ENV` that may repair: an unset value is NOT dev here (Settings' own default stays as it is elsewhere), nor is anything else (staging, prod, a typo). */
     const val DEV = "dev"
 
+    /**
+     * The one line a run with nothing to do reports (so the deploy's migrate console shows that the pre-flight ran, D-OPS-DIAGNOSE-API-01): the check ids and, for each, `clean` (it applies
+     * and found nothing) or `not pending` (its migration is already applied, or the tables it reads do not exist). Ids and two words only: never data.
+     */
+    fun nothingToDo(states: List<Pair<String, String>>) = "pre-flight: nothing to do (checks: " + states.joinToString(", ") { "${it.first}=${it.second}" } + ")"
+
     fun run(ds: DataSource, declaredEnv: String?, report: (String) -> Unit = {}, checks: List<Check> = CHECKS) {
+        val states = ArrayList<Pair<String, String>>()
+        var acted = false
         for (check in checks) {
-            if (!check.devRepair) { strict(ds, check, report); continue }
-            val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
-            if (found.isEmpty()) continue
+            if (!check.devRepair) { states += check.id to strict(ds, check, report); continue }
+            val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else null }
+            if (found == null) { states += check.id to NOT_PENDING; continue }
+            if (found.isEmpty()) { states += check.id to CLEAN; continue }
+            acted = true
             val summary = describe(check, found)
             if (declaredEnv != DEV) {
                 report("preflight ${check.id}: $summary")
@@ -78,12 +88,17 @@ object MigrationPreflight {
             val left = readOnly(ds) { c -> check.findings(c) }
             if (left.isNotEmpty()) throw PreflightFailed("pre-flight ${check.id}: ${describe(check, left)} remain after the dev repair")
         }
+        if (!acted) report(nothingToDo(states))
     }
 
+    private const val CLEAN = "clean"
+    private const val NOT_PENDING = "not pending"
+
     /** A check with no automatic repair: it fails in every environment (dev included) before any migration and changes nothing. */
-    private fun strict(ds: DataSource, check: Check, report: (String) -> Unit) {
-        val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
-        if (found.isEmpty()) return
+    private fun strict(ds: DataSource, check: Check, report: (String) -> Unit): String {
+        val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else null }
+        if (found == null) return NOT_PENDING
+        if (found.isEmpty()) return CLEAN
         val summary = describe(check, found)
         report("preflight ${check.id}: $summary")
         throw PreflightFailed("pre-flight ${check.id} failed in every environment (no automatic repair), nothing was changed: $summary. ${check.advice}")

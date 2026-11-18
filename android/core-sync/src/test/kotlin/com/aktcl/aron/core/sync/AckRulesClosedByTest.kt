@@ -12,7 +12,8 @@ class AckRulesClosedByTest {
     private val dup = RecordAck("u", "attendance_event", "rejected", "attendance_duplicate", false)
 
     @Test fun aPhoneCloseTheServerAlreadyHoldsIsDone() {
-        assertEquals(AckTarget(OutboxState.ACKED, null), AckRules.target(dup, 0, 5, phoneClose = true))
+        // D-AGATE-24: acked, and the answer's code is kept on the row so the digest leaves it out (the server's registry does not hold this row)
+        assertEquals(AckTarget(OutboxState.ACKED, "attendance_duplicate"), AckRules.target(dup, 0, 5, phoneClose = true))
     }
 
     @Test fun anyOtherAttendanceDuplicateIsStillRefusedAsBefore() {

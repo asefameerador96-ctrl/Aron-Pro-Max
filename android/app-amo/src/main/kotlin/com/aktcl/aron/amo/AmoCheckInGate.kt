@@ -36,7 +36,7 @@ internal fun AmoCheckInGate(
         } else null,
         earlierCallOutlet = earlierOutlet,
     )
-    ended?.let { r -> if (day != null) AmoRefusalDialog(day, r, onOk = { ended = null; onCallClosed() }) }
+    ended?.let { r -> if (day != null) AmoRefusalDialog(day, r, onOk = { ended = null; onCallClosed() }, ofCallsDay = true) }
     if (failed) {
         com.aktcl.aron.core.ui.aron.AronDialog(
             stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),

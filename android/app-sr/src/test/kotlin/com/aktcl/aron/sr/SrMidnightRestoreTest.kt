@@ -4,11 +4,11 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.database.repo.AttendanceRefusal
-import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.rules.QtyUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -43,6 +43,11 @@ class SrMidnightRestoreTest {
     private fun at(date: String, h: Int, m: Int) = LocalDate.parse(date).atTime(h, m).toInstant(ZoneOffset.ofHours(6)).toEpochMilli()
     private lateinit var d0: String
     private fun next() = LocalDate.parse(d0).plusDays(1).toString()
+    /** The `closed_by` member of the QUEUED payload of an attendance record (null when absent): what really goes on the wire. */
+    private fun closedByOnTheWire(uuid: String): String? = runBlocking {
+        val row = f.db.outboxDao().byClientUuid(uuid)!!
+        kotlinx.serialization.json.Json.parseToJsonElement(row.payloadJson).let { it as kotlinx.serialization.json.JsonObject }["payload"]!!.let { it as kotlinx.serialization.json.JsonObject }["closed_by"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+    }
     private fun checkOuts(date: String) = runBlocking { f.db.captureDao().attendanceOn(date).filter { it.kind == "check_out" } }
 
     /** Kill at 23:50, relaunch at 00:30: the call is restored from the day of the open check-in and the day is NOT closed under it (the review's scenario). */
@@ -100,13 +105,13 @@ class SrMidnightRestoreTest {
         f.day.resumeDay()
         val out = checkOuts(d0).single()
         assertEquals("one on-demand attempt", reads + 1, f.fixReads)
-        assertTrue("always marked as closed by the phone", out.closedByPhone())
+        assertEquals("closed_by = phone on the wire, from the DAY_CLOSED mark of the same transaction", "phone", closedByOnTheWire(out.clientUuid))
+        assertTrue("and the local mark is there, agreeing with it", f.day.capture.phoneMarks().any { it.kind == "day_closed" && it.businessDate == d0 })
         val fix = f.db.captureDao().fix(out.fixClientUuid)!!
         assertEquals("the reading is stored when obtained", "ok", fix.fixStatus); assertNotNull(fix.lat)
         assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
         f.day.resumeDay()
         assertEquals("idempotent: not closed twice", 1, checkOuts(d0).size)
-        assertFalse("a check-out captured on its own date is the rep's, not marked", out.copy(meta = out.meta.copy(capturedAt = d0 + "T10:00:00.000Z")).closedByPhone())
     }
 
     /**
@@ -307,5 +312,53 @@ class SrMidnightRestoreTest {
         }
     }
 
+    /** D-AGATE-22 (item 4): a Room failure inside the day's resume is caught by the function the app calls (it must not crash the app); the plain resumeDay still throws it. */
+    @Test fun aRoomFailureInTheResumeIsCaughtByTheFunctionTheAppCalls() = runBlocking {
+        f.trustAt(at(next(), 10, 0))
+        f.db.openHelper.writableDatabase.execSQL("DROP TABLE visit") // the restore of an open call now throws a database error (not a cancellation)
+        var threw = false
+        try { f.day.resumeDay() } catch (t: Throwable) { threw = true }
+        assertTrue("the plain resume surfaces the failure (so the test is meaningful)", threw)
+        f.day.resumeDaySafely() // must return normally
+    }
+
     private fun day() = f.day
+
+    /** D-AGATE-25: the Room database closing under the resume (a CancellationException that is not the caller's) is a failure the safe functions swallow, so a timer that calls them re-arms. */
+    @Test fun aDatabaseClosedUnderTheResumeDoesNotStopTheCaller() = runBlocking {
+        f.trustAt(at(next(), 10, 0))
+        f.db.close()
+        val r = runCatching { f.day.resumeDaySafely(); f.day.reloadSafely() }
+        assertNull("no exception, no cancellation reaches the caller (a timer would re-arm)", r.exceptionOrNull())
+    }
+
+    /**
+     * D-AGATE-25 (lead low 1): the rep's check-out is in flight (its commit is held at Room) and Dhaka midnight passes: the phone's `forgottenDays()` returns NOTHING, without even reading Room,
+     * so it cannot start a close that would land first and turn the rep's press into a failure. The press then completes; no phone close, no phone mark.
+     */
+    @Test fun forgottenDaysIsEmptyWhileTheRepsCheckOutIsInFlight() = runBlocking {
+        f.day.attendance.restore(f.day.attendanceToday())
+        f.work.roomExecutor.hold()
+        val press = async(Dispatchers.Default) { f.day.attendance.checkOut() }
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { f.day.attendance.state.first { it.busy } }
+            f.trustAt(at(next(), 0, 0)) // midnight passes while the press is in flight
+            // asked on its own coroutine: if it did need Room (held) the await times out instead of waiting for the held command (the finally below releases it)
+            val asked = async(Dispatchers.Default) { f.day.forgottenDays() }
+            val during = kotlinx.coroutines.withTimeoutOrNull(3_000) { asked.await() }
+            assertEquals("nothing to close while the rep's own check-out runs (and no Room read was needed to know)", emptyList<String>(), during)
+        } finally { f.work.roomExecutor.release() }
+        assertTrue(press.await() is com.aktcl.aron.feature.attendance.AttendanceResult.Done)
+        assertTrue("it is the rep's close: no phone mark", f.day.capture.phoneMarks().none { it.kind == "day_closed" })
+        assertEquals(1, checkOuts(d0).size)
+    }
+
+    /** D-AGATE-25 (lead low 3): resumes within seconds of each other (the start effect and the first ON_RESUME) are ONE attempt. */
+    @Test fun threeResumesWithinSecondsAtLaunchAreOneFailedAttempt() = runBlocking {
+        f.db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_close BEFORE INSERT ON geo_fix BEGIN SELECT RAISE(ABORT, 'x'); END")
+        f.trustAt(at(next(), 10, 0))
+        repeat(3) { f.day.resumeDay() }
+        assertNull("one attempt: no lock-out screen", f.day.closeLockout.value)
+        assertEquals("1", f.db.referenceDao().metaWithPrefix("day_close_fail:").single().value.substringBefore('|'))
+    }
 }
