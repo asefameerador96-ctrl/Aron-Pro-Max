@@ -2480,7 +2480,7 @@ class FinalAccountStage(unittest.TestCase):
         # Settings.kt allows dev and prod only; stage is prod-shaped, so it runs with prod semantics (B13.2 row 35).
         apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
         self.assertIn("var serverEnv = environmentName == 'dev' ? 'dev' : 'prod'", apps)
-        self.assertEqual(apps.count("{ name: 'ARON_ENV', value: serverEnv }"), 3, "api and worker (common), migrate, web")
+        self.assertEqual(apps.count("{ name: 'ARON_ENV', value: serverEnv }"), 4, "api and worker (common), migrate, web, apsis loader")
         self.assertNotIn("{ name: 'ARON_ENV', value: environmentName }", apps)
         text = json.dumps(load("apps.json"))
         self.assertIn("variables('serverEnv')", text)
@@ -2670,7 +2670,7 @@ class ApsisLanding(unittest.TestCase):
     def test_template_is_resource_group_scoped_and_standalone(self):
         self.assertEqual(self.tpl().get("$schema"), RG_SCHEMA)
         for name in ("main.bicep", "apps.bicep"):
-            self.assertNotIn("apsis-landing", (ROOT / "infra" / name).read_text(encoding="utf-8"),
+            self.assertNotIn("apsis-landing.bicep", (ROOT / "infra" / name).read_text(encoding="utf-8"),
                              "the dump account is never part of the pipeline's deployment or of rg-aron-<env>")
         self.assertFalse(list((ROOT / "infra" / "params").glob("apsis*")), "no parameter file: ids are given on the command line")
         reset = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
@@ -2798,6 +2798,45 @@ class PrivateEndpointSubnet(unittest.TestCase):
             self.assertTrue(pe.subnet_of(ipaddress.ip_network(p["vnetAddressPrefix"])), f)
             for other in ("acaSubnetPrefix", "postgresSubnetPrefix"):
                 self.assertFalse(pe.overlaps(ipaddress.ip_network(p[other])), f"{f}: snet-pe overlaps {other}")
+
+
+class ApsisLoaderJob(unittest.TestCase):
+    """D-FINAL-INFRA-10: the loader's Container Apps job exists only when an image is given; own identity, no stored secret."""
+
+    def test_nothing_exists_without_an_image(self):
+        res = load("apps.json")["resources"]
+        for k in ("idApsis", "apsisAcrPull", "apsisKvRead", "apsisLoader"):
+            self.assertEqual(res[k]["condition"], "[not(empty(parameters('apsisLoaderImage')))]", k)
+        self.assertEqual(param_default("apps.json", "apsisLoaderImage"), "")
+        for f in ("dev", "dev-lite", "stage", "stage-lite", "prod"):
+            self.assertEqual(params(f"{f}.apps.parameters.json").get("apsisLoaderImage", ""), "", f"no profile deploys a loader by default: {f}")
+
+    def test_job_is_manual_bounded_and_secret_free(self):
+        job = load("apps.json")["resources"]["apsisLoader"]
+        cfg = job["properties"]["configuration"]
+        self.assertEqual(cfg["triggerType"], "Manual")
+        self.assertEqual(cfg["replicaRetryLimit"], 0)
+        self.assertLessEqual(cfg["replicaTimeout"], 86400)
+        self.assertEqual(len(cfg["secrets"]), 1, "only the Key Vault reference of the database URL")
+        self.assertIn("kvSecret('db-direct-url'", json.dumps(cfg["secrets"][0]))
+        env = {e["name"]: e for e in job["properties"]["template"]["containers"][0]["env"]}
+        self.assertEqual(env["ARON_DB_URL"].get("secretRef"), "db-direct-url")
+        for k, e in env.items():
+            if k != "ARON_DB_URL":
+                self.assertNotIn("secretRef", e, k)
+        text = json.dumps(job)
+        self.assertNotRegex(text, r"(?i)password|accountkey|sig=|--verbose|LOG_LEVEL")
+        self.assertEqual(job["properties"]["workloadProfileName"], "Consumption")
+
+    def test_own_identity_only_pulls_and_reads_its_secret(self):
+        res = load("apps.json")["resources"]
+        self.assertIn("idApsisLoader", json.dumps(res["idApsis"]["name"]) + json.dumps(res["idApsis"]))
+        self.assertNotIn("idMigrate", json.dumps(res["apsisLoader"]), "not the migrate identity")
+        roles_ = json.dumps([res["apsisAcrPull"]["properties"]["roleDefinitionId"], res["apsisKvRead"]["properties"]["roleDefinitionId"]])
+        self.assertIn("acrPull", roles_)
+        self.assertIn("keyVaultSecretsUser", roles_)
+        out = load("apps.json")["outputs"]
+        self.assertIn("apsisLoaderPrincipalId", out, "the owner needs it for loaderPrincipalIds of the landing template")
 
 
 if __name__ == "__main__":

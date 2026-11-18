@@ -23,6 +23,8 @@ func names(prefix string, env string, suffix string) object => {
   webApp: 'ca-${prefix}-${env}-web'
   migrateJob: 'caj-${prefix}-${env}-migrate'
   dbLoginsJob: 'caj-${prefix}-${env}-dblogins'
+  apsisLoaderJob: 'caj-${prefix}-${env}-apsis-loader'
+  idApsisLoader: 'id-${prefix}-${env}-apsis-loader'
   idApi: 'id-${prefix}-${env}-api'
   idWorker: 'id-${prefix}-${env}-worker'
   idWeb: 'id-${prefix}-${env}-web'

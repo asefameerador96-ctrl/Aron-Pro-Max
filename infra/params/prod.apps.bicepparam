@@ -4,6 +4,9 @@ using '../apps.bicep'
 var envLocation = readEnvironmentVariable('AZURE_LOCATION', '')
 var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
 var envBackendImage = readEnvironmentVariable('ARON_BACKEND_IMAGE', '')
+var envApsisImage = readEnvironmentVariable('ARON_APSIS_LOADER_IMAGE', '')
+var envApsisDump = readEnvironmentVariable('ARON_APSIS_DUMP_URL', '')
+var envApsisReports = readEnvironmentVariable('ARON_APSIS_REPORTS_URL', '')
 var envServices = readEnvironmentVariable('ARON_DEPLOY_SERVICES', '')
 var envReadiness = readEnvironmentVariable('ARON_API_READINESS_PATH', '')
 var envWorkerMin = readEnvironmentVariable('ARON_WORKER_MIN_REPLICAS', '')
@@ -23,6 +26,10 @@ param migrateImage = readEnvironmentVariable('ARON_MIGRATE_IMAGE', '')
 param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
 // OFF in prod until the stage failover and restore drills have passed on the per-app logins (docs/status/infra-final.md D8); the
 // logins are still created. Flipping it is one reviewed line: params/stage.apps.bicepparam is already true.
+// Apsis loader job (apsis-migration lane): off until an image is given (export ARON_APSIS_LOADER_IMAGE before infra/deploy.sh).
+param apsisLoaderImage = envApsisImage
+param apsisDumpContainerUrl = envApsisDump
+param apsisReportsContainerUrl = envApsisReports
 param dbPerAppLogins = false
 // docs/30 s3: the previous api revision stays active at 0 % so a failed health gate puts traffic back on it.
 param apiRevisionsMode = 'Multiple'

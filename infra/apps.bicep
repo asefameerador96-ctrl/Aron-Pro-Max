@@ -9,7 +9,7 @@
 
 targetScope = 'resourceGroup'
 
-import { names, suffixFor, secretNames } from 'lib/naming.bicep'
+import { names, suffixFor, secretNames, roles } from 'lib/naming.bicep'
 
 param namePrefix string = 'aron'
 @description('dev = test account; stage and prod = final account (docs/30 s1).')
@@ -65,6 +65,16 @@ param apiReadinessPath string = '/v1/health/ready'
 // Device enrolment (N-031, backend AttestationTrust): SHA-256 fingerprints of the Android key-attestation root
 // certificates. Public data; source URL and retrieval date in infra/params/attestation-roots.json.
 param attestationRootsSha256 array = loadJsonContent('params/attestation-roots.json').sha256
+
+// Apsis history loader (D-OWNER-APSIS-DUMP-01; the loader code is the apsis-migration lane's). Empty image = no loader and no
+// identity (every profile today). Final account only: the job needs the private database and the dump landing account's
+// private endpoint (docs/requests/apsis-dump-landing.md).
+@description('Image of the Apsis loader job, built by the apsis-migration lane and pushed to the registry; empty = no loader.')
+param apsisLoaderImage string = ''
+@description('Blob URL of the apsis-dump container (dumpContainerUrl output of the owner-deployed landing template); a locator, not a secret.')
+param apsisDumpContainerUrl string = ''
+@description('Blob URL of the apsis-reports container (reportsContainerUrl output of the landing template).')
+param apsisReportsContainerUrl string = ''
 
 // worker sizing
 param workerCpu string = '1.0'
@@ -253,6 +263,77 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
             { name: 'ARON_PW_APP_JOBS', secretRef: 'pw-app-jobs' }
             { name: 'ARON_PW_APP_BI', secretRef: 'pw-app-bi' }
             { name: 'ARON_PW_LAKE_EXPORT', secretRef: 'pw-lake-export' }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------------ apsis loader
+// A run-to-completion job in the VNet (the only way to reach the private database and, through snet-pe, the landing account).
+// Its OWN managed identity: AcrPull and Key Vault Secrets User here; Storage Blob Data Reader on apsis-dump and Contributor on
+// apsis-reports are granted by the owner on the landing account (loaderPrincipalIds of the landing template, output
+// apsisLoaderPrincipalId below). No secret is stored in the job: the database URL is a Key Vault reference and the dump is
+// read with the identity's Entra token. Manual trigger only, scale to zero by nature (it exists only while a run runs).
+// Logs: the loader prints counts and checksums only (its contract); nothing here turns verbose logging on.
+resource idApsis 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (!empty(apsisLoaderImage)) {
+  name: n.idApsisLoader
+  location: location
+  tags: allTags
+}
+
+resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apsisLoaderImage)) {
+  name: guid(acr.id, n.idApsisLoader, roles.acrPull)
+  scope: acr
+  properties: {
+    principalId: idApsis!.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.acrPull)
+  }
+}
+
+resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apsisLoaderImage)) {
+  name: guid(kv.id, n.idApsisLoader, roles.keyVaultSecretsUser)
+  scope: kv
+  properties: {
+    principalId: idApsis!.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsUser)
+  }
+}
+
+resource apsisLoader 'Microsoft.App/jobs@2025-07-01' = if (!empty(apsisLoaderImage)) {
+  name: n.apsisLoaderJob
+  location: location
+  tags: allTags
+  dependsOn: [apsisAcrPull, apsisKvRead]
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${idApsis!.id}': {} } }
+  properties: {
+    environmentId: env.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      // A 52.5 GB load is hours (docs/status/apsis-migration.md: plan a 12-hour window); a stuck run must still end.
+      replicaTimeout: 43200
+      replicaRetryLimit: 0
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      registries: [{ server: acr.properties.loginServer, identity: idApsis!.id }]
+      secrets: [kvSecret('db-direct-url', secretNames.dbDirectUrl, kvSecretUrl, idApsis!.id)]
+    }
+    template: {
+      containers: [
+        {
+          name: 'apsis-loader'
+          image: apsisLoaderImage
+          resources: { cpu: json('2.0'), memory: '4Gi' }
+          env: [
+            { name: 'ARON_ENV', value: serverEnv }
+            { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
+            { name: 'ARON_APSIS_DUMP_URL', value: apsisDumpContainerUrl }
+            { name: 'ARON_APSIS_REPORTS_URL', value: apsisReportsContainerUrl }
+            // Which identity AzureCredential / AzCopy MSI must use (the job has exactly one, but the client id is explicit).
+            { name: 'AZURE_CLIENT_ID', value: idApsis!.properties.clientId }
           ]
         }
       ]
@@ -643,6 +724,8 @@ resource appMetricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for a i
 }]
 
 output migrateJobName string = migrate.name
+output apsisLoaderPrincipalId string = empty(apsisLoaderImage) ? '' : idApsis!.properties.principalId
+output apsisLoaderJobName string = empty(apsisLoaderImage) ? '' : apsisLoader.name
 output dbLoginsJobName string = empty(psqlImage) ? '' : dblogins.name
 output dbPerAppLogins bool = perApp
 output apiFqdn string = deployServices ? api!.properties.configuration.ingress.fqdn : ''
