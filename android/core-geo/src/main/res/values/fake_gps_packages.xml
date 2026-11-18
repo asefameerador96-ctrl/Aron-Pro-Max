@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Known fake-GPS / mock-location apps (D-OWNER-MDM-02, D-AINT-04). ONE place to update: add the package here AND as a
+     <package> in the <queries> block of core-geo/src/main/AndroidManifest.xml (FakeGpsManifestDriftTest fails when the two
+     differ, because Android hides a package that the manifest does not declare). This replaces QUERY_ALL_PACKAGES, which
+     Google Play restricts to apps whose core purpose needs it; a sales app does not qualify. An app that is not on this list
+     is still caught by the mock flag on the fix itself. Curated; extend it when a TSO reports a new one. -->
+<resources>
+    <string-array name="aron_fake_gps_packages" translatable="false">
+        <item>com.lexa.fakegps</item>
+        <item>com.incorporateapps.fakegps.fre</item>
+        <item>com.blogspot.newapphorizons.fakegps</item>
+        <item>com.theappninjas.gpsjoystick</item>
+        <item>ru.gavrikov.mocklocations</item>
+        <item>com.rosteam.gpsemulator</item>
+        <item>com.gsmartstudio.fakegps</item>
+        <item>com.usefullapps.fakegpslocationpro</item>
+        <item>com.fakegps.mock</item>
+        <item>com.evezzon.fakegps</item>
+        <item>com.lkr.fakelocation</item>
+        <item>com.fly.gps</item>
+        <item>com.fakegps.joystick</item>
+        <item>com.ccs.fake.location</item>
+        <item>com.mocklocation.fakegps</item>
+        <item>com.pro.fakegps</item>
+    </string-array>
+</resources>

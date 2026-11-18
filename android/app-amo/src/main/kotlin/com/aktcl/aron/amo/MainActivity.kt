@@ -14,7 +14,7 @@ import com.aktcl.aron.core.system.logout.LogoutCheck
 import com.aktcl.aron.core.system.logout.LogoutResult
 import com.aktcl.aron.core.system.logout.UnsentItemsDialog
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import com.aktcl.aron.core.system.integrity.setGatedContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
-        setContent {
+        setGatedContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
             androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             var sunlight by remember { mutableStateOf(false) }

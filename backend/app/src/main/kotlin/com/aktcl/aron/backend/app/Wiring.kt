@@ -251,7 +251,12 @@ class Wiring(
                 runCatching { com.aktcl.aron.backend.notify.GooglePlayIntegrityDecoder(sa) }
                     .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
             }
-            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
+            // D-OWNER-MDM-02 iii: the lab-grant signing key is the secret ARON_LAB_GRANT_KEY (Settings.labGrantKey, PKCS#8 base64): never logged or stored; unset or unreadable = no lab exemption can be granted (409).
+            // The audience of a lab grant is the host of the public API URL (the host the phones of this environment talk to); one key pair per environment, see the runbook.
+            val labAudience = runCatching { java.net.URI(enrolment.apiBaseUrl).host?.lowercase() }.getOrNull().orEmpty()
+            val labExemptions = com.aktcl.aron.backend.analytics.devices.LabExemptionService(db, com.aktcl.aron.backend.analytics.devices.LabGrantSigner(s.labGrantKey?.reveal()), labAudience, clock)
+            if (s.labGrantKey != null && labExemptions.unavailableReason != null) org.slf4j.LoggerFactory.getLogger("aron.wiring").warn("lab exemptions are off: " + labExemptions.unavailableReason)   // the reason only, never the key
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder, lab = labExemptions), reach, guard, clock)
             // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
             var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
             val acceptor = object : com.aktcl.aron.backend.analytics.QuarantineAcceptor {
