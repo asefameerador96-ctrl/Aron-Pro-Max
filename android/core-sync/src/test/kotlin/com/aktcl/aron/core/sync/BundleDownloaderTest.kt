@@ -212,6 +212,14 @@ class BundleDownloaderTest {
         assertEquals(ids.take(3).toSet(), set) // a visit is not read by any figure rule
     }
 
+    @Test fun aMemoQuarantinedWhenTheRequestLeavesIsRecordedAsUnsureEvenIfItIsAcceptedLater() = runBlocking {
+        val q = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = q, recordType = "memo", familyUuid = q, rank = 0, businessDate = "2026-10-03", payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t")))
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, SyncEngine.iso(Clock.now))
+        downloader().download()
+        assertEquals(q, db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)) // never added by the phone, whenever the resolution is heard
+    }
+
     @Test fun nothingAcknowledgedYetIsAnEmptySetNotAnUnknownOrder() = runBlocking {
         downloader().download()
         assertEquals(emptySet<String>(), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))

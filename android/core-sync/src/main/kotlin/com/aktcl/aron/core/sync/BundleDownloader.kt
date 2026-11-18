@@ -258,7 +258,7 @@ class BundleDownloader(
         val answer = underSyncLock {
             requestedAt = iso(clock.nowMs())
             // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
-            if (trackUncertain) uncertain = db.outboxDao().sentUnanswered()
+            if (trackUncertain) uncertain = (db.outboxDao().sentUnanswered() + db.outboxDao().quarantinedUuids()).distinct()
             // the records (memos, voids, redemptions, programme records) acknowledged BEFORE this request leaves: the phone's own order for the programme figures (rule B, no clock); no upload can be in flight, the lock is held
             if (trackUncertain) ackedBefore = db.outboxDao().ackedOrderUuids(forDate.take(7) + "-01")
             api.bundle(forDate, ifNoneMatch, configVersion)

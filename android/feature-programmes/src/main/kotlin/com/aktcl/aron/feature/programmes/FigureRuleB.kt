@@ -32,14 +32,14 @@ object FigureRuleB {
         fun target(m: LocalMemo) = m.supersedes ?: m.voidOf
         fun hasUncertainAncestor(m: LocalMemo): Boolean {
             var cur = target(m); var guard = 0
-            while (cur != null && guard++ < 64) { val p = byUuid[cur] ?: return false; if (p.state == "uncertain") return true; cur = target(p) }
+            while (cur != null && guard++ < 64) { val p = byUuid[cur] ?: return false; if (p.state == "uncertain" || p.state == "quarantined") return true; cur = target(p) }
             return false
         }
-        return memos.filter { it.state != "rejected" && it.state != "uncertain" && hasUncertainAncestor(it) }.map { it.uuid }.toSet()
+        return memos.filter { it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && hasUncertainAncestor(it) }.map { it.uuid }.toSet()
     }
 
     /** Memo states that can only mean "never left this phone" (the outbox row is pending with no attempt): certainly NOT inside any server figure, whatever the order is. */
-    private val NEVER_SENT = setOf("pending", "quarantined")
+    private val NEVER_SENT = setOf("pending")
 
     /**
      * The memos to add and to subtract, or null when there is no month. With the recorded order ([ackedBeforeRequest]) the full rule applies. WITHOUT it (a promoted prefetch, a bundle stored before
@@ -51,7 +51,8 @@ object FigureRuleB {
         fun inMonth(m: LocalMemo) = m.businessDate.take(7) == month
         fun cutAfter(m: LocalMemo) = throughDate != null && m.businessDate > throughDate
         val taint = tainted(memos)
-        val live = memos.filter { it.state != "rejected" && it.state != "uncertain" && it.uuid !in taint }
+        // a memo the server QUARANTINED (held for review, or waiting for a parent) is never added: the server can commit it later with no upload ack (a reviewer accepts, a sweep), so adding it would count it twice
+        val live = memos.filter { it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in taint }
         // who put each memo out: a live local memo that supersedes it, or a live local void record
         val killer = HashMap<String, String>()
         live.forEach { k -> k.supersedes?.let { killer.putIfAbsent(it, k.uuid) }; k.voidOf?.let { killer.putIfAbsent(it, k.uuid) } }
@@ -76,9 +77,15 @@ object FigureRuleB {
         return memos.count { it.voidOf == null && it.memoKind == "sale" && (it.state == "uncertain" || it.uuid in taint) }
     }
 
+    /**
+     * Sale memos the server holds for review (state `quarantined`): shown in their own line, never added. One becomes part of the server figure only when a resolution accepted it (or an accepted or
+     * duplicate ack) reached the phone BEFORE a bundle request, and then it is in the acknowledged set of that bundle; a rejection removes it.
+     */
+    fun heldForReview(memos: List<LocalMemo>): Int = memos.count { it.voidOf == null && it.memoKind == "sale" && it.state == "quarantined" }
+
     /** With NO recorded order: the sale memos left out of the figures because they may already be in them (acknowledged ones, and edits of anything), for the page's own note. 0 when the order is known. */
     fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int =
-        if (orderKnown) 0 else memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && (it.state !in NEVER_SENT || it.supersedes != null) }
+        if (orderKnown) 0 else memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && (it.state !in NEVER_SENT || it.supersedes != null) }
 
     /**
      * The figure to show. [memoIn] picks the memos that belong to the figure (its route; for a campaign its outlet and programme), [lineIn] the sale lines that belong to it (its brand,
@@ -88,6 +95,8 @@ object FigureRuleB {
     fun show(
         server: ServerFigure?, memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?,
         memoIn: (LocalMemo) -> Boolean = { true }, lineIn: (LocalMemoLine) -> Boolean = { true },
+        /** True for the per-SKU `achievement_mtd.memo_count`: a memo counts when it has ANY line of the SKU (a free-only memo gives quantity 0 and count 1); false (brand, campaign): a SALE line of the figure is needed. */
+        countOnAnyLine: Boolean = false,
     ): Shown? {
         server ?: return null
         val d = delta(memos.filter(memoIn), ackedBeforeRequest, month, throughDate)
@@ -97,7 +106,7 @@ object FigureRuleB {
         fun put(m: LocalMemo, sign: Int) {
             if (m.memoKind != "sale") return
             val ls = m.lines.filter { it.lineKind == "sale" && lineIn(it) }
-            if (ls.isEmpty()) return
+            if (ls.isEmpty() && !(countOnAnyLine && m.lines.any(lineIn))) return
             qty += sign * ls.sumOf { it.qtyBase }; mtk += sign * ls.sumOf { it.grossMtk }; count += sign
             ls.groupBy { it.packFactor }.forEach { (f, l) -> packs[f] = ((packs[f] ?: 0L) + sign * l.sumOf { it.qtyBase }).coerceAtLeast(0L) }
         }

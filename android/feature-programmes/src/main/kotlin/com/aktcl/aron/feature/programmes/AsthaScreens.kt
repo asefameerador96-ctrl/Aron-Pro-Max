@@ -61,6 +61,7 @@ object AsthaTags {
     const val SEARCH = "astha_search"
     fun shop(id: Long) = "astha_shop_$id"
     const val TRUNCATED = "astha_truncated"
+    const val HELD_REVIEW = "astha_held_review"
     const val ORDER_UNKNOWN = "astha_order_unknown"
     const val QUARTER_UNKNOWN = "astha_quarter_unknown"
     const val MONTH_AWAITING = "astha_month_awaiting"
@@ -117,6 +118,8 @@ fun AsthaTargetScreen(
     monthAwaiting: Map<String, Int> = emptyMap(),
     /** With no recorded order: acknowledged memos left out of the figures because they may already be in them. */
     unknownOrder: Int = 0,
+    /** Memos the server holds for review (quarantined): never in the figures, named in their own line. */
+    heldForReview: Int = 0,
 ) {
     val look = LocalAronLook.current
     var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
@@ -124,6 +127,7 @@ fun AsthaTargetScreen(
     var query by rememberSaveable { mutableStateOf("") }
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_memos, com.aktcl.aron.rules.Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(AsthaTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (heldForReview > 0) Text(stringResource(R.string.pg_held_review, com.aktcl.aron.rules.Formats.integer(heldForReview.toLong(), locale)), Modifier.testTag(AsthaTags.HELD_REVIEW), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         if (unknownOrder > 0) Text(stringResource(R.string.pg_order_unknown, com.aktcl.aron.rules.Formats.integer(unknownOrder.toLong(), locale)), Modifier.testTag(AsthaTags.ORDER_UNKNOWN), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         if (shops != null) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(look.rowAlt).padding(3.dp)) {

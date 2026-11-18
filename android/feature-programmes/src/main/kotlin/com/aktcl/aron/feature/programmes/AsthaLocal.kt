@@ -22,6 +22,9 @@ object AsthaLocal {
     /** Memos SENT but unanswered when the held snapshot was requested (state `uncertain`): the server figure may already hold them, so they are never added; the page says so. */
     fun awaiting(memos: List<LocalMemo>): Int = FigureRuleB.awaiting(memos)
 
+    /** Memos the server holds for review: never added, shown in their own line. */
+    fun heldForReview(memos: List<LocalMemo>): Int = FigureRuleB.heldForReview(memos)
+
     /** With no recorded order: the memos left out of the figures because they may already be in them (see [FigureRuleB.unknownOrder]). */
     fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int = FigureRuleB.unknownOrder(memos, orderKnown)
 

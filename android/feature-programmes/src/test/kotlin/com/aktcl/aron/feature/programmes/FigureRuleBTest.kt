@@ -177,4 +177,34 @@ class FigureRuleBTest {
         assertNull(RouteCalendar(26, 0, 25, false).perDayMilli(5_000))
         assertNull(RouteCalendar(26, 25, 0, true).requiredPerDayMilli(5_000, 1_000))
     }
+
+    // ---- the server's definitions of a memo count (request file, "Definitions") ----
+
+    @Test fun aFreeOnlyMemoCountsOncePerSkuInAchievementMtdButAddsNoQuantityAndNotInTheBrandCount() {
+        val free = memoOf(Rec("f", "2026-11-05", 0), "pending").copy(lines = listOf(LocalMemoLine(sku, "free", 3, 20, 0)))
+        val perSku = FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(free), emptySet(), month, "2026-11-04", countOnAnyLine = true)!!
+        assertEquals(0L, perSku.qtyBase); assertEquals(1L, perSku.memoCount)
+        val brand = FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(free), emptySet(), month, "2026-11-04")!!
+        assertEquals(0L, brand.memoCount) // brand and campaign counts need a sale line
+    }
+
+    @Test fun aBundleOnTheFirstOfTheMonthAddsEveryMemoOfTheMonthWhateverItsAckState() {
+        // bundle date 2026-11-01: through_date is 2026-10-31, the server figure of November is empty
+        val a = Rec("a", "2026-11-01", 4); val b = Rec("b", "2026-11-01", 6)
+        val shown = FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(memoOf(a, "acked"), memoOf(b, "pending")), setOf("a"), month, "2026-10-31")!!
+        assertEquals(10L, shown.qtyBase); assertEquals(2L, shown.memoCount)
+    }
+
+    @Test fun twoRoutesAreKeptApartByTheMemoFilter() {
+        val r7 = memoOf(Rec("a", "2026-11-05", 4), "pending"); val r9 = memoOf(Rec("b", "2026-11-05", 6, route = 9), "pending")
+        assertEquals(4L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(r7, r9), emptySet(), month, "2026-11-04", memoIn = { it.routeId == 7L })!!.qtyBase)
+        assertEquals(6L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(r7, r9), emptySet(), month, "2026-11-04", memoIn = { it.routeId == 9L })!!.qtyBase)
+    }
+
+    @Test fun aQuarantinedMemoIsNeverAddedInAnyFamily() {
+        val q = memoOf(Rec("q", "2026-11-05", 9), "quarantined")
+        assertEquals(0L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(q), emptySet(), month, "2026-11-04")!!.qtyBase)
+        assertEquals(0L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(q), null, month, "2026-11-04")!!.qtyBase)
+        assertEquals(1, FigureRuleB.heldForReview(listOf(q)))
+    }
 }

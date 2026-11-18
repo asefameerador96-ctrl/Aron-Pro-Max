@@ -140,4 +140,42 @@ class AsthaLocalTest {
         assertEquals(0, AsthaLocal.awaiting(listOf(memo("z", "uncertain", memoKind = "zero_sale"))))
         assertEquals(d.rows, apply(listOf(memo("lost", "uncertain"))).rows)
     }
+
+    // ---- a quarantined memo is never added (held for review; the server can commit it later with no upload ack) ----
+
+    @Test fun aQuarantinedMemoIsNeverAddedAndIsNamedInItsOwnLine() {
+        val q = memo("q", "quarantined")
+        assertEquals(d.rows, apply(listOf(q)).rows); assertEquals(d.rows, apply(listOf(q), null).rows)
+        assertEquals(1, AsthaLocal.heldForReview(listOf(q, memo("p", "pending"))))
+        assertEquals(0, AsthaLocal.awaiting(listOf(q))) // its own line, not the unanswered one
+    }
+
+    @Test fun quarantinedThenAcceptedBeforeThePhoneHeardAndBeforeTheRequestIsHeldAndLeftAlone() {
+        // the server accepted it before it read the bundle but the phone has not heard: at the request it was still quarantined, so it is recorded as unsure and later reads uncertain
+        assertEquals(d.rows, apply(listOf(memo("q", "uncertain"))).rows)
+    }
+
+    @Test fun quarantinedThenAcceptedAndHeardBeforeTheRequestIsInTheSetAndNotAddedAgain() {
+        assertEquals(d.rows, apply(listOf(memo("q", "acked")), setOf("q")).rows)
+    }
+
+    @Test fun acceptedWithFixAndHeardBeforeTheRequestIsInTheFigureWhateverItsLocalQuantity() {
+        // the fix changed the quantity on the server; the phone adds nothing of its own quantity
+        assertEquals(d.rows, apply(listOf(memo("q", "acked", qty = 99)), setOf("q")).rows)
+    }
+
+    @Test fun aResolutionAcceptedOnlyAfterTheRequestWasSentAndNotHeldAtIt_IsAddedAsAnAcknowledgedMemoOfALaterCycle() {
+        assertEquals(140_000L, brandRoute(apply(listOf(memo("q", "acked")), emptySet())).stdAchievedMilli)
+    }
+
+    @Test fun aRejectedResolutionRemovesIt() {
+        assertEquals(d.rows, apply(listOf(memo("q", "rejected"))).rows)
+        assertEquals(0, AsthaLocal.heldForReview(listOf(memo("q", "rejected"))))
+    }
+
+    @Test fun anEditOfAQuarantinedMemoIsHeldWithIt() {
+        val q = memo("q", "quarantined"); val e = memo("e", "pending", supersedes = "q", qty = 5)
+        assertEquals(d.rows, apply(listOf(q, e)).rows)
+        assertEquals(1, AsthaLocal.awaiting(listOf(q, e)))
+    }
 }

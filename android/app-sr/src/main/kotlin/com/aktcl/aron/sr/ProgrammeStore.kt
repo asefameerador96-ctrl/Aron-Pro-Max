@@ -256,6 +256,7 @@ class ProgrammeStore(
         }
 
         internal fun readState(sentUnanswered: Boolean, outboxState: String?, ackedAt: String?, restoredIsAcked: Boolean): String = when {
+            outboxState == "quarantined" -> "quarantined" // held for review: shown in its own line and never added; once resolved it stays uncertain if it was held when the bundle was requested
             sentUnanswered && outboxState != "rejected" -> "uncertain"
             restoredIsAcked && outboxState == "pending" && ackedAt != null -> "acked"
             else -> outboxState ?: "pending"
