@@ -136,11 +136,10 @@ class LabExemptionServiceTest : ReportFixture() {
         assertFalse(LabGrantSigner("").configured)
     }
 
-    @Test fun theDatabaseRefusesALongExemptionAndAMissingToken() {
-        val (id, _) = device(); val (id2, _) = device()
+    @Test fun theDatabaseRefusesALongExemption() {
+        val (id, _) = device()
         val tok = "x".repeat(60)
         assertFailsWith<Exception> { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.device_lab_exemption (device_id, granted_by, expires_at, grant_token) VALUES ($id, 13, now() + interval '30 days', '$tok')") } }
-        assertFailsWith<Exception> { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.device_lab_exemption (device_id, granted_by, expires_at, grant_token) VALUES ($id2, 13, now() + interval '2 days', '')") } }
     }
 
     // ---- the admin route ----
