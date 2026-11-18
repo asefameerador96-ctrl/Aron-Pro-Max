@@ -263,6 +263,11 @@ class AmoCallsScreenshotTests {
         )
     }
 
+    private val submitLabels = mapOf(
+        "visit" to com.aktcl.aron.feature.amo.R.string.amo_rec_visit, "memo" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo, "stock_movement" to com.aktcl.aron.feature.amo.R.string.amo_rec_stock_movement, "qc_line" to com.aktcl.aron.feature.amo.R.string.amo_rec_qc_line,
+        "memo_discount" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo_discount, "distribution_check" to com.aktcl.aron.feature.amo.R.string.amo_rec_distribution_check, "call_assessment" to com.aktcl.aron.feature.amo.R.string.amo_rec_call_assessment,
+        "survey_response" to com.aktcl.aron.feature.amo.R.string.amo_rec_survey_response,
+    )
     @Test fun amo_sales_submit_bn() = shot("amo_sales_submit_bn", AppLanguage.BN, "বিক্রয় জমা") {
         // the AMO host's table: the nine manual rows (price row hidden, cfg off), the AMO record labels, the day's counts equal on phone and server
         val groups = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(null, priceCompliance = false)
@@ -274,6 +279,15 @@ class AmoCallsScreenshotTests {
         )
         val ctx = androidx.compose.ui.platform.LocalContext.current
         val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 40, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
-        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true)
+        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true, blueSubmit = true)
+    }
+
+    // the same screen before the sync (screenshot 65 left): records still waiting on the phone, so the submit button is grey; D-PAR-AMO-18
+    @Test @Config(qualifiers = "w360dp-h1300dp") fun amo_sales_submit_before_sync_bn() = shot("amo_sales_submit_before_sync_bn", AppLanguage.BN, "বিক্রয় জমা") {
+        val groups = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(null, priceCompliance = false)
+        val counts = groups.flatten().distinct().mapIndexed { i, t -> com.aktcl.aron.feature.dayclose.CountRow(t, if (i == 0) 1 else if (i == 1) 25 else 0, if (i == 0) 1 else if (i == 1) 3 else 0) }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(22, 0, 18, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
+        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> submitLabels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true, blueSubmit = true)
     }
 }
