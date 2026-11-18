@@ -134,6 +134,26 @@ class SaleFlowTest {
         assertEquals(false, same.state.value.laterChangesNotSaved)
     }
 
+    /** D-AGATE-26: the replay notice compares LINES: two SKUs at the same price with their quantities swapped leave both totals as they were, and the later change is still said not to be saved. */
+    @Test fun aReplayWithSwappedQuantitiesAndEqualTotalsStillSaysTheChangeWasNotSaved() = runTest {
+        val a = Fx.maxr.copy(drp = null); val b = Fx.maxr.copy(skuId = 107, code = "MAXR10B", name = "MaxR B", drp = null)
+        val custom = listOf(a, b).associateBy { it.skuId }
+        val store = MemStore()
+        val u = ClientIds.newUuid(); val (vis, fx) = Fx.visit(u)
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        repo.recordVisitOpen(vis, fx); Fx.seedStock(repo, catalog = custom)
+        val v = SaleVisit(u, 50001, 10231, Fx.DATE, "outlet")
+        val f = SaleFlow(store, { _, _ -> custom.values.toList() }, committer())
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK); f.setQuantity(107, 3, QtyUnit.STICK)
+        val s = f.state.value
+        val landed = committer().commit(s.draft!!, s.catalog, null, emptyMap()) // stored: 5 of A, 3 of B; the flow never heard of it
+        f.setQuantity(100, 3, QtyUnit.STICK); f.setQuantity(107, 5, QtyUnit.STICK) // the rep swapped them
+        assertEquals("the totals are the same", landed.netMtk, f.state.value.review!!.totals.netMtk)
+        val back = f.commit()
+        assertEquals(landed.memoNo, back.memoNo)
+        assertEquals("the lines differ although the totals do not", true, f.state.value.laterChangesNotSaved)
+    }
+
     @Test fun aBlockedVisitCannotSellAndNothingIsCreated() = runTest {
         val store = MemStore(); val f = flow(store)
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { f.start(visit().copy(canSell = false)) } }

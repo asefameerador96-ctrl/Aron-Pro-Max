@@ -236,7 +236,7 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
 }
 
 /** Test tags of the sale screens. */
-object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first"; const val PRINT_LATER = "sale_print_later" }
+object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first"; const val PRINT_LATER = "sale_print_later"; const val NOTICE = "sale_notice" }
 
 /**
  * Sale, step 2: the product list (F-SR-023, sr/stock.webp layout with the sale quantity). One kit [PackCard] per SKU: packshot with the

@@ -171,12 +171,15 @@ class AmoLatePolicyTest {
      */
     @Test fun theCallGuardsReadThePolicyAtTrustedTimeNotAtTheWallClock() {
         AmoLockFixture(app, latePolicy = "accept_and_flag").use { f ->
-            val wall = System.currentTimeMillis()
+            // D-AGATE-28: the phone's own ("wall") clock is PINNED to a fixed instant, noon Dhaka (06:00Z) of a fixed date, so trusted time (ten minutes behind it) and the wall clock are always on the
+            // same Dhaka business date; the old System.currentTimeMillis() put them on different dates when CI ran in the first ten minutes after Dhaka midnight (18:00 to 18:10 UTC)
+            val wall = java.time.Instant.parse("2026-10-06T06:00:00Z").toEpochMilli()
             f.trustAt(wall - 10 * 60_000L) // trusted time: ten minutes behind the phone's own clock
+            f.checkIn() // the fixture checked in on the real date at construction; the pinned date needs its own check-in
             f.schedulePolicy("quarantine", fromIso = f.day.iso(wall - 5 * 60_000L))
             f.finalSubmitted()
             assertFalse("accept_and_flag at trusted time", runBlocking { FinalSubmitLock.lockApplies(f.db, f.day.iso(f.day.currentMs())) })
-            assertTrue("quarantine at the wall clock", runBlocking { FinalSubmitLock.lockApplies(f.db, f.day.iso(System.currentTimeMillis())) })
+            assertTrue("quarantine at the wall clock", runBlocking { FinalSubmitLock.lockApplies(f.db, f.day.iso(wall)) })
             val v = inCall(f)
             assertNull("ControlCallHost's entry guard", runBlocking { f.day.endCallIfClosed() })
             assertNull("the sale kit's guard", runBlocking { f.day.sale.endCallIfClosed() })
