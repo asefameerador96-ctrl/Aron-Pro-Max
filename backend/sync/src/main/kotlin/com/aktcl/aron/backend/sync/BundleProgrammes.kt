@@ -133,7 +133,8 @@ object BundleProgrammes {
         """
         SELECT * FROM (
           SELECT r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty,
-                 (SELECT count(*) FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate)::int AS photos
+                 (SELECT count(*) FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate)::int AS photos,
+                 (SELECT COALESCE(array_agg(DISTINCT p.unit_no::int ORDER BY p.unit_no::int), '{}') FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate AND p.unit_no IS NOT NULL) AS units
             FROM app.redemption r
             JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
             JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
@@ -146,6 +147,9 @@ object BundleProgrammes {
             buildJsonObject {
                 put("redemption_client_uuid", rs.getString("ru")); put("outlet_id", rs.getLong("outlet_id")); put("gift_id", rs.getLong("gift_id"))
                 put("qty", rs.getInt("qty")); put("photos_captured", rs.getInt("photos"))
+                // S-1 (contract 1.23.0): WHICH units hold a (non-duplicate, non-voided) photo, ascending, at most `qty` entries; the phone offers exactly the open units.
+                val q = rs.getInt("qty")
+                put("units_captured", JsonArray(((rs.getArray("units").array as Array<*>).map { (it as Number).toInt() }).filter { it in 1..q }.map { JsonPrimitive(it) }))
             }
         }.list().capped(MAX_PENDING_VERIFICATIONS)
 

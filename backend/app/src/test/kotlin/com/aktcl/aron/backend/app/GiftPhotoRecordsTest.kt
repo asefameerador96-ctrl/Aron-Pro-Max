@@ -170,10 +170,12 @@ class GiftPhotoRecordsTest {
             }?.get("pending_gift_verifications")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it["redemption_client_uuid"]!!.jsonPrimitive.content == red }
             val before = assertNotNull(pending())
             assertEquals("3", before["qty"]!!.jsonPrimitive.content); assertEquals("0", before["photos_captured"]!!.jsonPrimitive.content)
+            assertEquals(emptyList(), before["units_captured"]!!.jsonArray.toList(), "S-1: no unit photographed yet")
             val p1 = photo(null, 90, unit = red to 1); val dup = photo(null, 50, unit = red to 1); val p2 = photo(null, 40, unit = red to 2)
             for (p in listOf(p1, dup, p2)) ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) }
             val mid = assertNotNull(pending(), "a partial submit leaves the gift listed")
             assertEquals("2", mid["photos_captured"]!!.jsonPrimitive.content, "the flagged duplicate of unit 1 is not counted")
+            assertEquals(listOf(1, 2), mid["units_captured"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() }, "S-1: exactly the units that hold a non-duplicate photo, ascending (the duplicate of unit 1 adds nothing)")
             val p3 = photo(null, 30, unit = red to 3); sync(sr, listOf(p3))
             assertNull(pending(), "all three units photographed")
             assertTrue(one("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$red'") == 4L)

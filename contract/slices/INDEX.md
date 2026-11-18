@@ -536,7 +536,7 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `schemas/GiftAssignmentPage.yaml` (310 B)
 - `schemas/GiftChoiceWrite.yaml` (603 B)
 - `schemas/GiftChoiceResult.yaml` (802 B)
-- `schemas/PendingGiftVerification.yaml` (570 B)
+- `schemas/PendingGiftVerification.yaml` (1134 B)
 - `schemas/ProgrammesSection.yaml` (6146 B)
 - `schemas/ContentItem.yaml` (1510 B)
 - `schemas/ContentAdmin.yaml` (1153 B)
