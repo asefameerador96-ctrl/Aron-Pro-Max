@@ -750,8 +750,16 @@ class Workflows(unittest.TestCase):
         w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", w)
         self.assertNotIn("push:", w)
-        self.assertIn("environment: azure-dev", w)
-        self.assertIn('[ "${GITHUB_REF}" = "refs/heads/claude/wonderful-thompson-k6ejnf" ]', w)
+        # D-FINAL-INFRA-09: environment-aware; dev still means azure-dev from the integration branch, the rest goes through the guard script.
+        self.assertIn("environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (inputs.environment == 'stage' && 'azure-stage' || 'azure-dev') }}", w)
+        self.assertIn('run: infra/scripts/final-account-guard.sh "${PROFILE}"', w)
+        self.assertLess(w.index("final-account-guard.sh"), w.index("azure/login@"), "the guard runs before any Azure sign-in")
+        self.assertIn("options: [dev, stage, prod]", w)
+        guard = (ROOT / "infra" / "scripts" / "final-account-guard.sh").read_text(encoding="utf-8")
+        self.assertIn('[ "$ref" = "refs/heads/claude/wonderful-thompson-k6ejnf" ]', guard)
+        self.assertIn('[ "${ARON_FINAL_ACCOUNT:-}" = true ]', guard)
+        self.assertIn('[ "$ref" = "refs/heads/main" ]', guard)
+        self.assertIn('select(.type == "required_reviewers")', guard)
         self.assertIn("uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906", w)
         self.assertIn("uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", w)
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
@@ -2516,8 +2524,37 @@ class FinalAccountStage(unittest.TestCase):
         self.assertNotIn("param devSeed = true", (ROOT / "infra" / "params" / "stage-lite.apps.bicepparam").read_text(encoding="utf-8"))
 
     def test_ops_workflows_stay_dev_only(self):
-        for name in ("drill.yml", "reset.yml", "acr-purge.yml", "cost-report.yml", "ops-diagnose.yml"):
+        # The write-capable ones (drill, reset, purge, cost report) stay hard-wired to the test account; ops-diagnose and whatif
+        # are read-only and environment-aware behind infra/scripts/final-account-guard.sh (D-FINAL-INFRA-09).
+        for name in ("drill.yml", "reset.yml", "acr-purge.yml", "cost-report.yml"):
             self.assertIn("environment: azure-dev", self.wf(name), f"{name} must never reach the final account")
+
+    def test_whatif_workflow_changes_nothing_and_is_guarded(self):
+        w = self.wf("whatif.yml")
+        self.assertIn("workflow_dispatch:", w)
+        self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|pull_request_target|workflow_run|schedule):")
+        self.assertIn("az deployment group what-if", w)
+        for verb in ("deployment group create", "az group create", "az tag", "containerapp", "keyvault", "secret set", "az acr", "az role", "az postgres flexible-server update", " delete"):
+            self.assertNotIn(verb, w, f"whatif.yml must not run: {verb}")
+        self.assertLess(w.index("final-account-guard.sh"), w.index("azure/login@"))
+        self.assertIn("infra/scripts/scope-check.sh", w)
+        self.assertIn("infra/scripts/whatif-guard.py", w)
+        self.assertIn("  actions: read\n", w)
+        self.assertIn("options: [dev, dev-lite, stage, stage-lite, prod]", w)
+        self.assertIn("environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (startsWith(inputs.environment, 'stage') && 'azure-stage' || 'azure-dev') }}", w)
+
+    def test_guard_script_refuses_outside_the_final_account(self):
+        import subprocess
+        g = str(ROOT / "infra" / "scripts" / "final-account-guard.sh")
+        base = {k: v for k, v in os.environ.items() if k not in ("ARON_FINAL_ACCOUNT", "GH_TOKEN", "GITHUB_TOKEN")}
+        cases = [("dev", "refs/heads/claude/wonderful-thompson-k6ejnf", "", 0), ("dev", "refs/heads/lane/x", "", 1),
+                 ("stage", "refs/heads/main", "", 1), ("stage-lite", "refs/heads/main", "false", 1),
+                 ("prod", "refs/heads/claude/wonderful-thompson-k6ejnf", "true", 1), ("bogus", "refs/heads/main", "true", 1),
+                 ("stage", "refs/heads/main", "true", 1)]  # reaches the environment read, which cannot succeed here (no token): fail closed
+        for prof, ref, final, want in cases:
+            r = subprocess.run(["bash", g, prof], env={**base, "GITHUB_REF": ref, "GITHUB_REPOSITORY": "o/r", "ARON_FINAL_ACCOUNT": final},
+                               capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, want, f"{prof} {ref} final={final!r}: {r.stdout}{r.stderr}")
 
     def test_release_app_uses_the_prod_environment_for_the_final_keys(self):
         ra = self.wf("release-app.yml")
