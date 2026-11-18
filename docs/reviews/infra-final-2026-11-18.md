@@ -227,3 +227,78 @@ LOWS:
 - diagnose.sh picks the PostgreSQL server with `[?starts_with(name,'psql-aron-')] | [0]`. In stage or prod that can be the -r1 replica or a drill restore rather than the primary.
 - release-app.yml does not check that the app-release environment exists with a reviewer, unlike deploy.yml, whatif.yml and ops-diagnose.yml. If governance has not run, GitHub creates app-release unprotected on the first app-v* tag, and the release is built with the repository-wide TEST Maps and Firebase values without approval.
 - Tags are not protected. A lane can push any server-v* tag and dispatch a modified workflow from it into azure-prod; only the owner's approval stands in the way. This is the same class as before the round, and it now also applies to the new whatif and ops-diagnose files on such a tag.
+
+
+## Delta review 0804cf942..5406dd986 (round 4), 2026-11-18
+
+### fixes verdict=pass
+SUMMARY: Read-only review of 5406dd986 (delta 0804cf942..5406dd986, plus the whole lane against the integration branch). Nothing was checked out, built or installed, az was never run, and no Azure or GitHub state was touched. I used git show and diff, plus `git archive` into /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/infra-r4-verify/. In that copy I ran apsis-landing.sh and diagnose.sh against a fake az, and five of the new or changed check_infra tests. All five pass.
+
+**The three earlier blockers are fixed:**
+1. **stage-lite lab-grant key.** seed-secrets.sh now matches stage, stage-lite and prod. The new per-profile test is real: it parses the seed condition and compares it with `labGrantEnabled` in each compiled `<profile>.apps.parameters.json`. stage, stage-lite and prod are true; dev and dev-lite are unset. deploy.sh passes `PROFILE=stage-lite`.
+2. **prod dead end.** whatif.yml and ops-diagnose.yml no longer offer prod. Their environment expressions can no longer resolve to azure-prod. final-account-guard.sh refuses prod outright, and an unknown profile also fails closed. The laptop path for the what-if is given: `AZURE_RESOURCE_GROUP=rg-aron-prod ARON_ENV=prod infra/validate.sh`, in whatif.yml and in the guard's message. validate.sh only runs `az deployment group what-if`.
+3. **Public log exposure.** For stage, the workflow forces `mode=metadata` and fixed names (caj-aron-stage-migrate and ca-aron-stage-worker), so the free-text `job_prefix` and `worker_app` inputs are ignored. `since` and `until` still reach diagnose.sh, but only as quoted az arguments; no KQL runs in metadata mode. I read diagnose.sh in full, then ran it with a fake az. In metadata mode it makes no `server-logs` or `log-analytics` call. The worker-console block also sits inside the `MODE=full` block that closes at line 133. What metadata mode does print:
+   - fixed-field `show` queries of the server, app and revisions;
+   - eleven named parameter values;
+   - metrics;
+   - the activity log, as op, status and substatus `localizedValue` only (no caller, no properties);
+   - the diagnostic-settings JSON.
+
+   No log line, activity message, app environment value, connection string or Key Vault reference value can reach the output.
+
+**Boundary lows:**
+- **Fixed:**
+  - `--subscription` is on every resource-scoped az call in apsis-landing.sh.
+  - Carriage returns are stripped.
+  - The new `remove-owner-ip` command runs only after the full guard and `require_landing_account`. It only runs `az storage account network-rule remove`, so it cannot add an IP or open the account.
+  - The bootstrap refuses a final environment in a subscription that holds rg-aron-dev. The check fails closed on an az error or on any answer other than exactly true or false, and it runs before provider registration or any other creation.
+  - The loader's Key Vault role is scoped to its one secret, and the loader cannot exist in dev or dev-lite (both set environmentName 'dev').
+  - whatif.yml no longer runs scope-check.sh.
+  - Dev deploy and dev ops-diagnose from the integration branch are unchanged, apart from the primary-server filter.
+- **NOT fixed, though D-FINAL-INFRA-12 and the new test say it is:** the rg-aron-dev probe in apsis-landing.sh still fails open (first low below). By impact it is a low: it also needs a TEST subscription that holds rg-aron-stage or rg-aron-prod, and none is documented.
+
+**Not verified:**
+- Bicep compile and ARM handling of the role assignment scoped to an existing conditional secret.
+- Whether GitHub masks the subscription id in the diagnostic-settings output and in the step summary.
+- That the `actions: read` token can read the app-release environment.
+- Windows PowerShell 5.1 behaviour of `2>$null` under `ErrorActionPreference = 'Stop'` in the new bootstrap probe (it would fail closed if it throws).
+- validate.sh on a Windows laptop (it downloads Linux binaries).
+- The full check_infra suite, which needs the compiled templates.
+- Any live GitHub or Azure state.
+
+LOWS:
+- apsis-landing.sh still fails open on the rg-aron-dev probe; it is listed as fixed in D-FINAL-INFRA-12 but is not. `group_exists` calls `die` inside `$(...)`, so the `exit 1` only leaves the subshell: `[ "$(group_exists rg-aron-dev)" = true ]` sees an empty string and goes on. I demonstrated it with a fake az: the rg-aron-dev probe exits 1, rg-aron-prod is false, rg-aron-stage is true. The wrapper printed '::error::cannot tell whether rg-aron-dev exists (az failed); nothing was created or uploaded', then ran `az group create ... rg-aron-apsis-landing` and `az deployment group create`, and exited 0. The message is therefore false. The new test does not catch this because it fails all three probes, so the rg-aron-stage and rg-aron-prod check refuses instead. Fix: `dev_state="$(group_exists rg-aron-dev)" || exit 1`, and the same for prod and stage, before comparing; add a test case where only the dev probe fails.
+- check_infra.py test_wrapper_fails_closed...: the assertion named 'every az call names the subscription' is written as `self.assertNotRegex(...) if False else None`, so it never runs. It is an inert check that looks like coverage. No other check confirms that every az call carries --subscription; I checked by reading: all do, except `account show` (the check itself) and `ad signed-in-user show`, which is tenant-level.
+- The owner IP can be silently re-opened. Landing doc s8 says to deploy without the private-endpoint ids, upload, then re-run `deploy` with the ids later. That re-run (and the one that adds --loader-principal-id) requires --owner-ip and always sends uploaderIpAddresses=[ip], so it re-opens the rule that `remove-owner-ip` closed. The wrapper repeats its warning, and every request still needs Entra, so this is not an exposure. The doc should say to run `remove-owner-ip` again after every re-run.
+- move-to-final-account.md line 35 still lists 'the whatif and ops-diagnose workflows for stage and prod (they too run from main only)' as available after step 0, although prod is no longer offered. The prod laptop diagnose path appears nowhere as a working command. diagnose.sh defaults to the dev names (caj-aron-dev-migrate, ca-aron-dev-worker), so the owner must pass `AZURE_RESOURCE_GROUP=rg-aron-prod infra/scripts/diagnose.sh <since> <until> caj-aron-prod-migrate ca-aron-prod-worker`. The default mode is full, which is fine on a private terminal. The laptop what-if through validate.sh also does not run whatif-guard.py, does not pin a subscription (it is read-only, so harmless), and downloads Linux binaries, which will not run under Git Bash on Windows (unverified).
+- In metadata mode diagnose.sh still prints `az monitor diagnostic-settings list -o json | head -60`. That output holds full resource ids (workspaceId, storageAccountId and so on), which contain the FINAL subscription id, and it goes to the public job log and the step summary. GitHub probably masks it, because AZURE_SUBSCRIPTION_ID is a secret the job references, but I did not verify that. The project otherwise avoids printing subscription ids (the bootstrap prints none). Project the category names and enabled flags only.
+- The loader's Key Vault role is now scoped to the secret resource. This needs the secret to exist before the apps deploy; otherwise the role assignment fails (fails closed). The old vault-scope assignment, if one was ever created, would not be removed in incremental mode, but no profile has deployed a loader, so nothing should exist. apsisLoaderDbSecretName can still name the admin URL secret: that is by convention only.
+- release-app.yml: the app-release reviewer check runs inside the job that already names `environment: app-release`. If the environment is missing, GitHub creates it unprotected before the guard refuses. This fails closed, but it leaves an unprotected environment behind until the owner runs governance.
+- ops-diagnose.yml echoes the user-supplied job prefix and worker name in its 'window ...' line before overriding them for stage. This is harmless (it is the dispatcher's own input), but it reads as if they were used.
+
+### regressions verdict=pass
+SUMMARY: Regressions lens on 5406dd986 (delta 0804cf942..5406dd986, whole lane vs origin/claude/wonderful-thompson-k6ejnf; merge base a4691a061, and the integration branch has not touched .github/ or infra/ since then).
+
+Dev behaviour is otherwise unchanged:
+- deploy.yml is untouched in the delta. Its lane changes leave the dev and dev-lite paths as they are: azure-dev, the integration-branch check and the same deploy.sh call.
+- drill, reset, acr-purge, cost-report and ci.yml are not touched. Only deploy, ops-diagnose, promote-prod, release-app and whatif changed, and lib.sh is unchanged.
+- dev ops-diagnose keeps its inputs (environment defaults to dev, job_prefix/worker_app empty, which falls back to caj-aron-dev-migrate / ca-aron-dev-worker), runs MODE=full, and keeps the migrate console and worker log sections. I ran the integration-branch and the head diagnose.sh side by side on scratch copies with a fake az. Both exited 0 and printed identical section headers. The az call sequence differs only in the server-picking query, which now skips -r1 and -drill- servers; that is an improvement.
+- final-account-guard.sh dev allows the integration branch and refuses main (run locally).
+- No check_infra.py or test_gates.py test method was removed, and tools/ci is unchanged. The changed assertions are re-targeted or stricter. The two deliberate relaxations are stage being deployable and stage dbPerAppLogins being true; both are documented in D-FINAL-INFRA-02/03.
+- No new real id, email, subscription or tenant id. The new GUIDs are built-in role ids (some in a forbidden list) and test fixtures (11111111-..., 00000000-...-0001); the one email is alerts@aron.invalid.
+- The release-app guard step cannot affect the dev APKs: ci.yml does not call release-app.yml. It only runs in the release job after the inert-guard job reports go=true. A legitimate app-v* release passes once tools/github-governance.ps1 has created app-release with a reviewer, as the runbook orders. test_gates' release-app index checks still hold by text.
+
+One plausible blocker, introduced by the delta: in dev, the apsisKvRead role assignment is now scoped to a secret whose name is empty. Several docs also still contradict the new "dev and stage only" rule and the azure-prod tag policy.
+
+Not verified: I did not compile Bicep (no bicep CLI; compiled templates absent), so check_infra.py and test_gates.py were not executed. I did not run actionlint or shellcheck. No ARM what-if or deploy was run, so the empty-scope question cannot be settled here. The python jmespath module is not installed, so the new `!ends_with` / `!contains` query was not evaluated; it is valid JMESPath syntax. The gh api environment read under GITHUB_TOKEN was not exercised live.
+
+LOWS:
+- docs/setup/move-to-final-account.md:35 ('Waits for step 0' column) still says 'the `whatif` and `ops-diagnose` workflows for stage and prod'. This contradicts the workflows (prod is no longer offered), line 192 of the same file and D-FINAL-INFRA-12. It should say stage only, with prod done from the laptop.
+- docs/status/infra-final.md:141 (owner step 6) still says governance creates 'azure-prod with tags `server-v*` and `app-v*`' and does not mention app-release. The script now creates azure-prod with server-v* only, plus app-release with app-v*. The owner is told to compare this against the plan the script prints, so the two will disagree. D-FINAL-INFRA-12 claims this stale text was fixed.
+- docs/status/infra-final.md:120-121 still lists `ops-diagnose.yml:45` as hard-wired to azure-dev. Line 207-208 says ops-diagnose is 'deliberately dev-only until the owner asks' and then, in the same bullet, that it runs for dev and stage.
+- DECISIONS.md D-FINAL-INFRA-09 still says ops-diagnose covers (dev, stage, prod) and that whatif runs a scope check. It is superseded by D-FINAL-INFRA-12; this is acceptable in an append-only log, but D-09 has no 'superseded' marker.
+- The final-account-guard.sh header comment still says 'azure-stage / azure-prod exists'; only azure-stage (and app-release) are checked now.
+- Whole lane (not the delta): whatif-guard.py now exempts a Create of '<existing server>-r1' for every profile, dev included. The exemption is narrow (an exact id), but it is a gate relaxation that also applies to the test account.
+- Whole lane: release-app's release job now fails closed when app-release is missing or has no reviewer. This is intended, and the runbook orders governance first, but a first app-v* tag pushed before governance runs will create app-release unprotected and then go red rather than inert.
+- ops-diagnose: the dev branch check moved from an inline step (before checkout) to final-account-guard.sh (after checkout). The effect is the same, and the workflow gains `actions: read`, which is harmless.
+- (refuted 2/3) apsisKvRead now has an empty-name scope in dev (plausible break of every dev apps deploy): In dev, dev.apps.bicepparam does not set apsisLoaderDbSecretName, so it is ''. The condition is false, but ARM (languageVersion 1.0, no symbolic names configured) still expands the name and type of condition-false resources, and usually the scope too, to build ids and dependsOn (apsisLoader dependsOn apsisKvRead). That would yield '.../vaults/<kv>/secrets//providers/Microsoft.Authorization/roleAssignments/<guid>'. Empty-name segments in condition-false resources are a known cause of InvalidTemplate at preflight. Before the delta the scope was `kv`, which is always valid. Bicep build and lint do not catch this; only ARM does.
