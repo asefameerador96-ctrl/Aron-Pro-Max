@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -82,21 +83,20 @@ fun AmoLoginContent(
             .background(look.pageHome)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
             .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = AronTokens.Space.Screen),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
-        AuthTopRow(onLanguageSelect, sunlight, onSunlight)
-        Spacer(Modifier.height(AronTokens.Space.M))
-        BrandBlock(appTitle)
-        Spacer(Modifier.height(AronTokens.Space.S))
+        Box(Modifier.padding(horizontal = AronTokens.Space.Screen)) { AuthTopRow(onLanguageSelect, sunlight, onSunlight) }
+        // screenshot 03: the full-width diagonal header (red at the lower left to deep purple at the upper right, a darker band along the cut) with the oval logo
+        AmoLoginHeader(appTitle)
+        Column(Modifier.padding(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         AmoLoginField(
             stringResource(R.string.auth_username), state.username, onUsernameChange, LoginTags.USERNAME,
-            enabled = !state.busy, error = wrong, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next,
+            enabled = !state.busy, error = wrong, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, gradientOutline = true, centered = true,
         )
         AmoLoginField(
             stringResource(R.string.auth_password), state.password, onPasswordChange, LoginTags.PASSWORD,
-            enabled = !state.busy, error = wrong, password = !state.passwordVisible, imeAction = ImeAction.Done,
+            enabled = !state.busy, error = wrong, password = !state.passwordVisible, imeAction = ImeAction.Done, gradientOutline = true, centered = true,
             onImeAction = { if (!state.busy) onSubmit() },
             trailing = { AuthLink(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show), onTogglePasswordVisible) },
         )
@@ -123,8 +123,38 @@ fun AmoLoginContent(
             )
         }
         AuthFooter(footerText ?: com.aktcl.aron.core.ui.localizedDigits(stringResource(R.string.auth_version, versionName)), Modifier.testTag(LoginTags.VERSION))
+        }
     }
 }
+
+/**
+ * The AMO login header (screenshot 03): a full-width area cut by a diagonal that rises from the lower left to the upper right, filled with the bar ramp
+ * (red, plum, deep purple), a thin darker indigo band along the cut, and the logo on a pale mint-to-pink oval. It carries no text, so no contrast
+ * is asked of it; the app name is the accessible name of the logo.
+ */
+@Composable
+private fun AmoLoginHeader(appTitle: String) {
+    val look = LocalAronLook.current
+    val ramp = look.barBrush()
+    val band = look.purple
+    Box(Modifier.fillMaxWidth().height(AmoHeaderHeight).testTag(LoginTags.HEADER), contentAlignment = Alignment.TopCenter) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val w = size.width; val h = size.height
+            val cut = androidx.compose.ui.graphics.Path().apply { moveTo(0f, 0f); lineTo(w, 0f); lineTo(w, h * 0.62f); lineTo(0f, h); close() }
+            val strip = androidx.compose.ui.graphics.Path().apply { moveTo(0f, h * 0.9f); lineTo(w, h * 0.52f); lineTo(w, h * 0.62f); lineTo(0f, h); close() }
+            val flipped = androidx.compose.ui.graphics.Brush.linearGradient(listOf(look.barStart, look.barMid, look.barEnd), start = androidx.compose.ui.geometry.Offset(0f, h), end = androidx.compose.ui.geometry.Offset(w, 0f))
+            drawPath(cut, flipped)
+            drawPath(strip, androidx.compose.ui.graphics.SolidColor(band))
+        }
+        Box(
+            Modifier.padding(top = AronTokens.Space.L).size(width = 96.dp, height = 84.dp).clip(RoundedCornerShape(50))
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFD7F5D0), Color(0xFFFBDDE0)))).semantics { contentDescription = appTitle },
+            contentAlignment = Alignment.Center,
+        ) { com.aktcl.aron.core.ui.AronBrandMark(size = 56.dp) }
+    }
+}
+
+private val AmoHeaderHeight = 200.dp
 
 /** A label above a grey rounded box with a thin outline (red when [error]); the tag goes on the editable node, [label] is its accessible name. */
 @Composable
@@ -142,6 +172,8 @@ internal fun AmoLoginField(
     trailing: (@Composable () -> Unit)? = null,
     /** The SR login (manual screenshot 03): the thin outline is the red-to-purple bar ramp instead of plain purple. */
     gradientOutline: Boolean = false,
+    /** The AMO login (screenshot 03): the placeholder (the label) and the typed text are centred in the box; false keeps the left-aligned SR and TSO field. */
+    centered: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(12.dp)
@@ -149,7 +181,7 @@ internal fun AmoLoginField(
         Text(label, style = MaterialTheme.typography.bodyMedium, color = look.ink)
         BasicTextField(
             value = value, onValueChange = onValueChange, enabled = enabled, singleLine = true,
-            textStyle = TextStyle(color = look.ink, fontSize = 16.sp),
+            textStyle = TextStyle(color = look.ink, fontSize = 16.sp, textAlign = if (centered) TextAlign.Center else TextAlign.Start),
             cursorBrush = SolidColor(look.purple),
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType, imeAction = imeAction),
@@ -161,7 +193,10 @@ internal fun AmoLoginField(
                         .border(if (error) BorderStroke(1.5.dp, look.red) else if (gradientOutline) BorderStroke(1.5.dp, look.barBrush()) else BorderStroke(1.5.dp, look.purple), shape).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.weight(1f)) { inner() }
+                    Box(Modifier.weight(1f), contentAlignment = if (centered) Alignment.Center else Alignment.CenterStart) {
+                        if (centered && value.isEmpty()) Text(label, style = TextStyle(color = look.inkMuted, fontSize = 16.sp, textAlign = TextAlign.Center))
+                        inner()
+                    }
                     trailing?.invoke()
                 }
             },

@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onOpenStock: (() -> Unit)? = null) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -72,7 +72,22 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     // (No, back, the close after Review); OK ends it on the phone with no close written and goes Home. Nothing throws.
     var closed by remember(v.visitUuid) { mutableStateOf<DayRefusal?>(null) }
     LaunchedEffect(v.visitUuid) { closed = kit.openCallRefusal() }
-    val leave: (suspend () -> Unit) -> Unit = { close -> scope.launch { kit.openCallRefusal()?.let { closed = it } ?: run { close(); onDone() } } }
+    // D-AGATE-18: a close that fails to be written keeps the call open and tells the rep (never a crash, never a silent Home)
+    var closeFailed by remember(v.visitUuid) { mutableStateOf(false) }
+    val leave: (suspend () -> Unit) -> Unit = { close ->
+        scope.launch {
+            kit.openCallRefusal()?.let { closed = it } ?: run {
+                val ok = try { close(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
+                if (ok) onDone() else closeFailed = true
+            }
+        }
+    }
+    if (closeFailed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { closeFailed = false }, onDismiss = { closeFailed = false },
+        )
+    }
     closed?.let { why ->
         SrRefusalDialog(why, onOk = { scope.launch { kit.endRefusedCall(); onDone() } })
         return
@@ -110,7 +125,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
             // restored after a relaunch: no fix on the phone to show, so no distance panel; the same question
             VisitCheckContent(
                 VisitUiState.Open(v), onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = null, onStartCall = start, onNoSale = onNoSale,
-                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
+                onBack = { leave { kit.closeCall() } }, callQuestion = q,
             )
         } else {
             // the confirm step (D-MAP-02): distance, radius, verdict and the lite map from the fix the visit already took
@@ -121,7 +136,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 onMap =
                     { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
                 onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
-                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
+                onBack = { leave { kit.closeCall() } }, callQuestion = q,
             )
         }
         if (startFirst) com.aktcl.aron.feature.outlet.StartCallFirstDialog(onOk = { startFirst = false })
@@ -159,7 +174,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
             vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
-            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats,
+            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats, onOpenStock = onOpenStock, // the open call stays open: Home's Sale tile returns to it, the draft is kept
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(
                 outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
@@ -167,8 +182,8 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 outlet?.clusterName?.let { stringResource(R.string.sr_review_cluster, it) },
             ),
             onFinished = {
-                val zero = vm.state.value.draft?.zeroSale == true
-                leave { kit.closeVisit(if (zero) VisitOutcomeCode.ZERO_SALE else VisitOutcomeCode.SOLD) }
+                // D-AGATE-18 (B1): the same classification as every other way a call ends, from what the call holds
+                leave { kit.closeCall() }
             },
         )
         AronSecondaryButton(stringResource(R.string.sr_no_sale), onNoSale, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
@@ -184,12 +199,29 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
 fun NoSaleHost(day: SrDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var refused by remember { mutableStateOf<DayRefusal?>(null) }
+    // D-AGATE-19 (step-5 low 2): a close that cannot be written (a persistent write error) keeps the call and shows the existing error state, never a crash; a refusal that lands during the write says the call ended
+    var failed by remember { mutableStateOf(false) }
+    var ended by remember { mutableStateOf<DayRefusal?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         outcomeRows.forEach { (code, label) ->
-            AronListRow(stringResource(label), onClick = { scope.launch { day.sale.openCallRefusal()?.let { refused = it } ?: run { day.sale.closeVisit(code); onDone() } } })
+            AronListRow(stringResource(label), onClick = {
+                scope.launch {
+                    try {
+                        val early = day.sale.openCallRefusal()
+                        if (early != null) refused = early else day.sale.closeVisit(code)?.let { ended = it } ?: onDone()
+                    } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { failed = true }
+                }
+            })
         }
     }
     refused?.let { SrRefusalDialog(it, onOk = { scope.launch { day.sale.endRefusedCall(); onDone() } }) }
+    ended?.let { SrCallEndedDialog(it, onOk = { ended = null; onDone() }) }
+    if (failed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { failed = false }, onDismiss = { failed = false },
+        )
+    }
 }
 
 /** The reason for skipping [outlet] from the list (`visit_skip`, F-SR-057): the same outcome list, no fix, not a visit. */
@@ -308,7 +340,7 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
 
 /** Sales Submit with the reconciliation table and the Sync data button (F-SR-034/035). */
 @Composable
-fun SubmitHost(day: SrDay) {
+fun SubmitHost(day: SrDay, onSupport: (() -> Unit)? = null) {
     val vm = viewModel(key = "submit-" + day.userId) { day.sale.newSubmitViewModel() }
     val st by vm.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -321,6 +353,7 @@ fun SubmitHost(day: SrDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing,
+        seen = st.seen, rejectedReadFailed = st.rejectedReadFailed, onMarkUnseen = vm::markUnseen, onSupport = onSupport, refusedNotShown = st.refusedNotShown, onShowMore = vm::showMoreRefused,  onRetryRead = vm::refresh, onMarkSeen = vm::markSeen, onSendAgain = vm::sendAgain, outbox = st.outbox, // D-AGATE-04
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
         business = st.business, serverBusiness = st.serverBusiness, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } },
         vendorDialogs = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)

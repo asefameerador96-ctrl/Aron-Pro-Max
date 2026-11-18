@@ -4,6 +4,7 @@ import com.aktcl.aron.contract.RecordAck
 import com.aktcl.aron.contract.SyncBatchResponse
 import com.aktcl.aron.contract.RecordOutcomeCode
 import com.aktcl.aron.core.database.entity.OutboxState
+import kotlinx.serialization.json.jsonObject
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -35,6 +36,12 @@ data class AckTarget(val state: String, val code: String?)
 
 object AckRules {
     const val RETRY_EXHAUSTED = "retry_exhausted"
+    const val ATTENDANCE_DUPLICATE = "attendance_duplicate"
+
+    /** True for an `attendance_event` row whose payload says `closed_by = "phone"` (the phone closed a forgotten day). */
+    fun isPhoneClose(recordType: String, payloadJson: String): Boolean = recordType == "attendance_event" && runCatching {
+        (kotlinx.serialization.json.Json.parseToJsonElement(payloadJson).jsonObject["payload"]?.jsonObject?.get("closed_by") as? kotlinx.serialization.json.JsonPrimitive)?.content == "phone"
+    }.getOrDefault(false)
 
     /**
      * Maps the server's ack of a row that has already failed [failures] times (`outbox.attempts`). `accepted` and `duplicate` are stored; a
@@ -42,10 +49,12 @@ object AckRules {
      * counted in reconciliation); a final reject and a quarantine are terminal for the phone. A status this build does
      * not know keeps the row pending: it is never marked stored on a guess, and it is never dropped.
      */
-    fun target(ack: RecordAck, failures: Int, rowMaxRetries: Int): AckTarget = when (ack.status) {
+    fun target(ack: RecordAck, failures: Int, rowMaxRetries: Int, phoneClose: Boolean = false): AckTarget = when (ack.status) {
         "accepted", "duplicate" -> AckTarget(OutboxState.ACKED, null)
+        // contract 1.19.0: the server already holds a check-out for that day (the rep's own, or another phone's close): the phone's close is DONE, never an error shown to the rep
+        "rejected" -> if (phoneClose && ack.code == ATTENDANCE_DUPLICATE) AckTarget(OutboxState.ACKED, null)
+            else if (isRetryable(ack)) retry(ack.code, failures + 1, rowMaxRetries) else AckTarget(OutboxState.REJECTED, ack.code)
         "quarantined" -> AckTarget(OutboxState.QUARANTINED, ack.code)
-        "rejected" -> if (isRetryable(ack)) retry(ack.code, failures + 1, rowMaxRetries) else AckTarget(OutboxState.REJECTED, ack.code)
         else -> retry("unknown_status:${ack.status}".take(60), failures + 1, rowMaxRetries)
     }
 

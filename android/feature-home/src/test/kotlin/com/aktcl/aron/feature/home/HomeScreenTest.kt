@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
@@ -193,6 +194,30 @@ class HomeScreenTest {
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.SALE)).assertIsNotEnabled()
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.ATTENDANCE)).assertIsEnabled()
         compose.onNodeWithTag(HomeScreenTags.BANNER).assertExists()
+    }
+
+    // D-OWNER-PREREQ-01 rule 1: the operational tiles carry a lock while the day has no open check-in, and still open (they lead to check-in)
+    @Test fun lockedTilesShowALockAndStillOpenSoTheyLeadToCheckIn() {
+        var got: HomeTile? = null
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides ctx) {
+                AronTheme(AppLanguage.EN) {
+                    HomeContent(header, HomeTiles.resolve(emptySet(), 0, locked = HomeTiles.OPERATIONAL), BundleFreshness.Fresh, false, null, { got = it }, onSettings = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onAllNodesWithTag(HomeScreenTags.LOCK).assertCountEquals(HomeTiles.OPERATIONAL.size)
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.STOCK)).assertIsEnabled().performClick()
+        assertEquals(HomeTile.STOCK, got)
+        // reading tiles and Sales Submit are never locked
+        assertEquals(emptySet<HomeTile>(), HomeTiles.OPERATIONAL.intersect(setOf(HomeTile.MEMO, HomeTile.SUMMARY, HomeTile.SALES_SUBMIT, HomeTile.SALES_JOURNEY, HomeTile.KPI, HomeTile.TUTORIAL, HomeTile.ATTENDANCE)))
+    }
+
+    @Test fun anOpenDayShowsNoLock() {
+        show(AppLanguage.EN)
+        compose.onAllNodesWithTag(HomeScreenTags.LOCK).assertCountEquals(0)
     }
 
     @Test fun staleBundleStillSellsWithABanner() {
