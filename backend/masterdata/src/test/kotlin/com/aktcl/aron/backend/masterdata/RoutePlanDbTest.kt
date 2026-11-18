@@ -84,4 +84,33 @@ class RoutePlanDbTest {
         assertEquals(listOf("R-DAILY", "R-3F", "R-2F"), planned(LocalDate.parse("2026-10-19")), "Monday after the change")
         assertEquals(listOf("R-DAILY", "R-2F"), planned(LocalDate.parse("2026-10-22")), "Thursday after the change: 3F no longer visits")
     }
+
+    /**
+     * Push 1b item 16: a route with no visit plan (kind 'none', mask 0) held as a COVER (or primary) is never planned, on any weekday, on a make-up selling
+     * Friday, or with a route_planned row of kind none; it is listed (the rep holds it) but counts no target outlet.
+     */
+    @Test
+    fun aCoverOfANoVisitPlanRouteIsNeverPlannedToday() {
+        val cover = 502L
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.route (id, code, name, zone_id, kind, visit_kind, visit_days_mask, display_label) OVERRIDING SYSTEM VALUE VALUES (14, 'R-NONE', 'No plan', 4, 'sr', 'none', 0, 'No visit plan')")
+            h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES ($cover, 'sr334002', 'Cover Rep', 'SR', false)")
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from) VALUES (14, $cover, 'cover', '2026-01-01')")
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from) VALUES (11, $cover, 'cover', '2026-01-01')")
+            h.execute("INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel) VALUES ('ONP1', 'No plan outlet', 'Owner', 4, 14, 5, 'GT')")
+            // a make-up selling Friday for the whole territory
+            h.execute("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) VALUES ('2026-10-30', 'territory', 3, 'makeup_day', true, 'Make-up day')")
+        }
+        val days = (0L..6L).map { LocalDate.parse("2026-10-24").plusDays(it) } + LocalDate.parse("2026-10-30")
+        for (d in days) {
+            val plans = planner.routesFor(cover, d)
+            val none = plans.single { it.code == "R-NONE" }
+            assertEquals(false, none.plannedToday, "R-NONE planned on $d")
+            assertEquals(0, none.targetOutlets, "target outlets on $d")
+            assertEquals("cover", none.assignmentKind)
+        }
+        assertEquals(true, planner.routesFor(cover, LocalDate.parse("2026-10-30")).single { it.code == "R-DAILY" }.plannedToday, "the make-up Friday plans the daily route only")
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from) VALUES (14, 'none', 0, '2026-10-01')") }
+        assertEquals(false, planner.routesFor(cover, LocalDate.parse("2026-10-26")).single { it.code == "R-NONE" }.plannedToday)
+    }
 }

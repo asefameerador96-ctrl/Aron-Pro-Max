@@ -194,14 +194,17 @@ fun TillRouteDetailContent(
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))) {
             val head = listOf(R.string.amo_team_till_brand, R.string.amo_team_perf_target, R.string.amo_team_till_sales, R.string.amo_team_till_pct, R.string.amo_team_till_memo)
             Row(Modifier.fillMaxWidth().background(TableLavender)) {
-                head.forEachIndexed { i, s -> Text(stringResource(s), style = amoText(13, bold = true, color = look.purple, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(if (i == 0) 1.6f else 1.1f).padding(6.dp)) }
+                head.forEachIndexed { i, s -> Text(stringResource(s), style = amoText(13, bold = true, color = look.purple, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(TillBrandWeights[i]).padding(6.dp)) }
             }
             if (brands.isEmpty()) Text(stringResource(R.string.amo_rep_no_brands), style = amoText(14, color = look.inkMuted), modifier = Modifier.padding(12.dp))
             brands.forEach { b ->
                 Row(Modifier.fillMaxWidth().background(look.card).border(0.5.dp, look.rowRule)) {
-                    listOf(b.brand + (b.unit?.let { " (" + com.aktcl.aron.core.ui.entryUnitLabel(it) + ")" } ?: ""), b.target, b.sales, b.pct, b.memo).forEachIndexed { i, t -> Text(t, style = amoText(13, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(if (i == 0) 1.6f else 1.1f).padding(6.dp)) }
+                    listOf(b.brand + (b.unit?.let { " (" + com.aktcl.aron.core.ui.entryUnitLabel(it) + ")" } ?: ""), b.target, b.sales, b.pct, b.memo).forEachIndexed { i, t -> Text(t, style = amoText(13, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(TillBrandWeights[i]).padding(6.dp)) }
                 }
             }
         }
     }
 }
+
+/** Column weights of the till-now brand table (Brand, Target, Sales, %, Memo): the percent column keeps "415.17%" on one line in Bangla digits (D-PAR-AMO-15). */
+private val TillBrandWeights = listOf(1.35f, 1.15f, 1.1f, 1.3f, 0.85f)
