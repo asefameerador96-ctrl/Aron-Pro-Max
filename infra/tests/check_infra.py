@@ -825,7 +825,7 @@ class Workflows(unittest.TestCase):
         self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
         for line in sh.splitlines():
             if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "-o tsv" in line:
-                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line, line)
+                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line or "n=\"$(" in line and "tr -dc '0-9'" in line, line)
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("substring(", code.replace("substring(sha256", ""), "no KQL substring before redaction")
         self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
@@ -850,7 +850,7 @@ if [ "$1 $2 $3" = "monitor log-analytics workspace" ]; then echo ws-id; exit 0; 
 if [ "$1 $2" = "monitor log-analytics" ]; then
   q=""; cols=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; --query) cols="$2";; esac; shift; done
   printf '%s\n---\n' "$q" >> "$STUB_LOG"
-  case "$cols" in "[0].[held, shown]") printf '2\t9\n';; "[0].[plain, total]") printf '3\t40\n';;
+  case "$cols" in "[0].[held, shown]") printf '2\t9\n';; "[0].[plain, total]") printf '3\t40\n';; "[0].dropped") printf '2\n';;
     *) printf 'T0\tERROR\tcom.x.Y\tjava.lang.IllegalStateException\t\t57014\t\tunhandled error\nT1\tINFO\taron.sync\tsession abc123def456 opened for 01712345678\n';; esac; exit 0; fi
 exit 0
 """)
@@ -866,6 +866,7 @@ exit 0
                 self.assertNotIn("01712345678", r.stdout)
                 queries = open(log).read()
                 if mode == "false":
+                    self.assertIn("(2 record(s) dropped: unknown log line prefix shape)", r.stdout, "the KQL path prints the count of records of an unknown prefix shape")
                     self.assertNotRegex(queries, r"project [^\n|]*\bmsg\b")
                     self.assertNotRegex(queries, r"project [^\n|]*\btxt\b")
                     self.assertNotRegex(queries, r"project [^\n|]*\bline\b")
@@ -1157,7 +1158,7 @@ exit 0
         shape = _re.search(r"lg matches regex @'([^']*)'", sh).group(1)
         lvl_shape = _re.search(r"lvl matches regex @'([^']*)'", sh).group(1)
         def ex(rx, t):
-            m = _re.search(rx.replace("\\x24", "$") if False else rx, t); return m.group(1) if m else ""
+            m = _re.search(rx, t); return m.group(1) if m else ""
         self.assertEqual("", ex(ms_rx, "482913 msg")); self.assertEqual("18400", ex(ms_rx, "took 18400 ms")); self.assertEqual("5", ex(ms_rx, "waited 5ms."))
         self.assertEqual("23505", ex(sql_rx, "sqlstate=23505")); self.assertEqual("42P01", ex(sql_rx, "----- SQL State  : 42P01")); self.assertEqual("57014", ex(sql_rx, "SQLState 57014"))
         self.assertEqual("", ex(sql_rx, "sql state: 23505 and sqlstate=ab123"), "case-sensitive: lower-case words and a lower-case value do not match")
@@ -1199,7 +1200,7 @@ exit 0
         # structured exception class first, the exit code as a digit column, the PostgreSQL head, the diagnostic settings without resource ids
         self.assertIn("nullif(tostring(j.throwable.className), '')", sh)
         self.assertIn("exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')", sh)
-        self.assertIn("'[text]'", sh); self.assertIn("head = iff(sev in ('LOG', 'ERROR', 'FATAL', 'PANIC')", sh)
+        self.assertIn("'[text]'", sh); self.assertIn("head = iff(isempty(sev), ''", sh)
         self.assertIn('--query "(value || @)[].logs[].[category, enabled]" -o tsv', sh)
         self.assertNotIn("diagnostic-settings list --resource \"$sid\" -o json", sh)
         # the no-op assertion of the stub test is gone
@@ -1219,8 +1220,11 @@ exit 0
             "2026-11-18 09:33:00.000 UTC-690b-LOG:  duration: 123456.789 ms  statement: SELECT * FROM outlet WHERE name = 'Abu Zafar'",
             "2026-11-18 09:34:00.000 UTC-690b-WARNING:  could not open file for Rahim",
             "2026-11-18 09:35:00.000 UTC-690b-PANIC:  could not write to file: No space left",
+            "2026-11-18 09:35:30.000 UTC-690b-ERROR:  Rahim Uddin of Gulshan: could not find outlet",
+            "2026-11-18 09:35:40.000 UTC-690b-ERROR:  could not " + " " * 100000 + "x",
             "2026-11-18 08:00:00.000 UTC-690b-ERROR:  could not deliver to outlet Before The Window",
             "2026-11-18 09:36:00.000 UTC-690b-LOG:  database system is ready to accept connections",
+            "2026-11-18 09:39:00.000 odd prefix shape: could not parse for Rahim",
             ""])
         with tempfile.TemporaryDirectory() as d:
             az = os.path.join(d, "az"); src = os.path.join(d, "src.log")
@@ -1229,29 +1233,67 @@ exit 0
 case "$1 $2 $3 $4" in
   "postgres flexible-server list "*) echo psql-aron-test; exit 0;;
   "postgres flexible-server show "*) echo /subscriptions/s/resourceGroups/r/providers/x; exit 0;;
-  "postgres flexible-server server-logs list") echo pg.log; exit 0;;
-  "postgres flexible-server server-logs download") cp "$STUB_PGLOG" ./pg.log; exit 0;;
+  "postgres flexible-server server-logs list") if [ "${STUB_PG_FAIL:-}" = list ]; then echo "PLATFORM-TEXT-LIST Rahim" >&2; exit 3; fi; echo pg.log; exit 0;;
+  "postgres flexible-server server-logs download") if [ "${STUB_PG_FAIL:-}" = download ]; then echo "PLATFORM-TEXT-DOWNLOAD Rahim" >&2; exit 4; fi; cp "$STUB_PGLOG" ./pg.log; exit 0;;
+  "containerapp revision list "*) printf 'ca-aron-dev-worker--rev1\t1\tRunning\n'; exit 0;;
+  "containerapp show "*) printf '{"running": "Running"}\n'; exit 0;;
 esac
 exit 0
 """)
             os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
             env = {"PATH": d + ":/usr/bin:/bin", "STUB_PGLOG": src, "AZURE_RESOURCE_GROUP": "rg-x"}
             win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            import time as _time
+            t0 = _time.time()
             r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env=env)
+            self.assertLess(_time.time() - t0, 20, "a 100 KB whitespace record stays within the linear-time bound")
             self.assertEqual(0, r.returncode, r.stderr)
+            self.assertIn("ca-aron-dev-worker--rev1", r.stdout, "the revision list of the worker app is printed")
             sect = r.stdout[r.stdout.index("== PostgreSQL server log files"):]
             sect = sect[:sect.index("\n== Log Analytics")]
             self.assertEqual(["2026-11-18 09:30:01.123 UTC ERROR [text]", "2026-11-18 09:31:00.000 UTC LOG checkpoint complete", "2026-11-18 09:32:00.000 UTC FATAL terminating connection due to administrator command",
-                              "2026-11-18 09:33:00.000 UTC LOG duration 123456.789 ms", "2026-11-18 09:35:00.000 UTC PANIC could not write to file", "2026-11-18 09:36:00.000 UTC LOG database system is ready to accept connections"],
+                              "2026-11-18 09:33:00.000 UTC LOG duration 123456.789 ms", "2026-11-18 09:35:00.000 UTC PANIC could not write to file",
+                              "2026-11-18 09:35:30.000 UTC ERROR [text]", "2026-11-18 09:35:40.000 UTC ERROR [text]", "2026-11-18 09:36:00.000 UTC LOG database system is ready to accept connections"],
                              [l for l in sect.splitlines() if l.startswith("2026-")], sect)
+            self.assertIn("(1 record(s) dropped: unknown log line prefix shape)", sect, "a record of an unknown log_line_prefix shape is counted, not printed")
+            self.assertNotIn("odd prefix", sect)
             for leaked in ("Abu", "Zafar", "Gulshan", "Rahim", "SELECT", "outlet", "House", "Before The Window", "WARNING", "DETAIL"):
                 self.assertNotIn(leaked, sect, leaked)
+            # The platform's error text is never printed on the failure paths: the exit code only.
+            for mode, rc in (("list", 3), ("download", 4)):
+                r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**env, "STUB_PG_FAIL": mode})
+                self.assertEqual(0, r.returncode, r.stderr)
+                self.assertNotIn("PLATFORM-TEXT", r.stdout + r.stderr); self.assertNotIn("Rahim", r.stdout)
+                self.assertIn(f"exit code {rc}", r.stdout)
             # Private message mode: the text is printed behind the redactor, but SQL text after `statement:` or `execute <name>:` is dropped.
             open(src, "a").write("2026-11-18 09:37:00.000 UTC-690b-LOG:  execute S_1: SELECT secret_col FROM t WHERE note = 'could not pay Zed'\n")
             r = subprocess.run(["bash", script, "--include-messages", *win], capture_output=True, text=True, env=env)
             self.assertEqual(0, r.returncode, r.stderr)
             self.assertNotIn("SELECT", r.stdout); self.assertNotIn("secret_col", r.stdout); self.assertNotIn("Zed", r.stdout)
             self.assertIn("statement: [sql]", r.stdout); self.assertIn("execute S_1: [sql]", r.stdout)
+
+    def test_diagnose_postgres_heads_are_an_allow_list_in_both_places(self):
+        # Round 8 (lead ruling): no open "letters before the first colon" rule anywhere; the KQL head and pglog_head use the one PG_HEADS list, the KQL extract is anchored to the record's own severity
+        # marker at the start, and the count of records of an unknown log_line_prefix shape is printed on both paths.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("[A-Za-z][A-Za-z ]{2,60}", code, "the open letters rule is gone")
+        self.assertNotIn("(.*?)", code[code.index("pglog_head() {"):code.index("held_note() {")], "no lazy trailing-whitespace capture")
+        self.assertIn("${PG_HEADS}", code); self.assertIn("$ENV{PG_HEADS}", code); self.assertIn("export PG_HEADS", code)
+        self.assertIn("extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(LOG|ERROR|FATAL|PANIC):', 1, msg)", code)
+        self.assertIn("summarize dropped = countif(isempty(sev))", code)
+        self.assertIn("record(s) dropped: unknown log line prefix shape", code)
+        self.assertIn("substr($_, 0, 400)", code, "every record is cut before any matching")
+        import re as _re
+        heads = _re.search(r"^PG_HEADS='([^']*)'", sh, _re.M).group(1)
+        rx = _re.compile("^(?:" + heads + ")")
+        for ok in ("checkpoint starting: time", "checkpoint complete: wrote 3 buffers", "database system is ready to accept connections", "terminating connection due to administrator command",
+                   "could not receive data from client: Connection reset by peer", "connection authorized: user=x", "disconnection: session time", "deadlock detected", "canceling statement due to statement timeout",
+                   "out of memory", "could not extend file", "recovery restart point at 0/1", "duplicate key value violates unique constraint \"x_pkey\""):
+            self.assertTrue(rx.match(ok), ok)
+        for free in ("Rahim Uddin of Gulshan: could not find outlet", "outlet Abu Zafar not found", "could not deliver to outlet", "role rahim does not exist", "SELECT 1"):
+            self.assertFalse(rx.match(free), free)
+        self.assertNotIn("'", heads); self.assertNotIn('"', heads); self.assertNotIn("$", heads)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")

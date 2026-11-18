@@ -140,17 +140,25 @@ REDACT_SALT="${REDACT_SALT:-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n
 redact() { perl -e "$REDACT_PL"; }
 # show <width>: redact the whole text first, then cut to the width in characters (inside the same perl program).
 show() { REDACT_WIDTH="$1" perl -e "$REDACT_PL"; }
-# pglog_head: a downloaded PostgreSQL server-log record -> "<time> <severity> <head>", ONLY for LOG, ERROR, FATAL and PANIC records. The head is the same logic as the KQL head: a fixed phrase,
-# else the letters before the first colon, else [text]; a slow-statement record keeps only its duration figure ("duration 123456.789 ms"), never the statement or any value after it.
+# The ALLOW-LIST of built-in PostgreSQL message heads (D-OPS-DIAGNOSE-API-09; the lead's ruling, replacing the open "letters before the first colon" rule that printed free text such as
+# "Rahim Uddin of Gulshan"). A record prints ONLY one of these phrases (the phrase itself, never the words after it) or [text]. The same list is used by the KQL head and by pglog_head
+# (RE2 and PCRE agree on this syntax). Phrases only from the PostgreSQL server source; no phrase carries a name, a table or a value.
+PG_HEADS='checkpoint starting|checkpoint complete|checkpoints are occurring too frequently|database system is ready to accept(?: read-only)? connections|database system is shut down|database system was shut down|database system was interrupted|database system was not properly shut down|database system is starting up|database system is in recovery mode|terminating connection due to [a-z ]{3,40}|terminating (?:autovacuum process|background worker|walsender process) due to [a-z ]{3,40}|could not receive data from client|could not send data to client|could not connect to server|could not extend file|could not write to file|could not read block|could not fsync file|could not truncate file|could not open file|could not create (?:lock )?file|connection received|connection authorized|connection authenticated|disconnection|deadlock detected|canceling statement due to (?:statement timeout|lock timeout|user request|conflict with recovery)|canceling autovacuum task|out of memory|server process [0-9]+ was terminated by signal [0-9]+|recovery (?:restart point|has paused|has resumed|complete|ended|started)|redo (?:starts|done) at|received (?:fast|smart|immediate) shutdown request|shutting down|aborting any active transactions|archive command failed|sorry, too many clients already|remaining connection slots are reserved|password authentication failed|duplicate key value violates unique constraint|could not serialize access due to [a-z ]{3,40}|autovacuum launcher (?:started|shutting down)|background writer process'
+export PG_HEADS
+# pglog_head: a downloaded PostgreSQL server-log record -> "<time> UTC <severity> <head>", ONLY for LOG, ERROR, FATAL and PANIC records. The head is an allow-listed phrase, else [text]; a slow-statement
+# record keeps only its duration figure ("duration 123456.789 ms"), never the statement or any value after it. Every record is cut to 400 characters BEFORE any matching (only the head is used, and a
+# 100 KB whitespace run must stay linear). A record that does not have the expected log_line_prefix shape (time, UTC, session id, severity) is not printed; the number of such records is counted.
 pglog_head() {
   perl -CSDA -ne '
-    next unless /^([0-9-]+ [0-9:.]+) ?UTC\S*?-(LOG|ERROR|FATAL|PANIC):\s*(.*?)\s*$/;
+    BEGIN { our $dropped = 0; our $heads = qr/(?:$ENV{PG_HEADS})/; }
+    chomp; $_ = substr($_, 0, 400);
+    unless (/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12}) ?UTC\S{0,40}?-([A-Z]{3,9}):[ \t]{0,10}(.*)$/) { $dropped++; next }
     my ($t, $sev, $msg) = ($1, $2, $3);
+    next unless $sev =~ /^(?:LOG|ERROR|FATAL|PANIC)$/;
     if ($msg =~ /^duration: ([0-9]+(?:\.[0-9]+)?) ms/) { print "$t UTC $sev duration $1 ms\n"; next }
-    my $head = "[text]";
-    if ($msg =~ /(database system is ready to accept connections|database system was shut down|terminating connection due to [a-z ]{3,40}|out of memory)/) { $head = $1 }
-    elsif ($msg =~ /^([A-Za-z][A-Za-z ]{2,60}):/) { $head = $1 }
-    print "$t UTC $sev $head\n";'
+    my $head = ($msg =~ /^($heads)/) ? $1 : "[text]";
+    print "$t UTC $sev $head\n";
+    END { print "($dropped record(s) dropped: unknown log line prefix shape)\n" if $dropped; }'
 }
 # held_note: stdin = the two numbers (held, shown) of the count query; prints the line that says how many lines the secret-word exclusion held back.
 held_note() {
@@ -229,13 +237,17 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
       --query "[].{time:eventTimestamp, op:operationName.localizedValue, status:status.localizedValue, sub:subStatus.localizedValue}" -o table
   fi
   section "PostgreSQL server log files (last 24 h) and excerpts in the window"
-  files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1)" || { echo "(server-logs list failed: ${files:-no text}; logfiles.download_enable is off unless the error says otherwise)"; files=""; }
+  files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>/dev/null)"; rc=$?
+  if [ "$rc" -ne 0 ]; then echo "(server-logs list failed, exit code $rc; logfiles.download_enable may be off)"; files=""; fi
   if [ -z "$files" ]; then
     echo "(no downloadable server log files in the last 24 h)"
   else
     tmp="$(mktemp -d)"
     ( cd "$tmp" && for f in $files; do
-        az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none 2>&1 || echo "(download of $f failed)"
+        # a file name comes from the platform: only a plain name is used
+        [[ "$f" =~ ^[A-Za-z0-9._-]{1,200}$ ]] || { echo "(a log file with an unexpected name was skipped)"; continue; }
+        az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none >/dev/null 2>&1; rc=$?
+        [ "$rc" -eq 0 ] || echo "(download of a log file failed, exit code $rc)"
       done )
     # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed. Postgres
     # log lines start "YYYY-MM-DD HH:MM:SS.mmm UTC"; the window bounds are ISO "YYYY-MM-DDTHH:MM", so the key is rebuilt as such.
@@ -360,12 +372,16 @@ if [ -n "${ws:-}" ]; then
      | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
      | where not(msg matches regex @'-LOG:\s+(execute|statement|parse|bind)')
      | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
-     | extend sev = extract(@'-(ERROR|FATAL|PANIC|LOG):', 1, msg), head = iff(sev in ('LOG', 'ERROR', 'FATAL', 'PANIC'), coalesce(extract(@'(database system is ready to accept connections|database system was shut down|terminating connection due to [a-z ]{3,40}|out of memory)', 1, msg), extract(@'-(?:ERROR|FATAL|PANIC|LOG):[ ]*([A-Za-z][A-Za-z ]{2,60}):', 1, msg), '[text]'), '[text]')"
+     | extend sev = extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(LOG|ERROR|FATAL|PANIC):', 1, msg)
+     | extend head = iff(isempty(sev), '', coalesce(extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(?:LOG|ERROR|FATAL|PANIC):[ ]{0,10}(${PG_HEADS})', 1, msg), '[text]'))"
   if [ "$INCLUDE_MESSAGES" = true ]; then
-    la "$pgq | order by TimeGenerated asc | project TimeGenerated, sev, msg = replace_regex(msg, @'[\r\n\t]+', ' ') | take 300" "[].[TimeGenerated, sev, msg]" 300
+    la "$pgq | where isnotempty(sev) | order by TimeGenerated asc | project TimeGenerated, sev, msg = replace_regex(msg, @'[\r\n\t]+', ' ') | take 300" "[].[TimeGenerated, sev, msg]" 300
   else
-    echo "(columns: time, severity, a fixed phrase or the words before the first colon, else [text])"
-    la "$pgq | order by TimeGenerated asc | project TimeGenerated, sev, head | take 300" "[].[TimeGenerated, sev, head]" 200
+    echo "(columns: time, severity, an allow-listed PostgreSQL message head, else [text])"
+    la "$pgq | where isnotempty(sev) | order by TimeGenerated asc | project TimeGenerated, sev, head | take 300" "[].[TimeGenerated, sev, head]" 200
+    # Records whose log_line_prefix shape is not the expected one are not printed; their number is.
+    n="$(az monitor log-analytics query -w "$ws" --analytics-query "$pgq | summarize dropped = countif(isempty(sev))" --query "[0].dropped" -o tsv 2>/dev/null | tr -dc '0-9')"
+    echo "(${n:-?} record(s) dropped: unknown log line prefix shape)"
   fi
 
   console_section "$WORKER_APP" "$WORKER_APP"
