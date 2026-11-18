@@ -232,3 +232,188 @@ LOWS:
 - SrBundleStabilityTest @Order(4) calls asOfByRoute directly and treats 'as_of before 09:00:00' as correct. It does not check the figure the phone would show (server figure plus rule-(b) additions), which is why the double count above passes. Add a test that computes the phone-visible total for the two-day case.
 - The documented bound on size and resends (docs/status HANDOVER) is honest about prefetch churn and about one resend per figure change. It leaves out the resends caused by the clamp: the version flips each time any in-window key becomes pending and again when it clears.
 - star_truncated groups the query rows by route. It is correct only if that query returns one row per (route, programme). I read only the visible lines of SrStar.load, not the full query, so I did not check this.
+
+
+## Review at c30c52c63 (no-clock redesign), 2026-11-18
+
+Read from code only; nothing built or run.
+
+### snapshot-exactness verdict=fail
+SUMMARY: Read-only review of lane/sr-targets-server at c30c52c63. I diffed it against ce6792f67 and 09f43d288 and read the code with git show; I built, ran and tested nothing.
+
+What holds:
+- Every own-route figure read happens inside the one read-only REPEATABLE READ transaction in BundleService.routeSnapshots, on db.jdbi, which is the write pool (the primary). Traced through SrMemoFigures.forRoutes and dim, SrTargets.load (figures passed in, targets, WorkingCalendarRepo), SrKpi.load, SrCampaigns.load (forOutletPairs) and SrStar.load (including its per-route last-month read). No helper opens its own handle and no figure is read lazily after the commit. The calendar weekend can come from the cached ServerConfig, which is not a memo figure.
+- Commit before ack holds for uploads. IngestService.runFamilies commits each family before acksOf, and the edit's supersede (DuesLedger.afterStored) and the void run in the same family transaction.
+- The memo filters equal Aggregator.ACTIVE_MEMO: status active, line_count > 0, voided_at null, line not voided. Sold quantity counts sale lines only. A SKU's memo count counts any line, as agg_daily_route_sku does; brand and outlet counts need a sale line, as agg_daily_route_brand does. A superseded memo is out by its status. The only difference from the dashboards is the brand tree (current here, as-was there), and it is documented.
+- The cut is right: through = bundle date minus one, the month window is [1st, through], and on the 1st the window is empty. Quantities are summed as Long in base units. Percent.bp and StarProgress return null on a zero divisor. Aggregator.kt equals the base (it does not appear in the lane diff). V0234 is gone and V0208 and below are untouched.
+- The bundle version stays put while nothing changes: as_of is the newest received_at, which only moves with new memos.
+
+What fails:
+1. The server commits memos that are never acknowledged, so rule B as written in the contract double-counts them.
+2. The contract and the server define achievement memo_count differently.
+3. The Star rule contradicts itself, and the test models the reading the contract forbids.
+4. The status file still describes the withdrawn as_of/aggregate design.
+
+SrPhoneWouldShowTest does model single flight (inFlight check, and a case that shows the double count without it) and the subtract rule, and it asserts all eight totals. But it commits through SrMemoFixture's direct SQL, not IngestService, and it covers no quarantine release, free-only memo, month boundary, prefetch, multi-route SR, cross-date edit or other-route memo at a campaign outlet.
+
+Not verified (nothing could run): the test results and measurements the status file claims; DECISIONS' claim that the snapshot test fails without the transaction; that outlets() and openMemos() write nothing inside the READ ONLY transaction; Jdbi isolation behaviour; anything on the phone.
+
+#### BLOCKING upheld=3/3: Memos committed by quarantine review or the waiting sweep get no ack, so rule B double-counts them
+WHERE: IngestService.acceptQuarantined (registry set to accepted, IngestService.kt ~826/835) and sweepWaiting/sweepOne (~610-636); the rule text in contract/openapi.yaml RouteSnapshot description, docs/requests/sr-programmes-phone-rule-b.md items 1-2; SrPhoneWouldShowTest has no such case
+WHY: Rule B lets the phone count a memo as 'acknowledged' only on an `accepted` or `duplicate` ack, and it adds every unacknowledged local memo. The server can store a memo with no ack at all: a reviewer's accept or accept_with_fix, or the automatic sweep of waiting children. The phone hears of it only through `resolutions[]`, which the rule never mentions (and only for 7 days, at most 200 rows). The server figure then holds the memo and the phone adds it too. With accept_with_fix it is worse: the phone adds its own pre-fix quantities on top of the fixed ones.
+SCENARIO: An SR's D-1 memo (outlet O, 100 sticks of SKU C) is quarantined at upload, say content_duplicate or device gate, so the ack is `quarantined`. On D a reviewer accepts it and it commits. The phone then requests the bundle. achievement_mtd for C includes the 100 and the phone adds the same 100 (never acked), so it shows 200 against a true 100. The same happens to KPI, by_pack and the campaign figures. Fix: treat a resolution `accepted`/`accepted_with_fix` received before R as an acknowledgement (or have the phone resend for a `duplicate`), state it in the contract, and add the case to SrPhoneWouldShowTest.
+
+#### BLOCKING upheld=3/3: Contract says server figures count sale lines only; achievement_mtd.memo_count counts memos with any line
+WHERE: SrMemoFigures.Figures.bySku (memo counted for any non-voided line) and SrTargets.load (row kept when qty 0 but memo_count > 0), against the RouteSnapshot description ('active, lines not voided, sale lines only') and rule-b doc item A
+WHY: The phone lane implements the contract. For a SKU whose only line on a memo is free (free_sample, promo_free, drp_reward), the server counts the memo in memo_count, but a phone following the contract does not count it when it adds that memo locally. So the figure changes when the ack arrives, and the phone total never equals the server's own definition. The kpi and campaign memo counts do use sale lines only, so the three sections disagree.
+SCENARIO: On D-1 the phone makes a memo with only a free_sample line of SKU M. Before the ack it adds 0 memos (sale lines only), so it shows memo_count 0. After the ack and the next bundle the server sends memo_count 1 for M (with achieved_qty_base 0), so it shows 1. Same memo, two answers. Fix: say in the contract that memo_count counts any non-voided line (the aggregator's definition), or switch the server to sale lines, and add a free-only memo case to the test.
+
+#### BLOCKING upheld=3/3: Star STD rule contradicts itself, and the test models the reading the contract forbids
+WHERE: contract RouteSnapshot description lists 'Star STD' among the figures the phone merges and also says '`star` carries through-`through_date` figures only (the phone cannot add to it)'; the rule-b doc says 'star's STD (not added on the phone)'; SrPhoneWouldShowTest.LocalMemo.fig adds qM*1000 to starMilli on the phone
+WHY: Under 'not added' the phone shows the server STD alone. That leaves out any D-1 memo not acknowledged before R, so the Star STD, projection, slab and status fall short of the through_date total. Under 'added' the contract sentence is wrong. The test asserts the 'added' total, so it proves a phone behaviour the contract forbids, and DECISIONS D-TKPI-12's claim that Star STD is merged has no single specification.
+SCENARIO: A D-1 memo with 10 match is still unsynced when the bundle is pulled. The server star.std excludes it. A phone that follows 'the phone cannot add' shows STD 10 lower than the through-D-1 truth, while SrPhoneWouldShowTest reports the truth because its model adds it. Pick one rule, state it once, and make the test model that rule.
+
+#### BLOCKING upheld=3/3: Status file still describes the withdrawn as_of/aggregate design
+WHERE: docs/status/sr-targets-server.md section 1 'No double count (the as_of rule)' and 'Compute where: bundle build reads the aggregates'; section 5 'Achievement: dw.agg_daily_outlet_sku ... dw.fact_memo_line'
+WHY: These sections state that the server figures come from the dw aggregates, are 'projected into the aggregate at or before as_of', and that the phone uses as_of. The code at c30c52c63 reads app.memo/app.memo_line and as_of is informational. The status file makes claims the code does not give, and the phone lane reads this file.
+SCENARIO: A phone-lane agent reading section 1 implements 'acked after as_of → add'. That brings back the timestamp rule that three reviews rejected, and it gives a double count whenever the phone's clock or as_of moves. Mark sections 1 and 5 superseded by D-TKPI-12, or rewrite them.
+
+LOWS:
+- Rule 4 wording: 'in flight' must include a batch whose response never arrived (lost response, timeout, or a 5xx thrown after runFamilies committed, e.g. while building server_totals). The phone must replay it until answered before it asks for a bundle. The test already shows the double count in that case; the contract sentence should say it outright.
+- Acknowledgement is per memo record, but the figure depends on the memo_line records. If a line is rejected or parked in its own savepoint while the header is accepted, or the lines go up in a later batch, the server undercounts an acked memo. Define acknowledged as the memo and all its lines acked.
+- Server-side changes with no phone event, such as the admin route-day data void (DataVoidApi) of acked memos, take memos out of the figure. The phone, which still holds them as live, does not subtract them, so its total falls below its local memos. This is correct for the business but not stated in rule B.
+- A bundle prefetched for tomorrow is built on D with through_date = D, so today's committed memos are in its figures, and its version moves with every sale (the status file admits the churn). Rule B still gives the true total, but the contract sentence 'Today's memos are never in a server figure' is false for prefetched bundles.
+- Campaign figures count every route's memos at the outlet. Other SRs' unsynced D-1 memos and all of today's are never in the figure and never phone-added, so the figure is 'outlet memos committed before the read + own local'; label it that way. It also shows this SR another SR's sales at a shared outlet (small and by design, but say so).
+- SrStar reads LMS with one forRoutes query per Star route (N+1, inside the snapshot; fine at pilot size). On the 1st, unacked memos from last month's last day are missing from LMS and cannot be phone-added.
+- SrKpi: a free-only match/lighter line creates a category row with achieved 0, and can make a kpi object appear where it would not otherwise. by_pack groups by the SKU's current base_per_pack, not the line's pack_factor.
+- Percent.bp and StarProgress require non-negative values and use checked multiply/fit. An absurd input throws and fails the whole bundle build rather than nulling one figure; StarProgress.fitOrThrow is already listed as open.
+- SrPhoneWouldShowTest commits through SrMemoFixture's autocommit statements, header, lines and supersede each separately, not through IngestService. Commit before ack and the atomic supersede (DuesLedger.afterStored in the family transaction) are confirmed only by reading the code. The concurrent test can see a header without its lines; the figures stay consistent, but this is not the real ingest shape.
+- Cases missing from the test: a bundle on the 1st of the month, a prefetched bundle, an SR with two routes, an edit dated today of a D-1 memo, a free-only memo, another route's memo at the campaign outlet, and a quarantine release or resolution.
+- Unverified claims: the scale measurements and green test runs in the status file, and DECISIONS D-TKPI-12's 'fails without the transaction; checked by removing it once'.
+
+### scope-contract-migrations-perf verdict=fail
+SUMMARY: I read the code only; nothing was built or run. I read the whole lane diff ce6792f67...c30c52c63 and the redesign delta 09f43d288..c30c52c63 with git show, plus the earlier review file. I found one blocking issue.
+
+**Scope: fine.**
+- The own-route figures come from `SrMemoFigures.forRoutes(plans.routeIds)`. The plans come from `planner.routesFor(user.id, date)`, so no client id is involved.
+- Campaign outlets come from the server's own `outlets()` for those routes.
+- The ported `SrTargetsScopeTest` now puts real memos on every route and outlet, and its assertions are unchanged.
+- The admin upload is not touched in the delta: no masterdata, web or `RouteKpiTargets` files changed.
+
+**Contract: fine.**
+- The delta changes description text only: `RouteSnapshot`, `AchievementRow`, `RouteKpi` and `RouteCampaign`.
+- `openapi.d.ts` and the slice sizes in `INDEX.md` were regenerated to match.
+- No member was added or removed, and `WireDtos`/`BundleDtos` are untouched in the delta.
+- The rule text is stated once, in `RouteSnapshot`. Sibling descriptions point to it ("rule B of `RouteSnapshot`"), and it matches `docs/requests/sr-programmes-phone-rule-b.md`.
+- `info.version` stays 1.22.0, which is provisional and noted.
+
+**Migrations: fine.**
+- The whole lane adds exactly V0230..V0233 under `db/migrations`.
+- No shipped migration is touched. V0234 is deleted, and nothing in code or migrations references it; only historical lines in DECISIONS and the status file mention it.
+- `backend/analytics` has no diff against ce6792f67, so `Aggregator.kt` really is back to the base. That makes the D-TKPI-12 claim true.
+- The indexes the direct read needs already exist in shipped V0007 on the partitioned tables:
+  - `app.memo (route_id, business_date)` serves `forRoutes`.
+  - `app.memo (outlet_id, business_date)` serves `forOutletPairs`.
+  - `memo_line_no (memo_client_uuid, line_no, business_date)` serves the join, which matches on `memo_client_uuid` and `business_date`.
+  - The status file reports a measured plan with partition pruning.
+- No lane code still reads `dw.agg_*` or `dw.fact_memo_line` for these figures, so the dropped V0234 indexes are not needed.
+
+**Performance and churn: fine.**
+- The direct read runs on every bundle build. Every delta poll and every page request on a cache miss calls `bundle()` in full. There is no caching of the figures.
+- Polling is trigger-based (docs/04 "coalesce work"), and the lane measured a 239 ms median and 332 ms p95 for one SR build. Concurrency was not measured.
+- The version is stable: `as_of` is the max `received_at` of the memos read, and no aggregate is read, so idle worker passes and rebuilds cannot move the version. `SrBundleStabilityTest` now exercises a real rebuild.
+- The admitted churn is real and explained:
+  - An edit with identical lines moves the version once, because the new memo is newer.
+  - A prefetched bundle for tomorrow has `through_date` = today, so today's memos ARE in its figure (today is excluded only relative to the bundle date). Its version therefore moves with each of today's commits.
+- Size caps and flags are in place (500 achievement/target rows, 150 outlets x 20 SKUs, `*_truncated`).
+- `SrBundleScaleMeasureTest` is skipped unless `ARON_SCALE_MEASURE=1`, so it is not a gate.
+- No shared/Android code changed in the delta. `SrMemoFigures` is backend-only.
+
+**Blocking: the rule has no case for a memo the server stores outside an upload acknowledgement.** The server commits quarantined or held memos later, through a reviewer release or the automatic sweep. The phone learns of that only from `resolutions`, which rule B never mentions.
+
+**What I did not verify:**
+- Nothing was built or run: no tests, no query plans, no concurrency.
+- `SrPhoneWouldShowTest` (I did not read it in full) and the lane's claim that it fails without the transaction.
+- How the Android app treats `resolutions` or rejected records today.
+- Whether the read-only `SET TRANSACTION` path ever writes. I saw no INSERT, UPDATE or DELETE in `routeSnapshotsIn`, but I did not read the helpers it calls.
+- That `db.jdbi` is always the primary.
+- `WorkingCalendarRepo`.
+
+#### BLOCKING upheld=3/3: Rule B has no case for a memo the server commits outside an upload ack (quarantine release or sweep), so it is counted twice
+WHERE: contract/openapi.yaml RouteSnapshot description (rule B: 'acknowledged (`accepted` or `duplicate`) before R'); docs/requests/sr-programmes-phone-rule-b.md items 1-2; server paths IngestService.releaseHeld / sweepOne (an upload ack of `quarantined`, later stored in app.memo; the decision reaches the phone only as a `resolutions` row in a later SyncBatchResponse or in the delta response); BundleService.delta builds the bundle and reads resolutionsAfter in the same response
+WHY: The server half of the design rests on one premise: every memo in the figure was either acknowledged accepted or duplicate before R, or the phone adds it. A held or quarantined memo breaks that premise. The upload ack says `quarantined`, then a reviewer or the automatic sweep (`sweepOne`, for example once the parent visit arrives) commits it into app.memo with status active. No accepted or duplicate ack is ever sent for that upload. Rule B, as written in the one binding place, counts that memo as 'not acknowledged', so the phone adds it on top of a figure that already holds it. Through the delta path, the resolution arrives in the SAME response as the bundle that includes the memo, which is after R, so the double count is certain for that cycle. Through a full GET bundle there are no resolutions at all, so it lasts until a later upload batch response carries the resolution, and the rule does not even say that a resolution counts as an acknowledgement. The mirror case: a record refused for good (`rejected`, final) is never acknowledged, so the rule keeps adding it to every bundle forever, while the server figure, the true total, never holds it. SrPhoneWouldShowTest has no quarantine, resolution or rejection case (no match for 'quarantin' or 'resolution').
+SCENARIO: 1. On 2027-01-02 the SR's memo M for 200 sticks of SKU X is uploaded before its visit record, and the ack is `quarantined` (held waiting).
+2. At 09:00 on 2027-01-03 the visit arrives in another batch, and the sweep releases M into app.memo (active, business_date 2027-01-02).
+3. At 09:05 the phone polls GET /v1/sync/delta. The bundle snapshot includes M, so achievement_mtd for X is 200 plus the rest, and the same response carries the resolution for M.
+4. The phone had not received an accepted or duplicate ack for M before R, so rule B adds M's 200 sticks again. The KPI brand volume, the memo count and the campaign STD/memo for M's outlet are doubled too.
+5. On a full GET /v1/sync/bundle (no resolutions) the double count lasts until some later batch response carries the resolution, and only if the phone lane happens to treat it as an ack.
+
+Fix direction: define 'acknowledged' as 'the phone holds an accepted or duplicate outcome for the record, from a batch ack OR a resolution, received before R'. Also say that a record with a final refusal (rejected, a parked row past its TTL, a discarded quarantine) is never added. Then add the quarantine-release and rejected cases to SrPhoneWouldShowTest.
+
+LOWS:
+- Contract text against the code on memo counts. RouteSnapshot rule B says the merged figures cover 'sale lines only'. SrMemoFigures.bySku, which feeds achievement_mtd.memo_count, counts a memo once per SKU when it has ANY non-voided line of that SKU, free lines included, as agg_daily_route_sku does. The KDoc says so; the contract does not. A phone that follows the contract and counts sale lines only for its additions mixes the two meanings. This is rare while promotions and free goods are deferred, but the contract sentence should be fixed: say that memo_count counts any line of the SKU, while volumes and KPI memo counts use sale lines.
+- RouteSnapshot wording contradicts itself: 'It DIFFERS from the Astha achievement rule of ProgrammesSection (that section is a live snapshot of the same kind)'. Say what actually differs: this figure is cut at through_date, and every local memo dated after it is added whether acknowledged or not.
+- Status file is stale. The HANDOVER head says migrations are V0230..V0233, but the T-KPI3 CHECKLIST item 7 ('migrations V0230..V0234'), item 6 (V0234 lows) and the 'Fix round' bullet ('Provisional migrations are now V0230..V0234') still describe V0234 as current. Mark them superseded so the next lane does not renumber wrongly.
+- Every bundle request, every delta poll and every page request on a cache miss rebuilds the whole route snapshot, including the direct memo read. There is no figure cache. That cost is fine at the measured ~240 ms median and trigger-based sync, but a morning burst of 8,500 reps is not measured: the measurement used one committer and serial builds. State the morning-burst figure as owed at final-account sizing.
+- SrStar reads last month (LMS) with a separate forRoutes call per star route. It returns every (memo, SKU) row of the month for ALL SKUs, then filters in Kotlin. Filtering by programme SKUs or category in SQL would cut the rows by about 40x. This is a pilot-size non-issue.
+- SrMemoFigures.dim reads the whole app.sku table and its product tree on every SR bundle build. This is small today; note it for a large catalogue.
+- The campaign figure and its as_of include other routes' memos at the outlet, which is by design and the same as the reviewed fact_memo_line version. A late upload by another SR at a shared outlet therefore changes this SR's bundle version. That churn is legitimate but is not listed in the admitted-churn bound.
+- There are now two separate REPEATABLE READ snapshots in one bundle: routeSnapshots and programmes. Each section is self-consistent, but they can disagree for a memo committed in between: Astha's achievement against the route achievement. This is harmless under each section's own rule; one sentence in docs would prevent a future 'mismatch' bug report.
+- D-TKPI-12 says 'checked by removing it once' for the transaction test. That cannot be verified from the tree; no test or CI run can show it.
+
+### tests-and-claims verdict=fail
+SUMMARY: Tests-and-honesty lens on lane/sr-targets-server at c30c52c63 (base ce6792f67, delta since 09f43d288). I read the code and diffs only; nothing was built or run.
+
+Checks that hold:
+- Aggregator.kt is byte-equal to the base (`git diff ce6792f67 c30c52c63` on it is empty).
+- DECISIONS.md is append-only against the base: 0 removed lines. The c30c52c63 edit only rewrote D-TKPI-12, which was added in this same delta.
+- No shipped migration was touched. The lane adds only V0230..V0233, and V0234 never reached the base.
+- Existing base tests were changed only to bump versions or extend lists (view contract 1.9 to 1.10, a new DwViewContract hash, WireDtosDrift adds RouteCalendar, e2e page lists). None were weakened.
+
+Test ports:
+- SrTargetsBundleTest is stronger. It now uses real memos and adds a voided memo and a superseded/edited memo.
+- SrKpiBundleTest is at least equal. The memo counts are now real distinct memos (90 and 68) instead of numbers inserted into the aggregate.
+- SrStarBundleTest is equal, plus a new star_truncated test with two active programmes.
+- SrCampaignsBundleTest is equal. The superseded case is now a real edit; the voided line is set via memo_line.voided_at.
+- SrTargetsScopeTest is equal: a real memo at every outlet of every route.
+- SrBundleStabilityTest removed the clamp test, which is moot because asOfByRoute is gone. It added a real AggregationWorker rebuild that must not move the version, which is stronger for the new design.
+- SrProgrammesEndToEndTest dropped the updated_at-stamp assertion (that logic was reverted) and keeps the version-equality assertion.
+- The removed null-brand test is truly unreachable. The V0003 triggers (sku_variant requires a variant node, product_node_check_parent requires a variant's parent to be a brand) make a brandless SKU impossible.
+
+SrPhoneWouldShowTest models rule B faithfully: add if not acknowledged at R or dated after through_date; subtract if acknowledged at R, removed since, and the removal not acknowledged at R; single flight. It covers:
+- every interleaving point, including a dead key;
+- an edit with identical lines;
+- a void followed by a re-sale;
+- an uncommitted rebuild, and a rebuild running in another thread;
+- a commit during the read, compared across separate queries (forRoutes against forOutletPairs).
+It also shows that without single flight a committed batch whose acknowledgement was lost is counted twice.
+
+Measurements are labelled as from a scratch PostgreSQL 16 in the container. The test runs only with ARON_SCALE_MEASURE=1 and has no assertions. The heap-size bug (it prints 0) is admitted.
+
+One blocking honesty finding: D-TKPI-12 says the truncation flags are tested, but targets_truncated has no test anywhere in the lane, and the multi-campaign case of campaigns_truncated is untested.
+
+Not verified (nothing could be run):
+- the local green runs and CI;
+- the claim that the commit-during-read test fails without the transaction ("checked by removing it once");
+- whether the bundle connection is really the primary;
+- the measurement numbers;
+- whether the phone lane implements rule B.
+
+#### BLOCKING upheld=3/3: D-TKPI-12 claims 'truncated flags (tested)' but targets_truncated has no test and campaigns_truncated for a second campaign is untested
+WHERE: DECISIONS.md D-TKPI-12 ('Open lows closed: ... truncated flags (tested)'), same claim in docs/status/sr-targets-server.md; code at backend/sync/.../SrTargets.kt line 84 (truncated = targets/achieved size > MAX_ROWS) and BundleDtos.kt line 307 (targets_truncated); tests: backend/app/src/test/.../SrCampaignsBundleTest.kt aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne, SrKpiBundleTest monthCardAndCpr...
+WHY: `git grep targets_truncated|MAX_ROWS` across every test file at every lane commit finds nothing. SrTargets.Snapshot.truncated, its mapping to RouteSnapshot.targets_truncated and the 500-row cut have no test. D-TKPI-11 widened campaigns_truncated to also mean 'more than one active campaign per outlet'. The only test with a second campaign on the outlet (aSecondCampaignOnTheOutlet...) asserts the shown programme and the figures but never campaigns_truncated. brands_truncated is asserted only as false. The project rules list a DECISIONS claim that the code or tests do not give as blocking.
+SCENARIO: Someone changes SrTargets.load to compute `truncated` from the post-take lists (always false), or BundleService stops mapping it to targets_truncated. A route with 501 target rows (catalogue growth or stale inactive-SKU rows) would then lose rows silently and still say targets_truncated=null. Every test stays green. The same happens if SrCampaigns stops setting truncated when it drops a second active campaign at an outlet: aSecondCampaign... still passes. The fix is either a test per flag (targets over 500 rows with true at 501 and false at exactly 500; a second campaign giving campaigns_truncated=true; brands over 200) or a corrected D-TKPI-12 and status line.
+
+LOWS:
+- The 'equality with the dashboard aggregate' test (SrPhoneWouldShowTest.onceTheWorkerHasCaughtUp...) asserts only four numbers: SKU C's sold quantity and memo count against dw.agg_daily_route_sku, and brand C's against dw.agg_daily_route_brand. Brand C has only SKU C sold, so the brand check reduces to the SKU check. Not compared: the match/lighter category volume, by_pack, Star STD, campaign figures, a memo holding two SKUs of the same brand (distinct-memo dedup), and free-goods lines (the SKU count counts any line, the brand count only sale lines). The status file's unqualified 'equality with the dashboard aggregate' overstates this.
+- The current-tree brand test moves SKU C to another brand and asserts only that the figure moves (volume_achieved under the new brand, none under the old). It never asserts that volume_target / by_pack target moved too, although D-TKPI-12 and the test message say target and figure always use one hierarchy. The dashboard side of the difference is by construction and not run, which D-TKPI-12 says honestly.
+- Scope of the 'differ only for a SKU whose brand changed inside the month' statement: the as-was brand is taken on the memo's date, so a change made after through_date (today) but after the memos also differs. It is better worded as 'changed on or after the earliest memo date in the window'.
+- Two D-TKPI-12 claims are untested. 'A void or an edit changes the figure and as_of once' has no version test: SrBundleStabilityTest covers only a new memo. 'An edit with identical lines moves as_of and so the version once': anEditWithIdenticalLines checks figures, not the version or as_of.
+- Upload idempotency digest, absent vs explicit (allocSet, cprBpPresent, cprAllocPresent in kDigest): no test reuses one batch_uuid with the other meaning. RouteKpiTargetsTest uses a fresh UUID for every send, so it tests keep-vs-clear semantics, not the digest, and the reviewer's 'replayed:true with the other meaning' case is unguarded.
+- The campaign_without_skus preview warning (RouteKpiTargetsApi) has no test. RouteKpiTargetsTest never reads a `warnings` array; the campaign row stored without SKU rows in anOrphanSkuTarget... is not checked for the warning.
+- Contract wording: the RouteSnapshot rule B text says every merged figure, memo counts included, uses 'sale lines only'. achievement_mtd.memo_count (SrMemoFigures.bySku) counts a memo with ANY non-voided line of the SKU, free lines included, as D-TKPI-12 states. A phone that follows the contract text would count differently from the server for a memo with a free line of a SKU. Exposure is small while promotions are deferred, but the text should match the code, and no test has a free line.
+- SrMemoFixture inserts the memo row and each line in separate autocommit statements, unlike the ingest's one family transaction. The commit-during-read test therefore exercises half-written memos, which the join hides consistently. This is fine for one-line memos, but it is not the production write pattern.
+- The claim that aMemoCommittedWhileTheBundleIsReadIsInEveryFigureOrInNone fails without the transaction ('checked by removing it once') cannot be reproduced from the repository. The test is probabilistic: it needs at least 5 builds and does not assert that the figure moved at least once (`moved` is only printed).
+- SrBundleScaleMeasureTest has no assertions and needs pg_ctlcluster and OS cache drops. It is correctly gated by ARON_SCALE_MEASURE=1 and labelled as scratch-only. Its KDoc says 500 routes x 28 days x 60 memos while the status says 502 routes x 70 outlets; the cosmetic inconsistency is in that test file. The whole-bundle figure (290 KB raw / 22.5 KB gzip) is one SR route, measured in a scratch container on the test account, not the final account.
+- The campaign figure counts every route's memos at the outlet (stated in SrCampaigns and the contract). An SR's campaign STD therefore includes another route's memos at that outlet, for example after an outlet moves route mid-month. This is by design (the target belongs to the outlet), but SrTargetsScopeTest does not cover that case.
+- AmoManualContractTest: the function was renamed from versionIs1210 to versionIs1190 while it now asserts 1.22.0, a misleading name. The status says the contract number stays provisional, yet info.version is pinned at 1.22.0 in a test.
