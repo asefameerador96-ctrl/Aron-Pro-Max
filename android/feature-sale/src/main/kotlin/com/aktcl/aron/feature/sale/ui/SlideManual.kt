@@ -72,9 +72,11 @@ fun SlideManualScreen(
 ) {
     val look = LocalAronLook.current
     val offered = skus.filter { it.drp != null }
-    // saved as SKU ids (a SaleSku is not saveable) so a pop-up or the quick-add dialog survives a rotation or a process restart
-    var offerId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var quickId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // NOT saved (lead review B1): the route's stage is a plain `remember` and starts on Entry after a recreate, so a saved key would stay unconsumed and
+    // reopen the quick-add dialog, pre-set to the old count, the NEXT time Slide is composed (possibly another outlet's sale); one tap on Save would then write
+    // that count into the current draft, which is the DRP reward deduction on the memo. A pop-up and the quick-add dialog are simply closed after a recreate.
+    var offerId by remember { mutableStateOf<Long?>(null) }
+    var quickId by remember { mutableStateOf<Long?>(null) }
     val offerOf = skus.firstOrNull { it.skuId == offerId }
     val quickOf = skus.firstOrNull { it.skuId == quickId }
     Column(modifier.fillMaxSize().background(look.page)) {
@@ -160,7 +162,7 @@ private fun OfferPopup(sku: SaleSku, onClose: () -> Unit) {
 @Composable
 private fun QuickAddDialog(sku: SaleSku, start: Long, onSave: (Long) -> Unit, onDismiss: () -> Unit) {
     val look = LocalAronLook.current
-    var n by rememberSaveable { mutableStateOf(start) }
+    var n by remember { mutableStateOf(start) }
     Dialog(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Lilac).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {

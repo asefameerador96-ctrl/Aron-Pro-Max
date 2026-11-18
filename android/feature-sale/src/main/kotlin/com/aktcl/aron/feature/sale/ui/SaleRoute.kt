@@ -72,9 +72,25 @@ fun SaleRoute(
     val locked = draft?.qcCompleted == true
     val shown = if (locked && (stage == SaleStage.Entry || stage == SaleStage.Slide)) SaleStage.Review else stage
     androidx.compose.runtime.LaunchedEffect(shown) { onStage(shown) }
-    // the vendor's QC tile page has no Cancel button: back from it is the old Cancel (a QC-only sale is dropped, otherwise what was typed since Review is put back)
+    // The vendor's QC tile page has no Cancel button: Back is its only way out, and it keeps the landed two-step screen's safeguard (lead review B2).
+    //  - QC submitted: nothing to put back; Back just leaves for Review (restoreQc on a locked sale would raise the "QC locked" notice on a plain Back);
+    //  - QC typed and not submitted: ask "discard everything entered in QC?" first (Yes = the old Cancel, No keeps everything);
+    //  - nothing typed: the old Cancel at once (a QC-only sale is dropped, otherwise what was typed since Review is put back).
+    var askQcDiscard by remember { mutableStateOf(false) }
+    val leaveQc = { if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review } }
     androidx.activity.compose.BackHandler(enabled = vendorQc && stage == SaleStage.Qc) {
-        if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review }
+        when {
+            locked -> stage = SaleStage.Review
+            review?.qc?.isNotEmpty() == true -> askQcDiscard = true
+            else -> leaveQc()
+        }
+    }
+    if (askQcDiscard && vendorQc && stage == SaleStage.Qc) {
+        com.aktcl.aron.core.ui.AronConfirmDialog(
+            stringResource(R.string.qc_confirm_title), stringResource(R.string.qc_discard_message),
+            stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
+            onConfirm = { askQcDiscard = false; leaveQc() }, onDismiss = { askQcDiscard = false }, manual = true,
+        )
     }
     Column(modifier.fillMaxSize()) {
         ui.notice?.let { n ->
@@ -114,6 +130,13 @@ fun SaleRoute(
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { qcOnlyStarted = false; vm.completeQc(); stage = SaleStage.Review },
                         onEntryPage = onQcEntryPage,
+                        // বাতিল on the entry page: ONE restore with this SKU's opening counts and every other SKU's lines as they are (not one write per fault type)
+                        onRestoreSku = { id, counts ->
+                            vm.restoreQc(
+                                draft?.qc.orEmpty().filter { it.skuId != id } +
+                                    counts.mapNotNull { (code, q) -> QcEntryModel.groupOf(code)?.let { g -> QcEntry(id, code, g, q) } }.filter { it.defectQty > 0 },
+                            )
+                        },
                     ) else if (review != null) QcScreen(
                         // the memo's SKUs; with no sale line the whole catalog is offered (QC-only sale, D-18)
                         if (draft?.lines.isNullOrEmpty()) skus else skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,

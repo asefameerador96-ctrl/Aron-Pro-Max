@@ -1,5 +1,9 @@
 package com.aktcl.aron.feature.sale.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -71,35 +75,43 @@ class SlideManualScreenTest {
         assertEquals(1, done)
     }
 
-    // lows of the lead's gate: the pop-up and the quick-add dialog (with the count typed into it) survive a recreate
-    private fun showRestorable(writes: MutableList<Pair<Long, Long>>): StateRestorationTester {
+    // lead review B1: Slide pop-up state is NOT saved. The route's stage is a plain remember, so after a recreate it starts on Entry; a saved key would stay
+    // unconsumed and reopen the quick-add dialog, pre-set to the old count, the next time Slide is composed. This host mirrors that: its stage is a plain remember.
+    private fun showRoute(writes: MutableList<Pair<Long, Long>>): StateRestorationTester {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         val restore = StateRestorationTester(compose)
         restore.setContent {
             AronTheme(AppLanguage.EN) {
-                SlideManualScreen(listOf(Fx.maxr, Fx.aster), review, { 10L }, { id, n -> writes += id to n }, {}, listOf("Savar Metro (1618409)", "Route: R1"))
+                var onSlide by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                if (onSlide) SlideManualScreen(listOf(Fx.maxr, Fx.aster), review, { 10L }, { id, n -> writes += id to n }, {}, listOf("Savar Metro (1618409)", "Route: R1"))
+                else androidx.compose.material3.Text("go to slide", androidx.compose.ui.Modifier.clickable { onSlide = true }.testTag("open_slide"))
             }
         }
         compose.waitForIdle()
         return restore
     }
 
-    @Test fun theOfferPopupSurvivesARecreate() {
-        val restore = showRestorable(mutableListOf())
+    @Test fun aQuickAddDialogOpenBeforeARecreateDoesNotReopenWhenSlideIsOpenedLaterAndSaveWritesNothing() {
+        val writes = mutableListOf<Pair<Long, Long>>()
+        val restore = showRoute(writes)
+        compose.onNodeWithTag("open_slide").performClick()
+        compose.onNodeWithTag(SlideTags.COUNT).performClick()
+        compose.onNodeWithText("5").performClick()
+        compose.onNodeWithTag(SlideTags.SAVE).assertExists() // the dialog is open with the typed step
+        restore.emulateSavedInstanceStateRestore(); compose.waitForIdle() // the route is back on its first stage
+        compose.onNodeWithTag("open_slide").performClick(); compose.waitForIdle() // Slide is opened later
+        compose.onAllNodesWithTag(SlideTags.SAVE).assertCountEquals(0) // no dialog reopens uninvited
+        assertEquals("nothing was written into the draft", emptyList<Pair<Long, Long>>(), writes)
+    }
+
+    @Test fun anOfferPopupOpenBeforeARecreateDoesNotReopenWhenSlideIsOpenedLater() {
+        val restore = showRoute(mutableListOf())
+        compose.onNodeWithTag("open_slide").performClick()
         compose.onNodeWithTag(SlideTags.RIBBON).performClick()
         compose.onNodeWithText("Discount").assertExists()
         restore.emulateSavedInstanceStateRestore(); compose.waitForIdle()
-        compose.onNodeWithText("Discount").assertExists()
-    }
-
-    @Test fun theQuickAddDialogKeepsItsTypedCountAcrossARecreate() {
-        val writes = mutableListOf<Pair<Long, Long>>()
-        val restore = showRestorable(writes)
-        compose.onNodeWithTag(SlideTags.COUNT).performClick()
-        compose.onNodeWithText("5").performClick()
-        restore.emulateSavedInstanceStateRestore(); compose.waitForIdle()
-        compose.onNodeWithTag(SlideTags.SAVE).performClick(); compose.waitForIdle()
-        assertEquals(listOf(100L to 15L), writes) // 10 + 5: the 5 typed before the recreate is still there
+        compose.onNodeWithTag("open_slide").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Discount").assertDoesNotExist()
     }
 }

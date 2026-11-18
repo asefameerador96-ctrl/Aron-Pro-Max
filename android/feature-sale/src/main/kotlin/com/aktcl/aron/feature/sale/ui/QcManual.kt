@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,18 +77,24 @@ fun QcManualScreen(
     capMtkOf: (skuId: Long) -> Long? = { null },
     onClearSku: (skuId: Long) -> Unit = {},
     onEntryPage: (Boolean) -> Unit = {},
+    /**
+     * বাতিল on the entry page puts back what the page opened with: ONE call with all of the SKU's counts (the route stores them as one restore, not one write
+     * per fault type). Null keeps the per-fault [onQty] writes. A locked (submitted) QC puts nothing back: the draft would refuse it and raise the "QC locked" notice.
+     */
+    onRestoreSku: ((skuId: Long, counts: Map<String, Long>) -> Unit)? = null,
     /** Opens on the entry page of this SKU (restores a page after a process restart; the goldens). */
     startOnEntrySku: Long? = null,
 ) {
     // NOT saved: after a rotation or a process restart no open QC page is restored and QC reopens on the tiles (step 1). The landed route test
-    // SrQcRouteRestoreTest (P-SR1b, B2) requires it, so বাতিল can never write quantities the rep did not enter in this session. This replaces
-    // the saveable page of lead gate finding 5, which the landed behaviour overrules (D-PAR-SR2-08).
+    // SrSaleLockedRouteTest.anOpenQcPageIsNotRestored (P-SR1b) requires it, so বাতিল can never write quantities the rep did not enter in this session.
+    // This replaces the saveable page of lead gate finding 5, which the landed behaviour overrules (D-PAR-SR2-08).
     var picked by remember { mutableStateOf(startOnEntrySku) }
     var opened by remember { mutableStateOf(emptyMap<String, Long>()) }
     val sku = skus.firstOrNull { it.skuId == picked }
     androidx.compose.runtime.LaunchedEffect(sku != null) { onEntryPage(sku != null) }
     // back on the entry page is the vendor's বাতিল (what the page opened with comes back); on the tiles the host's back applies
-    androidx.activity.compose.BackHandler(enabled = sku != null) { if (sku != null) { opened.forEach { (code, q) -> onQty(sku.skuId, code, q) }; picked = null } }
+    val restore = { skuId: Long -> if (!locked) { onRestoreSku?.invoke(skuId, opened) ?: opened.forEach { (code, q) -> onQty(skuId, code, q) } } }
+    androidx.activity.compose.BackHandler(enabled = sku != null) { if (sku != null) { restore(sku.skuId); picked = null } }
     if (sku == null) {
         QcTiles(skus, review, locked, onPick = { s ->
             opened = QcEntryModel.APP_TYPES.associate { it.code to qtyOf(s.skuId, it.code) }
@@ -97,7 +104,7 @@ fun QcManualScreen(
         QcEntryPage(
             sku, review, qtyOf, onQty, locked, capMtkOf(sku.skuId), modifier,
             onSave = { picked = null },
-            onCancel = { opened.forEach { (code, q) -> onQty(sku.skuId, code, q) }; picked = null },
+            onCancel = { restore(sku.skuId); picked = null },
             onDelete = { onClearSku(sku.skuId); picked = null },
         )
     }
@@ -112,11 +119,13 @@ private fun QcTiles(skus: List<SaleSku>, review: SaleReview, locked: Boolean, on
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             AronInfoCard(stringResource(if (locked) R.string.qc_locked else R.string.qc_pick))
             // the lavender panel of pack tiles, scrolling sideways
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(QcLavender).horizontalScroll(rememberScrollState()).padding(AronTokens.Space.M),
+            // lazy: a route with many SKUs composes only the tiles on screen, each with its pack picture
+            androidx.compose.foundation.lazy.LazyRow(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(QcLavender),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(AronTokens.Space.M),
                 horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
             ) {
-                skus.forEach { s ->
+                items(skus, key = { it.skuId }) { s ->
                     Column(
                         Modifier.width(96.dp).clip(RoundedCornerShape(12.dp)).background(look.card).heightIn(min = AronLook.Touch)
                             .clickable(enabled = !locked, role = Role.Button) { onPick(s) }.padding(AronTokens.Space.S).testTag(QcTags.TILE),
