@@ -174,7 +174,15 @@ class Wiring(
     val securityEvents: com.aktcl.aron.backend.platform.SecurityEvents = com.aktcl.aron.backend.platform.SecurityEvents.LOG,
     /** Closed on stop before the pools: flushes the queued security events. */
     val securityStore: AutoCloseable? = null,
+    /** The waiting-item sweep (D-LOY-API-28), built with the API role's ingest service; null in tests that build a Wiring by hand. It is STARTED only by [startBackgroundJobs] (Main's API role). */
+    val waitingSweep: com.aktcl.aron.backend.sync.WaitingChildSweepJob? = null,
 ) {
+    /** Starts the background jobs that live in the API process. Called by Main for the API role only (never by the migrate or worker role, never by [production] itself, so tests start nothing). */
+    fun startBackgroundJobs() { waitingSweep?.start() }
+
+    /** Stops them cleanly (called when the server stops, before the pools close). */
+    fun stopBackgroundJobs() { waitingSweep?.stop() }
+
     companion object {
         /**
          * The ingest extension point (docs/24 s4.2): type-specific checks and side effects of device records, one line
@@ -417,7 +425,7 @@ class Wiring(
                 com.aktcl.aron.backend.analytics.TargetAchievementDeps(com.aktcl.aron.backend.analytics.TargetAchievementService(db, config, clock), reach, guard, clock).install(this)   // tso-manual B2
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
-                securityEvents = securityEvents, securityStore = securityStore)
+                securityEvents = securityEvents, securityStore = securityStore, waitingSweep = com.aktcl.aron.backend.sync.WaitingChildSweepJob(sync.ingest!!, config))
         }
     }
 }

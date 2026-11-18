@@ -59,6 +59,8 @@ fun main() {
         }
         ServerRole.API -> {
             val wiring = Wiring.production(settings)
+            // D-LOY-API-28: the waiting-item sweep runs in the API process with the API role (least privilege: the worker login stays away from the ingest tables); never in migrate/worker.
+            wiring.startBackgroundJobs()
             apiServer(wiring, settings.port).start(wait = true)
         }
         ServerRole.WORKER -> {
@@ -96,20 +98,12 @@ fun main() {
                 com.aktcl.aron.backend.sync.BundlePreGenerator(workerDb, workerConfig, bundles, workerClock).start()
             }
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
-            run {
-                // D-LOY-API-28: waiting quarantine items (a child whose other parent was not stored when its first parent was accepted) are released when that parent is stored.
-                val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
-                val workerConfig = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))
-                val workerReach = com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb, workerClock), workerClock)
-                val workerPush = com.aktcl.aron.backend.notify.PushNotifier(workerDb, workerConfig, settings.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) })
-                com.aktcl.aron.backend.sync.WaitingChildSweepJob(Wiring.ingestService(workerDb, workerConfig, workerReach, workerClock, { com.aktcl.aron.backend.platform.NIL_GENERATION }, workerPush)).start()
-            }
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
             com.aktcl.aron.backend.sync.LoyaltyLedgerJob(workerDb).start()   // push C: redemption posting and the replay-based expiry
             com.aktcl.aron.backend.notify.InboxPruneJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start() // tso-manual B1
             com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)).let { c -> com.aktcl.aron.backend.sync.AutoFinalSubmitJob(workerDb, c, com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb)), com.aktcl.aron.backend.notify.PushNotifier(workerDb, c, settings.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) })).start() } // tso-manual B3: midnight auto Final Submit and start-up catch-up (D-TSO-MAN-30)
-            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, waiting-item sweep, retention, outlet request lapse, loyalty ledger)")
+            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse, loyalty ledger)")
             }
             Thread.currentThread().join()
         }
@@ -132,7 +126,7 @@ fun apiServer(w: Wiring, port: Int, callThreads: Int? = null) =
         },
     ) {
         aronApi(w)
-        monitor.subscribe(ApplicationStopped) { runCatching { w.securityStore?.close() }; w.database?.close() }
+        monitor.subscribe(ApplicationStopped) { runCatching { w.stopBackgroundJobs() }; runCatching { w.securityStore?.close() }; w.database?.close() }
     }
 
 @Serializable

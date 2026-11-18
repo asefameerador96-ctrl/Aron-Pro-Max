@@ -649,7 +649,7 @@ class GiftPhotoRecordsTest {
     }
 
     // ---- D-LOY-API-28: the worker sweep of WAITING items, the review queue's state and count, and the as-sent hash through every child path ----
-    private fun sweep() = waitingSweepJob(world.wiring, world.clock, world.fresh.url).tick()
+    private fun sweep() = waitingSweepJob(world.wiring, world.clock, world.fresh.url).tick()!!
     private suspend fun io.ktor.client.HttpClient.queue(): kotlinx.serialization.json.JsonObject =
         with(world) { kotlinx.serialization.json.Json.parseToJsonElement(getWeb("admin1001", "/v1/admin/quarantine?status=open&limit=200").bodyAsText()).jsonObject }
     private fun queueItem(q: kotlinx.serialization.json.JsonObject, uuid: String) = q["items"]!!.jsonArray.map { it.jsonObject }.single { it["client_uuid"]!!.jsonPrimitive.content == uuid }
@@ -756,6 +756,71 @@ class GiftPhotoRecordsTest {
             sweep().also { assertEquals(1, it.released, it.toString()) }
             assertEquals(1L, storedPhoto(p3)); assertEquals("duplicate", ack(sync(sr, listOf(p3)), cu(p3)).status(), "sweep: the as-sent resend of the waiting photo")
             assertEquals(1L, one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(p3)}' AS uuid)"))
+        }
+    }
+
+    /** A photo that waits: header (2 lines) accepted with the line l1, the second line l2 stored afterwards; returns the photo. */
+    private suspend fun io.ktor.client.HttpClient.waitingPhotoWithItsLineStored(flat: Double): JsonObject = with(world) {
+        val head = UUID.randomUUID().toString()
+        val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = flat)
+        for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+        assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals("open", itemRow(cu(p))["status"])
+        val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+        p
+    }
+
+    @Test
+    fun twoSweepersOnTheSameItemReleaseItOnce() = world.withApi {
+        with(world) {
+            repeat(3) { round ->
+                val p = waitingPhotoWithItsLineStored(lat + 0.0003 + round * 0.00001)
+                val a = waitingSweepJob(wiring, clock, fresh.url); val b = waitingSweepJob(wiring, clock, fresh.url)   // two replicas: two jobs, two ingest services
+                val go = java.util.concurrent.CountDownLatch(1)
+                val results = listOf(a, b).map { job -> java.util.concurrent.CompletableFuture.supplyAsync { go.await(); job.tick() } }
+                go.countDown()
+                val done = results.map { it.get(60, java.util.concurrent.TimeUnit.SECONDS)!! }
+                assertEquals(true, done.sumOf { it.released } >= 1, "released across both sweepers: $done"); assertEquals(0, done.sumOf { it.failed }, done.toString())
+                assertEquals(1L, one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid) AND status = 'accepted'"), "the item was closed once")
+                assertEquals(1L, storedPhoto(p), "stored once"); assertEquals("accepted", itemRow(cu(p))["status"])
+                assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status())
+            }
+        }
+    }
+
+    @Test
+    fun theStartedJobSweepsOnItsOwnAndStopsCleanlyAndTheSwitchesStopIt() = world.withApi {
+        with(world) {
+            // switched off by the emergency env: nothing is released, tick says so
+            val p0 = waitingPhotoWithItsLineStored(lat + 0.00041)
+            assertEquals(null, waitingSweepJob(wiring, clock, fresh.url, env = { if (it == "ARON_WAITING_SWEEP") "off" else null }).tick(), "off by env")
+            assertEquals("open", itemRow(cu(p0))["status"])
+            // started explicitly (no test starts it otherwise): the first pass is at once and releases the item; stop() returns and the job answers nothing afterwards
+            val job = waitingSweepJob(wiring, clock, fresh.url, firstDelayS = 0)
+            job.start()
+            val t0 = System.currentTimeMillis()
+            while (itemRow(cu(p0))["status"] == "open" && System.currentTimeMillis() - t0 < 30_000) Thread.sleep(100)
+            job.stop()
+            assertEquals("accepted", itemRow(cu(p0))["status"], "released by the job's own schedule"); assertEquals(1L, storedPhoto(p0))
+            assertEquals(null, job.tick(), "stopped: no further pass")
+            // a second pass never overlaps the first: the guard answers null while one is running (same job, concurrent ticks)
+            val p1 = waitingPhotoWithItsLineStored(lat + 0.00042)
+            val j2 = waitingSweepJob(wiring, clock, fresh.url); val go = java.util.concurrent.CountDownLatch(1)
+            val rs = (1..4).map { java.util.concurrent.CompletableFuture.supplyAsync { go.await(); j2.tick() } }; go.countDown()
+            val outs = rs.map { it.get(60, java.util.concurrent.TimeUnit.SECONDS) }
+            assertEquals(1, outs.filterNotNull().sumOf { it.released }, "one release in all"); assertEquals(1L, storedPhoto(p1))
+        }
+    }
+
+    @Test
+    fun theWorkerRolesStillCannotWriteTheIngestTables() = world.withApi {
+        with(world) {
+            val tables = listOf("sync_quarantine", "ingest_registry", "memo", "memo_line", "due_collection", "redemption", "redemption_line", "gift_photo", "gift_assignment")
+            for (role in listOf("worker_rw", "jobs_rw")) for (t in tables) for (priv in listOf("INSERT", "UPDATE")) {
+                assertEquals(false, one("SELECT CASE WHEN has_table_privilege('$role', 'app.$t', '$priv') THEN 1 ELSE 0 END") == 1L, "$role must not hold $priv on app.$t: widening the worker to the money tables is a least-privilege decision (D-LOY-API-28)")
+            }
+            for (t in tables) assertEquals(true, one("SELECT CASE WHEN has_table_privilege('api_rw', 'app.$t', 'UPDATE') THEN 1 ELSE 0 END") == 1L, "api_rw holds UPDATE on app.$t (the sweep's role)")
+            // and a real statement as the worker role is refused
+            fresh.dataSource.connection.use { c -> c.createStatement().use { st -> st.execute("SET ROLE jobs_rw"); try { assertTrue(runCatching { st.execute("UPDATE app.sync_quarantine SET detail = detail WHERE false") }.isFailure, "permission denied") } finally { st.execute("RESET ROLE") } } }
         }
     }
 }

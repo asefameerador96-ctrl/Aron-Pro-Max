@@ -273,7 +273,7 @@ class BackfillMatchTest {
         assertEquals(0, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"))
         // the sweep before the visit is stored changes nothing (idempotent, nothing finalised)
         val job = waitingSweepJob(wiring, clock, fresh.url)
-        job.tick().also { assertEquals(0, it.released); assertEquals(1, it.stillWaiting) }
+        job.tick()!!.also { assertEquals(0, it.released); assertEquals(1, it.stillWaiting) }
         assertEquals("open", status(dueItem))
         // the visit syncs; the next pass releases the collection through the real accept path
         val visitPayload = Json.parseToJsonElement(
@@ -283,9 +283,9 @@ class BackfillMatchTest {
                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""",
         ).jsonObject
         assertEquals(listOf("accepted"), statuses(json(client.send(sr, batch(listOf(envelope("visit", otherVisit, otherVisit, 0, visitPayload)))).bodyAsText())))
-        job.tick().also { assertEquals(1, it.released, it.toString()) }
+        job.tick()!!.also { assertEquals(1, it.released, it.toString()) }
         assertEquals("accepted", status(dueItem)); assertEquals(1, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "device count == server count")
-        job.tick().also { assertEquals(0, it.released); assertEquals(0, it.waiting) }
+        job.tick()!!.also { assertEquals(0, it.released); assertEquals(0, it.waiting) }
         assertEquals("duplicate", statuses(json(client.send(sr, batch(listOf(due))).bodyAsText()))[0])
         assertEquals(1, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "stored once")
     }
