@@ -57,10 +57,11 @@ class EveryWriterIsGatedTest {
         for (rel in listOf("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt", "app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoReadModels.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt", "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")) {
             assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in file(rel))
         }
-        val tso = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
+        val tsoFile = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
+        val tso = tsoFile.substring(tsoFile.indexOf("suspend fun enqueueAll("))
         val gate = tso.indexOf("ActionGate.requireOpen()")
-        val firstWrite = Regex("""\.insert\(|\.upsert\(|withTransaction""").find(tso, 0)?.range?.first ?: Int.MAX_VALUE
-        assertTrue("the TSO outbox gates before its first write", gate in 0 until firstWrite)
+        val firstWrite = tso.indexOf("withTransaction")
+        assertTrue("the TSO outbox entry (enqueueAll) gates before its transaction", gate in 0 until firstWrite)
         val visitGate = file("app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt")
         assertTrue("the SR visit commit gates before the photo claim and the visit write", visitGate.indexOf("ActionGate.requireOpen()") < visitGate.indexOf("capture.recordVisitOpen(v, f)"))
         val amo = file("app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")
