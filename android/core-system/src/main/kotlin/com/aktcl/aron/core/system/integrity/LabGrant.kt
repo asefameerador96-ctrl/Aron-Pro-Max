@@ -138,7 +138,7 @@ class VerifiedLabExemption(
         Marks(m.getValue("iat"), m.getValue("wall"))
     }.getOrNull()
 
-    private fun writeMarks(m: Marks) = com.aktcl.aron.core.common.AtomicText.write(markFile, "iat=${m.iat}\nwall=${m.wall}")
+    private fun writeMarks(m: Marks) = com.aktcl.aron.core.common.AtomicText.write(markFile, listOf("iat" to m.iat, "wall" to m.wall).joinToString("\n") { (k, v) -> k + "=" + v })
 
     companion object {
         /** How far a response's server time may be from this phone's clock for the response to count as fresh. */
