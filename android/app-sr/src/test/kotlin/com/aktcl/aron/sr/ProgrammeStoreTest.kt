@@ -530,7 +530,7 @@ class ProgrammeStoreTest {
         db.outboxDao().applyAck(c2, "rejected", "retry_exhausted", null, "2026-11-18T05:10:00.000Z")
         val d = com.aktcl.aron.feature.programmes.GiftChoiceData(emptyList(), emptyList()); val local = store.giftChoices()
         assertEquals(com.aktcl.aron.feature.programmes.GiftState.Held(4), d.stateOf(10, "2026-Q4", local, emptySet()))
-        assertEquals(com.aktcl.aron.feature.programmes.GiftState.OnThisPhone(4, false), d.stateOf(11, "2026-Q4", local, emptySet())) // not refused: the server may hold it
+        assertEquals(com.aktcl.aron.feature.programmes.GiftState.Unconfirmed(4), d.stateOf(11, "2026-Q4", local, emptySet())) // not refused, never "on this phone": sent, not confirmed (the server may hold it)
     }
 
     @Test fun theQuarantineQueryIsDerivedFromTheOrderTypeLists() = runTest {

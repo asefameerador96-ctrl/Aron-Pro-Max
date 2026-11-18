@@ -37,6 +37,7 @@ import com.aktcl.aron.core.ui.R as CoreR
 
 object LoyaltyTags {
     const val AWAITING = "loyalty_awaiting"
+    const val GIVEN_UP = "loyalty_given_up"
     const val HELD = "loyalty_held"
     const val UNCONFIRMED = "loyalty_unconfirmed"
     const val MENU_REDEEM = "loyalty_menu_redeem"
@@ -74,6 +75,7 @@ fun OutletPointsScreen(
     balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long = { _, _, b -> b },
     /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them. */
     awaiting: Int = 0,
+    givenUp: Int = 0,
     /** The points of this phone's redemptions held for review or unanswered, by outlet and programme: already subtracted from the balance, named so the SR knows the balance may be lower than the true one. */
     heldPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
     /** The points of redemptions sent and not confirmed (already subtracted): its own line, never counted in the held line. */
@@ -90,6 +92,7 @@ fun OutletPointsScreen(
             return@Column
         }
         if (awaiting > 0) Text(countText(R.plurals.pg_awaiting_redemptions, awaiting, locale), Modifier.testTag(LoyaltyTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (givenUp > 0) Text(countText(R.plurals.pg_given_up_redemptions, givenUp, locale), Modifier.testTag(LoyaltyTags.GIVEN_UP), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val chosen = withPoints.firstOrNull { it.outletId == outletId }
         AronDropdown(withPoints, chosen, { outletId = it.outletId }, { it.nameLine }, Modifier.testTag(LoyaltyTags.OUTLET), placeholder = stringResource(R.string.pg_loyalty_pick_outlet))
         if (chosen == null) return@Column

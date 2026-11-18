@@ -114,7 +114,7 @@ class FigureRuleBTest {
         val noMonth = FigureRuleB.show(server, local, emptySet(), null, "2026-11-04")!!
         assertEquals(100L, noMonth.qtyBase); assertEquals(4L, noMonth.memoCount); assertFalse(noMonth.localApplied); assertEquals("2026-11-04T10:00:00Z", noMonth.asOf)
         val noOrder = FigureRuleB.show(server, local, null, month, "2026-11-04")!!
-        assertEquals(110L, noOrder.qtyBase); assertEquals(5L, noOrder.memoCount) // the never-sent memo is certainly not in the figure; the acknowledged one may be, so it is not added
+        assertEquals(117L, noOrder.qtyBase); assertEquals(6L, noOrder.memoCount) // old-phone fallback: the never-sent memo AND the memo dated after through_date (the figure is cut there) are added
         assertNull(FigureRuleB.show(null, local, emptySet(), month, null))
     }
 
@@ -198,5 +198,33 @@ class FigureRuleBTest {
         assertEquals(0L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(q), emptySet(), month, "2026-11-04")!!.qtyBase)
         assertEquals(0L, FigureRuleB.show(FigureRuleB.ServerFigure(0, 0), listOf(q), null, month, "2026-11-04")!!.qtyBase)
         assertEquals(1, FigureRuleB.heldForReview(listOf(q)))
+    }
+
+    private fun lm(uuid: String, date: String, state: String, qty: Long, supersedes: String? = null) =
+        LocalMemo(uuid, 1L, date, supersedes, state, null, listOf(LocalMemoLine(sku, "sale", qty, 20, qty * 100)), 7, "sale", null)
+
+    @Test fun withoutTheOrderTheNoteCountsOnlyWhatTheFallbackReallyLeavesOut() {
+        val through = "2026-11-04"
+        val memos = listOf(
+            lm("early", "2026-11-03", "acked", 10),      // may be in the figure: left out
+            lm("later", "2026-11-17", "acked", 20),      // dated after through_date: ADDED, not counted as left out
+            lm("fresh", "2026-11-03", "pending", 5),     // never sent: ADDED
+        )
+        val d = FigureRuleB.delta(memos, null, month, through)!!
+        assertEquals(setOf("later", "fresh"), d.add.map { it.uuid }.toSet())
+        assertEquals(1, FigureRuleB.unknownOrder(memos, false, month, through)) // only "early"
+        assertEquals(0, FigureRuleB.unknownOrder(memos, true, month, through))
+    }
+
+    @Test fun withoutTheOrderAnEditOfAMemoAfterThroughDateCountsInFullAndAnEditOfAnEarlierOneIsLeftOutAndNamed() {
+        val through = "2026-11-04"
+        val laterOld = lm("o1", "2026-11-17", "acked", 10); val laterEdit = lm("e1", "2026-11-17", "pending", 12, supersedes = "o1")
+        val d = FigureRuleB.delta(listOf(laterOld, laterEdit), null, month, through)!!
+        assertEquals(listOf("e1"), d.add.map { it.uuid }) // the figure holds neither version: the edit counts, the edited memo is dead
+        assertEquals(0, FigureRuleB.unknownOrder(listOf(laterOld, laterEdit), false, month, through))
+        val earlyOld = lm("o2", "2026-11-03", "acked", 10); val earlyEdit = lm("e2", "2026-11-03", "pending", 12, supersedes = "o2")
+        val d2 = FigureRuleB.delta(listOf(earlyOld, earlyEdit), null, month, through)!!
+        assertEquals(emptyList<String>(), d2.add.map { it.uuid }) // the original may be in the figure: nothing can be netted
+        assertEquals(2, FigureRuleB.unknownOrder(listOf(earlyOld, earlyEdit), false, month, through)) // and the note says so
     }
 }

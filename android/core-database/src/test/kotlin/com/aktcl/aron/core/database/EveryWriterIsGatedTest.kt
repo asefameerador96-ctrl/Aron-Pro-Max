@@ -165,6 +165,25 @@ class EveryWriterIsGatedTest {
         assertEquals("these functions write without the gate first and are not named as gated by their caller (with a reason): $bad", emptyList<String>(), bad)
     }
 
+    /**
+     * The programme writers (lane android-sr-programmes): `ProgrammeStore.saveProgramme` and `saveGiftPhoto` call `ActionGate.requireOpen()` before anything else, and the photo save gates BEFORE the claim of the
+     * photo, so a closed gate never leaves a claim behind.
+     */
+    @Test fun theProgrammeStoreWritersGateFirstAndBeforeThePhotoClaim() {
+        val src = file("app-sr/src/main/kotlin/com/aktcl/aron/sr/ProgrammeStore.kt")
+        for (name in listOf("saveProgramme", "saveGiftPhoto")) {
+            val start = src.indexOf("suspend fun $name(")
+            assertTrue("$name not found: the scan is broken", start >= 0)
+            val body = src.substring(start, src.indexOf("\n    suspend fun ", start + 10).let { if (it < 0) src.length else it })
+            val gate = body.indexOf("ActionGate.requireOpen()")
+            assertTrue("$name must call ActionGate.requireOpen()", gate >= 0)
+            val firstWork = Regex("""claimPhoto\(|withTransaction|db\.|\.insert|\.upsert|require\(""").find(body, body.indexOf("{", body.indexOf("withContext")))?.range?.first ?: Int.MAX_VALUE
+            assertTrue("$name gates before any work", gate < firstWork)
+        }
+        val photo = src.substring(src.indexOf("suspend fun saveGiftPhoto("))
+        assertTrue("the gift photo save gates before the claim", photo.indexOf("ActionGate.requireOpen()") < photo.indexOf("claimPhoto(photoUuid"))
+    }
+
     /** D-AGATE-25: the check-out's open-work guard (item 6) runs AFTER the Developer options gate, never before it. */
     @Test fun theCheckOutGuardRunsAfterTheGate() {
         val body = writers().first { it.name == "recordCheckOut" }.body
