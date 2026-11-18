@@ -3343,3 +3343,9 @@
 - INT 9bb7f5cf1 live (train 114a; migrate log verified 0190 -> 0191). Train 115 lane/lead-train115 10ee32206 (Loyalty C 6c13c81b3 + sr-server 932bb1634 + SR-1 75b2a14d6): lane ci 44208229771 in progress; GO given to integrator 24.
 - Reviews since last check: masterdata d1c16cf PASS (train 116 after merge; head 6c2ed868 green); sr-server check-out round 2f5922ee PASS (train 117, renumber to V0201..V0203 / 1.19.0); android-gates step 1 04f8bf1a: round-2 blockers fixed, 4 new blocking (docs/reviews/android-gates-step1-2026-11-18.md) with A-GATE3 session_014mnioM8e2x3t9gk9o9UbUu; AMO slices 3-5b PASS after discount-row fix (2195c0f12), not in 115 (5 golden conflicts with core-ui), slices 6-7 unchecked.
 - New sessions: SV6 session_014mnioLvKP6ttPtSaCjKTmx, A-GATE3, A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM (renumber to V0204/V0205, 1.20.0). P-SR2b still blocked on the owner's push approval.
+
+### Lane check 2026-11-18 02:46 UTC
+- INT f5bfee390 (train 115) live; migrate log verified 0191 -> 0194. Train 115a (UI: AMO slices 3-9 + SR-1 Attendance goldens) lane/lead-train115a 652db94d0: GO given, ci running.
+- Train 116 master data cd079fb2: merge-only review running. sr-server c3ec4317 (four migrations, final V0201..V0204 / 1.19.0) waits for 116. Integrity V0205..V0206 / 1.20.0. L-A11 V0207 / 1.21.0 (sweep runs in the API process, no grant change).
+- android-gates: step 3 12a178bc FAILED (5 blocking, docs/reviews/android-gates-step3-2026-11-18.md); A-GATE5 session_014mnioM5JcbtBQV899MvN4N on step 4. P-SR1b session_014mnioQAtKKTq9KrTS98tic (Sale page). CI-E2E session_014mnioLZHqPfcspFYruwHTm (split web e2e; the 30-minute limit is not widened).
+- Retired: A-GATE4, P-SR1, L-A10. P-SR2b still blocked on the owner's push approval.
