@@ -1,56 +1,88 @@
 # Request (document only, NOT built): profile the Apsis dump through a throwaway MySQL server
 
-From: lane M-APSIS1. To: lead, lane/infra-final. Status: proposal for the day the hand-written reader refuses the real dump. Nothing here is built, and no part of it may be run before the owner and the lead say so.
+From: lane M-APSIS1. To: lead, lane/infra-final. Status: a build-ready plan for the day the hand-written reader refuses the real dump. **Nothing here is built or run; no step may start before the owner and the lead say so.** The hand-written reader is closed (lead decision 2026-11-18); this is the remedy for anything it refuses (see the "what the reader accepts and refuses" table in `docs/status/apsis-migration.md`, section 0).
 
-## 1. Why this exists
-`tools/apsis-migration` reads mysqldump files with a hand-written, strict, every-line-accounted reader. It is safe (four reviews found no leak) but it can only read shapes it names, and each review round has found another standard mysqldump shape. MySQL itself is the only complete reader of its own dumps. If the real dump (about 52.5 GB, 26 tables, about 122 M rows) has shapes the reader refuses, restoring it into a throwaway MySQL server inside the final account's private network and profiling it with SQL is the fallback. **Choose it only if the real file listing or a first `profile` run shows refusals that are not a one-line reader fix.** The file listing (names and sizes) the lead is asking the owner for decides per-table vs one file, compression and tool before anyone touches content.
+## 1. When to choose it
+- The owner's FTP file listing shows a tool or layout the reader refuses (mydumper split layout, compressed archives, `--tab`, a single whole-database file with shapes outside the table), or
+- a first `profile` run refuses a table for a shape that is not already in the table of accepted constructs.
+MySQL itself is the only complete reader of its own dumps. Output rules are unchanged: counts, structure and numbers only, never a row, a value list or an exact minimum or maximum.
 
-## 2. What it would do
-1. A Container Apps **job** (no ingress, **no egress** at all: the network policy allows only the private storage and its own log sink) starts a `mysqld` in the same container (or a sidecar) on a scratch volume.
-2. The dump is streamed from private storage into `mysql` (`zcat | mysql`), as the job's only input. Nothing leaves the container except the outputs in section 3.
-3. The job runs the profile SQL (section 3) and writes the four profile files (same names, same rules as today) to the private output container. It then destroys the volume. The server's data directory is never persisted and never mounted anywhere else.
+## 2. Container image
+- Base: the **official `mysql` image from Docker Hub, pinned by digest** (never by tag alone). The server version must equal the dump header's `Server version` / `Distrib` (the file listing and the first lines of a file, read by the owner, say which: 5.7.x or 8.0.x). The digest is recorded at build time from the registry (`docker buildx imagetools inspect mysql:<version>`), copied into `infra/` as `sha256:<digest>`, and mirrored into the private registry (ACR) of the final account; the job pulls only from ACR. (The digest is not written here: this lane has not looked at the registry, and a made-up digest would be worse than none.)
+- On top of the base, one thin layer, built by CI and scanned: `/opt/profile/run.sh`, `/opt/profile/filter.py` (the quote/comment-aware block scanner from `mysqldump.py`, reused as a module), `/opt/profile/profile.sql`, `/opt/profile/check_output.py`, Python 3 stdlib only. No other packages; no `curl`.
+- `mysqld` configuration file baked in: `skip-networking`, `socket=/var/run/mysqld/mysqld.sock`, `event-scheduler=OFF`, `skip-log-bin`, `local-infile=0`, `secure-file-priv=NULL`, `general_log=OFF`, `slow_query_log=OFF`, `log_error_verbosity=1`, `innodb_buffer_pool_size=` about 60 percent of the job memory, `innodb_flush_log_at_trx_commit=2`, `innodb_doublewrite=OFF`, `max_allowed_packet=1G`, `sql_mode=` the value named in the dump's own `SET sql_mode` line (read by the filter, not guessed), `character-set-server=` the character set the owner decided (Q2), `default-time-zone='+00:00'`.
 
-## 3. The SAME no-value profile, from SQL
-Output rules are identical to phase 1: **no row, no value list, no exact minimum or maximum; names pass the identifier rule or print as `[name-N]`; descriptors only for tables of 1000+ rows and columns with 100+ non-null values that are not near-unique; hour histograms in the full file only.** Only aggregate SQL is used, and the profile SQL is a checked-in file reviewed like code (a test runs it against a synthetic database and applies the same leak tests).
-
-| Output | Source |
+## 3. Job spec for lane/infra-final
+| Item | Value |
 |---|---|
-| table, column, type, key, index, foreign key, engine, charset, partitioned and partition count | `information_schema.TABLES/COLUMNS/STATISTICS/KEY_COLUMN_USAGE/PARTITIONS` (never `PARTITION_DESCRIPTION`, which holds the bounds) |
-| exact row count (Q18) | `SELECT COUNT(*)` per table (not `TABLE_ROWS`, which is an estimate) |
-| null share, min/max length | `AVG(c IS NULL)`, `MIN/MAX(CHAR_LENGTH(c))` (`LENGTH` for binary columns; binary columns get shape `binary` and no more) |
-| shape histogram | counts of `c REGEXP '<class pattern>'` per class (the same classes: empty, datetime-like, date-like, uuid-like, e-mail-like, phone-like, digits-only, decimal, bengali, latin-text, ...), computed on `LEFT(c, 256)` |
-| distinct count, near-unique test | `COUNT(DISTINCT c)` (a count, with the 100 non-null floor; large tables may use a sampled or HLL-style count capped like today) |
-| year-month range | `DATE_FORMAT(MIN(c),'%Y-%m')`, `DATE_FORMAT(MAX(c),'%Y-%m')` only; the full date is never selected into the output |
-| digit-count range, sign, decimal places | `MIN/MAX(CHAR_LENGTH(CAST(ABS(c) DIV 1 AS CHAR)))`, `SUM(c<0)`, scale from the declared type |
-| hour-of-day histogram (full file only) | `COUNT(*) GROUP BY HOUR(c)` |
-| enum candidate | `COUNT(DISTINCT c) < 30 AND COUNT(*) >= 1000 AND MIN(per-value count) >= 20 AND MAX(CHAR_LENGTH(c)) <= 24` as one boolean; the per-value counts never leave the query |
-| reference checks | `COUNT` of fact keys found in the master key column, exact and after the normalisation rule |
+| Kind | Azure Container Apps job (manual trigger, replica timeout 24 h, 1 replica, no retries) with an Azure Files premium share as scratch, **or** an ACI group with a managed disk if Files premium cannot hold the I/O |
+| Network | the private VNet of the final account, a **dedicated subnet** with an NSG that denies **all outbound** except the private endpoints of the landing storage (read) and the output storage (write) and the log sink; no public IP, no ingress; `mysqld` listens on a socket only |
+| Identity | `id-apsis-migration`: Blob Data **Reader** on the landing container, Blob Data **Contributor** on a **separate output container** (never the landing container); no database role, no Key Vault, no other access |
+| Compute | 8 vCPU, 32 GB RAM (buffer pool about 18 GB) |
+| Scratch | 200 GB premium SSD (data about 40 to 90 GB for a 52.5 GB dump, plus index build and undo; restore must never be disk-starved) |
+| Timeout and abort | 24 h hard stop; abort criteria after a 1 GB trial slice: projected over 12 h or over 150 GB |
+| Logs | job stdout/stderr only; the run script prints step names, counts of statements and exit codes, **never a statement or a row** |
+| Teardown | the scratch volume is deleted when the job ends (success or failure); nothing is kept but the output files |
+| Environment | final account only (never the test account, CI or the container this lane works in) |
 
-`profile-values` (owner-run, one named column, re-derives the test, mode 0600, loud warning) keeps the same rules and is the only path that may print values.
+## 4. Exact steps (all inside the job)
+1. **Start** `mysqld --defaults-file=/etc/mysql/apsis.cnf --initialize-insecure` (empty datadir on the scratch volume), then start it with the socket only; set a random root password kept in the job's memory, create the working schema `apsis`.
+2. **Filter the stream, never executing foreign code.** Stream each file from private storage (`.sql`, `.sql.gz`, per-table or whole-database) through `filter.py`, which:
+   - drops every `DELIMITER ;;` block (triggers, routines, events) using the block scanner, and **refuses the file** if a block cannot be scanned (same rule as the reader);
+   - drops `CREATE ... TRIGGER`, `CREATE ... PROCEDURE|FUNCTION|EVENT`, `CREATE ... VIEW` / view stand-ins (views are not data) and `/*!50106 ... EVENT ... */` statements;
+   - **rewrites definers**: removes every `DEFINER=...` clause (`/*!50017 DEFINER=...*/`, `DEFINER=` inside `/*!50013 ... */`) so no object is bound to a vendor account;
+   - removes `CREATE DATABASE`, `USE`, `ALTER DATABASE` lines and forces a single `USE apsis;` at the top;
+   - passes through only: `SET` of session variables on an allow-list (`NAMES`, `TIME_ZONE`, `UNIQUE_CHECKS`, `FOREIGN_KEY_CHECKS`, `SQL_MODE`, `SQL_NOTES`, `SQL_LOG_BIN`), `DROP TABLE IF EXISTS`, `CREATE TABLE`, `LOCK/UNLOCK TABLES`, `ALTER TABLE ... KEYS`, `INSERT`. **Any other statement is dropped and counted (a number in the log), never executed.**
+3. **Restore** the filtered stream with `mysql --defaults-file=... --default-character-set=<decision> --init-command="SET foreign_key_checks=0, unique_checks=0, sql_log_bin=0"` as the job's local root; one file at a time, tables in the order the reader's `ORDER` list gives (masters first). The statement count and the exit code of each file are logged; a failure stops the run (no silent partial restore).
+4. **Verify the restore by counts.** `SELECT COUNT(*)` per table equals the number of INSERT rows counted by the filter (the filter counts tuples with the reader's tokenizer in counting-only mode) and, when the owner supplies the vendor's exact counts (Q18), equals those; any difference stops the run.
+5. **Run `profile.sql`** (section 5) as read-only queries; results go into a temporary table in the same server.
+6. **Render the four profile files** with the same layout and the same identifier rule as `profiler.py` (`apsis-profile.json/.md` full, `apsis-profile.sanitised.json/.md`), through `check_output.py` (section 6).
+7. **Upload** the four files to the output container only if `check_output.py` exits 0; otherwise upload nothing and exit non-zero with the step name. Delete the scratch volume.
 
-## 4. Cost and sizing (estimates, to be measured on a 1 GB slice first)
-- **Disk:** a 52.5 GB dump restores to roughly 40 to 90 GB of InnoDB data plus indexes (indexes in the dump's CREATE TABLE are rebuilt). Plan 150 GB of scratch (premium SSD or an ephemeral volume) so a restore is never disk-starved; a Container Apps job's ephemeral storage is too small, so this needs an Azure Files premium share or a small VM/ACI with a managed disk. Open question for infra-final.
-- **Time:** a plain restore of this size is about 3 to 8 hours (single-threaded, per-row INSERTs; faster with `innodb_flush_log_at_trx_commit=2`, a large buffer pool, `skip-log-bin`, `foreign_key_checks=0`, `unique_checks=0`); the profile queries add a full scan per table (the 122 M rows in minutes to an hour, depending on the regex counts and sampling). The reader today does about 3.4 MB/s (about 4 to 5 hours for 52 GB), so the two are comparable; MySQL is not faster, only complete.
-- **Compute:** 4 to 8 vCPU and 16 to 32 GB RAM for the job while it runs; deleted afterwards. Money: a few currency units for the run itself; the test-account rules (pilot size) do not apply because this runs only in the final account.
+## 5. The aggregate SQL that produces today's profile fields
+Every statement is generated from `information_schema` (table and column names validated by the identifier rule before they are put into SQL; never string-concatenated from dump text) and is `SELECT` only. `t` is a validated table, `c` a validated column.
 
-## 5. What it needs from lane/infra-final
-1. A job (Container Apps job with a volume, or ACI) in the private VNet, **egress denied**, identity `id-apsis-migration` with Blob Data Reader on the landing container and Blob Data Contributor on a separate output container (never the landing one).
-2. A pinned `mysql:8.0` (and, if the file listing shows a 5.7 dump, 5.7) image in the private registry; a scratch volume as in section 4; log sink with no query logging (`general_log=OFF`, `slow_query_log=OFF`, `log_error_verbosity=1`).
-3. `mysqld` configured with: `--skip-networking` (socket only), `--event-scheduler=OFF`, `--skip-grant-tables` is NOT used (a local root with a random password kept only in the job's memory), `--skip-log-bin`, `--local-infile=0`, `sql_mode` set to a permissive value that matches the dump's `SET sql_mode` lines (see risks), `innodb_buffer_pool_size` about 60 percent of RAM.
-4. The profile SQL runner (a small script in `tools/apsis-migration`, built only when this path is chosen) and the output writer that applies the identifier rule and the same four-file layout.
+| Field | Statement |
+|---|---|
+| table, engine, charset, partitioned, partition count | `SELECT TABLE_NAME, ENGINE, CCSA.CHARACTER_SET_NAME FROM information_schema.TABLES T JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA ON CCSA.COLLATION_NAME=T.TABLE_COLLATION WHERE TABLE_SCHEMA='apsis'`; `SELECT COUNT(*) FROM information_schema.PARTITIONS WHERE TABLE_SCHEMA='apsis' AND TABLE_NAME=t AND PARTITION_NAME IS NOT NULL` (never `PARTITION_DESCRIPTION`, which holds the bounds) |
+| column names, declared types, order | `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='apsis' AND TABLE_NAME=t ORDER BY ORDINAL_POSITION` |
+| primary key, indexes, foreign keys | `information_schema.STATISTICS` (INDEX_NAME, NON_UNIQUE, COLUMN_NAME, SEQ_IN_INDEX) and `KEY_COLUMN_USAGE` (REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME); referenced tables not on the allow-list print as `[table-not-on-allow-list]` |
+| exact row count | `SELECT COUNT(*) FROM t` |
+| null share | `SELECT AVG(c IS NULL) FROM t` |
+| min and max length (characters; bytes for binary types) | `SELECT MIN(CHAR_LENGTH(c)), MAX(CHAR_LENGTH(c)) FROM t WHERE c IS NOT NULL` (`LENGTH(c)` for binary types) |
+| shape histogram (16 classes) | one statement per column: `SELECT SUM(LEFT(c,256) REGEXP '^$'), SUM(LEFT(c,256) REGEXP '<datetime-like>'), SUM(... '<date-like>'), ..., COUNT(*) FROM t WHERE c IS NOT NULL`, with the same class patterns as `profiler.shape` (evaluated in priority order by `CASE`, so each value lands in exactly one class); binary columns get `COUNT(*)` as class `binary` and nothing else |
+| distinct count and near-unique test (columns with 100+ non-null values, tables of 1000+ rows) | `SELECT COUNT(DISTINCT c) FROM t` (capped: for tables over 20 M rows use `COUNT(DISTINCT c)` on a hash-partitioned sample of 50,000 distinct hashes, as the reader caps at 50,000) |
+| enum candidate (boolean only) | one statement returning a single boolean: `SELECT (COUNT(*)>=1000 AND COUNT(DISTINCT c)<30 AND MAX(CHAR_LENGTH(c))<=24 AND (SELECT MIN(n) FROM (SELECT COUNT(*) n FROM t WHERE c IS NOT NULL GROUP BY c) g)>=20 AND SUM(c NOT REGEXP '^[A-Za-z0-9_.+-]{1,24}$')=0) FROM t WHERE c IS NOT NULL`. The per-value counts exist only inside the query and are never returned |
+| number descriptor (full file; 1000+ rows, 100+ non-null, not near-unique) | `SELECT MIN(CHAR_LENGTH(CAST(ABS(c) DIV 1 AS CHAR))), MAX(...), SUM(c<0)>0, SUM(c>=0)>0, MAX(c<>FLOOR(c)) FROM t WHERE c IS NOT NULL` (digit-count range, sign, integer or decimal; decimal places from `NUMERIC_SCALE`) |
+| year-month range (full file; same conditions) | `SELECT DATE_FORMAT(MIN(c),'%Y-%m'), DATE_FORMAT(MAX(c),'%Y-%m') FROM t WHERE c IS NOT NULL AND c>'0000-01-01'`; zero dates: `SELECT SUM(c='0000-00-00') FROM t` (the full date is never selected into the output) |
+| hour-of-day histogram (full file only; datetime columns with 100+ non-null) | `SELECT HOUR(c), COUNT(*) FROM t WHERE c IS NOT NULL GROUP BY HOUR(c)` |
+| reference checks (shares only) | `SELECT AVG(m.k IS NOT NULL), AVG(n.k IS NOT NULL) FROM fact f LEFT JOIN master m ON m.key=f.key LEFT JOIN master n ON n.nkey=norm(f.key)` (the normalisation rule as a SQL expression equal to `norm_code`), counts and shares only |
+| `profile-values` (owner-run, one named column) | not part of this job's default run; a separate owner-run job with the same confirmation rule, the loud warning, an output file mode 0600 and a directory different from the profile files |
 
-## 6. Risks and how each is handled
-- **Vendor triggers, routines and events executing.** A dump can contain triggers that run on INSERT, routines and events. Mitigation: pre-filter the stream with a *dumb* line filter that drops `DELIMITER` blocks (using the same quote/comment-aware block scanner the reader has, which refuses on anything it cannot scan), set `event_scheduler=OFF`, run with a user that has no `SUPER`/`EVENT`/`TRIGGER`, and **neutralise `DEFINER=`** (`sed` on `/*!50017 DEFINER=...*/` and `DEFINER=` clauses in the pre-filter, or import with `--force` as a user that does not exist so definer-bound objects fail rather than run). Triggers and routines are not needed for the profile; they are removed before the data is loaded.
-- **The restore runs foreign code in principle.** It is only the vendor's own dump of our own data, and the job has no egress and no secrets, so a malicious statement has nowhere to send anything; the SQL-injection surface is the dump itself, which the owner already trusts enough to keep. The no-egress rule is the control that matters.
-- **Character set.** Q2 is unchanged: the owner decides the character set; the restore uses `--default-character-set=<decision>` and never guesses. A wrong choice shows as mojibake counts in the shape histogram, as today.
-- **`sql_mode` and zero dates.** `NO_ZERO_DATE`/`STRICT_TRANS_TABLES` would reject the vendor's `0000-00-00` rows; the restore session sets the dump's own `sql_mode` and the profile counts zero dates (as the reader does) with `'0000-00-00'` handled before `MIN/MAX`.
-- **Version differences (5.7 vs 8.0, collations such as `utf8mb4_0900_ai_ci`).** Use the server version named in the dump header; the file listing tells us.
-- **Scale and cost surprises.** Measure a 1 GB slice first; abort criteria: more than 12 hours or more than 200 GB.
-- **Output leakage.** The profile SQL only produces aggregates, but an aggregate over a tiny group can still be a value (a min/max of one row). Same rules as today: no min/max exposed, the 100 non-null floor, tables under 1000 rows get only type, null share, lengths and shapes. The same leak tests run against the SQL path before it is used.
+The SQL file is checked in, reviewed like code, and tested (when built) against a synthetic MySQL database by the **same leak tests** as the reader's profile (SECRETS list, 1/5/40-row tables, PINs, 4-digit values, names in a `type` column).
 
-## 7. When we would choose it
-- The real file listing shows a tool or layout the reader refuses (mydumper split layout, compressed parts, `--tab`, a single file with routines and views we cannot scan), or
-- a first `profile` run refuses a table for a shape that is not a one-line reader fix, or
-- the owner prefers the complete answer to the fast one.
+## 6. How the output is checked for leaks before it leaves the account
+`check_output.py` runs inside the job after rendering and before the upload; it exits non-zero on any finding, and nothing is uploaded then.
+1. **Closed schema.** The JSON must match a fixed schema: only the keys the reader's profile has; every number a non-negative integer or a rounded share in [0,1]; every string either an identifier that passes the identifier rule (no run of 8 or more digits), a placeholder `[name-N]`, a type word on an allow-list, or one of the 17 class labels. **Any other string refuses**, which is what would carry a value.
+2. **No exact extremes.** No field named min/max/first/last other than lengths; dates only as `YYYY-MM`; no key with a list of strings longer than the class labels allow.
+3. **Floors.** Every descriptor and histogram must be backed by a table of 1000+ rows and a column of 100+ non-null values (the checker recomputes the row counts from the profile itself and drops nothing silently: it fails).
+4. **Value scan.** A scan of the four files for patterns that look like personal data or secrets (phone numbers, e-mail addresses, 17-digit ids, UUIDs, hashes, Bengali text) and a **canary check**: before the real run, the same pipeline runs on a synthetic dump seeded with known canary values; the check must find none of them in the outputs (this runs in CI when the pipeline is built).
+5. **Size.** Each file at most 2 MB (a profile of 26 tables has no reason to be larger).
+6. **Sanitised pair.** The sanitised files must carry no descriptor and no hour histogram (the reader's rule).
+7. **Human gate.** The lead reads the sanitised pair first; the owner alone holds the full files (outside the repository, in the output container).
 
-Otherwise the hand-written reader stays the phase-1 tool, and this document stays a plan. This lane stops extending the reader after the round-4 constructs (lead decision, 2026-11-18).
+## 7. Cost, time and risks
+- **Disk and time (to be measured on a 1 GB slice first):** 150 to 200 GB scratch; a restore of 52.5 GB / about 122 M rows in roughly 3 to 8 hours with the settings above (comparable to the reader at about 3.4 MB/s, 4 to 5 hours: MySQL is not faster, only complete); profile queries one full scan per table, minutes to about an hour. Compute cost a few currency units for the run; test-account pilot sizing does not apply (final account only).
+- **Vendor triggers, routines and events executing:** removed by the filter before the server sees them; `event_scheduler=OFF`; the loader runs as a local root with no network; definers rewritten away. A statement the filter does not know is dropped and counted, never executed.
+- **The server is isolated, not trusted:** no egress is the control that matters; there is nowhere to send anything.
+- **Character set (Q2):** the owner decides; wrong choices show as mojibake counts in the shape histogram.
+- **`sql_mode` and zero dates:** the restore session uses the dump's own `sql_mode`; zero dates are counted before `MIN/MAX`.
+- **Version differences (5.7 vs 8.0, `utf8mb4_0900_ai_ci`):** use the server version named in the dump header.
+- **Aggregates over tiny groups:** the floors in section 6 apply; no exact min/max is ever selected.
+- **Scale surprises:** abort criteria in section 3.
+
+## 8. What it needs before it can be built
+1. The owner's FTP listing (names and sizes) and the dump header's server version (decides 5.7 or 8.0 and the layout).
+2. lane/infra-final: the job, subnet, identity and scratch storage in section 3; the pinned image mirrored into ACR.
+3. The owner's character-set decision (Q2) and, if available, the vendor's exact row counts (Q18).
+4. A lane to build `filter.py`, `profile.sql`, `run.sh` and `check_output.py` and their synthetic-data tests (about one day), then a review with the same leak hunt as the reader had.

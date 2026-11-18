@@ -326,6 +326,18 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
                 return safety.table(hint, allowed) if hint else "<whole-database file>"
             except safety.Refused:
                 return "<table not on the allow-list>"
+        after = ""
+
+        def settle(e):
+            """A refusal in the text BETWEEN sections of a whole-database file (after the last complete INSERT of table X) keeps X's profile (its data was complete) and
+            is attributed to the file, not to X; a refusal inside a section names that section's table and drops only that table."""
+            nonlocal after, cur
+            if multi_file and getattr(e, "in_body", True) is False and cur is not None and cols is not None:
+                finish(cur, schema, cols, rows, names, t0)
+                after = f" (in the text after the data of table {cur})"
+                cur = None
+                return "<whole-database file>"
+            return refused_name(e)
         try:
             for ev in events(path, batch_rows=20000, charset=charset, strict=True, expect_table=table, multi=multi_file):
                 if ev[0] == "schema":
@@ -358,6 +370,11 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
                         rc.fact_col = staging.pick(rc.spec["fact_columns"], [n for n in raw_names if safety.IDENT.match(n)])
                         rc.f_idx = raw_names.index(rc.fact_col) if rc.fact_col else None
                         rc.master_not_yet_read = rc.spec["master_table"] not in done
+                    continue
+                if ev[0] == "end":                                    # whole-database file: the section of the previous table is over
+                    if cur is not None and cols is not None:
+                        finish(cur, schema, cols, rows, names, t0)
+                    cur, cols = None, None
                     continue
                 _, tname, batch, ordinal, done_stmt = ev
                 if skip:
@@ -396,12 +413,12 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
             if cur is not None:
                 finish(cur, schema, cols, rows, names, t0)
         except UnsupportedShape as e:
-            who = refused_name(e)
-            problems.append({"table": who, "refused": (str(e) + remedy)[:300]})
+            who = settle(e)
+            problems.append({"table": who, "refused": (str(e) + remedy + after)[:340]})
             log(f"{who}: REFUSED ({e})")
         except CharsetError as e:
-            who = refused_name(e)
-            problems.append({"table": who, "refused": (str(e) + remedy)[:300], "kind": "charset"})
+            who = settle(e)
+            problems.append({"table": who, "refused": (str(e) + remedy + after)[:340], "kind": "charset"})
             log(f"{who}: REFUSED (character set)")
         except Exception as e:      # a garbled file must refuse its table, never abort the whole run or print what it holds
             who = refused_name(None)

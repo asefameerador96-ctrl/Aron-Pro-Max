@@ -644,9 +644,7 @@ class RealFormats(unittest.TestCase):
 C1 = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n"
 
 
-class LineAccounting(unittest.TestCase):
-    """Round 4: line accounting in skipped regions, silent skips, and the whole-database constructs."""
-
+class _Runner:
     def run_files(self, files, extra=()):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "d"
@@ -660,6 +658,10 @@ class LineAccounting(unittest.TestCase):
 
     def one(self, body):
         return self.run_files({"master_sku.sql": body})
+
+
+class LineAccounting(_Runner, unittest.TestCase):
+    """Round 4: line accounting in skipped regions, silent skips, and the whole-database constructs."""
 
     def test_a_forged_delimiter_line_inside_a_string_does_not_end_the_block(self):
         body = (C1 + "INSERT INTO `master_sku` VALUES ('a',1);\nDELIMITER ;;\nCREATE TRIGGER t1 BEFORE INSERT ON `master_sku` FOR EACH ROW SET NEW.sku_code = 'x\nDELIMITER ;\n"
@@ -772,6 +774,66 @@ class LineAccounting(unittest.TestCase):
         other = two.replace("`master_sku`", "`secret_other`").replace("INSERT INTO `master_routes` VALUES ('SR-1');\n", "")
         full, p, _ = self.run_files({"all.sql": other}, extra=["--whole-database"])
         self.assertTrue(full["refused"]); self.assertNotIn("secret_other", p.stderr.decode() + p.stdout.decode() + json.dumps(full))
+
+
+class Round5Shapes(_Runner, unittest.TestCase):
+    """The four genuine shapes of round 5, in the exact layouts mysqldump prints (the 8.0 form of a view stand-in, two spaces in RANGE  COLUMNS, multi-line
+    SUBPARTITION clauses, ALTER DATABASE around routines), and the rule that a refusal between sections keeps the profile of a complete table."""
+    ROUTES = "CREATE TABLE `master_routes` (\n  `route_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_routes` VALUES ('SR-1'),('SR-2');\n"
+    SKU = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('x');\n"
+
+    def whole(self, middle):
+        return self.run_files({"all.sql": self.ROUTES + middle + self.SKU}, extra=["--whole-database"])
+
+    def test_the_8_0_view_stand_in_in_both_layouts_and_the_5_7_table_form(self):
+        multi = ("--\n-- Temporary view structure for view `secret_view`\n--\n\nSET @saved_cs_client     = @@character_set_client;\n/*!50503 SET character_set_client = utf8mb4 */;\n"
+                 "/*!50001 CREATE VIEW `secret_view` AS SELECT\n 1 AS `a`,\n 1 AS `b`*/;\nSET character_set_client = @saved_cs_client;\n")
+        single = "/*!50001 CREATE VIEW `secret_view` AS SELECT 1 AS `a`, 1 AS `b`*/;\n"
+        table57 = ("DROP TABLE IF EXISTS `secret_view`;\n/*!50001 DROP VIEW IF EXISTS `secret_view`*/;\nSET @saved_cs_client     = @@character_set_client;\nSET character_set_client = utf8;\n"
+                   "/*!50001 CREATE TABLE `secret_view` (\n  `a` tinyint NOT NULL,\n  `b` varchar(5) DEFAULT NULL\n) ENGINE=MyISAM */;\nSET character_set_client = @saved_cs_client;\n")
+        for mid in (multi, single, table57):
+            full, p, text = self.whole(mid)
+            self.assertFalse(full["refused"], (mid[:40], full["refused"]))
+            self.assertEqual(sorted(full["tables"]), ["master_routes", "master_sku"])
+            self.assertNotIn("secret_view", text + p.stderr.decode() + json.dumps(full))
+
+    def test_two_spaces_in_range_columns_and_list_columns_and_multi_line_subpartitions(self):
+        c = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\n"
+        ins = "INSERT INTO `master_sku` VALUES ('a',1);\n"
+        for clause, n in (("/*!50500 PARTITION BY RANGE  COLUMNS(`n`,`sku_code`)\n(PARTITION p0 VALUES LESS THAN (10,'m') ENGINE = InnoDB,\n PARTITION p1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB) */;\n", 2),
+                          ("/*!50500 PARTITION BY LIST  COLUMNS(`n`)\n(PARTITION p0 VALUES IN (1,2,3) ENGINE = InnoDB,\n PARTITION p1 VALUES IN (4,5) ENGINE = InnoDB) */;\n", 2),
+                          ("/*!50100 PARTITION BY RANGE (`n`)\nSUBPARTITION BY HASH (TO_DAYS(`n`))\nSUBPARTITIONS 2\n(PARTITION p0 VALUES LESS THAN (2000) ENGINE = InnoDB,\n"
+                           " PARTITION p1 VALUES LESS THAN MAXVALUE\n (SUBPARTITION s0 ENGINE = InnoDB,\n  SUBPARTITION s1 ENGINE = InnoDB)) */;\n", 2)):
+            full, p, text = self.one(c + clause + ins)
+            self.assertFalse(full["refused"], (clause[:60], full["refused"]))
+            self.assertEqual(full["tables"]["master_sku"]["partitions"], n)
+            self.assertNotIn("MAXVALUE", text); self.assertNotIn("'m'", text)
+        full, _, _ = self.one(c + "/*!50100 PARTITION BY RANGE (`n`)\n(PARTITION p0 VALUES LESS THAN (10) ENGINE = InnoDB,\n SUBPARTITION BY INSERT INTO x;\n PARTITION p1 VALUES LESS THAN MAXVALUE) */;\n" + ins)
+        self.assertTrue(full["refused"])
+
+    def test_alter_database_lines_around_routines(self):
+        mid = ("ALTER DATABASE `aron` CHARACTER SET utf8 COLLATE utf8_general_ci ;\nDELIMITER ;;\nCREATE DEFINER=`root`@`%` PROCEDURE `secret_proc`() BEGIN SELECT 1; END ;;\nDELIMITER ;\n"
+               "ALTER DATABASE `aron` CHARACTER SET latin1 COLLATE latin1_swedish_ci ;\n")
+        full, p, text = self.whole(mid)
+        self.assertFalse(full["refused"], full["refused"])
+        self.assertNotIn("secret_proc", text + p.stderr.decode())
+        full, _, _ = self.whole("ALTER DATABASE `aron` CHARACTER SET utf8 COLLATE utf8_general_ci DROP;\n")
+        self.assertTrue(full["refused"])
+
+    def test_a_refusal_between_sections_keeps_the_complete_tables_and_names_the_file_not_the_table(self):
+        full, p, _ = self.whole("UPDATE `master_routes` SET route_code = 'secret-row-value';\n")
+        self.assertEqual(sorted(full["tables"]), ["master_routes"])                         # the complete table keeps its profile; the unread rest is listed as missing
+        self.assertEqual(full["tables"]["master_routes"]["rows"], 2)
+        self.assertEqual(full["refused"][0]["table"], "<whole-database file>")
+        self.assertIn("after the data of table master_routes", full["refused"][0]["refused"])
+        self.assertIn("master_sku", full["tables_missing"])
+        self.assertNotIn("secret-row-value", p.stderr.decode() + p.stdout.decode())
+
+    def test_a_refusal_inside_a_section_drops_only_that_table(self):
+        bad = "CREATE TABLE `master_field_forces` (\n  `a` int\n) ENGINE=InnoDB;\nINSERT INTO `master_field_forces` VALUES (1,2);\n"
+        full, _, _ = self.whole(bad)
+        self.assertEqual(full["refused"][0]["table"], "master_field_forces")
+        self.assertIn("master_routes", full["tables"])
 
 
 class OutDir(unittest.TestCase):

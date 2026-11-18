@@ -214,9 +214,12 @@ def _open(path, charset="utf-8", strict=True):
 
 # --- named constructs of whole-database dumps, consumed UNREAD (never profiled, never printed)
 _CREATE_DB = re.compile(r"^CREATE DATABASE (?:/\*!\d{5} IF NOT EXISTS\*/ )?`[^`]*`(?: /\*!\d{5} (?:(?!\*/)[^;])*\*/)*;$", re.I)
+_ALTER_DB = re.compile(r"^ALTER DATABASE `[^`]*` CHARACTER SET [A-Za-z0-9_]+ COLLATE [A-Za-z0-9_]+ ?;$", re.I)
 _USE = re.compile(r"^USE `[^`]*`;$", re.I)
 _DROPX = re.compile(r"^/\*!\d{5} DROP (?:TABLE|VIEW|PROCEDURE|FUNCTION|EVENT|TRIGGER) IF EXISTS `[^`]*` ?\*/ ?;$", re.I)
 _STANDIN_START = re.compile(r"^/\*!\d{5} CREATE TABLE `[^`]*` \($")             # a view's stand-in table: never a table in the profile
+_STANDIN_VIEW_START = re.compile(r"^/\*!\d{5} CREATE VIEW `[^`]*` AS SELECT(?: 1 AS `[^`]*`,?)*( ?\*/;)?$")
+_STANDIN_VIEW_COL = re.compile(r"^ ?1 AS `[^`]*`(,|\s?\*/;)$")
 _STANDIN_COL = re.compile(r"^\s*`[^`]*` [A-Za-z]")
 _STANDIN_END = re.compile(r"^\) ENGINE=[A-Za-z0-9_]+ \*/;$")
 _VIEW_ALGO = re.compile(r"^/\*!\d{5} CREATE ALGORITHM=[A-Z]+ \*/$")
@@ -229,7 +232,7 @@ _COLLIST = re.compile(r"^\(`[^`]+`(?:, ?`[^`]+`)*\)$")
 # partition clause grammar (the bounds are values: they are matched by character class, never kept)
 _PEXPR = "A-Za-z0-9_`,. ()+\\-"
 _PCHAR = re.compile("[" + _PEXPR + "]")
-_PHEAD = re.compile(r"\s*(?:(?:SUB)?PARTITION BY (?:LINEAR )?(?:RANGE|LIST|HASH|KEY)(?: COLUMNS)?)\s*(?=\()", re.I)
+_PHEAD = re.compile(r"\s*(?:(?:SUB)?PARTITION BY (?:LINEAR )?(?:RANGE|LIST|HASH|KEY)(?:\s+COLUMNS)?)\s*(?=\()", re.I)
 _PTOK = re.compile(r"\s*(?:(?:SUB)?PARTITION\s+`?[A-Za-z0-9_]+`?|VALUES\s+LESS\s+THAN\s+(?:MAXVALUE|\([" + _PEXPR + r"'\-:]*?\)(?=\s*(?:[,)]|ENGINE|STORAGE|COMMENT|$)))"
                    r"|VALUES\s+IN\s+\([" + _PEXPR + r"'\-:]*?\)(?=\s*(?:[,)]|ENGINE|STORAGE|COMMENT|$))|(?:STORAGE\s+)?ENGINE\s*=\s*[A-Za-z0-9_]+|COMMENT\s*=\s*'[A-Za-z0-9_ ]*'"
                    r"|(?:SUB)?PARTITIONS\s+[0-9]+|[(),])", re.I)
@@ -245,7 +248,7 @@ def _partition_line(s, first):
         s = re.sub(r"^/\*!\d{5}\s+", "", s, count=1)
     pos, heads = 0, 0
     while True:
-        mh = _PHEAD.match(s, pos) if (first or heads) else None
+        mh = _PHEAD.match(s, pos)
         if not mh:
             break
         depth, j = 0, mh.end()
@@ -379,11 +382,12 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
     another name is refused and a second CREATE is refused. multi=True: a whole-database file: every CREATE TABLE section is its own table (the caller validates the
     name against its allow-list), an INSERT must target the table whose CREATE is current. skip_statements: INSERT statements with ordinal <= this are skipped (resume).
     A refusal carries `table_hint`: the table whose section was being read (a raw name: the caller validates it before printing)."""
-    state = {"schema": None}
+    state = {"schema": None, "body": True}
     try:
         yield from _events(path, batch_rows, skip_statements, charset, strict, expect_table, multi, state)
     except (UnsupportedShape, CharsetError) as e:
         e.table_hint = state["schema"].name if state["schema"] is not None else None
+        e.in_body = state["body"]            # False: raised after at least one complete INSERT of that table (its data was complete), in text between sections
         raise
 
 
@@ -410,6 +414,11 @@ def _events(path, batch_rows, skip_statements, charset, strict, expect_table, mu
             if in_standin:                                       # a view's stand-in table: consumed unread, never a table of the profile
                 if _STANDIN_END.match(line):
                     in_standin = False
+                elif in_standin == "view":                       # the 8.0 form: CREATE VIEW `v` AS SELECT / 1 AS `c`, / 1 AS `d`*/;
+                    if not _STANDIN_VIEW_COL.match(line):
+                        raise UnsupportedShape(f"a line inside a view stand-in the reader does not recognise (file line {lineno})")
+                    if line.endswith("*/;"):
+                        in_standin = False
                 elif not _STANDIN_COL.match(line):
                     raise UnsupportedShape(f"a line inside a view stand-in table the reader does not recognise (file line {lineno})")
                 continue
@@ -490,10 +499,14 @@ def _events(path, batch_rows, skip_statements, charset, strict, expect_table, mu
                 in_gtid = True
                 continue
             if (_DIRECTIVE_SET.match(s) or _DIRECTIVE_KEYS.match(s) or _SET.match(s) and s.count(";") == 1 or _DROP.match(s) or _LOCK.match(s)
-                    or _CREATE_DB.match(s) or _USE.match(s) or _DROPX.match(s) or _VIEW_ALGO.match(s) or _VIEW_DEFINER.match(s) or _VIEW_BODY.match(s) or _ROCKSDB.match(s)):
+                    or _CREATE_DB.match(s) or _USE.match(s) or _ALTER_DB.match(s) or _DROPX.match(s) or _VIEW_ALGO.match(s) or _VIEW_DEFINER.match(s) or _VIEW_BODY.match(s) or _ROCKSDB.match(s)):
                 continue
             if _STANDIN_START.match(s):
                 in_standin = True
+                continue
+            mv = _STANDIN_VIEW_START.match(s)
+            if mv:
+                in_standin = False if mv.group(1) else "view"      # a single-line stand-in ends on its own line
                 continue
             head = line.lstrip()[:12].upper()
             if head.startswith("REPLACE"):
@@ -512,8 +525,10 @@ def _events(path, batch_rows, skip_statements, charset, strict, expect_table, mu
                         raise UnsupportedShape(f"the same table is created twice in one file (line {lineno})")
                     seen.add(mc.group(1))
                     ordinal = 0
+                if multi and schema is not None:
+                    yield ("end", schema.name)                    # the previous section is over: the caller can close its profile before this one is read
                 schema = TableSchema(mc.group(1))
-                state["schema"] = schema
+                state["schema"], state["body"] = schema, True
                 in_create = True
                 continue
             mi = _INSERT.match(line)
@@ -536,6 +551,7 @@ def _events(path, batch_rows, skip_statements, charset, strict, expect_table, mu
                 ordinal += 1
                 if ordinal <= skip_statements:
                     continue
+                state["body"] = True
                 it = iter_values(line[mi.end():])
                 try:
                     cur = list(islice(it, batch_rows))
@@ -545,6 +561,7 @@ def _events(path, batch_rows, skip_statements, charset, strict, expect_table, mu
                         yield ("rows", mi.group(1), cur, ordinal, not nxt)
                         cur = nxt
                     next(it, None)                                # drains the generator: the grammar must also hold for the end of the statement
+                    state["body"] = False
                 except UnsupportedShape as e:
                     raise UnsupportedShape(f"statement {ordinal} (file line {lineno}): {e}") from None
                 continue
