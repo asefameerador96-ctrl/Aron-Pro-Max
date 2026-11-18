@@ -147,7 +147,7 @@ class RouteKpiTargetsTest {
         // a re-upload that leaves a member out keeps the stored value; an explicit null clears a CPR value
         val mo2 = next.plusMonths(6)
         fun full(alloc: String) = if (alloc.isEmpty()) """{"route_code":"MIR-SR-D","brand_code":"Maxim","month":"$mo2","memo_target":10}""" else """{"route_code":"MIR-SR-D","brand_code":"Maxim","month":"$mo2","memo_target":10,"kpi_alloc_mtk":$alloc}"""
-        fun send(brand: List<String>, month: List<String>) = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, body(brand, month, false, UUID.randomUUID(), reason)).status
+        suspend fun send(brand: List<String>, month: List<String>) = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, body(brand, month, false, UUID.randomUUID(), reason)).status
         assertEquals(HttpStatusCode.OK, send(listOf(full("2000000")), listOf(m("MIR-SR-D", mo2, 5_700_000, "5000", "600000"))))
         assertEquals(HttpStatusCode.OK, send(listOf(full("")), listOf("""{"route_code":"MIR-SR-D","month":"$mo2","kpi_alloc_mtk":6000000}""")))
         assertEquals(1, env.count("SELECT count(*) FROM app.route_brand_kpi_target t JOIN app.route r ON r.id = t.route_id WHERE r.code = 'MIR-SR-D' AND t.month = date '$mo2-01' AND t.kpi_alloc_mtk = 2000000"), "the allocation survives a row without it")
