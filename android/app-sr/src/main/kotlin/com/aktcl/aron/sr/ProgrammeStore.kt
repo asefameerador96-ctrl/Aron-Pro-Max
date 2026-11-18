@@ -3,12 +3,14 @@ package com.aktcl.aron.sr
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.AmoRecordEntity
+import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
 import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.LocalRedemption
 import com.aktcl.aron.feature.programmes.PlannedRecord
+import com.aktcl.aron.feature.programmes.SaveOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -31,8 +33,9 @@ class ProgrammeStore(
         db.captureDao().amoRecordsOfType("redemption").mapNotNull { r ->
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
             fun n(k: String) = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
+            val ob = db.outboxDao().byClientUuid(r.clientUuid)
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
-                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending")
+                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, ob?.state ?: "pending", ob?.ackedAt)
         }
     }
 
@@ -49,16 +52,40 @@ class ProgrammeStore(
     suspend fun bundleBuiltAt(): String? = withContext(Dispatchers.IO) { db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_SERVER_TIME) }
 
     /**
-     * Saves a planned redemption (the redemption and its lines) for an outlet of [routeId]. True when it is saved or was already saved (a replay of the
-     * same redemption uuid), false when it could not be (the open-day guard refused, a payload problem); nothing is written then, and
-     * the screen says so. A saved record asks for a sync soon (debounced, Wi-Fi/network rules are the engine's).
+     * Saves planned records (a redemption and its lines, or one gift choice) for one outlet's route, all with the ONE [meta] of the basket (one instant,
+     * one business date). A replay of the same record uuid with the SAME content is [SaveOutcome.ALREADY_SAVED]; the same uuid with DIFFERENT content
+     * (another basket under an old uuid) is [SaveOutcome.CONFLICT] and writes nothing: the host then mints a new uuid, so a changed basket is never reported
+     * as saved because an earlier one held the uuid. A route-day already submitted is [SaveOutcome.DAY_SUBMITTED]; any other refusal is [SaveOutcome.REFUSED]. Nothing is written
+     * unless the result is SAVED. No exception leaves this function.
      */
-    suspend fun saveProgramme(routeId: Long, planned: List<PlannedRecord>): Boolean = withContext(Dispatchers.IO) {
-        val records = planned.map { AmoRecordEntity(it.clientUuid, meta.meta(routeId), it.type, it.familyUuid, it.rank, it.payload.toString()) }
-        val ok = runCatching { capture.recordProgramme(records); true }.getOrDefault(false)
-        if (ok) runCatching { requestSync() }
-        ok
+    suspend fun saveProgramme(meta: CaptureMeta, planned: List<PlannedRecord>): SaveOutcome = withContext(Dispatchers.IO) {
+        val records = planned.map { AmoRecordEntity(it.clientUuid, meta, it.type, it.familyUuid, it.rank, it.payload.toString()) }
+        try {
+            if (capture.recordProgramme(records)) { runCatching { requestSync() }; SaveOutcome.SAVED }
+            else if (sameContent(records)) SaveOutcome.ALREADY_SAVED else SaveOutcome.CONFLICT
+        } catch (e: com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException) { SaveOutcome.DAY_SUBMITTED }
+        catch (e: com.aktcl.aron.core.database.repo.RouteDaySubmittedException) { SaveOutcome.DAY_SUBMITTED }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { SaveOutcome.REFUSED }
     }
+
+    /**
+     * True when the phone already holds this same basket under the same uuid: the parent's members (the time it was confirmed at excluded: a replay is
+     * a later tap) and the lines' contents (their own uuids excluded: a replay mints new ones) are equal. A different basket is not a replay.
+     */
+    private suspend fun sameContent(records: List<AmoRecordEntity>): Boolean {
+        val held = db.captureDao().amoRecordsOfFamily(records.first().clientUuid)
+        return signature(held) != null && signature(held) == signature(records)
+    }
+
+    private fun signature(rs: List<AmoRecordEntity>): Pair<JsonObject, List<String>>? {
+        val parent = rs.firstOrNull { it.rank == 0 }?.let { runCatching { Json.parseToJsonElement(it.payloadJson) as? JsonObject }.getOrNull() } ?: return null
+        val lines = rs.filter { it.rank != 0 }.map { it.payloadJson.let { j -> runCatching { (Json.parseToJsonElement(j) as JsonObject).toString() }.getOrDefault(j) } }.sorted()
+        return JsonObject(parent - "confirmed_at") to lines
+    }
+
+    /** The trusted capture meta of one outlet's route; take it ONCE per basket and use it for the plan's time and the save. */
+    fun metaFor(routeId: Long): CaptureMeta = meta.meta(routeId)
 
     fun newUuid(): String = ClientIds.newUuid()
 }

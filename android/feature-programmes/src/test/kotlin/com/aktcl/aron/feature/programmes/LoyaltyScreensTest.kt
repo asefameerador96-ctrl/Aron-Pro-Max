@@ -33,10 +33,10 @@ class LoyaltyScreensTest {
         {"outlet_id":11,"programme_id":3,"league_label":"Diamond League (November)","balance_points":-20,"expiring_points":0,"expiry_date":null,"as_of_date":"2026-11-17"}],"gifts":[]}"""
     private val outlets = listOf(ShopOutlet(10, "Bipu Store (6909084)", "6909084", "A", null, null), ShopOutlet(11, "Milon Store (2663519)", "2663519", "B", null, null), ShopOutlet(12, "No Points Store (1)", "1", "C", null, null))
 
-    private fun show(language: AppLanguage, data: LoyaltyData?, outlet: Long? = null, onRedeem: ((Long) -> Unit)? = null) {
+    private fun show(language: AppLanguage, data: LoyaltyData?, outlet: Long? = null, onRedeem: ((Long) -> Unit)? = null, local: List<LocalRedemption> = emptyList()) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet, balanceOf = PointsBalance.function(local, "2026-04-17T01:00:00.000Z")) } } }
         compose.waitForIdle()
     }
 
@@ -81,5 +81,12 @@ class LoyaltyScreensTest {
         compose.onNodeWithTag(LoyaltyTags.MENU_POINTS).performClick()
         assertEquals(1, pts)
         assertEquals(0, compose.onAllNodesWithTag(LoyaltyTags.MENU_REDEEM).fetchSemanticsNodes().size)
+    }
+
+    @Test fun anOfflineRedemptionReducesTheBalanceAndRaisesTheOverdrawnLineOnThePointsPage() {
+        // the bundle says 110 and not overdrawn; this phone redeemed 120 that the bundle cannot hold: the page shows -10 and the overdrawn line
+        show(AppLanguage.EN, LoyaltyModel.parse(json), outlet = 10, local = listOf(LocalRedemption(10, 3, 120, "2026-04-17T05:00:00.000Z", "pending")))
+        compose.onNodeWithText("-10 Pts").assertExists()
+        compose.onNodeWithTag(LoyaltyTags.overdrawn(3)).assertIsDisplayed()
     }
 }

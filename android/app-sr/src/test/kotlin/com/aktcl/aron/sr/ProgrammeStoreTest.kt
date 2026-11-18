@@ -12,6 +12,7 @@ import com.aktcl.aron.feature.outlet.CaptureMetaProvider
 import com.aktcl.aron.feature.programmes.Basket
 import com.aktcl.aron.feature.programmes.LocalRedeemed
 import com.aktcl.aron.feature.programmes.LoyaltyGift
+import com.aktcl.aron.feature.programmes.SaveOutcome
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,8 +42,8 @@ class ProgrammeStoreTest {
 
     @Test fun savedOnceAReplayWritesNothingAndTheBalanceReadsItBack() = runTest {
         val uuid = ClientIds.newUuid()
-        assertTrue(store.saveProgramme(7, plan(uuid, 2)))
-        assertTrue(store.saveProgramme(7, plan(uuid, 2))) // a double tap or a retry after a kill and relaunch: the same redemption, not a second one
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(uuid, 2)))
+        assertEquals(SaveOutcome.ALREADY_SAVED, store.saveProgramme(meta.meta(7), plan(uuid, 2))) // a double tap or a retry after a kill and relaunch: the same redemption, not a second one
         val r = store.redemptions()
         assertEquals(1, r.size); assertEquals(400L, r[0].points); assertEquals("pending", r[0].state)
         assertEquals(2, db.outboxDao().countInState("pending")) // the redemption and its one line
@@ -54,7 +55,7 @@ class ProgrammeStoreTest {
     @Test fun aSaveTheGuardRefusesWritesNothingAndSaysSo() = runTest {
         val uuid = ClientIds.newUuid()
         val bad = plan(uuid, 1).let { it.dropLast(1) } // the redemption without its line: line_count says 1
-        assertEquals(false, store.saveProgramme(7, bad))
+        assertEquals(SaveOutcome.REFUSED, store.saveProgramme(meta.meta(7), bad))
         assertEquals(0, store.redemptions().size)
         assertEquals(0, db.outboxDao().countInState("pending"))
     }
@@ -62,10 +63,19 @@ class ProgrammeStoreTest {
     @Test fun aGiftChoiceIsSavedOnceAndReadBackWithItsState() = runTest {
         val uuid = ClientIds.newUuid()
         val rec = com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(10, 4, "2026-Q4", uuid)
-        assertTrue(store.saveProgramme(7, listOf(rec)))
-        assertTrue(store.saveProgramme(7, listOf(rec))) // a double tap: the same record
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), listOf(rec)))
+        assertEquals(SaveOutcome.ALREADY_SAVED, store.saveProgramme(meta.meta(7), listOf(rec))) // a double tap: the same record
         val c = store.giftChoices()
         assertEquals(1, c.size); assertEquals(4L, c[0].giftId); assertEquals("2026-Q4", c[0].quarter); assertEquals("pending", c[0].state)
         assertEquals(1, db.outboxDao().countInState("pending"))
+    }
+
+    @Test fun aDifferentBasketUnderTheSameUuidIsAConflictNotSaved() = runTest {
+        val uuid = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(uuid, 1)))
+        assertEquals(SaveOutcome.CONFLICT, store.saveProgramme(meta.meta(7), plan(uuid, 2))) // two chairs under the uuid that held one
+        val r = store.redemptions()
+        assertEquals(1, r.size); assertEquals(200L, r[0].points) // the first basket stands, nothing was changed
+        assertEquals(2, db.outboxDao().countInState("pending"))
     }
 }

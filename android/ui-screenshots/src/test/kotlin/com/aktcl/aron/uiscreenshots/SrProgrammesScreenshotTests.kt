@@ -27,6 +27,7 @@ import com.aktcl.aron.feature.programmes.GiftChoiceModel
 import com.aktcl.aron.feature.programmes.GiftSelectionScreen
 import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.RedemptionScreen
+import com.aktcl.aron.feature.programmes.SaveOutcome
 import com.aktcl.aron.feature.programmes.ShopInfo
 import com.aktcl.aron.feature.programmes.ShopOutlet
 import com.aktcl.aron.feature.home.R as HomeR
@@ -121,7 +122,7 @@ class SrProgrammesScreenshotTests {
     private val redeem get() = LoyaltyModel.parse(redeemJson)
 
     @Composable private fun Redeem(qty: Map<Long, Int> = emptyMap(), locale: UiLocale = UiLocale.BN, data: com.aktcl.aron.feature.programmes.LoyaltyData? = redeem) =
-        Frame(ProgR.string.pg_loyalty_redeem) { RedemptionScreen(redeemOutlets, data, locale, { _, _, b -> b }, { _, _ -> true }, initialOutlet = 10, initialQty = qty) }
+        Frame(ProgR.string.pg_loyalty_redeem) { RedemptionScreen(redeemOutlets, data, locale, { _, _, b -> b }, { _, _ -> SaveOutcome.SAVED }, initialOutlet = 10, initialQty = qty) }
 
     @Test fun redemption_bn() = shot("redemption_bn") { Redeem() }
     @Test fun redemption_bn_basket() = shot("redemption_bn_basket") { Redeem(mapOf(1L to 1)) }
@@ -140,7 +141,7 @@ class SrProgrammesScreenshotTests {
         ShopInfo(11, "Locked Store (1234567)", "1234567", "B", null, "Gold", chip = "L", routeId = 7),
     )
     @Composable private fun Gift(outlet: Long, picked: Long? = null, local: List<LocalGiftChoice> = emptyList(), data: com.aktcl.aron.feature.programmes.GiftChoiceData? = GiftChoiceModel.parse(giftJson)) =
-        Frame(ProgR.string.pg_astha_tile_gift) { GiftSelectionScreen(giftShops, data, "2026-Q4", local, UiLocale.BN, { _, _ -> true }, initialOutlet = outlet, initialGift = picked) }
+        Frame(ProgR.string.pg_astha_tile_gift) { GiftSelectionScreen(giftShops, data, "2026-Q4", local, UiLocale.BN, { _, _ -> SaveOutcome.SAVED }, initialOutlet = outlet, initialGift = picked) }
 
     @Test fun gift_selection_bn() = shot("gift_selection_bn") { Gift(10) }
     @Test fun gift_selection_bn_picked() = shot("gift_selection_bn_picked") { Gift(10, picked = 1) }

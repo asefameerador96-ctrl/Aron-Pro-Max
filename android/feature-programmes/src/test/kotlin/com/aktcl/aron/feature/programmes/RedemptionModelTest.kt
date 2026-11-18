@@ -56,17 +56,27 @@ class RedemptionModelTest {
         assertThrows(IllegalArgumentException::class.java) { b0.plan(gifts, uuid(), ::uuid, "2026-11-18T05:00:00.000Z") }
     }
 
-    @Test fun theBalanceSubtractsWhatThePhoneRedeemedThatTheBundleCannotHold() {
+    @Test fun aRedemptionCountsUntilABundleBuiltAfterItsAcknowledgementHasArrived() {
         val built = "2026-11-18T01:00:00.000Z"
         val r = listOf(
-            LocalRedemption(10, 3, 100, "2026-11-17T09:00:00.000Z", "acked"), // acked before the bundle was built: already inside the balance
+            LocalRedemption(10, 3, 100, "2026-11-17T09:00:00.000Z", "acked", ackedAt = "2026-11-17T09:05:00.000Z"), // acked before the bundle was built: inside the balance
             LocalRedemption(10, 3, 30, "2026-11-17T09:00:00.000Z", "pending"), // the server may not know it yet
-            LocalRedemption(10, 3, 20, "2026-11-18T03:00:00.000Z", "acked"), // acked, but confirmed after the bundle was built
+            LocalRedemption(10, 3, 20, "2026-11-18T03:00:00.000Z", "acked", ackedAt = "2026-11-18T03:01:00.000Z"), // acked after the bundle was built: not inside it
             LocalRedemption(10, 3, 50, "2026-11-18T03:00:00.000Z", "rejected"), // refused by the server: gone
             LocalRedemption(11, 3, 70, "2026-11-18T03:00:00.000Z", "pending"), // another outlet
             LocalRedemption(10, 4, 60, "2026-11-18T03:00:00.000Z", "pending"), // another programme
         )
         assertEquals(50L, LocalRedeemed.points(r, 10, 3, built))
-        assertEquals(150L, LocalRedeemed.points(r, 10, 3, null)) // unknown build time: every non-refused one counts
+        assertEquals(150L, LocalRedeemed.points(r, 10, 3, null)) // build time unknown: every non-refused one counts (never overstate)
+        // instants, not text: the same instant written with an offset or fewer digits compares as the instant it is
+        assertEquals(0L, LocalRedeemed.points(listOf(LocalRedemption(10, 3, 9, "x", "acked", ackedAt = "2026-11-17T19:00:00Z")), 10, 3, "2026-11-18T01:30:00.000+06:00"))
+    }
+
+    @Test fun oneBalanceFunctionForEveryScreen() {
+        val local = listOf(LocalRedemption(10, 3, 220, "2026-11-18T03:00:00.000Z", "pending"))
+        assertEquals(0L, PointsBalance.of(220, local, 10, 3, "2026-11-18T01:00:00.000Z"))
+        val f = PointsBalance.function(local, "2026-11-18T01:00:00.000Z")
+        assertEquals(-180L, f(10, 3, 40)) // the points page and the redemption screen call this same function
+        assertTrue(PointsBalance.overdrawn(f(10, 3, 40))); assertFalse(PointsBalance.overdrawn(f(10, 3, 220)))
     }
 }

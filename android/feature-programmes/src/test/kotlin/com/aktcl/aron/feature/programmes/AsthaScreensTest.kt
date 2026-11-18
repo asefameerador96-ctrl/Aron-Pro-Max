@@ -34,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth) } } }
         compose.waitForIdle()
     }
 
@@ -138,5 +138,19 @@ class AsthaScreensTest {
         show(AppLanguage.EN, AsthaModel.parse(outletRows, products), emptyList())
         compose.onNodeWithTag(AsthaTags.TAB_SHOP).performClick(); compose.waitForIdle()
         compose.onNodeWithText("No Astha shops are on this phone.").assertExists()
+    }
+
+    @Test fun theAsOfDateIsTheDhakaDateOfTheServerInstant() {
+        val evening = programmes.replace("2026-11-17T10:00:00Z", "2026-11-17T20:00:00Z") // 02:00 on 18 November in Dhaka
+        show(AppLanguage.EN, AsthaModel.parse(evening, products))
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-11")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Data as of 2026-11-18").assertExists()
+    }
+
+    @Test fun thePageOpensOnTheCurrentMonthWithDataAlreadyShown() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), currentMonth = "2026-11")
+        compose.onNodeWithTag(AsthaTags.row(11)).assertExists() // no picking needed: year, quarter and month are already chosen
+        compose.onNodeWithText("Marise").assertExists()
     }
 }

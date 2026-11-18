@@ -67,6 +67,8 @@ fun LoyaltyMenuScreen(onPoints: (() -> Unit)?, onRedeem: (() -> Unit)?, modifier
 fun OutletPointsScreen(
     outlets: List<ShopOutlet>, data: LoyaltyData?, locale: UiLocale, modifier: Modifier = Modifier,
     onRedeem: ((Long) -> Unit)? = null, initialOutlet: Long? = null,
+    /** The same balance function as the redemption screen: the bundle's balance minus this phone's own redemptions. */
+    balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long = { _, _, b -> b },
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -89,12 +91,13 @@ fun OutletPointsScreen(
         }
         val unit = stringResource(R.string.pg_pts)
         data.cardsOf(chosen.outletId).forEach { c ->
+            val balance = balanceOf(chosen.outletId, c.programmeId, c.balancePoints)
             Column(Modifier.fillMaxWidth().testTag(LoyaltyTags.card(c.programmeId)).clip(RoundedCornerShape(12.dp)).background(look.card).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(data.title(c, locale), Modifier.weight(1f), style = TextStyle(fontSize = 17.sp, color = look.purple, fontWeight = FontWeight.Bold))
-                    Text(LoyaltyModel.pointsText(c.balancePoints, locale, unit), style = TextStyle(fontSize = 18.sp, color = look.ink, fontWeight = FontWeight.Bold))
+                    Text(LoyaltyModel.pointsText(balance, locale, unit), style = TextStyle(fontSize = 18.sp, color = look.ink, fontWeight = FontWeight.Bold))
                 }
-                if (c.overdrawn) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(LoyaltyTags.overdrawn(c.programmeId)), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
+                if (PointsBalance.overdrawn(balance)) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(LoyaltyTags.overdrawn(c.programmeId)), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
                 Line(R.string.pg_loyalty_expiring, LoyaltyModel.pointsText(c.expiringPoints, locale, unit))
                 Line(R.string.pg_loyalty_expiry, LoyaltyModel.dateText(c.expiryDate, locale))
                 c.asOfDate?.let { Text(stringResource(R.string.pg_as_of, LoyaltyModel.dateText(it, locale)), style = TextStyle(fontSize = 12.sp, color = look.inkMuted)) }

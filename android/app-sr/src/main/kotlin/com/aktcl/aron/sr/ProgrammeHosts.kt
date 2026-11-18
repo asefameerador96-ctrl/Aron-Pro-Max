@@ -19,6 +19,8 @@ import com.aktcl.aron.feature.programmes.LocalRedemption
 import com.aktcl.aron.feature.programmes.LoyaltyModel
 import com.aktcl.aron.feature.programmes.RedemptionScreen
 import com.aktcl.aron.feature.programmes.OutletPointsScreen
+import com.aktcl.aron.feature.programmes.PointsBalance
+import com.aktcl.aron.feature.programmes.SaveOutcome
 import com.aktcl.aron.feature.programmes.ShopInfo
 import com.aktcl.aron.feature.programmes.ShopModel
 import com.aktcl.aron.feature.programmes.ShopOutlet
@@ -39,14 +41,14 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
 }
 
 /** What the Astha page reads in one pass: the programme rows, the year, and the shop-wise cards (outlets of every route of the bundle). */
-internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>)
+internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?)
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val data = readAstha(day)
     val date = day.reference.businessDate()
     val outlets = readShopOutlets(day)
     val subs = ShopModel.subChannels(day.reference.section("code_lists"))
-    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale))
+    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale), date?.take(7))
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): downloaded data only, no network in the path. */
@@ -54,22 +56,26 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
 fun AsthaHost(day: SrDay, locale: UiLocale) {
     val load = rememberAsyncLoad(locale) { readAsthaPage(day, locale) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops)
+        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month)
     }
 }
 
 /** The outlets of every route of the bundle, as the programme screens need them (picker label, owner, phone, sub-channel). */
 internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext(Dispatchers.IO) {
-    day.reference.routesOfDay(day.reference.businessDate() ?: "").flatMap { r -> r.outlets.map { it to r.route.name } }.distinctBy { it.first.outletId }
+    day.reference.routesOfDay(day.reference.businessDate() ?: "").flatMap { r -> r.outlets.map { it to r.route.name } }
+        .distinctBy { it.first.outletId }.sortedBy { if (it.first.routeId == day.currentRouteId()) 0 else 1 } // the route being worked first
         .map { (it, routeName) -> ShopOutlet(it.outletId, com.aktcl.aron.feature.outlet.OutletPicker.label(it), it.code, it.ownerName, it.contactNumber, it.subChannelId, com.aktcl.aron.feature.outlet.OutletPicker.chipOf(it.name), it.routeId, routeName, it.clusterName) }
 }
 
-/** The outlet points page (manual 55): the bundle's real balances, nothing invented; offline. */
+/** The outlet points page (manual 55): the bundle's balances minus this phone's own redemptions (the same function as the redemption screen), offline. */
 @Composable
 fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, onRedeem: ((Long) -> Unit)? = null) {
-    val load = rememberAsyncLoad { withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) } to readShopOutlets(day) }
-    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { (data, outlets) ->
-        OutletPointsScreen(outlets, data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet)
+    val load = rememberAsyncLoad {
+        val store = day.programmes
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleBuiltAt())
+    }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.builtAt))
     }
 }
 
@@ -89,15 +95,19 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = { o, p, bundle -> bundle - LocalRedeemed.points(redeemed, o, p, page.builtAt) },
+            balanceOf = PointsBalance.function(redeemed, page.builtAt),
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = runCatching { day.reference.config("cfg.loyalty.cash_rate_mtk_per_point", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toLongOrNull() }.getOrNull() ?: 0L
-                val at = day.metaProvider.meta(outlet?.routeId ?: 0L).capturedAt
-                val planned = basket.plan(gifts, uuid, day.programmes::newUuid, at, rate)
-                val ok = day.programmes.saveProgramme(outlet?.routeId ?: 0L, planned)
-                if (ok) { redeemed = day.programmes.redemptions(); uuid = day.programmes.newUuid() }
-                ok
+                val meta = day.programmes.metaFor(outlet?.routeId ?: 0L) // ONE meta per basket: the redemption, its lines and confirmed_at share one instant and one business date
+                val planned = basket.plan(gifts, uuid, day.programmes::newUuid, meta.capturedAt, rate)
+                val out = day.programmes.saveProgramme(meta, planned)
+                when (out) {
+                    SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { redeemed = day.programmes.redemptions(); uuid = day.programmes.newUuid() }
+                    SaveOutcome.CONFLICT -> uuid = day.programmes.newUuid() // a different basket held the uuid: the next confirm is a new redemption
+                    else -> Unit
+                }
+                out
             },
             initialOutlet = initialOutlet,
         )
@@ -123,7 +133,7 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
             val today = day.reference.businessDate() ?: com.aktcl.aron.rules.BusinessDate.of(System.currentTimeMillis()).toString()
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth))
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale, day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth))
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
@@ -131,9 +141,16 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, { outletId, giftId ->
             val shop = page.shops.firstOrNull { it.outletId == outletId }
-            val ok = day.programmes.saveProgramme(shop?.routeId ?: 0L, listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
-            if (ok) { local = day.programmes.giftChoices(); uuid = day.programmes.newUuid() }
-            ok
+            val out = day.programmes.saveProgramme(day.programmes.metaFor(shop?.routeId ?: 0L), listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
+            when (out) {
+                SaveOutcome.SAVED, SaveOutcome.ALREADY_SAVED -> { local = day.programmes.giftChoices(); uuid = day.programmes.newUuid() }
+                SaveOutcome.CONFLICT -> uuid = day.programmes.newUuid()
+                else -> Unit
+            }
+            out
         })
     }
 }
+
+/** The route being worked (0 when none), for the "route being worked first" order of the pickers. */
+internal fun SrDay.currentRouteId(): Long? = metaProvider.meta(0L).routeId

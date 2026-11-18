@@ -66,14 +66,14 @@ object GiftTags {
 @Composable
 fun GiftSelectionScreen(
     shops: List<ShopInfo>, data: GiftChoiceData?, quarter: String, local: List<LocalGiftChoice>, locale: UiLocale,
-    onSubmit: suspend (outletId: Long, giftId: Long) -> Boolean, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null,
+    onSubmit: suspend (outletId: Long, giftId: Long) -> SaveOutcome, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
     var letter by rememberSaveable { mutableStateOf("") }
     var picked by rememberSaveable(outletId) { mutableStateOf(initialGift) }
     var saved by rememberSaveable { mutableStateOf(false) }
-    var failed by rememberSaveable { mutableStateOf(false) }
+    var failed by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -129,10 +129,17 @@ fun GiftSelectionScreen(
             val g = picked
             if (g != null && !busy) {
                 busy = true
-                scope.launch { try { if (onSubmit(chosen.outletId, g)) { saved = true; failed = false } else failed = true } finally { busy = false } }
+                scope.launch {
+                    try {
+                        val out = onSubmit(chosen.outletId, g)
+                        if (out == SaveOutcome.SAVED || out == SaveOutcome.ALREADY_SAVED) { saved = true; failed = null } else failed = out.name
+                    } finally { busy = false }
+                }
             }
         }, Modifier.fillMaxWidth().testTag(GiftTags.SUBMIT), enabled = picked != null)
-        if (failed) Text(stringResource(R.string.pg_gift_failed), Modifier.testTag(GiftTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red))
+        failed?.let { f ->
+            Text(stringResource(when (f) { "CONFLICT" -> R.string.pg_gift_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; else -> R.string.pg_gift_failed }), Modifier.testTag(GiftTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red))
+        }
         if (saved) {
             AlertDialog(
                 onDismissRequest = { saved = false },

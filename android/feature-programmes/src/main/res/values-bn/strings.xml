@@ -54,9 +54,12 @@
     <string name="pg_confirm_text">এই আইটেমগুলোর রিডিম্পশন নিশ্চিত করবেন? পয়েন্ট কাটা হবে।</string>
     <string name="pg_confirm_yes">নিশ্চিত করুন</string>
     <string name="pg_confirm_no">বাতিল</string>
-    <string name="pg_redeem_saved">রিডিম্পশন এই ফোনে সংরক্ষিত হয়েছে। পরের সিঙ্কে যাবে।</string>
+    <string name="pg_redeem_saved">রিডিম্পশন এই ফোনে সংরক্ষিত হয়েছে; সিঙ্ক হলে পয়েন্ট কাটা হবে।</string>
     <string name="pg_redeem_failed">রিডিম্পশন সংরক্ষণ করা যায়নি। কিছু কাটা হয়নি। আবার চেষ্টা করুন।</string>
     <string name="pg_cashback_waiting">নগদ ক্যাশব্যাক: মালিকের নিয়মের অপেক্ষায়। এখনো রিডিম করা যাবে না।</string>
+    <string name="pg_redeem_conflict">আগের সংরক্ষণের পর এই ঝুড়ি বদলেছে। কিছু কাটা হয়নি। আইটেম দেখে আবার নিশ্চিত করুন।</string>
+    <string name="pg_gift_conflict">আগের সংরক্ষণের পর এই নির্বাচন বদলেছে। আবার নির্বাচন করুন।</string>
+    <string name="pg_day_submitted">এই রুট-দিন ইতিমধ্যে জমা হয়েছে। এটি আর বদলানো যাবে না।</string>
     <string name="pg_ok">ওকে</string>
     <string name="pg_shop_code">খুচরা বিক্রেতার কোড</string>
     <string name="pg_gift_route">রুট</string>

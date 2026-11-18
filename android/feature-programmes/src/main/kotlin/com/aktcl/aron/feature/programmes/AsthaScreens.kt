@@ -94,6 +94,8 @@ data class AsthaSelection(val year: Int? = null, val quarter: Int? = null, val m
 fun AsthaTargetScreen(
     data: AsthaData?, locale: UiLocale, currentYear: Int, modifier: Modifier = Modifier,
     shops: List<ShopInfo>? = null, initial: AsthaSelection = AsthaSelection(), initialShop: Long? = null, startOnShops: Boolean = false,
+    /** The Dhaka month of today (`YYYY-MM`): the page opens on it (year, quarter and month already chosen) so it shows data at once; null keeps the empty start. */
+    currentMonth: String? = null,
 ) {
     val look = LocalAronLook.current
     var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
@@ -112,11 +114,15 @@ fun AsthaTargetScreen(
             else {
                 AronTextButton(stringResource(R.string.pg_all_shops), { shop = null }, Modifier.testTag(AsthaTags.SHOP_BACK))
                 Text(chosen.nameLine, style = label(look.purple), modifier = Modifier.testTag(AsthaTags.SHOP_TITLE))
-                TargetBody(data, locale, currentYear, chosen.outletId, initial)
+                TargetBody(data, locale, currentYear, chosen.outletId, startAt(initial, currentMonth))
             }
-        } else TargetBody(data, locale, currentYear, null, initial)
+        } else TargetBody(data, locale, currentYear, null, startAt(initial, currentMonth))
     }
 }
+
+private fun startAt(initial: AsthaSelection, currentMonth: String?): AsthaSelection =
+    if (initial != AsthaSelection() || currentMonth == null || !Regex("^\\d{4}-(0[1-9]|1[0-2])$").matches(currentMonth)) initial
+    else AsthaSelection(currentMonth.take(4).toInt(), AsthaModel.quarterOf(currentMonth), currentMonth)
 
 /** The pickers, the month chips, the sub-tabs and the table of the route (outletId null) or of one outlet; its own state is kept per outlet. */
 @Composable
@@ -130,7 +136,8 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
     var month by rememberSaveable(outletId) { mutableStateOf(initial.month) }
     var memoTab by rememberSaveable(outletId) { mutableStateOf(initial.memoTab) }
         if (data == null) { EmptyNote(stringResource(R.string.pg_no_programme)); return }
-        val years = (currentYear..currentYear + 4).toList()
+        // this year and four more, plus any earlier year the phone holds rows for
+        val years = ((currentYear..currentYear + 4).toList() + data.rows.map { it.month.take(4).toInt() }).distinct().sorted()
         val big = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f
         val yearPicker: @Composable (Modifier) -> Unit = { m ->
             Column(m, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -169,7 +176,7 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         }
         if (big) StackedCards(data, brandRows, allBrand, memoTab, locale)
         else if (!memoTab) StdTable(data, brandRows, locale) else MemoTable(allBrand, locale)
-        data.asOf?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(it.take(10), locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
+        data.asOf?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(DhakaTime.dateOf(it) ?: "—", locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
         if (data.truncated) Text(stringResource(R.string.pg_truncated), Modifier.testTag(AsthaTags.TRUNCATED), style = small(look.inkMuted))
 
 }

@@ -37,14 +37,16 @@ class RedemptionScreenTest {
                {"gift_id":4,"programme_id":3,"name_en":"Retired","points_cost":50,"tier_codes":[],"status":"inactive"}]}"""
     private val outlets = listOf(ShopOutlet(10, "Bipu Store (6909084)", "6909084", "A", null, null, chip = "B", routeId = 7))
     private val confirmed = mutableListOf<Pair<Basket, Int>>()
+    private var outcome = SaveOutcome.SAVED
 
     private fun show(language: AppLanguage = AppLanguage.EN, localRedeemed: Long = 0L, accept: Boolean = true) {
+        if (!accept) outcome = SaveOutcome.REFUSED
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(language) {
-                    RedemptionScreen(outlets, LoyaltyModel.parse(json), loc, { _, _, bundle -> bundle - localRedeemed }, { b, _ -> confirmed += b to b.qty.size; accept }, initialOutlet = 10)
+                    RedemptionScreen(outlets, LoyaltyModel.parse(json), loc, { _, _, bundle -> bundle - localRedeemed }, { b, _ -> confirmed += b to b.qty.size; outcome }, initialOutlet = 10)
                 }
             }
         }
@@ -83,7 +85,7 @@ class RedemptionScreenTest {
         compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
         assertEquals(1, confirmed.size); assertEquals(1, confirmed[0].second)
-        compose.onNodeWithText("Redemption saved on this phone. It goes out with the next sync.").assertExists()
+        compose.onNodeWithText("Redemption saved on this phone; points are deducted when it syncs.").assertExists()
         compose.onNodeWithTag(RedemptionTags.SUCCESS_OK).performClick(); compose.waitForIdle()
         compose.onNodeWithText("220 Pts Remaining").assertExists() // basket emptied
     }
@@ -122,5 +124,23 @@ class RedemptionScreenTest {
         compose.onNodeWithTag(RedemptionTags.CASHBACK).assertExists()
         compose.onNodeWithText("Cash-back: awaiting the owner's rule. It cannot be redeemed yet.").assertExists()
         compose.onNodeWithTag(RedemptionTags.CONFIRM).assertIsNotEnabled() // nothing to confirm from the cash-back card: no stepper, no points
+    }
+
+    @Test fun aDifferentBasketUnderAnOldUuidSaysSoAndSavesNothing() {
+        outcome = SaveOutcome.CONFLICT
+        show()
+        compose.onNodeWithTag(RedemptionTags.plus(1)).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("This basket changed after an earlier save. Nothing was deducted. Check the items and confirm again.").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun aSubmittedRouteDaySaysWhy() {
+        outcome = SaveOutcome.DAY_SUBMITTED
+        show()
+        compose.onNodeWithTag(RedemptionTags.plus(1)).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.CONFIRM).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("This route-day has already been submitted. It cannot be changed.").performScrollTo().assertIsDisplayed()
     }
 }

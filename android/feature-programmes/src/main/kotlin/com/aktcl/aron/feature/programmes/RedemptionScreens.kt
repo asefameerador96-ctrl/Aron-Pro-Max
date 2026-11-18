@@ -66,7 +66,7 @@ object RedemptionTags {
 fun RedemptionScreen(
     outlets: List<ShopOutlet>, data: LoyaltyData?, locale: UiLocale,
     balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long,
-    onConfirm: suspend (Basket, List<LoyaltyGift>) -> Boolean,
+    onConfirm: suspend (Basket, List<LoyaltyGift>) -> SaveOutcome,
     modifier: Modifier = Modifier, initialOutlet: Long? = null, initialQty: Map<Long, Int> = emptyMap(),
 ) {
     val look = LocalAronLook.current
@@ -75,7 +75,7 @@ fun RedemptionScreen(
     var qtys by rememberSaveable(outletId) { mutableStateOf(initialQty) }
     var asking by rememberSaveable { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
-    var failed by rememberSaveable { mutableStateOf(false) }
+    var failed by rememberSaveable { mutableStateOf<String?>(null) } // the name of a failing SaveOutcome
     var busy by androidx.compose.runtime.remember { mutableStateOf(false) } // one save at a time: a second tap while the first is running is ignored
     val scope = rememberCoroutineScope()
     val withPoints = data?.let { d -> outlets.filter { it.outletId in d.outletIds } }.orEmpty()
@@ -120,7 +120,12 @@ fun RedemptionScreen(
             }
         }
         AronSolidButton(stringResource(R.string.pg_confirm_redemption), { asking = true }, Modifier.fillMaxWidth().testTag(RedemptionTags.CONFIRM), enabled = !basket.isEmpty())
-        if (failed) Text(stringResource(R.string.pg_redeem_failed), Modifier.testTag(RedemptionTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red))
+        failed?.let { f ->
+            Text(
+                stringResource(when (f) { "CONFLICT" -> R.string.pg_redeem_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; else -> R.string.pg_redeem_failed }),
+                Modifier.testTag(RedemptionTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red),
+            )
+        }
         if (asking) {
             AlertDialog(
                 onDismissRequest = { asking = false },
@@ -137,7 +142,10 @@ fun RedemptionScreen(
                         if (!busy) {
                             busy = true
                             scope.launch {
-                                try { if (onConfirm(basket, gifts)) { saved = true; failed = false; qtys = emptyMap() } else failed = true } finally { busy = false }
+                                try {
+                                    val out = onConfirm(basket, gifts)
+                                    if (out == SaveOutcome.SAVED || out == SaveOutcome.ALREADY_SAVED) { saved = true; failed = null; qtys = emptyMap() } else failed = out.name
+                                } finally { busy = false }
                             }
                         }
                     }, Modifier.testTag(RedemptionTags.DIALOG_OK))

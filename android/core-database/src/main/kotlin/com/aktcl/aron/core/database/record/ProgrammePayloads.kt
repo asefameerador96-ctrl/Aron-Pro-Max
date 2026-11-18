@@ -6,7 +6,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Payload objects of the SR programme records (contract 1.17.0: `redemption`, `redemption_line`, `gift_choice`), built member by member so a
+ * Payload objects of the SR programme records (contract 1.19.0: `redemption`, `redemption_line`, `gift_choice`), built member by member so a
  * member the contract does not have cannot be sent. Lane android-sr-programmes. Required members of [SHAPES] are the contract's; points are
  * integers and money is integer milli-taka (no float anywhere).
  */

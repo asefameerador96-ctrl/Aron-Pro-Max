@@ -44,7 +44,7 @@ class GiftSelectionScreenTest {
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language) { GiftSelectionScreen(shops, GiftChoiceModel.parse(json), "2026-Q4", local, loc, { o, g -> saves += o to g; accept }, initialOutlet = outlet) }
+                AronTheme(language) { GiftSelectionScreen(shops, GiftChoiceModel.parse(json), "2026-Q4", local, loc, { o, g -> saves += o to g; if (accept) SaveOutcome.SAVED else SaveOutcome.REFUSED }, initialOutlet = outlet) }
             }
         }
         compose.waitForIdle()

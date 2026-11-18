@@ -39,9 +39,9 @@ object ShopModel {
         return buildFor(outlets, ids, subs, locale)
     }
 
-    /** The cards of exactly the outlets in [ids] (the gift page adds the outlets that already have a gift assignment), by name. */
-    fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, subs: Map<Long, BrandName>, locale: UiLocale): List<ShopInfo> {
-        return outlets.filter { it.outletId in ids }.sortedBy { it.nameLine.lowercase() }
+    /** The cards of exactly the outlets in [ids] (the gift page adds the outlets that already have a gift assignment): the route being worked first, then by name. */
+    fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, subs: Map<Long, BrandName>, locale: UiLocale, preferredRouteId: Long? = null): List<ShopInfo> {
+        return outlets.filter { it.outletId in ids }.sortedWith(compareBy<ShopOutlet> { if (preferredRouteId != null && it.routeId == preferredRouteId) 0 else 1 }.thenBy { it.nameLine.lowercase() })
             .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }, it.chip, it.routeId, it.routeName, it.clusterName) }
     }
 

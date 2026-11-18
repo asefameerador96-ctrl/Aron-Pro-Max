@@ -4,7 +4,7 @@ import com.aktcl.aron.core.database.record.ProgrammePayloads
 import kotlinx.serialization.json.JsonObject
 
 /** A redemption this phone already holds (from the stored `redemption` record and its outbox state). */
-data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String)
+data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String, val ackedAt: String? = null)
 
 /** One gift of the basket with its quantity. */
 data class BasketLine(val gift: LoyaltyGift, val qty: Int)
@@ -65,12 +65,30 @@ object LocalRedeemed {
     private val STILL_LOCAL = setOf("pending", "in_flight", "quarantined")
 
     /**
-     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold: every redemption not refused by the server
-     * that is either still on the phone (pending, in flight, held) or was confirmed after the bundle was built ([bundleBuiltAt], ISO UTC; null =
-     * unknown, then every non-refused redemption counts). A redemption the server acked before the bundle was built is already inside the balance.
+     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold. A redemption the server refused counts for
+     * nothing. One still on the phone (pending, in flight, held) counts. An acknowledged one counts only until a bundle built after its
+     * acknowledgement has arrived: its [LocalRedemption.ackedAt] (trusted clock) is later than [bundleBuiltAt] (the server's build time), compared as instants,
+     * not as text. With either time unknown it counts (the safe side: the balance is never overstated). Limit: an ack that lands just after a
+     * bundle that already held the redemption is subtracted once more until the next bundle (the balance is then understated, never overstated).
      */
-    fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long =
-        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" }
-            .filter { bundleBuiltAt == null || it.state in STILL_LOCAL || it.confirmedAt > bundleBuiltAt }
+    fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long {
+        val built = DhakaTime.ms(bundleBuiltAt)
+        return records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" }
+            .filter { it.state in STILL_LOCAL || built == null || DhakaTime.ms(it.ackedAt)?.let { ack -> ack > built } != false }
             .sumOf { it.points }
+    }
+}
+
+/**
+ * THE balance of an outlet in a programme, for every screen that shows or spends it (outlet points, redemption): the bundle's balance minus what this
+ * phone redeemed that the bundle cannot hold ([LocalRedeemed]). The overdrawn flag is derived from it, never taken from the bundle's own flag.
+ */
+object PointsBalance {
+    fun of(bundleBalance: Long, local: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long =
+        bundleBalance - LocalRedeemed.points(local, outletId, programmeId, bundleBuiltAt)
+
+    fun overdrawn(balance: Long): Boolean = balance < 0
+
+    /** The function the screens take: (outlet, programme, bundle balance) -> balance. */
+    fun function(local: List<LocalRedemption>, bundleBuiltAt: String?): (Long, Long, Long) -> Long = { o, p, b -> of(b, local, o, p, bundleBuiltAt) }
 }

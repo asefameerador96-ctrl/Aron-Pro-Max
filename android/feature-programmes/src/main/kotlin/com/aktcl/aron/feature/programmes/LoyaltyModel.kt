@@ -81,8 +81,8 @@ object LoyaltyModel {
     /** "110 Pts" in the language's digits; a negative balance keeps its minus sign ("-20 Pts"). */
     fun pointsText(points: Long, locale: UiLocale, unit: String): String = Formats.integer(points, locale) + " " + unit
 
-    /** The expiry date as yyyy-MM-dd in the language's digits; null or blank is a dash. */
-    fun dateText(date: String?, locale: UiLocale): String = date?.takeIf { it.isNotBlank() }?.let { Formats.digits(it.take(10), locale) } ?: "—"
+    /** A date as yyyy-MM-dd in the language's digits: a plain business date as it is, a server instant as its Dhaka date; null or unreadable is a dash. */
+    fun dateText(date: String?, locale: UiLocale): String = DhakaTime.dateOf(date)?.let { Formats.digits(it, locale) } ?: "—"
 
     private fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.long(k: String): Long? = (this[k] as? JsonPrimitive)?.let { it.longOrNull ?: it.contentOrNull?.toLongOrNull() }
