@@ -30,7 +30,7 @@ BEGIN
     SELECT 'Z-SMK', 'Slice smoke (dev)', 'স্লাইস স্মোক (ডেভ)', t.id, h.id, 'Smoke DEP' FROM app.territory t, app.house h
      WHERE t.code = 'T-DHK-N' AND h.code = 'H-GUL' AND NOT EXISTS (SELECT 1 FROM app.zone x WHERE x.code = 'Z-SMK');
   INSERT INTO app.cluster (zone_id, name, cluster_type)
-    SELECT z.id, 'Smoke Circle', 'market' FROM app.zone z
+    SELECT z.id, 'Smoke Circle', 'Transit Hub' FROM app.zone z
      WHERE z.code = 'Z-SMK' AND NOT EXISTS (SELECT 1 FROM app.cluster x WHERE x.zone_id = z.id AND x.name = 'Smoke Circle');
   INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no, route_class)
     SELECT 'SMK-SR-D', 'Slice smoke (daily)', 'Daily', z.id, 'sr', 'daily', 127, 99, 'normal'

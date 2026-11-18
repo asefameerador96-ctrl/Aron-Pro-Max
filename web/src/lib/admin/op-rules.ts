@@ -51,7 +51,7 @@ export function opRules(op: string, body: Record<string, unknown>): FieldProblem
   }
   if (op === "paper-backfill.create") {
     const out: FieldProblem[] = [];
-    if (typeof body.memo_no !== "string" || !/^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$/.test(body.memo_no)) out.push({ pointer: "/memo_no", code: "invalid" });
+    if (typeof body.memo_no !== "string" || !/^[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}$/.test(body.memo_no)) out.push({ pointer: "/memo_no", code: "invalid" });
     const d = body.business_date;
     if (typeof d !== "string" || !isRealDate(d)) out.push({ pointer: "/business_date", code: "invalid" });
     else if (d > businessDate() || d < shiftDate(businessDate(), -PAPER_WINDOW_DAYS)) out.push({ pointer: "/business_date", code: "window" }); // cfg.entry.paper_backfill_window_days (7)

@@ -25,7 +25,7 @@ INSERT INTO app.house (code, name, territory_id) SELECT 'PH' || t.code, 'House '
 INSERT INTO app.zone (code, name, territory_id, house_id)
   SELECT 'PZ' || z, 'Perf zone ' || z, t.id, h.id
     FROM generate_series(1, 1051) z JOIN app.territory t ON t.code = 'PT' || (1 + (z - 1) % 291) JOIN app.house h ON h.territory_id = t.id;
-INSERT INTO app.cluster (zone_id, name, cluster_type) SELECT z.id, 'Market ' || c, 'market' FROM app.zone z, generate_series(1, 3) c WHERE z.code LIKE 'PZ%';
+INSERT INTO app.cluster (zone_id, name, cluster_type) SELECT z.id, 'Market ' || c, 'Transit Hub' FROM app.zone z, generate_series(1, 3) c WHERE z.code LIKE 'PZ%';
 
 -- ---------- routes: kind and visit-day mask by P-17 (bit0 Sat ... bit6 Fri) ----------
 CREATE TEMP TABLE pr AS

@@ -238,6 +238,7 @@ private fun PickStep(
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
         below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) }, belowWhenIdle = salesPath,
+        idleHint = if (joint) stringResource(AmoR.string.amo_cp_route_placeholder) else null, // screenshot 29 right
     )
 }
 
@@ -284,12 +285,22 @@ private fun ManualOverrideStep(day: AmoDay, reason: ForceReason, onStarted: () -
                 LaunchedEffect(Unit) {
                     if (!autoOpened && cap.photo == null) { autoOpened = true; com.aktcl.aron.core.common.orNullKeepingCancellation { capture.shutter() } }
                 }
+                // D-PAR-AMO-06: read again on every resume, so the warning clears when Camera was allowed in the phone's Settings and the user came back
+                var cameraDenied by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) }
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
                 var autoConfirmed by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(cap.complete) { if (cap.complete && !autoConfirmed) { autoConfirmed = true; confirm() } }
                 com.aktcl.aron.feature.amo.ManualOverrideContent(
                     capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } }, onConfirm = confirm,
                     waiting = cap.busy || (cap.complete && missing.isEmpty()),
-                    cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED,
+                    cameraDenied = cameraDenied,
                 )
             }
         }

@@ -149,6 +149,8 @@ private fun CaptureBlock(item: AmoFormItem.Capture) {
 fun AmoOutletFormBody(
     items: List<AmoFormItem>, onSave: () -> Unit, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null, saveEnabled: Boolean = true, busy: Boolean = false,
     header: (@Composable () -> Unit)? = null, bottom: (@Composable () -> Unit)? = null,
+    /** Update Base (screenshot 62): the [bottom] button sits right under the fields, in the scrolling content, instead of pinned to the screen bottom. */
+    bottomInline: Boolean = false,
 ) {
     Column(modifier.fillMaxWidth()) {
         Column(
@@ -157,10 +159,11 @@ fun AmoOutletFormBody(
         ) {
             header?.invoke()
             items.forEach { AmoFormItemView(it) }
+            if (bottom != null && bottomInline) bottom()
         }
-        if (bottom != null) bottom() else Row(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            if (onCancel != null) AmoNo(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.weight(1f).testTag(OutletFormTags.CANCEL), enabled = !busy)
-            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy)
+        if (bottom != null) { if (!bottomInline) bottom() } else Row(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            if (onCancel != null) AmoNo(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.weight(1f).testTag(OutletFormTags.CANCEL), enabled = !busy, icon = com.aktcl.aron.core.ui.AronIcons.Close) // screenshots 50, 55: the cross and the floppy
+            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Submit) // the 18 dp floppy: the Save glyph is dot-sized (13 dp) beside the label
         }
     }
 }
