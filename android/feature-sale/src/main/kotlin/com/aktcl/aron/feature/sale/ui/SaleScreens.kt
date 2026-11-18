@@ -236,8 +236,7 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
 }
 
 /** Test tags of the sale screens. */
-object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first" }
-object SaleTags { const val QC_ONLY = "sale_qc_only"; const val PRINT_LATER = "sale_print_later" }
+object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first"; const val PRINT_LATER = "sale_print_later" }
 
 /**
  * Sale, step 2: the product list (F-SR-023, sr/stock.webp layout with the sale quantity). One kit [PackCard] per SKU: packshot with the
@@ -316,7 +315,7 @@ fun SaleEntryScreen(
                         Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-object SaleTags { const val QC_ONLY = "sale_qc_only"; const val STOCK_FIRST = "sale_stock_first"; const val PRINT_LATER = "sale_print_later" }
+                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity, rewardBase = rewardBySku[sku.skuId] ?: 0L, onOpen = if (quantityPopup) ({ popupSkuId = sku.skuId }) else null, amoCard = amoSkuCard) }
                     }
                 }
             }
@@ -380,7 +379,7 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
  * Each control carries its own TalkBack label with the SKU name (minus, the quantity field, plus).
  */
 @Composable
-private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit, onOpen: (() -> Unit)? = null, amoCard: Boolean = false) {
+private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit, rewardBase: Long = 0L, onOpen: (() -> Unit)? = null, amoCard: Boolean = false) {
     val look = LocalAronLook.current
     val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
