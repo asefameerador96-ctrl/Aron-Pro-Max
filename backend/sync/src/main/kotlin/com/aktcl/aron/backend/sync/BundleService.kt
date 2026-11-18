@@ -161,6 +161,7 @@ class BundleService(
                     locale = if (user.locale == "en") "en" else "bn", bind_ordinal = bindOrdinal(h, p),
                     memo_seq_block_size = config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
+                    geography = (user.homeZoneId ?: plans.firstOrNull()?.zoneId)?.let { geographyOf(h, it) },
                     consents = ConsentRecords.accepted(h, user.id),
                 ),
                 config = ResolvedConfig(configVersion, cfg.deviceValues(userChain) + labGrant(h, p.deviceId, now), cfg.deviceScheduled(userChain, until)),
@@ -760,6 +761,18 @@ class BundleService(
         val roles = item.attrs["roles"] as? kotlinx.serialization.json.JsonArray ?: return true
         return roles.any { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == role }
     }
+
+    /** The names of one zone's own chain (zone, territory, division, wing), Bangla and English (contract 1.22.0, N-9); only the caller's own home zone is ever asked for. */
+    private fun geographyOf(h: Handle, zoneId: Long): BundleGeography? = h.createQuery(
+        """
+        SELECT z.id zi, z.code zc, z.name zn, z.name_bn zb, t.id ti, t.code tc, t.name tn, t.name_bn tb, d.id di, d.code dc, d.name dn, d.name_bn db, w.id wi, w.code wc, w.name wn, w.name_bn wb
+        FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id WHERE z.id = :z
+        """.trimIndent(),
+    ).bind("z", zoneId).map { rs, _ ->
+        fun g(i: String, c: String, n: String, b: String) = BundleGeoName(rs.getLong(i), rs.getString(c), rs.getString(n), rs.getString(b))
+        BundleGeography(g("wi", "wc", "wn", "wb"), g("di", "dc", "dn", "db"), g("ti", "tc", "tn", "tb"), g("zi", "zc", "zn", "zb"))
+    }.findOne().orElse(null)
+
 
     private fun products(h: Handle): BundleProducts {
         val nodes = h.createQuery("SELECT id, level, parent_id, code, name, name_bn, sort FROM app.product_node WHERE status = 'active' ORDER BY sort, id").map { rs, _ ->

@@ -94,6 +94,28 @@ class PhotoCapturer<I : Any>(
         } ?: throw IllegalArgumentException("no stored photo $mediaUuid")
     }
 
+    /**
+     * Claims [mediaUuid] for [ref] as THE photo of that record: every OTHER photo still ATTACHED to the same [ref] (the leftover of a save that was cancelled or killed after its claim and
+     * before its record committed; the record uuid is fixed by its subject, so the retake commits under the same uuid) is given back first, so that when the record is acknowledged exactly one
+     * photo uploads for it. Photos already uploaded are left alone.
+     */
+    suspend fun attachExclusive(mediaUuid: String, ref: MediaRef, stamp: PhotoStamp?): MediaItem {
+        store.all().filter { it.mediaUuid != mediaUuid && it.state == MediaState.ATTACHED && it.ref == ref }.forEach { release(it.mediaUuid, ref) }
+        return attach(mediaUuid, ref, stamp)
+    }
+
+    /**
+     * Gives a claim back: a photo still ATTACHED to [ref] (not yet uploaded) returns to CAPTURED, free to be claimed by another record. For a record whose save was refused AFTER the
+     * claim; a photo already uploaded or claimed by another record is left alone. True when released.
+     */
+    suspend fun release(mediaUuid: String, ref: MediaRef): Boolean {
+        var released = false
+        store.update(mediaUuid) { cur ->
+            if (cur.state == MediaState.ATTACHED && cur.ref == ref) { released = true; cur.copy(state = MediaState.CAPTURED, ref = null, stamp = null, attachedAtMs = null) } else cur
+        }
+        return released
+    }
+
     /** Drops a photo that was replaced by a retake or abandoned with its form. A claimed photo is never dropped. */
     suspend fun discard(mediaUuid: String): Boolean {
         return store.deleteIf(mediaUuid) { it.state == MediaState.CAPTURED }

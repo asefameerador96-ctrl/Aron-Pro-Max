@@ -23,6 +23,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.contract.MediaPurpose
 import com.aktcl.aron.contract.OutletRequestType
 import com.aktcl.aron.contract.RecordType
+import com.aktcl.aron.core.database.record.ProgrammePayloads
 import com.aktcl.aron.core.database.record.RecordMapping
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -316,10 +317,62 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        // D-AGATE-25: an audit record of a visit (its family) is refused once the call has its close: the close classified the call without it. A replay (above) still answers false.
+        if (!own && capture.visitCloseCount(record.familyUuid) > 0) throw CallAlreadyClosedException(record.familyUuid)
         requireCheckedIn(record.meta.businessDate) // rule 1: every AMO record is operational
         requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
         outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
+        true
+    }
+
+    /**
+     * The write gates of a programme record (check-in, open route-day) WITHOUT writing anything, for a caller that must do a side effect first (claiming a photo): throws the same
+     * exceptions [recordProgramme] would. Inside one transaction so it sees one state.
+     */
+    suspend fun requireProgrammeWriteOpen(meta: CaptureMeta, recordType: String) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
+        requireRoute(meta)
+        requireCheckedIn(meta.businessDate)
+        requireOpenRouteDay(meta, recordType)
+    }
+
+    /**
+     * The SR programme records (lane android-sr-programmes): `redemption` with its `redemption_line` rows, or one `gift_choice`, in ONE
+     * transaction, all or nothing. They share the generic `amo_record` store and the outbox (no schema change; a dedicated table is a Room 12
+     * item). Idempotent by client UUID: a replay of the same parent writes nothing and returns false, so a double tap, a retry after a kill
+     * and relaunch, or a duplicate upload never makes a second redemption. Family and rank follow docs/24 s4.3: parent self rank 0, lines
+     * rank 1 under the redemption. The open-route-day guard is the same one every operational write uses.
+     */
+    suspend fun recordProgramme(records: List<com.aktcl.aron.core.database.entity.AmoRecordEntity>): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
+        require(records.isNotEmpty()) { "no records" }
+        val parent = records.first()
+        if (purged(parent.clientUuid)) return@withTransaction false
+        requireUuids(*records.flatMap { listOf(it.clientUuid, it.familyUuid) }.toTypedArray())
+        require(parent.recordType in PROGRAMME_PARENT_TYPES && parent.familyUuid == parent.clientUuid && parent.rank == 0) { "the first programme record is a parent (redemption, gift_choice or gift_photo), own family, rank 0" }
+        val lines = records.drop(1)
+        require(lines.all { it.recordType == "redemption_line" && it.rank == 1 && it.familyUuid == parent.clientUuid }) { "children are redemption_line rank 1 of the redemption" }
+        require(parent.recordType == "redemption" || lines.isEmpty()) { "a gift_choice has no children" }
+        val parsed = records.map { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull()
+            require(o != null) { "the payload is a JSON object" }
+            ProgrammePayloads.problem(r.recordType, o)?.let { throw IllegalArgumentException(it) }
+            o
+        }
+        if (parent.recordType == "redemption") {
+            val pay = parsed.first()
+            fun n(o: JsonObject, k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+            require(n(pay, "line_count") == lines.size.toLong()) { "line_count must equal the number of lines" }
+            require(n(pay, "points_total") == n(pay, "cash_points") + parsed.drop(1).sumOf { n(it, "points_total") }) { "points_total = cash_points + the lines" }
+            require(lines.all { (Json.parseToJsonElement(it.payloadJson) as JsonObject)["redemption_client_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } == parent.clientUuid }) { "a line names its redemption" }
+        }
+        requireRoute(parent.meta)
+        if (capture.amoRecordCount(parent.clientUuid) > 0) return@withTransaction false
+        requireCheckedIn(parent.meta.businessDate) // rule 1: a redemption or a gift choice is operational, no check-in no write (a replay of a saved one above is not a new write)
+        requireOpenRouteDay(parent.meta, parent.recordType)
+        records.forEach { capture.insertAmoRecord(it) }
+        outbox.insert(records.map { RecordMapping.amoRecord(it, nowIso()) })
         true
     }
 
@@ -386,6 +439,7 @@ class CaptureRepository(
         requireCheckedIn(answer.meta.businessDate)
         requireOpenRouteDay(answer.meta)
         requireSurveyVisit(answer.visitClientUuid)
+        if (capture.visitCloseCount(answer.visitClientUuid) > 0) throw CallAlreadyClosedException(answer.visitClientUuid) // D-AGATE-25
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }
@@ -443,12 +497,15 @@ class CaptureRepository(
     suspend fun recordCheckOut(
         event: AttendanceEventEntity, fix: GeoFixEntity,
         phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+        /** D-AGATE-22 (item 6): runs FIRST inside the transaction; the rep's check-out passes a read of the open work (it throws to refuse, nothing is written), the phone's own close none. */
+        guard: (suspend () -> Unit)? = null,
         buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
     ) = db.withTransaction {
         // Developer options gate FIRST (independent of, and before, the check-in gate: a rep who is not checked in still sees the developer-options block first; D-OWNER-MDM-02).
         com.aktcl.aron.core.common.ActionGate.requireOpen()
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         require(event.kind == "check_out") { "recordCheckOut writes a check_out" }
+        guard?.invoke()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
         val date = event.meta.businessDate
@@ -461,7 +518,9 @@ class CaptureRepository(
         submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
         capture.insertFix(fix)
         capture.insertAttendance(event)
-        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+        // D-AGATE-22 (item 1): closed_by says WHO closed, read from the phone's own DAY_CLOSED mark written in this same transaction (never from comparing times)
+        val byPhone = phoneMarks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED && it.businessDate == date }
+        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso(), closedByPhone = byPhone)))
         phoneMarks.forEach { capture.insertPhoneMark(it) } // D-AGATE-18: the phone closed this day: marker and check-out commit together
         rows
     }
@@ -615,6 +674,7 @@ class CaptureRepository(
             "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
             "risk_review", "outlet_request_verification", "task",
         )
+        val PROGRAMME_PARENT_TYPES = setOf("redemption", "gift_choice", "gift_photo")
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 

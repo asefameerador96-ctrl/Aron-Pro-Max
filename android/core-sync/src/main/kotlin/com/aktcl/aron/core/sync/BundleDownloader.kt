@@ -91,6 +91,17 @@ class BundleDownloader(
     private val clock: WallClock,
     /** What a full day bundle says about this phone's lab exemption (D-OWNER-MDM-02 iii): the signed grant, or null when the bundle has none (withdrawn). */
     private val labGrant: (String?, Long?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
+    /**
+     * The user this downloader works for. With it the day-snapshot request takes that user's sync lock, so no upload runs while a bundle request is in
+     * flight (contract ProgrammesSection ACHIEVEMENT RULE, single flight): a batch acknowledged on the phone is then either acknowledged BEFORE the request
+     * (inside the server's figure) or uploaded AFTER the request (not inside it), never both. Null (tests that do not cover it): no ordering.
+     */
+    private val userId: Long? = null,
+    /**
+     * The SR app only: record the memos and redemptions sent but unanswered when the day bundle is requested, and refetch once when they are answered (the Astha figures and
+     * loyalty balances live in the SR bundle). The AMO and TSO apps leave it off: they never pay a second full download of their large bundle for it.
+     */
+    private val trackUncertain: Boolean = false,
 ) {
     private val repo = ReferenceRepository(db)
     private val meta = db.referenceDao()
@@ -181,6 +192,7 @@ class BundleDownloader(
 
     /** After a sync run: a delta only when the server said its current bundle is newer than the held one (s4.10). */
     suspend fun refreshIfServerNewer(): BundleReport? {
+        refreshIfUncertainResolved()?.let { return it }
         val current = meta.meta(SyncEngine.KEY_BUNDLE_CURRENT) ?: return null
         val held = repo.bundleVersion() ?: return null
         if (ReferenceRepository.compare(current, held) <= 0) return null
@@ -190,6 +202,26 @@ class BundleDownloader(
         // while a refusal or an unreadable answer spends it (a full bundle after every sync would break the data budget).
         if (meta.meta(KEY_DELTA_TRIED_FOR) == current) return null
         return refreshDelta().also { if (spendsVersion(it)) meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current)) }
+    }
+
+    /**
+     * The memos and redemptions that were sent but unanswered when the held snapshot was requested have all got their answer: the server figure may or may not have held
+     * them, so ONE full day bundle is asked for (the contract's "discard and refetch"), at most once per [UNCERTAIN_REFETCH_GAP_MS] so a flapping link cannot loop. Null when
+     * nothing waits, something is still open, or the last such refetch is too recent.
+     */
+    suspend fun refreshIfUncertainResolved(): BundleReport? {
+        if (!trackUncertain) return null
+        return lock.withLock { // the check and the stamp of the rate limit are one step under the downloader lock: two callers cannot both pass
+            val uuids = meta.meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() } ?: return@withLock null
+            val held = repo.businessDate() ?: return@withLock null
+            val now = clock.nowMs()
+            if (held != BusinessDate.of(now).toString()) return@withLock null // only the held bundle of TODAY (a new day starts with its own download), as refreshDelta
+            if (uuids.chunked(500).any { db.outboxDao().stillOpen(it) > 0 }) return@withLock null
+            val last = meta.meta(KEY_UNCERTAIN_REFETCH_AT)?.toLongOrNull()
+            if (last != null && now >= last && now - last < UNCERTAIN_REFETCH_GAP_MS) return@withLock null
+            meta.putMeta(SyncMetaEntity(KEY_UNCERTAIN_REFETCH_AT, now.toString()))
+            fullOfTheDay(held)
+        }
     }
 
     /**
@@ -217,7 +249,25 @@ class BundleDownloader(
     }
 
     private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?, progress: BundleProgress? = null): BundleReport {
-        return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
+        // The request instant is taken BEFORE the request leaves and under the user's sync lock: the memos acknowledged by then are inside the programme
+        // figures, and no upload (so no acknowledgement) can start until the head answer is in. Lock order: this downloader's own lock, then the sync lock; the sync
+        // run never waits for a downloader, so the two cannot deadlock. A sale is never blocked: both are background work.
+        var requestedAt = ""
+        var uncertain: List<String> = emptyList()
+        var ackedBefore: List<String>? = null
+        val answer = underSyncLock {
+            requestedAt = iso(clock.nowMs())
+            // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
+            if (trackUncertain) uncertain = (db.outboxDao().sentUnanswered() + db.outboxDao().quarantinedUuids()).distinct()
+            // the records (memos, voids, redemptions, programme records) acknowledged BEFORE this request leaves: the phone's own order for the programme figures (rule B, no clock); no upload can be in flight, the lock is held
+            if (trackUncertain) {
+                // memos by the figure window (the quarter at most: two months before the bundle month cover every quarter start), redemptions and gift choices with no date cut
+                val from = runCatching { java.time.LocalDate.parse(forDate).withDayOfMonth(1).minusMonths(2).toString() }.getOrDefault(forDate.take(7) + "-01")
+                ackedBefore = (db.outboxDao().ackedMemoOrderUuids(from) + db.outboxDao().ackedProgrammeOrderUuids()).distinct()
+            }
+            api.bundle(forDate, ifNoneMatch, configVersion)
+        }
+        return when (val r = answer) {
             is ApiResult.NotModified -> {
                 if (onPrefetch) {
                     if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
@@ -293,7 +343,7 @@ class BundleDownloader(
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
                 }
                 val applied = try {
-                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages))
+                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay }, uncertain = uncertain.takeIf { isDay }, ackedBeforeRequest = ackedBefore.takeIf { isDay })
                 } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                 }
@@ -309,6 +359,12 @@ class BundleDownloader(
             }
         }
     }
+
+    /**
+     * Single flight (rule B of the programme figures): the SR app, which tracks the order of acknowledgements, sends no bundle request while an upload batch is in flight. The AMO and TSO apps
+     * ([trackUncertain] false) never read that order and keep their own timing: their bundle head request does NOT wait on the user's sync lock (a long upload run must not delay their day start).
+     */
+    private suspend fun <T> underSyncLock(block: suspend () -> T): T = if (userId == null || !trackUncertain) block() else SyncEngine.userLock(userId).withLock { block() }
 
     /** `meta.server_time` of the response in UTC ms, null when absent or unreadable (a grant is then not accepted). */
     internal fun serverTimeMs(bundle: BundleReference): Long? = bundle.meta.serverTime?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
@@ -339,6 +395,9 @@ class BundleDownloader(
     companion object {
         const val KEY_LOGGED_IN = "bundle.logged_in."
         const val KEY_DELTA_FOREGROUND_AT = "bundle.delta_foreground_at"
+        /** When the last refetch after the sent-but-unanswered memos got their answer ran (epoch ms on the trusted clock). */
+        const val KEY_UNCERTAIN_REFETCH_AT = "bundle.uncertain_refetch_at"
+        const val UNCERTAIN_REFETCH_GAP_MS = 10L * 60_000L
         const val KEY_DELTA_TRIED_FOR = "bundle.delta_tried_for"
         /** True when the server answered [r] for good: it spends [KEY_DELTA_TRIED_FOR] for the version. */
         internal fun spendsVersion(r: BundleReport): Boolean = when (r.outcome) {
@@ -398,6 +457,8 @@ class BundleDownloaders(
     private val api: SyncApi,
     private val clock: WallClock,
     private val labGrant: (String?, Long?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
+    /** The SR app passes true (see [BundleDownloader]); the AMO and TSO apps keep false. */
+    private val trackUncertain: Boolean = false,
 ) {
     private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
 
@@ -407,7 +468,7 @@ class BundleDownloaders(
      */
     suspend fun of(userId: Long): BundleDownloader {
         val db = databases.of(userId)
-        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock, labGrant) }!!
+        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock, labGrant, userId = id, trackUncertain = trackUncertain) }!!
     }
 
     /** The AMO and TSO day start runs in this scope, so a rotation or language switch (which cancels the screen's own scope) never aborts it. */

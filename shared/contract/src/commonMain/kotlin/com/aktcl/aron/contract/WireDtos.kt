@@ -156,6 +156,7 @@ data class BundleUser(
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
     @SerialName("zone_id") val zoneId: Long? = null,
     @SerialName("territory_id") val territoryId: Long? = null,
+    @SerialName("geography") val geography: JsonElement? = null,
     @SerialName("consents") val consents: List<BundleUserConsents>? = null,
 )
 

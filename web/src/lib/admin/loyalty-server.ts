@@ -9,6 +9,7 @@ import type { Problem } from "@/contract/types";
 import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { toFieldErrors } from "@/components/admin/crud/validation";
+import { ADJ_MAX_FILE_BYTES, ADJ_MAX_DEBITS, debitRows } from "./loyalty-adjust";
 import { loadGrants } from "./modules";
 import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, ID_RE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
 
@@ -65,6 +66,25 @@ const EnrolBody = z.object({
     valid_to: DAY.nullable().optional(),
   }).strict()).min(1).max(20_000),
   change_reason: REASON,
+}).strict();
+const AdjBody = z.object({
+  request_uuid: UUID,
+  outlet_id: z.number().int().min(1),
+  points: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0, { message: "zero" }),
+  reason: REASON,
+  expires_on: DAY.nullable().optional(),
+  allow_overdraw: z.boolean().optional(),
+}).strict();
+const AdjBatch = z.object({
+  batch_uuid: UUID,
+  dry_run: z.boolean(),
+  change_reason: REASON,
+  allow_overdraw: z.boolean().optional(),
+  rows: z.array(z.object({
+    outlet_id: z.number().int().min(1),
+    points: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0, { message: "zero" }),
+    expires_on: DAY.nullable().optional(),
+  }).strict()).min(1).max(20_000),
 }).strict();
 const GIFT_COMMON = {
   request_uuid: UUID,
@@ -136,6 +156,41 @@ export async function handleEnrolments(req: NextRequest, id: string): Promise<Ne
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   if (parsed.data.rows.some((r) => r.programme_id !== Number(id))) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows/programme_id", code: "invalid" }] }));
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/enrolments", { params: { path: { id: Number(id) } }, body: parsed.data }))));
+}
+
+const TOO_BIG = Symbol("too_big");
+/** The JSON body of an adjustment, refused past ADJ_MAX_FILE_BYTES BYTES (a declared length first, then the bytes actually read: Buffer.byteLength, not UTF-16 units, so a Bangla-heavy body is judged by its real size). */
+async function boundedJson(req: NextRequest): Promise<unknown> {
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > ADJ_MAX_FILE_BYTES) return TOO_BIG;
+  const raw = await req.text().catch(() => "");
+  if (Buffer.byteLength(raw, "utf8") > ADJ_MAX_FILE_BYTES) return TOO_BIG;
+  try { return JSON.parse(raw) as unknown; } catch { return null; }
+}
+
+/** POST /api/bff/admin/loyalty/{id}/adjustments: postProgrammeAdjustment (one signed ledger row; idempotent by request_uuid). Writers only. */
+export async function handleAdjustPost(req: NextRequest, id: string): Promise<NextResponse> {
+  if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
+  const g = await gate(req, "programme");
+  if (g.res) return g.res;
+  const body = await boundedJson(req);
+  if (body === TOO_BIG) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/", code: "too_large" }] }));
+  const parsed = AdjBody.safeParse(body);
+  if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
+}
+
+/** PUT /api/bff/admin/loyalty/{id}/adjustments: putProgrammeAdjustments (dry_run true = preview, nothing written; false = the all-or-nothing apply). */
+export async function handleAdjustPut(req: NextRequest, id: string): Promise<NextResponse> {
+  if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
+  const g = await gate(req, "programme");
+  if (g.res) return g.res;
+  const body = await boundedJson(req);
+  if (body === TOO_BIG) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/", code: "too_large" }] }));
+  const parsed = AdjBatch.safeParse(body);
+  if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
+  if (debitRows(parsed.data.rows) > ADJ_MAX_DEBITS) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows", code: "too_many_debit_rows" }] }));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
 }
 
 /** POST /api/bff/admin/loyalty/gifts: createGift. Super Admin only (Q3 default). */

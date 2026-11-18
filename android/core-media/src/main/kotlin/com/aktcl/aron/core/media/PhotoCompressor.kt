@@ -114,7 +114,7 @@ class PhotoCompressor<I : Any>(private val codec: ImageCodec<I>, private val bud
     companion object {
         const val MIN_EDGE = 320
 
-        fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
     }
 }
 

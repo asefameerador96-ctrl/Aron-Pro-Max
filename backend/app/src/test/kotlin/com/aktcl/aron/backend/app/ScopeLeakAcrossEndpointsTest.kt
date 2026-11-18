@@ -157,6 +157,10 @@ class ScopeLeakAcrossEndpointsTest {
             )
             h.execute("UPDATE app.programme SET current_version_id = (SELECT v.id FROM app.programme_version v WHERE v.programme_id = app.programme.id) WHERE code = 'OWN-PRG'")
             h.execute("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', ${world.ids["zones"]} FROM app.programme WHERE code = 'OWN-PRG'")
+            // D-LOY-API-35: the ledger view of the own programme holds one adjustment of an own-zone outlet (the positive control) and one of a LKX outlet (the leak): the national view shows both, a
+            // scoped reader only the own one.
+            for ((zoneCode, sid) in listOf("Z-MIR" to "own-adjustment-1", "Z-LKX" to "LKX-adjustment-1"))
+                h.execute("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) SELECT (SELECT min(o.id) FROM app.outlet o JOIN app.zone z ON z.id = o.zone_id WHERE z.code = '$zoneCode'), p.id, 'adjustment', '$sid', 10, '${ApiWorld.BUSINESS_DATE}'::date FROM app.programme p WHERE p.code = 'OWN-PRG'")
             h.execute("INSERT INTO app.gift (programme_id, code, name_en, points_cost) SELECT id, 'own_gift', 'OWN seeded gift', 100 FROM app.programme WHERE code = 'OWN-PRG'")
             for ((kind, table, own, theirs) in listOf(
                 listOf("programmes", "programme", "OWN-PRG", "LKX-PRG"), listOf("gifts", "gift", "own_gift", "lkx_gift"),

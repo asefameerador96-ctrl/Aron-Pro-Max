@@ -108,7 +108,7 @@ fun ControlCallHost(
             stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { leaveFailed = false }, onDismiss = { leaveFailed = false },
         )
     }
-    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
+    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }, ofCallsDay = true) }
     // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress whose route-day no longer takes
     // its records ends on the phone at once, before any step is drafted
     LaunchedEffect(open) {

@@ -42,6 +42,16 @@ class AutoDaySubmitsTest {
         assertTrue(built.all { it.deviceCountsJson.contains("stock_movement") })
     }
 
+    /** D-AGATE-22 (item 2): the slip flag is read for the date being CLOSED, not today (a forgotten day's submit must not say "printed" because today has no unprinted stock). */
+    @Test fun theSlipFlagIsAskedForTheDateBeingClosed() = runTest {
+        repo.recordStock(listOf(stock(10231)))
+        val asked = ArrayList<String>()
+        // the date's own slip was never printed, any other date reads as printed
+        val submit = AutoDaySubmits(db, repo, { r -> meta(r) }, { "cigarette" }, stockSlipPrinted = { d -> asked += d; d != date }).build(date).single()
+        assertEquals(listOf(date), asked)
+        assertEquals("the closed date's unprinted slip is carried", false, submit.stockSlipPrinted)
+    }
+
     @Test fun aRouteDayWithAStandingSubmitIsLeftAloneAndTheNextCycleFollowsARefusedOne() = runTest {
         repo.recordStock(listOf(stock(10231), stock(10232)))
         val first = sr().build(date).first { it.meta.routeId == 10231L }

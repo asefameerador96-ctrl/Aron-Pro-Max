@@ -116,6 +116,7 @@ dependencies {
     implementation(project(":android:feature-dayclose"))
     implementation(project(":android:feature-outlet"))
     implementation(project(":android:feature-tasks"))
+    implementation(project(":android:feature-programmes"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)

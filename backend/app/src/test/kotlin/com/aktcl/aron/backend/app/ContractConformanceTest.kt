@@ -374,6 +374,19 @@ class ContractConformanceTest {
             "GET /v1/admin/programmes/{}/enrolments" to Fx(after = listOf("PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
             "POST /v1/admin/programmes/{}/status" to Fx(after = listOf("PATCH /v1/admin/programmes/{}", "PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) },
                 body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("to_status", "active"); n.put("reason", "conformance check activation") }),
+            // D-LOY-API-35 (contract 1.23.0): the programme is active after the status call; an adjustment, the bulk dry run and the ledger view follow it.
+            "POST /v1/admin/programmes/{}/adjustments" to Fx(after = listOf("POST /v1/admin/programmes/{}/status"), path = { _, x -> mapOf("id" to x.need("programme_id")) }, body = { n, _, x ->
+                val outlet = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT min(id) FROM app.outlet").mapTo(Long::class.java).one() }
+                // an adjustment needs a CURRENT enrolment: from 30 days ago up to the (exclusive) start of the future enrolment the enrolment call made
+                x.world.fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from, valid_to) VALUES (${x.need("programme_id")}, $outlet, DATE '${ApiWorld.BUSINESS_DATE}' - 30, DATE '$FUTURE') ON CONFLICT DO NOTHING") }
+                n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("outlet_id", outlet); n.put("points", 5); n.put("reason", "conformance check adjustment")
+            }),
+            "PUT /v1/admin/programmes/{}/adjustments" to Fx(after = listOf("POST /v1/admin/programmes/{}/status"), path = { _, x -> mapOf("id" to x.need("programme_id")) }, body = { n, _, x ->
+                val outlet = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT min(id) FROM app.outlet").mapTo(Long::class.java).one() }
+                n.removeAll(); n.put("batch_uuid", java.util.UUID.randomUUID().toString()); n.put("dry_run", true); n.put("change_reason", "conformance check bulk adjustment")
+                n.putArray("rows").addObject().put("outlet_id", outlet).put("points", 5)
+            }),
+            "GET /v1/admin/programmes/{}/ledger" to Fx(after = listOf("POST /v1/admin/programmes/{}/adjustments"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
             "POST /v1/admin/gifts" to Fx(after = listOf("POST /v1/admin/programmes"), body = { n, _, x ->
                 n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("programme_id", x.need("programme_id").toLong())
                 n.put("code", "qa_gift_" + java.util.UUID.randomUUID().toString().take(6).replace("-", "a")); n.put("name_en", "QA gift"); n.put("points_cost", 200); n.putArray("tier_codes").add("silver")

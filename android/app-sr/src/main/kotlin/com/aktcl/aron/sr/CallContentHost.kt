@@ -260,7 +260,11 @@ private fun SurveyStep(
     attendanceWhy?.let { why ->
         com.aktcl.aron.core.ui.aron.AronDialog(
             stringResource(R.string.sr_survey_title),
-            stringResource(if (why == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) com.aktcl.aron.feature.sale.R.string.review_problem_checked_out else com.aktcl.aron.feature.sale.R.string.review_problem_not_checked_in),
+            stringResource(when (why) {
+                com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> com.aktcl.aron.feature.sale.R.string.review_problem_checked_out
+                com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> com.aktcl.aron.feature.sale.R.string.review_problem_earlier_call_open
+                else -> com.aktcl.aron.feature.sale.R.string.review_problem_not_checked_in
+            }),
             stringResource(R.string.sr_ok), onConfirm = { attendanceWhy = null }, onDismiss = { attendanceWhy = null },
         )
     }

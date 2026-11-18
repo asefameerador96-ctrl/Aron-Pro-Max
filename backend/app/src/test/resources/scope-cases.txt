@@ -255,6 +255,9 @@ POST /v1/admin/programmes -> case AdminLoyaltyTest#createIsRefusedToEveryRoleBut
 PATCH /v1/admin/programmes/{id} -> case AdminLoyaltyTest#updateRefusalsStaleEtagNoChangeImmutableMembersFinalProgrammesAndMissingProgramme
 POST /v1/admin/programmes/{id}/status -> case AdminLoyaltyTest#statusMovesDraftToActiveBySuperadminAndActiveToEndedByAdminWithTheTrailAndReplay
 PUT /v1/admin/programmes/{id}/enrolments -> case AdminLoyaltyTest#enrolmentsUpsertIdempotentlyByBatchWithCountsAndRefusals
+GET /v1/admin/programmes/{id}/ledger -> case AdminLoyaltyTest#theLedgerViewShowsAdjustmentsWithTheirReasonWithinTheReadersScope
+POST /v1/admin/programmes/{id}/adjustments -> case AdminLoyaltyTest#anAdjustmentIsRefusedOutsideTheProgrammeScopeTheRoleAndTheRules
+PUT /v1/admin/programmes/{id}/adjustments -> case AdminLoyaltyTest#theBulkUploadHasADryRunThatWritesNothingThenAnAllOrNothingIdempotentApply
 POST /v1/admin/gifts -> case AdminLoyaltyTest#giftCreateIsSuperadminOnlyWithReplayDuplicateAndRefusals
 PATCH /v1/admin/gifts/{id} -> case AdminLoyaltyTest#giftUpdateGetListWithPreconditionNoChangeAndFirstResultReplay
 GET /v1/programmes/loyalty/balances -> case LoyaltyFieldRoutesTest#theLiveBalanceIsTheLedgerUpToTodayCutToTheCallersOutlets

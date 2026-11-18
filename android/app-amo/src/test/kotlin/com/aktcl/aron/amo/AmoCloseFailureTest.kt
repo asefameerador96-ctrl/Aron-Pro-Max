@@ -80,7 +80,7 @@ class AmoCloseFailureTest {
         var closed = 0
         show { AmoCheckInGate(f.day, AttendanceRefusal.EARLIER_CALL_OPEN, canCloseCall = true, earlierOutlet = null, onCheckIn = {}, onCallClosed = { closed++ }) }
         compose.onNodeWithTag(CheckInFirstTags.CLOSE_CALL).performClick()
-        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Today's sales are already submitted.").assertExists() }.isSuccess }
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("The sales of the day of this call are already submitted. The call is ended on the phone.").assertExists() }.isSuccess }
         assertEquals(0, closed); assertTrue("nothing was written", runBlocking { f.db.captureDao().visitClosesOn(f.date) }.none { it.visitClientUuid == v.visitUuid })
         compose.onNodeWithText("OK").performClick()
         compose.waitUntil(5_000) { closed == 1 }

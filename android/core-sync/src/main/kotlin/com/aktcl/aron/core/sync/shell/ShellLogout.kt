@@ -40,7 +40,11 @@ class ShellLogout(
             closeDatabaseAction = { databases.close(userId) },
             forgetCredentialsAction = { components.session.forgetUser(userId) },
             // The spoof checks' previous fix is a position of this phone, not of the database: it goes with the session.
-            clearDeviceTracesAction = { com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app).clear() },
+            clearDeviceTracesAction = {
+                com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app).clear()
+                // the Astha months read online are the route's target figures kept in app-private files (SR programme screens): they go with the session
+                runCatching { java.io.File(app.filesDir, "astha-months-$userId").deleteRecursively() }
+            },
         ),
     ))
 
