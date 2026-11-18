@@ -761,13 +761,13 @@ class Workflows(unittest.TestCase):
 
     def test_diagnose_reads_the_worker_console_log_and_keeps_statements_out(self):
         # D-OPS-DIAGNOSE-WORKER-01, now under the default-deny shape (D-OPS-DIAGNOSE-API-06): the worker's console is read through the shared structured query (level, logger,
-        # exception class, SQLSTATE, ms, a fixed kind label such as the job-run lines); the anchored statement exclusion stays on the PostgreSQL server-log query.
+        # exception class, SQLSTATE, ms, a fixed label such as the job-run lines); the anchored statement exclusion stays on the PostgreSQL server-log query.
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
         self.assertIn('console_section "$WORKER_APP" "$WORKER_APP"', sh)
         c = sh[sh.index("KQL_CONSOLE="):sh.index("console_section() {")]
         self.assertIn("ContainerAppConsoleLogs_CL", c)
         self.assertIn("parse_json(line)", c, "the JSON console line is parsed, not printed raw")
-        self.assertIn("bundle|lapsed", c, "job-run lines (bundle pre-generation, outlet request lapse) get a fixed kind label")
+        self.assertIn("bundle|lapsed", c, "job-run lines (bundle pre-generation, outlet request lapse) get a fixed label")
         self.assertIn("gettype(j) == 'dictionary'", c, "a JSON line with no message never falls back to the raw JSON")
         self.assertNotIn("substring(", c, "the whole text is fetched, redacted and only then cut in the shell")
         cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
@@ -797,35 +797,36 @@ class Workflows(unittest.TestCase):
         self.assertIn("top 150 by TimeGenerated desc", cs)
         # The default branch projects the structured columns and never msg/line/st; the message column exists only in the include_messages branch.
         default_q = cs[cs.index("else\n    echo \"(columns:"):]
-        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind\"", default_q)
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what\"", default_q)
         for col in (", msg", ", line", ", st"):
             self.assertNotIn(col, default_q.split("qc=")[0], f"the default query must not project {col.strip(', ')}")
         msg_q = cs[:cs.index("else\n    echo \"(columns:")]
-        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg", msg_q)
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg", msg_q)
         self.assertIn("$KQL_HELD", msg_q); self.assertIn("| held_note", msg_q)
         self.assertIn("extend held = msg matches regex", sh)
         self.assertNotIn("where not(line matches regex", cs, "no exclusion on the raw JSON line")
         c = sh[sh.index("KQL_CONSOLE="):sh.index("KQL_HELD=")]
         self.assertIn("gettype(j) == 'dictionary'", c); self.assertIn("(no message)", c)
         self.assertIn("replace_regex(", c, "one row is one line")
-        self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed kind label")
+        self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed label")
         self.assertIn("pre-flight: nothing to do", c)
-        self.assertIn("exc = coalesce(nullif(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
-        self.assertIn("cause = coalesce(nullif(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
+        self.assertIn("exc = coalesce(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
+        self.assertIn("cause = coalesce(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
+        self.assertNotIn("nullif", c, "nullif is not a KQL function")
         # The other sections: system log, job console, PG log, pre-flight: structured by default, text only with include_messages.
-        for needle in ("project TimeGenerated, who, typ, reason, exitcode | take 200", "project TimeGenerated, exec, lvl, kind, sqlstate, script | take 400",
-                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, kind\"", "project TimeGenerated, typ, reason, exitcode\""):
+        for needle in ("project TimeGenerated, who, typ, reason, exitcode | take 200", "project TimeGenerated, exec, lvl, what, sqlstate, script | take 400",
+                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, what\"", "project TimeGenerated, typ, reason, exitcode\""):
             self.assertIn(needle, sh, needle)
         pre = sh[sh.index('section "Log Analytics: migrate job pre-flight lines'):sh.index('section "worker app $WORKER_APP"')]
-        self.assertIn("kind startswith 'pre-flight'", pre)
+        self.assertIn("what startswith 'pre-flight'", pre)
         dflt = pre[pre.index("  else\n"):pre.index("  fi\n")]
-        self.assertIn("project TimeGenerated, exec, kind\"", dflt)
-        self.assertNotIn("msg", dflt.replace("--analytics-query", ""), "the default pre-flight query prints the kind label, not the message")
+        self.assertIn("project TimeGenerated, exec, what\"", dflt)
+        self.assertNotIn("msg", dflt.replace("--analytics-query", ""), "the default pre-flight query prints the label, not the message")
         # Redact before cut: no query output is cut before it is redacted, and every query result goes through la()/show/showm.
         self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
         for line in sh.splitlines():
             if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "-o tsv" in line:
-                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line or "n=\"$(" in line and "tr -dc '0-9'" in line, line)
+                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line or "LA_OUT=\"$(az monitor log-analytics query" in line, line)
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("substring(", code.replace("substring(sha256", ""), "no KQL substring before redaction")
         self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
@@ -871,7 +872,7 @@ exit 0
                     self.assertNotRegex(queries, r"project [^\n|]*\btxt\b")
                     self.assertNotRegex(queries, r"project [^\n|]*\bline\b")
                 else:
-                    self.assertRegex(queries, r"project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg")
+                    self.assertRegex(queries, r"project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg")
                     self.assertIn("[redacted-line]", r.stdout, "strict mode replaced the line that still holds a key-like word and a mixed value")
                     self.assertIn("unhandled error", r.stdout)
             # Message mode is refused under GitHub Actions (a public job log), before any query: with GITHUB_ACTIONS set the flag exits 2 and nothing is sent to Azure.
@@ -1076,7 +1077,7 @@ exit 0
                  "Authorization: Token " "abcDEF123xyz": "abcDEF123xyz", "Authorization: ApiKey " "abcDEF123xyz": "abcDEF123xyz", "Authorization: Digest username=x, nonce=abc": "nonce=abc",
                  "authorization: SharedAccessSignature sr=x&sig=y": "sig=y", '"authorization":"Token two words"': "two words",
                  "curl --pass" "word hunter22": "hunter22", "run -p " "hunter22": "hunter22", "tool --token " "abcdef": "abcdef", "pass" "word" + "\t" + "hunter22": "hunter22",
-                 "<pass" "word>hunter22</pass" "word>": "hunter22", '<apiToken kind="x">hunter22</apiToken>': "hunter22",
+                 "<pass" "word>hunter22</pass" "word>": "hunter22", '<apiToken what="x">hunter22</apiToken>': "hunter22",
                  "x?api_key" "%3D" "hunter22&y=1": "hunter22", "{%22pass" "word%22%3A%22hunter22%22}": "hunter22", "pass" "word" "%3D" "hunter22": "hunter22",
                  "hmac=" "abcd1234": "abcd1234", "signature=" "abcd1234": "abcd1234", "nonce=" "abcd1234": "abcd1234", "salt=" "abcd1234": "abcd1234"}
         for text, secret in forms.items():
@@ -1106,11 +1107,11 @@ exit 0
             self.assertTrue(out.endswith("last\n"), name)
 
     def test_diagnose_flyway_labels_are_lossless_fixed_words_and_digits(self):
-        # Round 6 (lead ruling B): the migration proof must survive the default mode. The KQL `kind` case is evaluated here in Python on the VERBATIM Flyway and app lines
+        # Round 6 (lead ruling B): the migration proof must survive the default mode. The KQL `what` case is evaluated here in Python on the VERBATIM Flyway and app lines
         # (quoted in docs/status/usage.md and the train 121 console); each label is fixed words plus extracted digits only, never the description or the schema name.
         import json, re as _re
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
-        block = sh[sh.index("| extend kind = case("):sh.index("         '-')\n")]
+        block = sh[sh.index("| extend what = case("):sh.index("         '-')\n")]
         branches = []
         for line in block.splitlines()[1:]:
             line = line.strip()
@@ -1173,9 +1174,32 @@ exit 0
         for bad in ("Rahim Uddin", "user 01712345678", "x" * 170, "a b", "name=abu"):
             self.assertFalse(_re.match(shape, bad), bad)
         self.assertTrue(_re.match(lvl_shape, "ERROR")); self.assertTrue(_re.match(lvl_shape, "(plain)")); self.assertFalse(_re.match(lvl_shape, "Rahim"))
-        # An INFO line with a label is never dropped by the row filter (kind != '-' is one of the three conditions).
-        self.assertIn("kind != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
-        self.assertIn("where kind != '-' or lvl in", sh)
+        # Pre-flight ACTION lines (review of 531cf508): MigrationPreflight.report writes "preflight <id>: ..." and "preflight <id> (dev): ..." (no hyphen); only the nothing-to-do line has one. The strings are READ FROM
+        # THE KOTLIN SOURCE so they cannot drift; every report string must get a label that starts with "pre-flight", and the failure text of PreflightFailed ("pre-flight <id> failed ...") is labelled FAILED.
+        kt = (ROOT / "backend" / "platform" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "platform" / "MigrationPreflight.kt").read_text(encoding="utf-8")
+        reports = _re.findall(r'report\("([^"]*)"\)', kt)
+        self.assertGreaterEqual(len(reports), 4, reports)
+        def fill(t):
+            t = t.replace("${check.id}", "V0191-cluster-names")
+            return _re.sub(r"\$\{[^}]*\}|\$[A-Za-z_]+", "x 3", t)
+        for tpl in reports:
+            msg = fill(tpl)
+            lab = label(msg)
+            self.assertTrue(lab.startswith("pre-flight line V0191-cluster-names"), f"{msg!r} -> {lab!r}")
+            self.assertNotIn("x 3", lab)
+        self.assertEqual("pre-flight line V0191-cluster-names", label("preflight V0191-cluster-names (dev): 2 clusters; repairing the test data"))
+        self.assertTrue(label("pre-flight: nothing to do (checks: V0191-cluster-names=clean)").startswith("pre-flight nothing to do"))
+        thrown = _re.findall(r'PreflightFailed\("(pre-flight \$\{check\.id\}[^"]*)"', kt)
+        self.assertGreaterEqual(len(thrown), 2)
+        pf_fail = _re.search(r"iff\(mst matches regex @'(pre-flight V[^']*)', strcat\('pre-flight FAILED ', coalesce\(extract\(@'([^']*)', 1, mst\)", sh)
+        self.assertTrue(pf_fail)
+        for tpl in thrown:
+            t = fill(tpl) + " rest"
+            self.assertTrue(_re.search(pf_fail.group(1), "migrate failed " + t), t)
+            self.assertEqual("V0191-cluster-names", _re.search(pf_fail.group(2), "migrate failed " + t).group(1))
+        # An INFO line with a label is never dropped by the row filter (what != '-' is one of the three conditions).
+        self.assertIn("what != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
+        self.assertIn("where what != '-' or lvl in", sh)
 
     def test_diagnose_round6_message_mode_and_lows(self):
         import subprocess
@@ -1198,10 +1222,10 @@ exit 0
         self.assertIn("[redacted]", run("pass" "word\thunter22\n"))
         self.assertNotIn("hunter22", run("pass" "word\thunter22\n"))
         # structured exception class first, the exit code as a digit column, the PostgreSQL head, the diagnostic settings without resource ids
-        self.assertIn("nullif(tostring(j.throwable.className), '')", sh)
+        self.assertIn("coalesce(tostring(j.throwable.className), tostring(j.exception.className)", sh)
         self.assertIn("exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')", sh)
         self.assertIn("'[text]'", sh); self.assertIn("head = iff(isempty(sev), ''", sh)
-        self.assertIn('--query "(value || @)[].logs[].[category, enabled]" -o tsv', sh)
+        self.assertIn('--query "(value || @)[].logs[].[category || categoryGroup, enabled]" -o tsv', sh)
         self.assertNotIn("diagnostic-settings list --resource \"$sid\" -o json", sh)
         # the no-op assertion of the stub test is gone
         t = (ROOT / "infra" / "tests" / "check_infra.py").read_text(encoding="utf-8")
@@ -1262,9 +1286,10 @@ exit 0
             # The platform's error text is never printed on the failure paths: the exit code only.
             for mode, rc in (("list", 3), ("download", 4)):
                 r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**env, "STUB_PG_FAIL": mode})
-                self.assertEqual(0, r.returncode, r.stderr)
+                self.assertEqual(1, r.returncode, "a failed section turns the run red: " + r.stderr)
                 self.assertNotIn("PLATFORM-TEXT", r.stdout + r.stderr); self.assertNotIn("Rahim", r.stdout)
                 self.assertIn(f"exit code {rc}", r.stdout)
+                self.assertIn("diagnose: 1 section(s) FAILED", r.stdout); self.assertTrue(r.stdout.rstrip().endswith("diagnose: done (read-only)"))
             # Private message mode: the text is printed behind the redactor, but SQL text after `statement:` or `execute <name>:` is dropped.
             open(src, "a").write("2026-11-18 09:37:00.000 UTC-690b-LOG:  execute S_1: SELECT secret_col FROM t WHERE note = 'could not pay Zed'\n")
             r = subprocess.run(["bash", script, "--include-messages", *win], capture_output=True, text=True, env=env)
@@ -1341,6 +1366,174 @@ exit 0
         self.assertEqual(b"", r.stderr); self.assertIn(b"checkpoint complete", r.stdout)
         # the KQL path has the same list and the fixed signal label, and no digit pattern in the printed value
         self.assertIn("'${SIGNAL_LABEL}'", sh)
+
+    def test_diagnose_failed_sections_are_red_and_print_no_query(self):
+        # Live run 44341474466: four console queries failed (BadArgumentError, `kind` is reserved in KQL) and the job was green. A failed query is counted; only the section title, the error code and the parser
+        # position are printed (never the query text or the platform's message); "diagnose: N section(s) FAILED" comes before the final line; the exit code is non-zero. Workspace and diagnostic settings lines.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in
+  "monitor log-analytics workspace") echo ws-id; exit 0;;
+  "postgres flexible-server list") echo psql-aron-test; exit 0;;
+  "postgres flexible-server show") echo /subscriptions/s/x; exit 0;;
+  "monitor diagnostic-settings list") printf 'PostgreSQLLogs\tTrue\nallLogs\tFalse\n'; exit 0;;
+esac
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; esac; shift; done
+  printf '%s\n---\n' "$q" >> "$STUB_LOG"
+  case "$q" in
+    *"where app == 'ca-aron-dev-api'"*) echo "(BadArgumentError) Query could not be parsed at 'kind' on line [17,15] SECRET-QUERY-DETAIL" >&2; exit 1;;
+    *"where exec startswith 'caj-aron-dev-migrate'"*) echo "(SemanticError) A semantic error occurred" >&2; exit 1;;
+  esac
+  printf 'T0\tERROR\tcom.x.Y\n'; exit 0
+fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}
+            r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(1, r.returncode, r.stdout[-300:] + r.stderr)
+            out = r.stdout
+            self.assertIn("workspace: found", out)
+            self.assertIn("PostgreSQLLogs\tTrue", out); self.assertNotIn("None", out)
+            self.assertRegex(out, r"\(query failed: Log Analytics: console log of ca-aron-dev-api in the window[^\n]*, BadArgumentError, parser position \[17,15\], exit code 1\)")
+            self.assertRegex(out, r"\(query failed: Log Analytics: console log of job executions[^\n]*, SemanticError, exit code 1\)")
+            for leaked in ("SECRET-QUERY-DETAIL", "TimeGenerated", "--analytics-query", "extend", "ContainerAppConsoleLogs", "kind"):
+                self.assertNotIn(leaked, out + r.stderr, leaked)
+            self.assertNotIn("command failed: az", out)
+            lines = out.rstrip().splitlines()
+            self.assertEqual("diagnose: done (read-only)", lines[-1])
+            self.assertRegex(lines[-2], r"^diagnose: [0-9]+ section\(s\) FAILED$")
+            self.assertGreaterEqual(int(lines[-2].split()[1]), 3, "the API console, the job console and the pre-flight query failed")
+
+    def _diagnose_queries(self):
+        """Every KQL query the script sends (captured through a stub az; default and --include-messages mode)."""
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        out = []
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in "monitor log-analytics workspace") echo ws-id; exit 0;; esac
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; esac; shift; done
+  printf '%s\n\x1e\n' "$q" >> "$STUB_LOG"; printf 'x\n'; exit 0
+fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            for flag in ([], ["--include-messages"]):
+                open(log, "w").close()
+                subprocess.run(["bash", script, *flag, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env={"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}, check=True)
+                out += [q for q in open(log).read().split("\n\x1e\n") if q.strip()]
+        self.assertGreaterEqual(len(out), 18)
+        return out
+
+    @staticmethod
+    def _kql_lists():
+        import re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        reserved = {w.strip().lower() for line in _re.findall(r"^# KQL_RESERVED: (.*)$", sh, _re.M) for w in line.split(",") if w.strip()}
+        funcs = dict(_re.findall(r"^# KQL_FUNCTION (\S+)\s+(https://\S+)", sh, _re.M))
+        return reserved, funcs
+
+    @staticmethod
+    def _kql_literals():
+        import re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        return dict(_re.findall(r"^# KQL_LITERAL (\S+)\s+(https://\S+)", sh, _re.M))
+
+    @staticmethod
+    def _kql_strip(q):
+        import re as _re
+        return _re.sub(r"@'[^']*'|'[^']*'", "''", q)
+
+    def test_diagnose_list_failures_are_failures_and_disabled_download_is_not(self):
+        # Review of a17b9f7f: a failed workspace list or server list is a FAILED section (not "none"); server-logs list failing only because log download is disabled (logfiles.download_enable = off) is not red.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in
+  "monitor log-analytics workspace") if [ "${STUB_FAIL:-}" = ws ]; then echo "platform text" >&2; exit 5; fi; echo ws-id; exit 0;;
+  "postgres flexible-server list") if [ "${STUB_FAIL:-}" = server ]; then echo "platform text" >&2; exit 6; fi; echo psql-aron-test; exit 0;;
+  "postgres flexible-server server-logs") if [ "$4" = list ]; then echo "platform text" >&2; exit 7; fi; exit 0;;
+  "postgres flexible-server parameter") if [ "${STUB_DL:-}" = off ]; then echo Off; else echo on; fi; exit 0;;
+esac
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            base = {"PATH": d + ":/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-x"}
+            win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            def run(**kw): return subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**base, **kw})
+            r = run(STUB_FAIL="ws", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("workspace: LIST FAILED (exit code 5)", r.stdout); self.assertNotIn("platform text", r.stdout + r.stderr); self.assertIn("1 section(s) FAILED", r.stdout)
+            r = run(STUB_FAIL="server", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("PostgreSQL server list FAILED, exit code 6", r.stdout); self.assertNotIn("no psql-aron", r.stdout)
+            r = run(STUB_DL="off")   # log download disabled: the list fails with the documented reason, the run stays green
+            self.assertEqual(0, r.returncode, r.stdout[-400:]); self.assertIn("logfiles.download_enable = off; not a failure", r.stdout); self.assertNotIn("FAILED", r.stdout)
+            r = run(STUB_DL="on")    # the same failure with download enabled is a real failure
+            self.assertEqual(1, r.returncode); self.assertIn("server-logs list failed, exit code 7", r.stdout)
+
+    def test_diagnose_kql_uses_no_reserved_word_as_a_column(self):
+        # Live run 44341474466: `kind` is a reserved word in KQL and cannot be an extend target ("Query could not be parsed at 'kind'"). The KQL cannot be executed in CI; this is a STATIC scan of every query the
+        # script sends, not a parse proof. ONE list (the KQL_RESERVED comment lines in the script): no assignment target, project item or bare identifier may be on it, and an operator word (count, by, in, order,
+        # top, take, ...) is only allowed in its operator position: after the contexts of the real operators are removed no such word may remain.
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertTrue({"kind", "type", "step", "policy", "externaldata", "count", "by", "in", "order", "top", "take", "true", "false", "null", "nulls", "mv", "ingestion_time", "query_parameters",
+                         "tabular", "external_data", "getschema", "consume", "fork", "relaxed", "simple", "wildcard", "isfuzzy"} <= reserved)
+        self.assertFalse([w for w in reserved if "-" in w], "hyphenated operators can never match the token regex: they are not in the list")
+        allowed_ctx = [r"(?<=\s)(?:asc|desc)(?=\s*(?:\||$|\)))", r"\|\s*order\s+by\b", r"\|\s*top\s+[0-9]+\s+by\b", r"\|\s*take\s+[0-9]+\b", r"\|\s*(?:where|extend|project|summarize)\b", r"^\s*union\s+isfuzzy\s*=\s*true\b",
+                       r"\bin\s*\(", r"\bbetween\s*\(", r"\bnot\s*\(", r"(?<=\s)(?:and|or)(?=\s)", r"\bmatches\s+regex\b", r"(?<=[\s!])(?:startswith|contains|has)(?=\s)",
+                       r"\bcount\s*\(", r"\bcountif\s*\("]
+        for q in self._diagnose_queries():
+            bare = self._kql_strip(q)
+            targets = _re.findall(r"(?:extend|summarize|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?![=~])", bare)
+            targets += [t.strip() for clause in _re.findall(r"project\s+([^|\n]*)", bare) for t in clause.split(",") if t.strip()]
+            for t in [_re.split(r"\s*=", t)[0].strip() for t in targets]:
+                self.assertNotIn(t.lower(), reserved, f"reserved word used as a column name: {t!r} in\n{q[:400]}")
+            rest = bare
+            for ctx in allowed_ctx:
+                rest = _re.sub(ctx, " ", rest, flags=_re.M)
+            for tok in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest):
+                if tok.lower() in reserved and tok.lower() not in ("isfuzzy",):
+                    self.fail(f"reserved or operator word {tok!r} outside its operator position in\n{q[:400]}")
+
+    def test_diagnose_kql_calls_only_listed_functions(self):
+        # Review of a17b9f7f: `nullif()` is not a KQL function and every console query would have failed with a semantic error. ALLOW-LIST: any identifier followed by "(" in any query must be a function listed
+        # in the script (KQL_FUNCTION lines, each with its Microsoft Learn page) or an operator written with parentheses (in, between, not-as-operator, and, or).
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertGreaterEqual(len(funcs), 15)
+        literals = self._kql_literals()
+        self.assertEqual({"datetime"}, set(literals), "datetime('...') is a literal of the datetime type, not a function")
+        self.assertNotIn("datetime", funcs)
+        for name, url in {**funcs, **literals}.items():
+            self.assertRegex(url, r"^https://learn\.microsoft\.com/kusto/query/[a-z0-9\-]+(?:/[a-z0-9\-]+)?$", name)
+        operators = {"in", "between", "and", "or", "not"}
+        seen = set()
+        for q in self._diagnose_queries():
+            for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(q)):
+                seen.add(fn)
+                self.assertTrue(fn in funcs or fn in operators or fn in literals, f"{fn}() is not a listed KQL function (allow-list in diagnose.sh) in\n{q[:300]}")
+        self.assertTrue({"extract", "coalesce", "iff", "strcat", "tostring", "replace_regex"} <= seen)
+        self.assertNotIn("nullif", seen)
+        # Mutation check (the review's): a nullif in a query is caught by the same predicate.
+        mutant = "x | extend fm = coalesce(nullif(tostring(j.message), ''), '(no message)')"
+        bad = [fn for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(mutant)) if fn not in funcs and fn not in operators]
+        self.assertEqual(["nullif"], bad)
+        # Mutation check of the reserved-word scan: `kind` as a column, a bare `count`, a stray `in` as a column.
+        for mut, word in (("| extend kind = case(", "kind"), ("| project TimeGenerated, type", "type"), ("| where count != 0", "count"), ("| where order == 1", "order")):
+            bare = self._kql_strip("x " + mut)
+            rest = bare
+            for ctx in (r"\|\s*(?:where|extend|project|summarize)\b", r"\bcount\s*\("):
+                rest = _re.sub(ctx, " ", rest)
+            self.assertIn(word, [t.lower() for t in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest) if t.lower() in reserved], mut)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
