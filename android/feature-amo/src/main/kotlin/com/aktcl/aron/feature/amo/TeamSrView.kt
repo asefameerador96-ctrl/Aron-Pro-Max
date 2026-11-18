@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.amo
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -147,7 +148,7 @@ private fun CallCard(c: JourneyCall, showDistance: Boolean, l: UiLocale, minW: S
     val statusColor = when (c.status) { CallStatus.NEW_SALE -> look.ink; CallStatus.EDITED_SALE -> if (look.sunlight) look.red else androidx.compose.ui.graphics.Color(0xFFD81B60); CallStatus.NO_SALE -> look.inkMuted }
     Column(modifier.shadow(2.dp, shape).clip(shape).background(look.card).padding(14.dp).testTag(SrTags.STEP + c.visitUuid), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(18.dp).clip(CircleShape).background(look.track)); Text(stringResource(status), style = amoText(15, color = statusColor, bold = c.status != CallStatus.NEW_SALE))
+            Box(Modifier.size(18.dp).clip(CircleShape).border(2.dp, look.inkMuted, CircleShape)); Text(stringResource(status), style = amoText(15, color = statusColor, bold = c.status != CallStatus.NEW_SALE))
         }
         Text(TeamJourneys.outletLine(c.outlet), style = amoText(16, bold = true, color = look.purple))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { TeamIcon(R.drawable.amo_team_ic_clock, tint = look.inkMuted); Text(TeamJourneys.range(c), style = amoText(14, color = look.ink)) }
