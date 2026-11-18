@@ -30,10 +30,12 @@ AchievementRow:
     memo_count:
       type: integer
       minimum: 0
+      description: Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale
+        lines only. See rule B in `RouteSnapshot`.
     as_of:
       $ref: '#/components/schemas/Timestamp'
     through_date:
       $ref: '#/components/schemas/BusinessDate'
-      description: Last Dhaka business date the figure covers (the bundle date minus one day). Today's memos are
-        never in a server figure. What the phone adds on top (and that this DIFFERS from the Astha rule) is stated
-        once, in the description of `RouteSnapshot`. Contract 1.22.0, optional.
+      description: Last Dhaka business date the figure covers (the bundle date minus one day). The bundle date's
+        own memos are never in a server figure. How the phone merges its own memos is stated once, as rule B in
+        the description of `RouteSnapshot`. Contract 1.22.0, optional.

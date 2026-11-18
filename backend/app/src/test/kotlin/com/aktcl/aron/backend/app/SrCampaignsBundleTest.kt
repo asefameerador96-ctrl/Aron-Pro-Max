@@ -133,9 +133,11 @@ class SrCampaignsBundleTest {
             assertEquals(programme, c.l("programme_id"), "the lowest programme id is the shown one")
             assertEquals(7, c["memo"]!!.jsonObject.l("achieved"), "the memo of SKU C belongs to the other campaign: still 7, not 8")
             assertEquals(390, c["std"]!!.jsonObject.l("achieved"))
+            assertEquals(true, bundle().full.routes.single { it.route_id == route }.campaigns_truncated, "a second active campaign at the outlet was not shown: the route says so (never a silent drop)")
         } finally {
             x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p2"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p2"); x("DELETE FROM app.programme WHERE id = $p2")
         }
+        assertEquals(null, bundle().full.routes.single { it.route_id == route }.campaigns_truncated, "with one campaign per outlet the flag is absent")
     }
 
     @Test

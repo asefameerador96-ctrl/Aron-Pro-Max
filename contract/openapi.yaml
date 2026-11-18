@@ -10317,11 +10317,11 @@ components:
         product_level: { $ref: '#/components/schemas/ProductLevel' }
         product_id: { $ref: '#/components/schemas/Id' }
         achieved_qty_base: { type: integer, format: int64, minimum: 0 }
-        memo_count: { type: integer, minimum: 0 }
+        memo_count: { type: integer, minimum: 0, description: 'Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale lines only. See rule B in `RouteSnapshot`.' }
         as_of: { $ref: '#/components/schemas/Timestamp' }
         through_date:
           $ref: '#/components/schemas/BusinessDate'
-          description: 'Last Dhaka business date the figure covers (the bundle date minus one day). Today''s memos are never in a server figure. What the phone adds on top (and that this DIFFERS from the Astha rule) is stated once, in the description of `RouteSnapshot`. Contract 1.22.0, optional.'
+          description: 'Last Dhaka business date the figure covers (the bundle date minus one day). The bundle date''s own memos are never in a server figure. How the phone merges its own memos is stated once, as rule B in the description of `RouteSnapshot`. Contract 1.22.0, optional.'
     RouteCalendar:
       type: object
       description: 'Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0.'
@@ -10677,20 +10677,29 @@ components:
       description: >-
         Per-route section of the bundle; replaced as a whole when the route is added to the user.
         PHONE RULE B for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract number provisional, the lead sets it at landing; the ONE place this rule is stated).
-        It DIFFERS from the Astha achievement rule of `ProgrammesSection` (that section is a live snapshot of the same kind). Every server figure the phone merges (achievement, KPI volumes, memo
-        counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos of the route (campaigns: of the outlet) with a business date from the 1st of the bundle `month` up
-        to and including `through_date` (the bundle date minus one day), active, lines not voided, sale lines only, read in ONE repeatable-read snapshot straight from the memo tables. It holds every
-        memo whose upload the server had COMMITTED when the bundle was read, and the server commits a batch before it returns the acknowledgement. Today's memos are never in a server figure.
-        The phone merges its own memos by ORDER, with no clock: let R be the moment the phone sent the request for this bundle (its own sync-cycle counter). The phone ADDS a local memo iff it was not
-        acknowledged (`accepted` or `duplicate`) before R, and ADDS every local memo dated after `through_date` whether acknowledged or not (the server figure is cut there); it SUBTRACTS a memo that was
-        acknowledged before R and dated up to `through_date` when it has since voided or superseded it locally and that void or edit record was not acknowledged before R (an edit is therefore: add the
-        new memo, subtract the old one); it counts only business dates inside the bundle `month` (a phone still holding last month's bundle adds nothing dated in the new month); it sends NO bundle request
-        while an upload batch is in flight (single flight: upload, then bundle). `as_of` is INFORMATIONAL only, the newest `received_at` among the memos read (the epoch when none): it is never used in
-        arithmetic and a phone must not compare it with any clock. Day counts when today's local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today`
-        plus 1 when `calendar.today_is_working` (numerator and denominator then cover the same days; this is the SkuProgress through-today convention, a default until the owner answers question Q-A), RADS
-        divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero. `star` carries through-`through_date` figures only (the phone cannot add to it). Brand sums use ONE
-        hierarchy, the current product tree, for target and figure alike (the dashboards use the as-was brand). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`,
-        `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.
+        WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the
+        1st of the bundle `month` up to and including `through_date`, status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo tables, so it holds every memo the server had
+        COMMITTED when the bundle was read, whether the phone has heard of it or not. It is cut at `through_date` = the bundle date minus one day: the bundle date's own memos are never in a figure. (A bundle built ahead
+        for tomorrow has `through_date` = the day it was built on, so that day's committed memos ARE in its figures and its version moves with them; rule B still gives the true total.) DEFINITIONS, the same on the phone
+        for its local additions: quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once
+        per SKU when it has ANY non-voided line of that SKU (free lines included, as the dashboards' SKU aggregate does); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand
+        (campaign: of a campaign SKU shown). Brand sums use ONE hierarchy, the current product tree, for target and figure alike (the dashboards use the as-was brand). Campaign figures are the outlet's: every route's memos at
+        the outlet committed before the read, through `through_date`, plus this phone's own local memos (another SR's sales at a shared outlet are in the figure, and that SR's unsynced or today's memos are not).
+        HOW THE PHONE MERGES (ordering only, no clock). Let R be the moment the phone sent the request for this bundle (its own sync-cycle counter). A memo is ACKNOWLEDGED when the phone holds `accepted` or `duplicate` for the
+        memo AND for all its lines, or a resolution `accepted` or `accepted_with_fix` for it (from a batch response or a delta), received before R; the server commits a family before it returns its acknowledgement.
+        A memo whose last answer is `quarantined` (held for review, or waiting for a parent record) is NEVER added by the phone: it is shown as held for review, it is not a counted sale yet, and the server figure lacks it;
+        it becomes acknowledged, and is then in the server figure and not added, only when an acknowledgement or resolution above reaches the phone before a bundle request; the server may commit it before the phone hears
+        (a reviewer's accept, accept_with_fix, or the sweep of waiting children), and then the figure holds it while the phone still does not add it, which is exact. A resolution `rejected` or any final refusal removes it and
+        it is never added. The phone ADDS a local memo (live, dated inside the bundle `month`) iff it is not acknowledged before R and not held or refused; it ADDS every such local memo dated after `through_date` whether
+        acknowledged or not (the figure is cut there). It SUBTRACTS a memo that was acknowledged before R and is dated up to `through_date` when it has since voided or superseded it locally and that void or edit record was
+        not acknowledged before R (an edit is therefore: add the new memo, subtract the old one). It counts only business dates inside the bundle `month` (a phone still holding last month's bundle adds nothing dated in the
+        new month). SINGLE FLIGHT: the phone sends NO bundle request while an upload batch is in flight, and a batch whose response never arrived (lost response, timeout, a 5xx after the server committed) is still in flight:
+        it replays it until it is answered. A memo taken out of the figure by an admin data void with no phone event leaves the phone's total below its local memos until the phone learns of the void. `as_of` is INFORMATIONAL
+        only, the newest `received_at` among the memos read (the epoch when none): it is never used in arithmetic and a phone must not compare it with any clock. Day counts when today's local memos are in the achieved figure:
+        ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner answers question Q-A), RADS divides
+        by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero. STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement, slab and status with the shared
+        StarProgress code (last month's sold quantity `lms` is not merged: a memo of last month's last day not yet acknowledged is missing from it). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are
+        shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.
       required: [route_id, route_snapshot_version, route, assignment_kind, planned_today, target_outlets, outlets, open_memos, sales_plan_sku_ids, targets, achievement_mtd, day_state]
       additionalProperties: false
       properties:

@@ -5,9 +5,9 @@ package com.aktcl.aron.backend.app
  * `dw.agg_*` rows. Quantities are entered in sticks (`pack_factor` 1); price 100 mtk per base unit so the header equations hold. `emit` also writes the outbox event
  * the aggregation worker projects (the dashboards' aggregate), so a test can drive the projector and the rebuild at chosen moments.
  */
-class SrMemoFixture(private val exec: (String) -> Unit, private val userId: Long) {
+class SrMemoFixture(private val exec: (String) -> Unit, private val userId: Long, seqStart: Int = 0) {
     class L(val sku: Long, val qty: Int, val kind: String = "sale")
-    private var seq = 0
+    private var seq = seqStart
 
     fun memo(
         uuid: String, route: Long, outlet: Long, date: String, lines: List<L>, receivedAt: String = "now()", supersedes: String? = null, emit: Boolean = false,

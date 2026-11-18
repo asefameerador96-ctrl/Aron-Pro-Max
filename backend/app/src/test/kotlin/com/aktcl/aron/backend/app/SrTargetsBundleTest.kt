@@ -133,4 +133,20 @@ class SrTargetsBundleTest {
         assertTrue(got.getValue(route).targets.isEmpty(), "no February target uploaded")
         assertEquals(0, got.getValue(route).calendar.elapsed_working_days_before_today)
     }
+
+    @Test
+    fun targetsTruncatedIsTrueAt501RowsAndAbsentAtExactly500() {
+        // skuA and skuB already have target rows: 499 more SKUs make 501
+        x("INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type, entry_unit_default) SELECT 'TR-' || g, s.variant_id, s.category_code, 'Trunc ' || g, 'Trunc' || g, s.base_unit, s.base_per_pack, s.pack_type, s.entry_unit_default FROM app.sku s, generate_series(1, 499) g WHERE s.id = $skuA AND NOT EXISTS (SELECT 1 FROM app.sku WHERE code = 'TR-1')")
+        x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) SELECT $route, id, DATE '2027-01-01', 1, '00000000-0000-4000-8000-00000000b001' FROM app.sku WHERE code LIKE 'TR-%'")
+        try {
+            val over = build().full.routes.single { it.route_id == route }
+            assertEquals(500, over.targets.size, "the section is cut at 500 rows")
+            assertEquals(true, over.targets_truncated, "501 target rows: the route says rows were cut")
+            x("DELETE FROM app.route_monthly_target WHERE route_id = $route AND sku_id = (SELECT id FROM app.sku WHERE code = 'TR-1')")
+            val exact = build().full.routes.single { it.route_id == route }
+            assertEquals(500, exact.targets.size)
+            assertEquals(null, exact.targets_truncated, "exactly 500 rows: nothing was cut, no flag")
+        } finally { x("DELETE FROM app.route_monthly_target WHERE route_id = $route AND sku_id IN (SELECT id FROM app.sku WHERE code LIKE 'TR-%')") }
+    }
 }
