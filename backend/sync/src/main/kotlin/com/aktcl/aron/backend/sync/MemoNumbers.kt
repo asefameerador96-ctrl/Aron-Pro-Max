@@ -15,7 +15,7 @@ object MemoNumbers {
     /** The uploader's login and the current `cfg.memo.seq_block_size` (bounds 100 to 999, as the bundle sends it). */
     class Rule(val username: String, val blockSize: Int)
 
-    private val FORMAT = Regex("^([a-z][a-z0-9]{3,31})-(\\d{6})-(\\d{3,})$")
+    private val FORMAT = Regex("^([a-z][a-z0-9]{2,31})-(\\d{6})-(\\d{3,})$")
     private val YYMMDD: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMMdd")
     private const val ORDINALS = 4
 

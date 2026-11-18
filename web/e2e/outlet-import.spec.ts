@@ -30,13 +30,18 @@ test("outlet form: the channel is required, it cannot be left empty", async ({ p
   expect(s.tables.outlets.at(-1)).toMatchObject({ name: "Channel Test Store", channel: "MT" });
 });
 
-test("outlet import: a row without a channel is refused in the report; a good sheet is previewed and committed", async ({ page }) => {
+test("outlet import: a blank channel loads with a note, an unknown one is a row error that blocks the commit; a good sheet is previewed and committed", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/outlet-import");
   await hydrated(page.getByTestId("oi-file")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("oi-file").setInputFiles(await sheet([["Store A", "Owner A", "Z-334-1", "Banani Market", "", "retail"], ["Store B", "Owner B", "Z-334-1", "Banani Market", "Wholesale", "retail"]]));
-  await expect(page.getByTestId("oi-issues").locator("tbody tr")).toHaveCount(2);
-  await expect(page.getByTestId("oi-check")).toHaveCount(0);
+  // Contract 1.18.0: the channel is optional. A blank one is a note (GT is used), so the browser lets the sheet through; "Wholesale" names none of the six
+  // channels, which the SERVER reports as a row error (row 2), and without "skip bad rows" the commit stays unavailable.
+  await expect(page.getByTestId("oi-issues")).toHaveCount(0);
+  await page.getByTestId("oi-check").click();
+  await expect(page.getByTestId("oi-server-issues").locator("li")).toHaveCount(1);
+  await expect(page.getByTestId("oi-warnings")).toBeVisible();
+  await expect(page.getByTestId("oi-commit")).toHaveCount(0);
 
   await page.getByTestId("oi-file").setInputFiles(await sheet([["Store A", "Owner A", "Z-334-1", "Banani Market", "DCC", "retail"], ["Store B", "Owner B", "Z-334-1", "Gulshan-1 Circle", "Astha", "wholesale"]]));
   await page.getByTestId("oi-check").click();

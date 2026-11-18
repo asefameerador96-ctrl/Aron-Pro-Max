@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getDailyTracking, listAssignments, listRoutes } from "@/lib/dash/server";
-import { joinRoutes, linesFromAssignees } from "@/lib/dash/routes";
+import { joinRoutes, linesFromAssignees, visitKindKey } from "@/lib/dash/routes";
 import { businessDate, problemMessage, t } from "@/lib/i18n";
 import { n } from "@/components/dash/tiles";
 
@@ -56,7 +56,7 @@ export default async function RoutesPage() {
                   <td className="px-3 py-2" data-col="sr">
                     {l.sr ?? notSet}
                   </td>
-                  <td className="px-3 py-2">{l.visit_kind ?? "—"}</td>
+                  <td className="px-3 py-2">{l.visit_kind === null ? "—" : (() => { const k = visitKindKey(l.visit_kind); return k ? t(locale, k) : l.visit_kind; })()}</td>
                   <td className="px-3 py-2">{t(locale, l.status === "active" ? "entity.status.active" : "entity.status.inactive")}</td>
                 </tr>
               ))}

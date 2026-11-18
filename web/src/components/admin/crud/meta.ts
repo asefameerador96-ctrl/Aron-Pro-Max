@@ -46,6 +46,8 @@ interface FieldBase {
   pattern?: string;
   /** Bengali digits typed by the user are converted to ASCII before validation (phone numbers, codes). */
   normalizeDigits?: boolean;
+  /** A phone number: repaired by normalisePhone (Bengali digits, +880, missing leading zero) before the pattern check; an unusable value stays an error. */
+  phone?: boolean;
   /** Required when creating. */
   required?: boolean;
   /** Required enum with no preselected option: the user must choose (outlet channel, docs/34 s2). */

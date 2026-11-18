@@ -18,7 +18,7 @@ INSERT INTO app.zone (code, name, name_bn, territory_id, house_id, dep_name)
    WHERE t.code = 'T-DHK-N' AND h.code = 'H-MIR' AND NOT EXISTS (SELECT 1 FROM app.zone WHERE code = 'Z-MIR');
 
 INSERT INTO app.cluster (zone_id, name, cluster_type)
-  SELECT z.id, c.name, 'market' FROM app.zone z, (VALUES ('Mirpur 10 Bazar'), ('Mirpur 11 Bazar'), ('Pallabi')) AS c(name)
+  SELECT z.id, c.name, 'Transit Hub' FROM app.zone z, (VALUES ('Mirpur 10 Bazar'), ('Mirpur 11 Bazar'), ('Pallabi')) AS c(name)
    WHERE z.code = 'Z-MIR' AND NOT EXISTS (SELECT 1 FROM app.cluster x WHERE x.zone_id = z.id AND x.name = c.name);
 
 -- Route kinds: Daily = every day (127); 3F = Sun, Tue, Thu (2 + 8 + 32 = 42); 2F = Mon, Thu (4 + 32 = 36), the

@@ -61,7 +61,7 @@ class AdminOutletsTest {
         assertEquals(HttpStatusCode.Created, res.status)
         val o = res.objA1()
         val id = o.lng("id")
-        assertEquals("AD-$id", o.strA1("code"))
+        assertEquals("gen.$id", o.strA1("code"))
         assertNull(o.strA1("contact_number"), "PII only with the pii claim")
         assertEquals("false", o.getValue("location_confirmed").toString())
         assertEquals("\"1\"", res.headers["ETag"])

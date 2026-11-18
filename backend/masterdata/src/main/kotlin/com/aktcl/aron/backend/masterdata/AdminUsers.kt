@@ -25,7 +25,7 @@ import java.time.LocalDate
 
 private val PHONE_RE = Regex("^01[3-9][0-9]{8}$")
 private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
-private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{3,31}$")
+private val MEMO_USERNAME_RE = MasterRules.MEMO_USERNAME
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
 /**
@@ -66,7 +66,7 @@ internal val USER = MasterEntity(
         Col("role", Kind.ENUM, required = true, values = ROLE_VALUES),
         Col("designation", Kind.TEXT, nullable = true, max = 60),
         Col("employee_code", Kind.TEXT, nullable = true, max = 40),
-        Col("phone", Kind.TEXT, nullable = true, pattern = PHONE_RE, digits = true),
+        Col("phone", Kind.TEXT, nullable = true, pattern = PHONE_RE, digits = true, phone = true),
         Col("email", Kind.TEXT, nullable = true, max = 120),
         Col("locale", Kind.ENUM, required = true, values = setOf("bn", "en")),
         Col("home_zone_id", Kind.LONG, nullable = true, min = 1),
@@ -93,7 +93,12 @@ internal val USER = MasterEntity(
                 admBad("body.role", "not_available", "${newRole.wire} is not available yet (its migration has not landed)")
         }
         if (newRole in setOf(Role.SR, Role.AMO) && !MEMO_USERNAME_RE.matches(merged["username"] as String))
-            admBad("body.username", "memo_username", "SR and AMO usernames are 4 to 32 lower-case letters and digits (memo numbers embed them)")
+            admBad("body.username", "memo_username", "SR and AMO usernames are 3 to 32 lower-case letters and digits (memo numbers embed them)")
+        // B2 (push 1b): the installed app (before the release that carries the relaxed memo rule) throws on a 3-character username, so such a rep could not sell.
+        // Create, or a role change into SR/AMO, of a short username is refused until cfg.release.short_rep_id_version_code says that release is the minimum.
+        if (newRole in setOf(Role.SR, Role.AMO) && (merged["username"] as String).length < 4 && (cur == null || roleOf(cur["role"]) != newRole) && !shortRepIdAllowed(h, newRole))
+            admBad("body.username", "needs_app_release",
+                "an SR or AMO username of 3 characters needs the app release that accepts it; set cfg.release.short_rep_id_version_code once that release is the minimum app version (cfg.release.min_version_code)")
         if (merged["home_zone_id"] != null && (cur == null || "home_zone_id" in changes)) {
             val z = merged["home_zone_id"] as Long
             val ok = ctx.reach.coversZone(z) && h.count("SELECT count(*) FROM app.zone WHERE id = :z AND status = 'active'", "z" to z) > 0
@@ -357,4 +362,23 @@ fun Route.adminUsersRoutes(d: AdminMasterDeps) {
         put("/admin/users/{id}/scope") { putScope(call, d) }
         post("/admin/users/{id}/credentials") { credentials(call, d) }
     }
+}
+
+/** The global value of a cfg key now (registry default when no value is set), read in the caller's transaction. */
+private fun cfgGlobal(h: Handle, key: String): kotlinx.serialization.json.JsonElement? =
+    h.createQuery(
+        "SELECT COALESCE(v.value, k.default_value)::text FROM app.cfg_key k LEFT JOIN app.cfg_value v ON v.key = k.key AND v.scope_type = 'global' " +
+            "AND v.effective_from <= now() AND (v.effective_to IS NULL OR v.effective_to > now()) WHERE k.key = :k AND k.retired_at IS NULL ORDER BY v.effective_from DESC NULLS LAST LIMIT 1",
+    ).bind("k", key).mapTo(String::class.java).findOne().orElse(null)?.let { kotlinx.serialization.json.Json.parseToJsonElement(it) }
+
+/**
+ * B2: may an SR/AMO user of fewer than 4 characters be created now? Only when `cfg.release.short_rep_id_version_code` names a release (> 0) and the configured
+ * minimum version code of that role's app (`cfg.release.min_version_code`) is at least that release. Default: refuse. Used by the portal and the bulk loader.
+ */
+internal fun shortRepIdAllowed(h: Handle, role: Role): Boolean {
+    val release = (cfgGlobal(h, "cfg.release.short_rep_id_version_code") as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+    if (release <= 0) return false
+    val flavour = if (role == Role.AMO) "amo" else "sr"
+    val min = ((cfgGlobal(h, "cfg.release.min_version_code") as? kotlinx.serialization.json.JsonObject)?.get(flavour) as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+    return min >= release
 }

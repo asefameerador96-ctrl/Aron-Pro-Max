@@ -299,7 +299,9 @@ class SchemaV1aTest {
             // AMO manual build F1 (V0150, D-AMO-MAN-10, 13, 14): call targets, tile switch, Joint Call default star, brand list, Update Base guards.
             "cfg.amo.call_target_month", "cfg.amo.control_call_target_month", "cfg.amo.joint_call_target_month", "cfg.amo.price_compliance_tile",
             "cfg.amo.joint_call_default_star", "cfg.rubric.distribution_brands", "cfg.geo.update_base_max_distance_m", "cfg.geo.update_base_max_move_m",
-            "cfg.geo.update_base_max_per_outlet_month")
+            "cfg.geo.update_base_max_per_outlet_month",
+            // Master-data fit push 1b, lead ruling B2 (V0199, docs/requests/contract-1.18-masterdata-fit.md s3): the gate for 3-character rep ids.
+            "cfg.release.short_rep_id_version_code")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
