@@ -1087,11 +1087,20 @@ class AdminLoyaltyTest {
         try { adj(prog, adminW, adjBody(o1, 10, u)).expect(HttpStatusCode.OK) } finally { sql("UPDATE app.outlet SET zone_id = ${fx["zoneA"]} WHERE id = $o1") }
     }
 
-    /** A latch the hook waits on only while [armed]: a barrier of [parties] transactions that all reached the point after their balance read (bounded, so a lock that works lets the first one go on after the bound). */
-    private class Overlap(parties: Int) {
-        val barrier = java.util.concurrent.CyclicBarrier(parties)
+    /**
+     * Holds each transaction after its balance read until EITHER all [parties] have read (no pair lock: the transactions really overlap) OR another transaction is seen WAITING for an advisory lock
+     * (the pair lock works: it makes the others wait). No fixed delay: the condition decides, and a 10 s safety bound only keeps a broken test from hanging.
+     */
+    private inner class Overlap(private val parties: Int) {
+        private val arrived = java.util.concurrent.atomic.AtomicInteger()
         @Volatile var armed = false
-        fun hook(stage: String) { if (armed && stage == "after_balance_read") try { barrier.await(2, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { /* bound reached or barrier broken: the lock made them wait */ } }
+        private fun someoneWaitsForTheLock() = env.fresh.db.jdbi.withHandle<Boolean, Exception> { h -> h.createQuery("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted)").mapTo(Boolean::class.java).one() }
+        fun hook(stage: String) {
+            if (!armed || stage != "after_balance_read") return
+            arrived.incrementAndGet()
+            val until = System.nanoTime() + 10_000_000_000L
+            while (arrived.get() < parties && !someoneWaitsForTheLock() && System.nanoTime() < until) java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L)
+        }
     }
 
     @Test

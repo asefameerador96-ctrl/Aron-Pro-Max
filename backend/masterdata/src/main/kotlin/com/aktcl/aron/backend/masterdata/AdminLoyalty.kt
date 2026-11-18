@@ -1244,7 +1244,7 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
             val n = posted.size
             d.adjustHook?.invoke("before_insert", h)
-            val flags = posted.indices.map { i -> if (flagged.contains(parsed.indexOf(posted[i]))) "{portal,overdraw}" else "{portal}" }
+            val flags = parsed.withIndex().filter { it.value != null }.map { (i, _) -> if (flagged.contains(i)) "{portal,overdraw}" else "{portal}" }      // one pass, no indexOf scan
             val n1 = h.createUpdate(
                 "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) " +
                     "SELECT t.o, :p, 'adjustment', :b || ':' || (t.i - 1), t.pts, :bd, t.exp, CAST(t.fl AS text[]) FROM unnest(CAST(:outlets AS bigint[]), CAST(:pts AS int[]), CAST(:exp AS date[]), CAST(:fl AS text[])) WITH ORDINALITY AS t(o, pts, exp, fl, i)",

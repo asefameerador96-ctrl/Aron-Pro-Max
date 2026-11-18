@@ -43,3 +43,7 @@ Rules for this exception:
 | Build once and promote the CI-scanned image (AUD-DG-06) | staging and prod make it matter | `infra/README.md`, "Not in this version" |
 | 8,500-user load proof, geo-restore (RB-52) | only the final account has the size | `docs/setup/move-to-final-account.md` |
 | Data-lake storage SKU: `Standard_ZRS` in `infra/params/stage.bicepparam` and `prod.bicepparam` (test account: `Standard_LRS`, D-INFRA-LAKE-01, 2026-10-28) | zone redundancy needs the sponsor's written yes before the first final-account deploy; the sponsor question is open | `infra/modules/lake.bicep`, `docs/status/infra.md` |
+
+## Sizing note: points adjustment and the shared lock table (lane portal-loyalty-api, D-LOY-API-38, -40)
+
+A points-adjustment file takes one advisory pair lock per DEBIT row (credits take none) and a file may carry at most 2,000 debit rows. Advisory locks live in PostgreSQL's shared lock table, sized `max_locks_per_transaction` (64 by default) x (`max_connections` + prepared transactions); on a small test server (about 50 connections) that is roughly 3,000 to 4,000 slots, so two concurrent 2,000-debit applies, or one beside a heavy sync, can still reach SQLSTATE 53200. The API answers that with a clean 503 and writes nothing. RE-CHECK at final-account size: read the real `max_connections` and `max_locks_per_transaction` of the final server and keep the per-file cap (2,000, one constant `MAX_DEBIT_ROWS` with the web and mock twins) comfortably below the slots left after the sync and ledger-job load.
