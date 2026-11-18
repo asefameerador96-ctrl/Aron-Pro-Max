@@ -19,8 +19,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The bundle `programmes` section (lane portal-loyalty-api, push B; docs/requests/contract-1.15-loyalty-field.md): programmes, ledger balances as of the previous
- * business day, Astha targets with server-side achievement (voided, superseded and non-sale lines excluded; base units and integer milli-taka), gift assignments,
+ * The bundle `programmes` section (lane portal-loyalty-api, push B; docs/requests/contract-1.15-loyalty-field.md): programmes, ledger balances (every row posted so far, no date cut), Astha targets with server-side achievement (voided, superseded and non-sale lines excluded; base units and integer milli-taka), gift assignments,
  * the reach cut and the flags.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -164,11 +163,11 @@ class AsthaBundleSectionTest {
         val s = assertNotNull(section(setOf(outletA, outletB, outletC)))
         assertEquals(listOf("ASTHA-T"), s["programmes"]!!.jsonArray.map { it.jsonObject.str("code") })
         assertEquals("active", s["programmes"]!!.jsonArray[0].jsonObject.str("status"))
-        // Balance as of the previous business day: +100 (expires in 3 days) +40 (expires in 30 days) -30 (yesterday); today's +50 is not in it. Expiring = the credits of the
-        // EARLIEST upcoming expiry date (100, not the 30-day batch), capped by the balance; the expiry date is that date (D24-68: expiry_days counts from the period end).
+        // Balance = every ledger row posted so far (no business-date cut): +100 (expires in 3 days) +40 (expires in 30 days) -30 (yesterday) +50 (today) = 160. Expiring = what the
+        // EARLIEST upcoming expiry will take after the replay: the -30 consumed the credit expiring first, so 70 (not the 30-day batch), capped by the balance.
         val a = s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletA.toString() }
-        assertEquals("110", a.str("balance_points")); assertEquals("100", a.str("expiring_points")); assertEquals(today.plusDays(3).toString(), a.str("expiry_date"))
-        assertEquals(today.minusDays(1).toString(), a.str("as_of_date"))
+        assertEquals("160", a.str("balance_points")); assertEquals("70", a.str("expiring_points")); assertEquals(today.plusDays(3).toString(), a.str("expiry_date"))
+        assertEquals(today.toString(), a.str("as_of_date"), "display only: the day the bundle was built")
         val c = s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletC.toString() }
         assertEquals("20", c.str("balance_points")); assertEquals("20", c.str("expiring_points"), "capped by the balance, never above it"); assertEquals(today.plusDays(5).toString(), c.str("expiry_date"))
         assertEquals("0", s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletB.toString() }.str("balance_points"))
@@ -206,9 +205,9 @@ class AsthaBundleSectionTest {
         assertEquals("40", balance(outletF), "a partly redeemed expired credit: 40 before the expiry job has run")
         world.exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletF, $programme, 'expiry', '$programme:$outletF:${today.minusDays(1)}', -40, DATE '${today.minusDays(1)}')")
         assertEquals("0", balance(outletF), "after the job's FIFO debit of what was left of the credit: 0")
-        // A balance is negative only after a flagged overdraw: no outlet of this fixture is below zero, and none has an overdraw row.
+        // A negative balance is the overdraw signal (derived, never a row flag): no outlet of this fixture is below zero, and none has an overdraw row.
         val all = assertNotNull(section(setOf(outletA, outletB, outletC, outletE, outletF)))["loyalty"]!!.jsonArray.map { it.jsonObject }
-        assertTrue(all.all { it.str("balance_points")!!.toLong() >= 0 }, "no balance below zero without an overdraw flag")
+        assertTrue(all.all { it.str("balance_points")!!.toLong() >= 0 }, "no outlet of this fixture is overdrawn")
         assertEquals(0L, world.one("SELECT count(*) FROM app.loyalty_ledger WHERE 'overdraw' = ANY(flags)"))
     }
 

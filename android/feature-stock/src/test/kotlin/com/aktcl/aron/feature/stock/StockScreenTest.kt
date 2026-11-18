@@ -60,7 +60,15 @@ class StockScreenTest {
         showParity(true, issued)
         compose.onAllNodesWithText("৩").assertCountEquals(2) // the Issue field and the badge; the stock figure is 17
         compose.onAllNodesWithText("১৭").assertCountEquals(2) // list row and panel stock, not the badge
-        compose.onAllNodesWithText("৩").assertCountEquals(2)
+    }
+
+    // the loose-entered case: the only loose entry on this screen is a dozen-counted SKU whose pack holds several dozens (EntryUnits.resolve: cigarettes
+    // and lighters always count in packets / boxes); 30 dozens entered at 10 per pack are 3 packs ISSUED, whatever the stock figure is
+    @Test fun srBadgeOfALooseEnteredRowIsTheIssuedPacks() {
+        val loose = SkuEntity(5, "L5", 5, "match", "n5", "Aster5", null, "dozen", 10, "dozen", null, "1.000", 5, "active", 1)
+        showParity(true, listOf(StockRow(loose, 400, 30, stockBase = 350)))
+        compose.onAllNodesWithText("৩০").assertCountEquals(1) // the Issue field
+        compose.onAllNodesWithText("৩").assertCountEquals(1) // the badge: 30 / 10
     }
 
     @Test fun withoutSrParityThereIsNoSecondFigureOnAPacketRow() {

@@ -4,7 +4,6 @@ import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.MigrationPreflight
 import com.aktcl.aron.backend.platform.Migrator
 import com.aktcl.aron.backend.platform.PreflightFailed
-import com.aktcl.aron.backend.platform.ServerEnv
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -22,6 +21,8 @@ import kotlin.test.assertTrue
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MigrationPreflightTitaniumTest {
     private lateinit var fresh: FreshDb
+    /** The raw ARON_ENV values a deploy can declare: dev (the only one that may repair anything), prod, staging, an unknown one, and none at all. */
+    private val ENVS: List<String?> = listOf("dev", "prod", "staging", "typo", null)
     private val marker = "Zqtitan"   // distinctive text put into the offending rows' NAMES: it must never appear in any output
 
     @BeforeAll
@@ -45,7 +46,7 @@ class MigrationPreflightTitaniumTest {
             "(SELECT coalesce(string_agg(id || list_key || code || attrs::text, '|' ORDER BY id), '') FROM app.code_list_item)",
     )!!
 
-    private fun run(env: ServerEnv): Pair<List<String>, Throwable?> {
+    private fun run(env: String?): Pair<List<String>, Throwable?> {
         val out = ArrayList<String>()
         val err = runCatching { MigrationPreflight.run(fresh.dataSource, env, { out += it }) }.exceptionOrNull()
         return out to err
@@ -57,12 +58,12 @@ class MigrationPreflightTitaniumTest {
         exec("ALTER TABLE app.code_list_item DISABLE TRIGGER USER")
         // 0. at V0198 the database has no Titanium: a clean database passes silently in every environment
         assertEquals("0", scalar("SELECT count(*) FROM app.sub_channel WHERE code = 'Titanium'"))
-        for (env in ServerEnv.entries) { val (out, err) = run(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
+        for (env in ENVS) { val (out, err) = run(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
 
         // 0b. rows that V0199 accepts are not findings: Titanium under Astha, and the item with channel Astha
         exec("INSERT INTO app.sub_channel (channel, code, name) VALUES ('Astha', 'Titanium', 'Titanium')")
         exec("INSERT INTO app.code_list_item (list_key, code, label_en, attrs) VALUES ('sub_channel', 'titanium', 'Titanium', '{\"channel\": \"Astha\"}')")
-        for (env in ServerEnv.entries) assertEquals(emptyList(), run(env).first)
+        for (env in ENVS) assertEquals(emptyList(), run(env).first)
         exec("DELETE FROM app.code_list_item WHERE code = 'titanium'")
         exec("DELETE FROM app.sub_channel WHERE code = 'Titanium'")
 
@@ -70,7 +71,7 @@ class MigrationPreflightTitaniumTest {
         exec("INSERT INTO app.sub_channel (channel, code, name) VALUES ('GT', 'Titanium', '$marker sub-channel name')")
         val subId = scalar("SELECT id FROM app.sub_channel WHERE code = 'Titanium'")!!
         val before = snapshot()
-        for (env in ServerEnv.entries) {
+        for (env in ENVS) {
             val (out, err) = run(env)
             val failed = assertFailsWith<PreflightFailed>("$env") { throw err ?: error("no failure in $env") }
             val text = out.joinToString("\n") + "\n" + failed.message
@@ -85,7 +86,7 @@ class MigrationPreflightTitaniumTest {
         exec("DELETE FROM app.sub_channel WHERE code = 'Titanium'")
         exec("INSERT INTO app.code_list_item (list_key, code, label_en, attrs) VALUES ('sub_channel', 'titanium', '$marker item label', '{\"channel\": \"$marker\"}')")
         val itemId = scalar("SELECT id FROM app.code_list_item WHERE code = 'titanium'")!!
-        for (env in ServerEnv.entries) {
+        for (env in ENVS) {
             val (out, err) = run(env)
             val text = out.joinToString("\n") + "\n" + (err?.message ?: "")
             assertTrue(err is PreflightFailed, "$env: $text")
@@ -93,22 +94,22 @@ class MigrationPreflightTitaniumTest {
             assertTrue(text.contains("code-list item under channel other") && text.contains("[$itemId]"), text)
         }
         exec("UPDATE app.code_list_item SET attrs = '{}' WHERE code = 'titanium'")
-        assertTrue(run(ServerEnv.PROD).second?.message!!.contains("code-list item under channel none"))
+        assertTrue(run("prod").second?.message!!.contains("code-list item under channel none"))
         exec("UPDATE app.code_list_item SET attrs = '{\"channel\": \"DCC\"}' WHERE code = 'titanium'")
-        assertTrue(run(ServerEnv.DEV).second?.message!!.contains("code-list item under channel DCC"))
+        assertTrue(run("dev").second?.message!!.contains("code-list item under channel DCC"))
 
         // 3. both at once: two groups, and the fix by hand (the portal advice) lets the deploy through; then V0199 itself applies cleanly
         exec("INSERT INTO app.sub_channel (channel, code, name) VALUES ('MT', 'Titanium', 'Titanium')")
-        assertTrue(run(ServerEnv.PROD).second?.message!!.contains("2 group(s)"))
+        assertTrue(run("prod").second?.message!!.contains("2 group(s)"))
         exec("DELETE FROM app.sub_channel WHERE code = 'Titanium'")
         exec("DELETE FROM app.code_list_item WHERE code = 'titanium'")
-        for (env in ServerEnv.entries) assertEquals(emptyList(), run(env).first)
+        for (env in ENVS) assertEquals(emptyList(), run(env).first)
         exec("ALTER TABLE app.code_list_item ENABLE TRIGGER USER")
         Migrator.configure(fresh.dataSource).load().migrate()
         assertEquals("1", scalar("SELECT count(*) FROM app.sub_channel WHERE code = 'Titanium' AND channel = 'Astha'"), "V0199 applied")
 
         // 4. at V0199 or later the check skips: no output in any environment, even with a row it would otherwise report (V0199 is the record of what ran)
         exec("UPDATE app.sub_channel SET channel = 'GT' WHERE code = 'Titanium'")
-        for (env in ServerEnv.entries) { val (out, err) = run(env); assertEquals(emptyList(), out); assertEquals(null, err) }
+        for (env in ENVS) { val (out, err) = run(env); assertEquals(emptyList(), out); assertEquals(null, err) }
     }
 }

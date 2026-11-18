@@ -51,6 +51,7 @@ object TypeRules {
         TypeRule("content_view", "content_view", parents = listOf("visit_client_uuid"), telemetry = true),
         TypeRule("redemption", "redemption", parents = listOf("visit_client_uuid"), signedHeader = true),
         TypeRule("redemption_line", "redemption_line", parents = listOf("redemption_client_uuid")),
+        TypeRule("gift_choice", "gift_choice"),
         TypeRule("gift_photo", "gift_photo", parents = listOf("redemption_client_uuid"), signedHeader = true),
         TypeRule("price_compliance_check", "price_compliance_check", parents = listOf("visit_client_uuid")),
         TypeRule("risk_review", "risk_signal_review"),
