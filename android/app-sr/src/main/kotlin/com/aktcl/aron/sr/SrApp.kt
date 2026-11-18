@@ -124,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -133,6 +133,7 @@ object SrNav {
         SrScreen.SUPPORT, SrScreen.PRINTER_DIAG -> SrScreen.SETTINGS
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
+        SrScreen.ASTHA_TARGET -> SrScreen.ASTHA_MENU
         SrScreen.EDIT -> SrScreen.MEMO
         else -> SrScreen.HOME
     }
@@ -386,7 +387,8 @@ fun SrApp(
                         HomeTile.TUTORIAL -> screen = SrScreen.TUTORIAL
                         // the programme tiles (Astha, Loyalty Point, Photo Capture, Match Program) open the plain "coming with the next
                         // update" screen until the lane that owns the screen has built it (SRM-A-13); never a dead tile
-                        HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
+                        HomeTile.ASTHA -> screen = SrScreen.ASTHA_MENU // lane android-sr-programmes, manual 48
+                        HomeTile.LOYALTY_POINT, HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
                         else -> onOtherTile(t)
                     }
                 },
@@ -513,6 +515,10 @@ fun SrApp(
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
+        SrScreen.ASTHA_MENU -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
+            com.aktcl.aron.feature.programmes.AsthaMenuScreen(onTarget = { screen = SrScreen.ASTHA_TARGET }, onGift = null)
+        }
+        SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
         SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             val st by day.visitFlow.state.collectAsState()

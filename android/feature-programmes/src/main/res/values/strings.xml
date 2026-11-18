@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pg_astha_title">Astha</string>
+    <string name="pg_astha_tile_target">Target</string>
+    <string name="pg_astha_tile_gift">Gift selection</string>
+    <string name="pg_tab_route">Route info</string>
+    <string name="pg_tab_shop">Shop-wise info</string>
+    <string name="pg_pick_year">Select year</string>
+    <string name="pg_pick_quarter">Select quarter</string>
+    <string name="pg_pick_month">Select month</string>
+    <string name="pg_year">Year</string>
+    <string name="pg_quarter">Quarter</string>
+    <string name="pg_sub_std">STD target</string>
+    <string name="pg_sub_memo">Memo target</string>
+    <string name="pg_col_brand">Brand</string>
+    <string name="pg_col_target">Target</string>
+    <string name="pg_col_achieved">Achieved</string>
+    <string name="pg_col_remaining">Remaining</string>
+    <string name="pg_col_pct">%</string>
+    <string name="pg_volume">(Volume)</string>
+    <string name="pg_value">(Value)</string>
+    <string name="pg_all_brand">All Brand</string>
+    <string name="pg_no_data">No data found</string>
+    <string name="pg_no_programme">No Astha programme is active for your routes.</string>
+    <string name="pg_as_of">Data as of %1$s</string>
+    <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>
+    <string name="pg_load_failed">The Astha data could not be read from this phone.</string>
+    <string name="pg_pack_line">%1$s per pack of %2$s: %3$s packets</string>
+    <string name="pg_back">Back</string>
+</resources>

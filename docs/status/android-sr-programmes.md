@@ -2,7 +2,9 @@
 
 ## HANDOVER (top; keep current)
 - Branch `lane/android-sr-programmes` from INT `claude/wonderful-thompson-k6ejnf` (39db6c73). Contract read: 1.18.1.
-- STEP 1 (this file and `docs/requests/sr-programmes-server-needs.md`) is the first push. No code yet.
+- STEP 1 (this file and `docs/requests/sr-programmes-server-needs.md`) was the first push (e6bdec5d).
+- SLICE 1 built: new module `android/feature-programmes` (AsthaModel, AsthaScreens), host `app-sr/.../ProgrammeHosts.kt`, SrScreen `ASTHA_MENU` and `ASTHA_TARGET`, goldens `astha_*` in ui-screenshots. The Astha tile opens the menu; the Gift selection tile is hidden until slice 5 (a tile is left out, never dead). The tab "shop-wise info" appears with slice 2 (the screen takes a `shopWise` slot).
+- Local toolchain in this container: Android SDK installed at `/opt/android-sdk` (cmdline-tools, platform 37.0, build-tools 36.0.0) from dl.google.com; `local.properties` (git-ignored) points to it. Gradle: `./gradlew :android:feature-programmes:testDebugUnitTest` etc. Goldens recorded with `-Proborazzi.record=true` (not `-D`).
 - Room is v9 on this branch. Version 10 is held by android-gates, 11 by android-integrity. This lane does NOT bump or migrate until the lead gives a number.
 - Next: slice 1 (Astha menu, route target tabs, shop-wise info) reads only the stored bundle section `programmes` (table `bundle_section`, raw JSON), so it needs no schema change.
 
@@ -19,9 +21,9 @@ Legend: WIRE = data is in the bundle today. LOCAL = a write that goes through th
 
 | # | Manual | Screen | Data source (contract name) | Offline | Sync record | Build order | State |
 |---|---|---|---|---|---|---|---|
-| 1 | 48 | Astha menu (two tiles: Target, Gift selection) | none (navigation); tile visibility from `cfg.flag.astha_ui` and `programmes` non-null | yes | none | 1 | READY |
-| 2 | 49 | Choose year and quarter | `AsthaTargetRow.month` (current month rows only); lists 2026-2030 and Q-1..Q-4 as in the manual | yes for the current month; other quarters show "no data" offline | none | 1 | READY, partial (N-1) |
-| 3 | 50 | Route STD target and memo target (tab "route info", month chips, brand table volume and value, All Brand memo row) | `programmes.astha_targets` rows with `outlet_id` null: `brand_id`, `std_target`, `std_achieved`, `value_target_mtk`, `value_achieved_mtk`, `memo_target`, `memo_achieved`, `by_pack[]`, `astha_as_of`; brand names from `products` section (to verify, N-6) | yes | none | 1 | READY, partial (N-1, N-6) |
+| 1 | 48 | Astha menu (two tiles: Target, Gift selection) | none (navigation); tile visibility from `cfg.flag.astha_ui` and `programmes` non-null | yes | none | 1 | BUILT (slice 1); Gift tile hidden until slice 5 |
+| 2 | 49 | Choose year and quarter | `AsthaTargetRow.month` (current month rows only); lists 2026-2030 and Q-1..Q-4 as in the manual | yes for the current month; other quarters show "no data" offline | none | 1 | BUILT (slice 1), partial (N-1) |
+| 3 | 50 | Route STD target and memo target (tab "route info", month chips, brand table volume and value, All Brand memo row) | `programmes.astha_targets` rows with `outlet_id` null: `brand_id`, `std_target`, `std_achieved`, `value_target_mtk`, `value_achieved_mtk`, `memo_target`, `memo_achieved`, `by_pack[]`, `astha_as_of`; brand names from `products` section (to verify, N-6) | yes | none | 1 | BUILT (slice 1); brand names come from `products.nodes` (level brand), N-6 resolved; partial (N-1) |
 | 4 | 51 | Shop-wise info (Astha outlets, tier, search; tap opens the outlet's brand table) | rows with `outlet_id` set; outlet name, owner, phone, wing-to-zone from the stored outlets; tier from `Gift.tier_codes` match and outlet sub-channel (`sub_channel` 1.18.0, Gold, Diamond, Platinum, Titanium) | yes | none | 2 | READY, tier source to confirm (N-7) |
 | 5 | 55 | Outlet points (campaign card, points, expiring points, expiry date, Redemption button) | `programmes.loyalty[]`: `balance_points`, `expiring_points`, `expiry_date`, `league_label`, `overdrawn`, `as_of_date`; `programmes[]` for the name | yes (as of previous day plus local redemptions) | none | 3 | READY; balances are 0 until the earning job exists (N-4) |
 | 6 | 53 | Gift redemption (outlet picker, letter chips, remaining points banner, gift cards with steppers) | `gifts[]` (`points_cost`, `name_bn`, `image_asset_id`), `loyalty[]`; remaining = balance minus this phone's unsynced redemptions | yes | `redemption` + `redemption_line` (RedemptionPayload, client UUID) | 4 | READY on the wire; needs a local read of unsynced redemptions (outbox read or SCHEMA, decide in slice 4) |
