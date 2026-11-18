@@ -774,7 +774,9 @@ class AuthzAuditTest {
             val line = obj("sku_id" to sku, "issue_qty_base" to 20, "return_qty_base" to 5, "memo_count" to 1, "sale_qty_base" to 9999)
             val b = routeDayBody().with("lines", listOf(line))
             val h = hit("TSO", p, "/v1/web-entry/route-day", b.toString())
-            val echoed = h.ok && h.body.contains("9999")
+            // Exact, not a text search: a random id or number elsewhere in the body can contain "9999". The probe is kept only when a parsed `sale_qty_base`
+            // of the answer IS the value the request tried to set (the server computes issue - return = 15).
+            val echoed = h.ok && answerKeeps(h.json, "sale_qty_base", 9999L)
             record("MASS", "POST /v1/web-entry/route-day", "TSO", "lines[].sale_qty_base", p, "/v1/web-entry/route-day", b.toString(), h, if (echoed) Verdict.FINDING else Verdict.NOTE,
                 if (echoed) "the client's sale_qty_base was kept" else "accepted and ignored (sale = issue - return on the server); the answer-only field passes strict decoding")
         }
@@ -1015,6 +1017,26 @@ class AuthzAuditTest {
         val text = reportText() + File("build/authz-audit.txt").readText()
         val leaked = secrets.filter { it.length >= 16 && text.contains(it) }
         assertTrue(leaked.isEmpty(), "a real secret reached the report")
+    }
+
+    /** The exactness of the mass-assignment probe on `sale_qty_base`: only a parsed field of that name with that value counts; the same digits elsewhere in the body do not. */
+    @Test
+    fun theKeptValueProbeIsExactAndStillSeesARealMassAssignment() {
+        val unrelated = Json.parseToJsonElement("""{"client_uuid":"6e9999ab-0000-4000-8000-000000000999","saved_by_user_id":9999,"lines":[{"sku_id":9999,"sale_qty_base":15}]}""")
+        assertTrue(!answerKeeps(unrelated, "sale_qty_base", 9999L), "digits in an id, a user id or another field are not a kept value")
+        val kept = Json.parseToJsonElement("""{"lines":[{"sku_id":3,"sale_qty_base":9999}]}""")
+        assertTrue(answerKeeps(kept, "sale_qty_base", 9999L), "a real mass assignment (the client's value in the answer) is still found")
+        assertTrue(answerKeeps(Json.parseToJsonElement("""[{"x":{"sale_qty_base":9999}}]"""), "sale_qty_base", 9999L), "found at any depth")
+        assertTrue(!answerKeeps(null, "sale_qty_base", 9999L))
+        for (form in listOf("9999.0", "\"9999\"", "\"9999.0\"", "\" 9999 \"")) assertTrue(answerKeeps(Json.parseToJsonElement("""{"lines":[{"sale_qty_base":$form}]}"""), "sale_qty_base", 9999L), "echoed as $form")
+        for (form in listOf("99990", "19999", "\"99990\"", "\"x9999\"", "15", "null")) assertTrue(!answerKeeps(Json.parseToJsonElement("""{"lines":[{"sale_qty_base":$form}]}"""), "sale_qty_base", 9999L), "not a kept value: $form")
+    }
+
+    private fun answerKeeps(e: JsonElement?, field: String, value: Long): Boolean = when (e) {
+        // The value may come back as a number (9999), a decimal (9999.0) or a string ("9999", "9999.0"): equal as a number, on the field of that name only.
+        is JsonObject -> e.any { (k, v) -> (k == field && (v as? JsonPrimitive)?.contentOrNull?.trim()?.toBigDecimalOrNull()?.compareTo(java.math.BigDecimal.valueOf(value)) == 0) || answerKeeps(v, field, value) }
+        is JsonArray -> e.any { answerKeeps(it, field, value) }
+        else -> false
     }
 
     @Test
