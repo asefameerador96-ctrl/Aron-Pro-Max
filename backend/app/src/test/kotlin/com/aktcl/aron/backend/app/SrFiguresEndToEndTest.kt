@@ -362,6 +362,7 @@ class SrFiguresEndToEndTest {
     @Test
     fun aForeignMemoAnswersNotInAndRevealsNothingAndTheCallIsReadOnlyAndLeavesTheBundleVersionAlone() = testApplication {
         app()
+        // scope: POST /v1/sync/figures answers only for the caller's own memos; another user's uuid is NOT IN and nothing more
         val other = count("SELECT id FROM app.app_user WHERE username = 'tso1001'")
         val foreign = uuid()
         SrMemoFixture({ sql -> fresh.db.jdbi.useHandle<Exception> { it.execute(sql) } }, other, 800).memo(foreign, routeId, outletId, "2027-01-03", listOf(SrMemoFixture.L(skus[0].first, 20)))
