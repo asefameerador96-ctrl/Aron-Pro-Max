@@ -168,4 +168,18 @@ class QcLockedFlowTest {
         val b = flow(store); b.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
         assertEquals(before, b.state.value.catalog)
     }
+
+    @Test fun aSavedSaleCarriesNoNotice() = runTest {
+        val f = flow(LockMemStore()); f.start(visit()); f.setQuantity(100, 20, QtyUnit.STICK); f.noteRefusal()
+        assertEquals(SaleNotice.Refused, f.state.value.notice)
+        f.commit()
+        assertEquals(null, f.state.value.notice)
+    }
+
+    @Test fun aRefusalOnALockedDraftThatIsNotTheLockIsNotWordedAsTheLock() = runTest {
+        val f = lockedFlow() // the sale has a line, so a zero sale is refused by the draft itself ("a zero sale has no lines"), not by the lock
+        val e = runCatching { f.confirmZeroSale() }.exceptionOrNull()
+        assertEquals(true, e is DraftRefusedException)
+        assertEquals(null, f.state.value.notice)
+    }
 }

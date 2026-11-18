@@ -54,6 +54,7 @@ import com.aktcl.aron.core.ui.aron.barBrush
 object CallContentTags {
     const val BAND = "content_band"
     const val CLOSE = "content_close"
+    const val PICTURE = "content_picture"
     const val SUBMIT = "survey_submit"
     const val SKIP = "survey_skip"
     fun answer(key: String) = "survey_answer_$key"
@@ -72,10 +73,11 @@ fun ContentBandView(title: String, modifier: Modifier = Modifier) {
 
 /** An AV or KV step (shot 35 left): the band, the item ([picture]) centred on the grey page, and the full-width gradient close button at the bottom. */
 @Composable
-fun ContentStepView(title: String, closeLabel: String, onClose: () -> Unit, modifier: Modifier = Modifier, picture: @Composable BoxScope.() -> Unit) {
+fun ContentStepView(title: String, closeLabel: String, onClose: () -> Unit, pictureDescription: String, modifier: Modifier = Modifier, picture: @Composable BoxScope.() -> Unit) {
     Column(modifier.fillMaxSize()) {
         ContentBandView(title)
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center, content = picture)
+        // TalkBack names the item (a picture or a video has no text of its own)
+        Box(Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = pictureDescription }.testTag(CallContentTags.PICTURE), contentAlignment = Alignment.Center, content = picture)
         AronPrimaryButton(closeLabel, onClose, Modifier.fillMaxWidth().padding(AronTokens.Space.L).testTag(CallContentTags.CLOSE))
     }
 }
