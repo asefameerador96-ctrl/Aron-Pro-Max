@@ -19,13 +19,16 @@ operation:
     `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet''s balance below
     zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body)
     unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only. An
-    outlet with no CURRENT enrolment in the programme (a campaign programme needs none) is `400` `not_enrolled`
-    (the phone shows a balance only for an enrolled outlet); a debit carries no `expires_on` (`400` `debit_has_no_expiry`).
-    A genuine resend of a `request_uuid` is answered before the scope is judged; the same uuid used as a `batch_uuid`
-    is `409`. The balance is read under the ledger job''s per-outlet lock in one statement, so two concurrent debits
-    cannot both pass the guard; a debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the
-    ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row. A token of an ADMIN without the
-    `modules` claim is refused (`403`) here.'
+    outlet with no CURRENT enrolment in the programme (every kind, a campaign programme included) is `400` `not_enrolled`,
+    because the bundle shows a balance only for an enrolled outlet; this is the lead''s ruling and the owner may
+    change it; a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid`
+    is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. A DEBIT reads the balance
+    under the ledger job''s per-outlet lock in one statement, so two concurrent ADMIN debits (single or bulk) and
+    a ledger-job pass cannot both pass the guard; a phone redemption arriving at the same instant is NOT serialised
+    with it (redemptions are field facts and are never refused): the ledger job''s next pass and the `overdrawn`
+    flag of the bundle show the result. A credit takes no lock. A debit that goes below zero with `allow_overdraw`
+    is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row.
+    A token of an ADMIN without the `modules` claim is refused (`403`) here.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:

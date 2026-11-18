@@ -182,6 +182,48 @@ class GiftPhotoRecordsTest {
         }
     }
 
+    private var s1Seq = 0
+    private fun pendingRow(red: String): JsonObject? = world.fresh.db.jdbi.withHandle<JsonObject?, Exception> { h ->
+        BundleProgrammes.section(h, com.aktcl.aron.backend.platform.Reach(userId, com.aktcl.aron.contract.Role.SR, today, false, emptySet(), setOf(route), true, emptyList()), listOf(route), setOf(outlet), today, BundleProgrammes.Flags(true, true, true), 1)
+    }?.get("pending_gift_verifications")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it["redemption_client_uuid"]!!.jsonPrimitive.content == red }
+    private fun units(r: JsonObject?) = r!!["units_captured"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() }
+    private fun sendUnit(red: String, unit: Int): JsonObject = photo(null, 100 + 7L * (++s1Seq), unit = red to unit, flat = lat + 0.00001 * (50 + s1Seq)).also { p -> ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) } }
+
+    @Test
+    fun pendingVerificationsUnitsCapturedAndMembershipComeFromOneFilteredSet() = world.withApi {
+        with(world) {
+            // A gap: units 1 and 3 of 4 hold a photo, unit 2 and 4 are open.
+            val gap = redemption(outlet, listOf(cGift to 4))
+            sendUnit(gap, 1); sendUnit(gap, 3)
+            assertEquals(listOf(1, 3), units(pendingRow(gap)), "a gap [1,3]: the phone offers exactly the open units 2 and 4")
+            assertEquals("2", pendingRow(gap)!!["photos_captured"]!!.jsonPrimitive.content)
+            // A unit above qty is stored flagged (unit_out_of_range) and counts for nothing.
+            val above = photo(null, 400, unit = gap to 9, flat = lat + 0.0007); assertEquals("accepted", ack(sync(sr, listOf(above)), cu(above)).status()); assertEquals("unit_out_of_range", flag(above)["check_flag"])
+            assertEquals(listOf(1, 3), units(pendingRow(gap)), "a unit above qty is not a captured unit")
+            assertEquals("2", pendingRow(gap)!!["photos_captured"]!!.jsonPrimitive.content)
+            // A voided photo does not count: unit 2 is photographed, then the photo is voided.
+            val two = sendUnit(gap, 2)
+            assertEquals(listOf(1, 2, 3), units(pendingRow(gap)))
+            exec("UPDATE app.gift_photo SET voided_at = now() WHERE client_uuid = CAST('${cu(two)}' AS uuid)")
+            assertEquals(listOf(1, 3), units(pendingRow(gap)), "a voided photo is not a captured unit")
+            assertEquals("2", pendingRow(gap)!!["photos_captured"]!!.jsonPrimitive.content)
+            // A refused photo (its line was refused: stored and flagged parent_refused) does not count either; the gift stays listed.
+            val refused = redemption(outlet, listOf(cGift to 2), lineCount = 2)
+            exec("INSERT INTO app.ingest_registry (client_uuid, record_type, family_uuid, payload_sha256, status, outcome_code, user_id, first_batch_uuid) SELECT gen_random_uuid(), 'redemption_line', family_uuid, decode(repeat('00', 32), 'hex'), 'rejected', 'schema_invalid', $userId, gen_random_uuid() FROM app.redemption WHERE client_uuid = CAST('$refused' AS uuid)")
+            val rp = photo(null, 450, unit = refused to 1, flat = lat + 0.0009); assertEquals("accepted", ack(sync(sr, listOf(rp)), cu(rp)).status()); assertEquals("parent_refused", flag(rp)["check_flag"])
+            assertEquals(emptyList(), units(pendingRow(refused)), "a refused photo is not a captured unit"); assertEquals("0", pendingRow(refused)!!["photos_captured"]!!.jsonPrimitive.content)
+            // The stale case of the lead's review: two lines of one gift (2 + 2 = qty 4), photos for units 3 and 4, then one line is voided (qty 2). The photos of 3 and 4 stay non-duplicate in the table,
+            // but they are above the CURRENT qty: they must neither hide the open units 1 and 2 (the row stays listed) nor be offered.
+            val stale = redemption(outlet, listOf(cGift to 2)); addLine(stale, cGift, 2)
+            sendUnit(stale, 3); sendUnit(stale, 4)
+            assertEquals("4", pendingRow(stale)!!["qty"]!!.jsonPrimitive.content); assertEquals(listOf(3, 4), units(pendingRow(stale)), "qty 4 before the void")
+            exec("UPDATE app.redemption_line SET voided_at = now() WHERE client_uuid = (SELECT client_uuid FROM app.redemption_line WHERE redemption_client_uuid = CAST('$stale' AS uuid) ORDER BY id LIMIT 1)")
+            val after = assertNotNull(pendingRow(stale), "the units 1 and 2 are open: the gift stays listed although two photos are stored")
+            assertEquals("2", after["qty"]!!.jsonPrimitive.content); assertEquals("0", after["photos_captured"]!!.jsonPrimitive.content)
+            assertEquals(emptyList(), units(after), "units above the current qty are not offered")
+        }
+    }
+
     // ---- C-R1: ties, voids, campaign-unit checks, sweep ----
 
     /** A stored redemption of the campaign with [lines] (gift to qty); line_count is [lineCount] (default the number of lines given). */

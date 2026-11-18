@@ -126,30 +126,34 @@ object BundleProgrammes {
     }
 
     /**
-     * Redeemed campaign gifts of [outlets] still short of their Gift Verify photos (SRM-B-77 to 80): per redemption and gift, `qty` units against the photos stored for it (a flagged duplicate does not count,
-     * a voided photo does not count). Redemptions of the last [PENDING_VERIFICATION_DAYS] business days; a partial submit is allowed, so a gift with some photos stays listed with `photos_captured` < `qty`.
+     * Redeemed campaign gifts of [outlets] still short of their Gift Verify photos (SRM-B-77 to 80): per redemption and gift, `qty` units against the units that hold a stored photo (a flagged duplicate does not
+     * count, a voided photo does not count, a photo without a unit or above the CURRENT `qty` does not count). ONE filtered set per row, the distinct units 1..qty, decides everything: the row is listed when that set
+     * is smaller than `qty`, `units_captured` IS that set and `photos_captured` is its size (so a stale photo of a unit above a lowered `qty` can neither hide an open unit nor be offered). Redemptions of the last
+     * [PENDING_VERIFICATION_DAYS] business days; a partial submit is allowed, so a gift with some photos stays listed with `photos_captured` < `qty`.
      */
     internal fun pendingGiftVerifications(h: Handle, outlets: List<Long>, date: LocalDate): Capped<JsonObject> = h.createQuery(
         """
         SELECT * FROM (
-          SELECT r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty,
-                 (SELECT count(*) FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate)::int AS photos,
-                 (SELECT COALESCE(array_agg(DISTINCT p.unit_no::int ORDER BY p.unit_no::int), '{}') FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate AND p.unit_no IS NOT NULL) AS units
-            FROM app.redemption r
-            JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
-            JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
-           WHERE r.voided_at IS NULL AND r.outlet_id = ANY(CAST(:o AS bigint[])) AND r.business_date > :from AND r.business_date <= :d
-           GROUP BY r.client_uuid, r.outlet_id, l.gift_id
-        ) x WHERE photos < qty ORDER BY ru, gift_id LIMIT :lim
+          SELECT g.ru, g.outlet_id, g.gift_id, g.qty,
+                 COALESCE((SELECT array_agg(DISTINCT p.unit_no::int ORDER BY p.unit_no::int) FROM app.gift_photo p
+                            WHERE p.redemption_client_uuid = g.client_uuid AND p.gift_id = g.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate
+                              AND p.unit_no IS NOT NULL AND p.unit_no::int BETWEEN 1 AND g.qty), '{}') AS units
+            FROM (SELECT r.client_uuid, r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty
+                    FROM app.redemption r
+                    JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
+                    JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
+                   WHERE r.voided_at IS NULL AND r.outlet_id = ANY(CAST(:o AS bigint[])) AND r.business_date > :from AND r.business_date <= :d
+                   GROUP BY r.client_uuid, r.outlet_id, l.gift_id) g
+        ) x WHERE cardinality(units) < qty ORDER BY ru, gift_id LIMIT :lim
         """.trimIndent(),
     ).bindArray("o", Long::class.javaObjectType, outlets).bind("from", date.minusDays(PENDING_VERIFICATION_DAYS)).bind("d", date).bind("lim", MAX_PENDING_VERIFICATIONS + 1)
         .map { rs, _ ->
             buildJsonObject {
                 put("redemption_client_uuid", rs.getString("ru")); put("outlet_id", rs.getLong("outlet_id")); put("gift_id", rs.getLong("gift_id"))
-                put("qty", rs.getInt("qty")); put("photos_captured", rs.getInt("photos"))
-                // S-1 (contract 1.23.0): WHICH units hold a (non-duplicate, non-voided) photo, ascending, at most `qty` entries; the phone offers exactly the open units.
-                val q = rs.getInt("qty")
-                put("units_captured", JsonArray(((rs.getArray("units").array as Array<*>).map { (it as Number).toInt() }).filter { it in 1..q }.map { JsonPrimitive(it) }))
+                // S-1 (contract 1.23.0): WHICH units hold a (non-duplicate, non-voided) photo, ascending, each 1..qty: the same set that decided the row is listed; the phone offers exactly the open units.
+                val units = (rs.getArray("units").array as Array<*>).map { (it as Number).toInt() }
+                put("qty", rs.getInt("qty")); put("photos_captured", units.size)
+                put("units_captured", JsonArray(units.map { JsonPrimitive(it) }))
             }
         }.list().capped(MAX_PENDING_VERIFICATIONS)
 

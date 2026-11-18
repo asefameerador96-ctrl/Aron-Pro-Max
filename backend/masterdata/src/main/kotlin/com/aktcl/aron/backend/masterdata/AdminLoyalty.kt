@@ -96,6 +96,8 @@ data class BatchResultOut(val batch_uuid: String, val inserted: Int, val updated
 
 class AdminLoyaltyDeps(
     val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val blob: BlobSasIssuer = UnconfiguredBlobSasIssuer, val clock: AronClock = AronClock.SYSTEM,
+    /** Test seam only (null in production): called inside the adjustment transaction at "before_pair_lock", "after_balance_read" and "before_insert", so a test can make transactions really overlap with a latch. */
+    val adjustHook: ((stage: String, h: Handle) -> Unit)? = null,
 )
 
 private val LOY_READERS = setOf(Role.SUPERADMIN, Role.ADMIN, Role.NATIONAL, Role.TOP, Role.BRAND, Role.WM, Role.DMO, Role.TSO)
@@ -113,6 +115,8 @@ private val LOY_PRODUCT_LEVELS = setOf("category", "brand", "variant", "sku")
 private val LOY_SCOPE_TYPES = setOf("wing", "division", "territory", "zone", "route", "channel", "sub_channel")
 private const val LOY_MODULE = "loyalty"
 private const val MAX_BATCH_ROWS = 20_000
+/** Guarded debit rows (a debit WITHOUT allow_overdraw) per adjustment file: each one needs its pair lock, and advisory locks live in the shared lock table (D-LOY-API-38). */
+private const val MAX_GUARDED_DEBIT_ROWS = 2_000
 private const val MAX_LIST = 500
 
 private enum class Need { READ, READ_ENROLMENTS, WRITE, SUPER }
@@ -1051,16 +1055,38 @@ private fun adjOutlets(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, prog: A
     val q = h.createQuery(sql.toString()).bind("vid", prog.versionId as Any?).bindList("ids", ids)
     if (geo is LVis.Geo) { q.bindList("vz", geo.scope.reachZones.ifEmpty { listOf(-1L) }); q.bindList("vr", geo.scope.routes.ifEmpty { listOf(-1L) }) }
     val scoped = q.mapTo(Long::class.java).list().toSet()
-    // Enrolled TODAY (a campaign programme needs no enrolment: the bundle shows its balance to every outlet in scope): points on an outlet the phone never shows would be dead.
+    // Enrolled TODAY, for EVERY kind (the bundle's loyalty[] is built from programme_enrolment only, a campaign included): points on an outlet the phone never shows would be dead.
     val day = today(d)
-    val enrolled = if (prog.kind == "campaign") scoped else h.createQuery("SELECT DISTINCT outlet_id FROM app.programme_enrolment WHERE programme_id = :p AND outlet_id IN (<ids>) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
+    val enrolled = h.createQuery("SELECT DISTINCT outlet_id FROM app.programme_enrolment WHERE programme_id = :p AND outlet_id IN (<ids>) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
         .bind("p", programme).bindList("ids", ids).bind("d", day).mapTo(Long::class.java).list().toSet()
     return AdjOutlets(known, scoped, enrolled)
 }
 
-/** The pair lock of the ledger job (LoyaltyLedger.lockPair, the same key): outlets in sorted order, so two adjustments and the job never take them in a cycle. */
+/**
+ * The pair lock of the ledger job (LoyaltyLedger.lockPair, the SAME key `loyalty:<outlet>:<programme>` and call), for the outlets that receive a DEBIT WITHOUT allow_overdraw, in ONE
+ * statement over the sorted array (two bulks, and the job, never wait in a cycle). Credits take none (a credit racing a debit only makes the debit's check more conservative).
+ * Advisory locks live in the shared lock table, so the caller caps the number (MAX_GUARDED_DEBIT_ROWS); SQLSTATE 53200 is still mapped to a clean refusal (adjDb).
+ */
 private fun adjLockPairs(h: Handle, programme: Long, outlets: Collection<Long>) {
-    for (o in outlets.distinct().sorted()) h.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", "loyalty:$o:$programme").mapTo(Int::class.java).one()
+    val sorted = outlets.distinct().sorted()
+    if (sorted.isEmpty()) return
+    h.createQuery("SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended('loyalty:' || s.o || ':' || CAST(:p AS bigint), 0)) FROM (SELECT o FROM unnest(CAST(:o AS bigint[])) AS u(o) ORDER BY o OFFSET 0) s) x")
+        .bind("p", programme).bindArray("o", Long::class.javaObjectType, sorted).mapTo(Long::class.java).one()
+}
+
+/** The two per-uuid locks in ONE fixed order in both handlers (a uuid is a request or a batch, never both): batch first, then request. */
+private fun adjLockUuid(h: Handle, uuid: UUID) {
+    lockRequest(h, uuid, "adjustment_batch")
+    lockRequest(h, uuid, "adjustment_req")
+}
+
+/** mapDb plus SQLSTATE 53200 (the shared lock table is full: another load holds many locks) as a clean 503, never a 500. */
+private fun <T> adjDb(block: () -> T): T = mapDb {
+    try { block() } catch (e: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
+        if ((e.cause as? java.sql.SQLException)?.sqlState == "53200")
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the database has no free lock slots right now; try again shortly or send a smaller file")
+        throw e
+    }
 }
 
 /**
@@ -1109,10 +1135,9 @@ private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): 
     val row = adjRow(o)
     val allow = adjAllow(o)
     val today = today(d)
-    return mapDb {
+    return adjDb {
         d.db.jdbi.inTransaction<Pair<JsonObject, HttpStatusCode>, Exception> { h ->
-            lockRequest(h, request, "adjustment_req")
-            lockRequest(h, request, "adjustment_batch")      // one uuid is either a request or a batch, never both (judged below)
+            adjLockUuid(h, request)                            // one uuid is either a request or a batch, never both (judged below); the two locks in one fixed order
             val prog = adjProgramme(h, p, d, id)               // 404: a programme outside the caller's reach is never told apart from a missing one
             // A genuine resend gets its stored row FIRST (the scope may have narrowed since; an ended programme still answers its own resend).
             val prior = h.createQuery("$ADJ_SELECT WHERE l.source_type = :t AND l.source_id = :s").bind("t", ADJ_SOURCE).bind("s", request.toString()).map { rs, _ -> adjLedgerJson(rs) }.findOne().orElse(null)
@@ -1130,11 +1155,14 @@ private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): 
             if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
             if (row.outlet !in ao.enrolled) adminBad("body.outlet_id", "not_enrolled")
             if (row.expires != null && row.expires.isBefore(today)) adminBad("body.expires_on", "in_the_past")
-            // The balance is read under the job's pair lock and in ONE statement, so two debits (two admins, a single beside a bulk) and a ledger-job pass cannot both pass the guard.
-            adjLockPairs(h, id, listOf(row.outlet))
+            // A DEBIT reads the balance under the job's pair lock and in ONE statement, so two admin debits (two admins, a single beside a bulk) and a ledger-job pass cannot both pass the guard
+            // (a phone redemption arriving at the same instant is not serialised with it: the ledger job's next pass and the 'overdraw' flag show it). A credit needs no lock.
+            if (row.points < 0) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, listOf(row.outlet)) }
             val before = adjBalances(h, id, listOf(row.outlet)).getValue(row.outlet)
+            d.adjustHook?.invoke("after_balance_read", h)
             val below = row.points < 0 && before + row.points < 0
             if (below && !allow) throw overdraw(before, row.points, "body.points")
+            d.adjustHook?.invoke("before_insert", h)
             h.createUpdate("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) VALUES (:o, :p, 'adjustment', :sid, :pts, :bd, :exp, CAST(:fl AS text[]))")
                 .bind("o", row.outlet).bind("p", id).bind("sid", request.toString()).bind("pts", row.points).bind("bd", today).bind("exp", row.expires as Any?).bind("fl", if (below) "{portal,overdraw}" else "{portal}").execute()
             AuditWriter.write(h, p, "programme_adjustment", request.toString(), "post", null,
@@ -1154,11 +1182,12 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
     val reason = loyReason(o)
     val allow = adjAllow(o)
     val (parsed, shapeErrs) = adjRows(o, bulk = true)
+    // The cap on GUARDED debit rows (a debit without allow_overdraw: each needs its pair lock), judged at the dry run too and before any database work.
+    if (!allow && parsed.count { it != null && it.points < 0 } > MAX_GUARDED_DEBIT_ROWS) adminBad("body.rows", "too_many_debit_rows")
     val today = today(d)
-    return mapDb {
+    return adjDb {
         d.db.jdbi.inTransaction<JsonObject, Exception> { h ->
-            lockRequest(h, batch, "adjustment_batch")
-            lockRequest(h, batch, "adjustment_req")
+            adjLockUuid(h, batch)
             val prog = adjProgramme(h, p, d, id)
             val errs = ArrayList(shapeErrs)
             val ok = parsed.withIndex().filter { it.value != null }.map { it.index to it.value!! }
@@ -1183,9 +1212,11 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             // The balances under the job's pair locks (sorted) and in ONE statement; a debit row is checked against the balance BEFORE the file (an outlet appears once per file).
             val debitOutlets = ok.filter { it.second.points < 0 && it.second.outlet in ao.enrolled }.map { it.second.outlet }.distinct()
             val flagged = HashSet<Int>()
-            if (!replayed && !dry) adjLockPairs(h, id, ok.map { it.second.outlet }.filter { it in ao.enrolled })
+            // ONLY the outlets that receive a debit WITHOUT allow_overdraw are locked (one statement, sorted); a credit-only file takes no pair lock at all.
+            if (!replayed && !dry && !allow && debitOutlets.isNotEmpty()) { d.adjustHook?.invoke("before_pair_lock", h); adjLockPairs(h, id, debitOutlets) }
             if (!replayed) {
                 val bal = adjBalances(h, id, debitOutlets)
+                d.adjustHook?.invoke("after_balance_read", h)
                 for ((i, r) in ok) if (r.points < 0 && r.outlet in ao.enrolled) bal[r.outlet]?.let { b -> if (b + r.points < 0) { if (allow) flagged += i else errs += AdjErr(i, "points", "would_overdraw", b) } }
             }
             errs.sortBy { it.row }
@@ -1208,6 +1239,7 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             if (replayed) return@inTransaction buildJsonObject { put("batch_uuid", batch.toString()); put("dry_run", false); put("rows", parsed.size); put("posted", 0); put("replayed", true); put("total_points", total) }
             if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
             val n = posted.size
+            d.adjustHook?.invoke("before_insert", h)
             val flags = posted.indices.map { i -> if (flagged.contains(parsed.indexOf(posted[i]))) "{portal,overdraw}" else "{portal}" }
             val n1 = h.createUpdate(
                 "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) " +

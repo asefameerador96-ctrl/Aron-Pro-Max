@@ -526,7 +526,7 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       if (!row || !visible(me, row.versions[0]!)) return notFound();
       // The API answers with the balance under `context` (scalars only). The mock has no phone redemptions, so its balance is the ledger sum (the API's also subtracts the stored, unposted ones).
       const overdraw = (balance: number, points: number, pointer: string) => done(409, problem(409, "ERR_CONFLICT", { errors: [{ pointer, code: "would_overdraw" }], context: { balance_points: balance, points } } as never));
-      const enrolledToday = (outlet: number): boolean => row!.kind === "campaign" || s.enrolments.some((e) => e.programme_id === id && e.outlet_id === outlet && e.valid_from <= today && (e.valid_to === null || e.valid_to > today));
+      const enrolledToday = (outlet: number): boolean => s.enrolments.some((e) => e.programme_id === id && e.outlet_id === outlet && e.valid_from <= today && (e.valid_to === null || e.valid_to > today));
       if (single) {
         const uuid = uuidOf(o, "request_uuid");
         reasonOf(o, "reason");
@@ -552,6 +552,8 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       const reason = reasonOf(o);
       const arr = o.rows;
       if (!Array.isArray(arr) || arr.length < 1 || arr.length > 20_000) bad("body.rows", "required");
+      // The API caps the GUARDED debit rows (a debit without allow_overdraw) per file at 2,000, already at the dry run, before any other check.
+      if (!allow && (arr as unknown[]).filter((x) => typeof (x as { points?: unknown } | null)?.points === "number" && (x as { points: number }).points < 0).length > 2_000) bad("body.rows", "too_many_debit_rows");
       const errors: { row: number; column: string; code: string; balance_points?: number }[] = [];
       const parsed: ({ outlet: number; points: number; expires: string | null } | null)[] = [];
       const seen = new Set<number>();

@@ -10,7 +10,7 @@ import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { businessDate } from "@/lib/i18n";
-import { ADJ_MAX_FILE_BYTES, adjustFailureKey, emptyAdjustForm, parseAdjustFile, signed, validateAdjust, type AdjustForm, type AdjustRow } from "@/lib/admin/loyalty-adjust";
+import { ADJ_MAX_FILE_BYTES, ADJ_MAX_GUARDED_DEBITS, adjustFailureKey, guardedDebits, emptyAdjustForm, parseAdjustFile, signed, validateAdjust, type AdjustForm, type AdjustRow } from "@/lib/admin/loyalty-adjust";
 import { nextAttempt } from "@/lib/admin/loyalty";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
@@ -103,6 +103,7 @@ export function LoyaltyAdjustForm({ programmeId, active }: { programmeId: number
     if (len < 10 || len > 500) { setReasonError(errText(len < 10 ? "reason_short" : "reason_long")); return; }
     setReasonError(undefined);
     if (rows.length === 0 || fileErrors.length > 0) return;
+    if (guardedDebits(rows, bulkOverdraw) > ADJ_MAX_GUARDED_DEBITS) { setBanner({ tone: "danger", text: t("loy.adj.too_many_debits") }); return; }
     batch.current = nextAttempt(batch.current, batchKey);
     setBusy(true);
     try {

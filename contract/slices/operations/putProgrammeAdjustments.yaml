@@ -15,7 +15,11 @@ operation:
     the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`.
     An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the
     single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply
-    refuses the whole file with `409`). A replay is judged on the stored rows only.'
+    refuses the whole file with `409`). Only the outlets that receive a debit WITHOUT `allow_overdraw` are locked
+    (one statement, in sorted order); a file may carry at most 2,000 such guarded debit rows (`400`, pointer `body.rows`,
+    error code `too_many_debit_rows`, already at the dry run: split the file; credit rows and debits with `allow_overdraw`
+    are not counted). When the database has no free lock slots the apply is `503` `ERR_SERVICE_UNAVAILABLE` and
+    nothing is written. A replay is judged on the stored rows only.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:

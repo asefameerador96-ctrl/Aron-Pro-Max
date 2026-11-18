@@ -54,8 +54,8 @@ class BundleProgrammesLowsTest {
             val geo = geoOf(b)
             if (zone != null) assertEquals(chain(zone), geo, "$u: the names are the chain of the user's own zone")
             else {
-                // no home zone: the zone of the user's first assigned route (ordered by route id), or null when there is none
-                val firstRouteZone = world.longs("SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = (SELECT id FROM app.app_user WHERE username = '$u') AND a.valid_from <= CURRENT_DATE AND (a.valid_to IS NULL OR a.valid_to >= CURRENT_DATE) ORDER BY r.id LIMIT 1").firstOrNull()
+                // no home zone: the zone of the user's first assigned route (ordered by route id), or null when there is none; the oracle judges the DHAKA business date the server uses (world.today()), never the database's UTC CURRENT_DATE
+                val firstRouteZone = world.longs("SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = (SELECT id FROM app.app_user WHERE username = '$u') AND a.valid_from <= DATE '${world.today()}' AND (a.valid_to IS NULL OR a.valid_to >= DATE '${world.today()}') ORDER BY r.id LIMIT 1").firstOrNull()
                 assertEquals(firstRouteZone?.let { chain(it) }, geo, "$u: no home zone, so the first route's zone, else null")
             }
         }

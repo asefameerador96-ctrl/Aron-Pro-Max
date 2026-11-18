@@ -159,7 +159,7 @@ class AdminLoyaltyTest {
 
     private fun standIn(blobPath: String) = "https://blob.test/r/$blobPath?sv=2024-11-04&se=2099-01-01T00%3A00%3A00Z&sig=SECRETSIG%2Babc"
 
-    private fun app(grantsLive: Boolean = true, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+    private fun app(grantsLive: Boolean = true, hook: ((String, org.jdbi.v3.core.Handle) -> Unit)? = null, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, base, { "00000000-0000-0000-0000-000000000000" }))
             val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), object : ScopeVersionLookup {
@@ -168,7 +168,7 @@ class AdminLoyaltyTest {
                 override fun portalGrantsLive(): Boolean = grantsLive
             }, base)
             val resolver = ReachResolver { userId, role, _, date -> reaches[userId] ?: Reach(userId, role, date, true, emptySet(), emptySet(), false, emptyList()) }
-            routing { route("/v1") { adminLoyaltyRoutes(AdminLoyaltyDeps(env.fresh.db, resolver, guard, blob)) } }
+            routing { route("/v1") { adminLoyaltyRoutes(AdminLoyaltyDeps(env.fresh.db, resolver, guard, blob, adjustHook = hook)) } }
         }
         block()
     }
@@ -1062,8 +1062,12 @@ class AdminLoyaltyTest {
         sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from) VALUES ($prog, $o1, (now() AT TIME ZONE 'Asia/Dhaka')::date)")
         adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.Created)
         adj(prog, adminW, adjBody(o1, -5, extra = ""","expires_on":"$to"""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.expires_on")   // a debit has no expiry
-        // A campaign programme needs no enrolment (its balance reaches every outlet in scope).
+        // A campaign programme needs an enrolment too (D-LOY-API-38: the bundle's loyalty[] is built from programme_enrolment for every kind; the lead's ruling, changeable by the owner).
         val camp = createId(createBody(kind = "campaign", scope = "[]")); activate(camp).expect(HttpStatusCode.OK)
+        adj(camp, adminW, adjBody(fx["L-O2"]!!, 10)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.outlet_id")
+        bulk(camp, adminW, bulkBody(uuid(), true, brow(fx["L-O2"]!!, 10))).obj().let { assertEquals("not_enrolled", it.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content) }
+        assertEquals(0, ledgerCount(camp))
+        sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from) VALUES ($camp, ${fx["L-O2"]}, (now() AT TIME ZONE 'Asia/Dhaka')::date)")
         adj(camp, adminW, adjBody(fx["L-O2"]!!, 10)).expect(HttpStatusCode.Created)
     }
 
@@ -1083,38 +1087,141 @@ class AdminLoyaltyTest {
         try { adj(prog, adminW, adjBody(o1, 10, u)).expect(HttpStatusCode.OK) } finally { sql("UPDATE app.outlet SET zone_id = ${fx["zoneA"]} WHERE id = $o1") }
     }
 
+    /** A latch the hook waits on only while [armed]: a barrier of [parties] transactions that all reached the point after their balance read (bounded, so a lock that works lets the first one go on after the bound). */
+    private class Overlap(parties: Int) {
+        val barrier = java.util.concurrent.CyclicBarrier(parties)
+        @Volatile var armed = false
+        fun hook(stage: String) { if (armed && stage == "after_balance_read") try { barrier.await(2, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { /* bound reached or barrier broken: the lock made them wait */ } }
+    }
+
     @Test
-    fun twoDebitsWithDifferentIdsOnOneBalanceNeverBothPassAndALedgerJobPassCannotSlipBetweenTheReads() = app {
+    fun twoDebitsWithDifferentIdsOnOneBalanceNeverBothPass() {
+        val overlap = Overlap(3)
+        app(hook = { stage, _ -> overlap.hook(stage) }) {
+            val prog = activeProg(); val o1 = fx["L-O1"]!!
+            adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
+            // Three -80 debits (two admins, a single beside a bulk). The barrier holds each transaction after its balance read until all three have read, so WITHOUT the pair lock all three would read 100
+            // and all pass; WITH it only one can be past the lock at a time (the barrier then times out for the first, which goes on): exactly one is posted, the others are 409; the ledger ends at 20, never -140.
+            overlap.armed = true
+            val codes = kotlinx.coroutines.coroutineScope {
+                listOf(
+                    async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value },
+                    async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, super1, adjBody(o1, -80)).status.value },
+                    async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -80))).status.value },
+                ).awaitAll()
+            }
+            overlap.armed = false
+            assertEquals(1, codes.count { it == 201 || it == 200 }, "exactly one debit passes: $codes"); assertEquals(2, codes.count { it == 409 }, "$codes")
+            assertEquals(20, balance(prog, o1))
+            assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -80 AND 'portal' = ANY(flags) AND NOT ('overdraw' = ANY(flags))"))
+        }
+    }
+
+    @Test
+    fun aDebitHeldBehindALedgerJobPassSeesTheRedemptionThePassStored() {
+        val reached = java.util.concurrent.CountDownLatch(1); val holderDone = java.util.concurrent.CountDownLatch(1)
+        val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+        app(hook = { stage, _ ->
+            if (armed.get()) when (stage) {
+                "before_pair_lock" -> reached.countDown()                                       // the debit is at the lock
+                "after_balance_read" -> holderDone.await(5, java.util.concurrent.TimeUnit.SECONDS)   // WITHOUT the lock it has read BEFORE the pass committed and waits for it here, then posts
+            }
+        }) {
+            val prog = activeProg(); val o1 = fx["L-O1"]!!
+            adj(prog, adminW, adjBody(o1, 30)).expect(HttpStatusCode.Created)
+            // The ledger job's pair lock held by another transaction (a pass in progress): the debit waits, and when that pass has stored a redemption the balance it reads is the lower one.
+            val holder = env.fresh.db.jdbi.open()
+            holder.begin()
+            holder.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", "loyalty:$o1:$prog").mapTo(Int::class.java).one()
+            val u = uuid()
+            armed.set(true)
+            val status = kotlinx.coroutines.coroutineScope {
+                val pending = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -15)).status.value }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS), "the debit reached the pair lock")
+                    holder.execute("INSERT INTO app.redemption (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) " +
+                        "VALUES ('$u', '$u', (now() AT TIME ZONE 'Asia/Dhaka')::date, ${ids.getValue("lamo1")}, now(), 0, $o1, $prog, 0, 20, 0, 0, 2000, 1, now())")
+                    holder.commit(); holder.close(); holderDone.countDown()
+                }
+                pending.await()
+            }
+            armed.set(false)
+            assertEquals(409, status, "30 - 20 (stored, not yet posted) - 15 is below zero: the debit saw the redemption because it waited for the lock")
+        }
+    }
+
+    /** Advisory locks (all of them: the two uuid locks plus the pair locks) held by the transaction's own backend. */
+    private fun heldAdvisory(h: org.jdbi.v3.core.Handle) = h.createQuery("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()").mapTo(Long::class.java).one().toInt()
+
+    @Test
+    fun onlyOutletsThatReceiveAGuardedDebitTakeAPairLockAndACreditOnlyFileOf20000RowsTakesNone() {
+        val seen = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        app(hook = { stage, h -> if (stage == "before_insert") seen["held"] = heldAdvisory(h) }) {
+            val big = 20_000
+            // A zone of its own with 20,000 outlets, all currently enrolled in the programme.
+            sql("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-BIG', 'Zone Big', id FROM app.territory WHERE code = 'T-B'")
+            val zone = scalar("SELECT id FROM app.zone WHERE code = 'Z-BIG'").toLong()
+            sql("INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel) SELECT 'BIG-' || g, 'Big ' || g, 'Owner', $zone, ${fx["routeB"]}, (SELECT min(id) FROM app.cluster), 'GT' FROM generate_series(1, $big) g")
+            try {
+                val prog = activeProg(scope = "[${s("zone", zone)}]", enrol = false)
+                sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from) SELECT $prog, id, (now() AT TIME ZONE 'Asia/Dhaka')::date - 30 FROM app.outlet WHERE zone_id = $zone")
+                val outlets = env.fresh.db.jdbi.withHandle<List<Long>, Exception> { it.createQuery("SELECT id FROM app.outlet WHERE zone_id = $zone ORDER BY id").mapTo(Long::class.java).list() }
+                assertEquals(big, outlets.size)
+                // A credit-only file of 20,000 rows: no pair lock at all (only the two uuid locks are held when the rows are written), and every row is posted.
+                val credits = bulkBody(uuid(), false, *outlets.map { brow(it, 5) }.toTypedArray())
+                bulk(prog, adminW, credits).expect(HttpStatusCode.OK)
+                assertEquals(2, seen["held"], "a credit-only file takes no pair lock")
+                assertEquals(big, ledgerCount(prog))
+                // A file whose three debits need the guard: exactly three pair locks, taken in one statement.
+                bulk(prog, adminW, bulkBody(uuid(), false, brow(outlets[0], -1), brow(outlets[1], -1), brow(outlets[2], -1), brow(outlets[3], 7))).expect(HttpStatusCode.OK)
+                assertEquals(2 + 3, seen["held"], "one pair lock per guarded debit outlet, none for the credit")
+                // allow_overdraw: nothing to guard, no pair lock (the flag still shows the rows that went below zero).
+                bulk(prog, adminW, bulkBody(uuid(), false, brow(outlets[4], -9), allow = true)).expect(HttpStatusCode.OK)
+                assertEquals(2, seen["held"], "a debit with allow_overdraw takes no pair lock")
+                assertEquals("true", scalar("SELECT ('overdraw' = ANY(flags))::text FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = ${outlets[4]} AND points = -9"))
+                // A single credit takes none either; a single debit takes its one.
+                adj(prog, adminW, adjBody(outlets[5], 3)).expect(HttpStatusCode.Created); assertEquals(2, seen["held"] ?: -1)
+                adj(prog, adminW, adjBody(outlets[5], -3)).expect(HttpStatusCode.Created); assertEquals(3, seen["held"] ?: -1)
+            } finally {
+                // The ledger is append-only: the clean-up of this test's own 20,000 outlets runs as replica (the pattern of ReportBatchBTest), so no other test of the class sees them.
+                env.fresh.db.jdbi.useHandle<Exception> { h ->
+                    h.execute("SET session_replication_role = replica")
+                    h.execute("DELETE FROM app.loyalty_ledger WHERE outlet_id IN (SELECT id FROM app.outlet WHERE zone_id = $zone)")
+                    h.execute("DELETE FROM app.programme_enrolment WHERE outlet_id IN (SELECT id FROM app.outlet WHERE zone_id = $zone)")
+                    h.execute("DELETE FROM app.outlet WHERE zone_id = $zone")
+                    h.execute("SET session_replication_role = DEFAULT")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun aFileWithMoreThan2000GuardedDebitRowsIsRefusedAtTheDryRunAndTheApplyAndAFlaggedOrCreditFileIsNot() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!
+        fun debits(n: Int) = (1..n).map { brow(o1 + 1_000_000L + it, -1) }.toTypedArray()      // outlets that do not exist: the cap is judged before any database work
+        for (dry in listOf(true, false)) {
+            val r = bulk(prog, adminW, bulkBody(uuid(), dry, *debits(2001)))
+            r.expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows")
+            assertTrue(r.obj().getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content == "too_many_debit_rows")
+        }
+        // 2,000 is allowed by the cap (the rows then fail on their own, as nonexistent outlets), and credits and allow_overdraw debits are not counted.
+        val atCap = bulk(prog, adminW, bulkBody(uuid(), true, *debits(2000))).obj()
+        assertEquals("not_found", atCap.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content)
+        val flagged = bulk(prog, adminW, bulkBody(uuid(), true, *debits(2001), allow = true)).obj()
+        assertEquals("not_found", flagged.getValue("errors").jsonArray.first().jsonObject.getValue("code").jsonPrimitive.content)
+        assertEquals(0, ledgerCount(prog))
+    }
+
+    @Test
+    fun aFullSharedLockTableIsACleanRefusalNotA500() = app(hook = { stage, h ->
+        // Really exhaust the shared lock table inside the transaction (released by the rollback): SQLSTATE 53200.
+        if (stage == "before_pair_lock") h.createQuery("SELECT count(pg_advisory_xact_lock(g)) FROM generate_series(1, 2000000) g").mapTo(Long::class.java).one()
+    }) {
         val prog = activeProg(); val o1 = fx["L-O1"]!!
         adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
-        // Two -80 debits at once (two admins, two tabs, a single beside a bulk): exactly one is posted, the other is a 409 with the balance; the ledger ends at 20, never -60.
-        val codes = kotlinx.coroutines.coroutineScope {
-            listOf(
-                async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value },
-                async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, super1, adjBody(o1, -80)).status.value },
-                async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -80))).status.value },
-            ).awaitAll()
-        }
-        assertEquals(1, codes.count { it == 201 || it == 200 }, "exactly one debit passes: $codes"); assertEquals(2, codes.count { it == 409 }, "$codes")
-        assertEquals(20, balance(prog, o1))
-        assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -80 AND 'portal' = ANY(flags) AND NOT ('overdraw' = ANY(flags))"))
-        // The ledger job's pair lock: while another transaction holds it (a pass in progress) a debit WAITS, and when that pass has stored a redemption the balance it reads is the lower one.
-        val lockKey = "loyalty:$o1:$prog"
-        val holder = env.fresh.db.jdbi.open()
-        holder.begin()
-        holder.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", lockKey).mapTo(Int::class.java).one()
-        val u = uuid()
-        val status = kotlinx.coroutines.coroutineScope {
-            val pending = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -15)).status.value }
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                Thread.sleep(400)
-                holder.execute("INSERT INTO app.redemption (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) " +
-                    "VALUES ('$u', '$u', (now() AT TIME ZONE 'Asia/Dhaka')::date, ${ids.getValue("lamo1")}, now(), 0, $o1, $prog, 0, 10, 0, 0, 2000, 1, now())")
-                holder.commit(); holder.close()
-            }
-            pending.await()
-        }
-        assertEquals(409, status, "20 - 10 (stored, not yet posted) - 15 is below zero: the debit saw the redemption because it waited for the lock")
+        val r = adj(prog, adminW, adjBody(o1, -10))
+        r.expect(HttpStatusCode.ServiceUnavailable, "ERR_SERVICE_UNAVAILABLE")
+        assertEquals(1, ledgerCount(prog), "nothing was posted")
     }
 
     @Test

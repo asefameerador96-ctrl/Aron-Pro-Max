@@ -3,6 +3,9 @@
 // The API stays the authority on scope, programme state, overdraw and replay; this only spares a round trip and places the errors.
 export const ADJ_POINTS_MAX = 1_000_000;
 export const ADJ_MAX_ROWS = 20_000;
+/** Guarded debit rows (a debit WITHOUT allow_overdraw) per file: each needs a database lock, so the API caps them (D-LOY-API-38); credits and flagged debits are not counted. */
+export const ADJ_MAX_GUARDED_DEBITS = 2_000;
+export const guardedDebits = (rows: readonly { points: number }[], allowOverdraw: boolean): number => (allowOverdraw ? 0 : rows.reduce((n, r) => n + (r.points < 0 ? 1 : 0), 0));
 /** A file of 20,000 short rows is under 1 MB; beyond 2 MiB it is not an adjustment file (the BFF refuses a body over the same limit). */
 export const ADJ_MAX_FILE_BYTES = 2 * 1024 * 1024;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -81,10 +84,11 @@ export function parseAdjustFile(text: string, today: string): ParsedFile {
   return { rows, errors, tooMany: rows.length > ADJ_MAX_ROWS };
 }
 
-export type AdjustFailure = "loy.adj.refused_state" | "loy.adj.refused_scope" | "loy.adj.overdraw" | "loy.adj.reused" | "loy.adj.refused_role" | null;
+export type AdjustFailure = "loy.adj.too_many_debits" | "loy.adj.refused_state" | "loy.adj.refused_scope" | "loy.adj.overdraw" | "loy.adj.reused" | "loy.adj.refused_role" | null;
 
 /** The banner for a refused call (the field errors are placed separately); null = a generic problem text. */
 export function adjustFailureKey(status: number, code: string | undefined, errors: readonly { pointer: string; code: string }[] | undefined): AdjustFailure {
+  if (status === 400 && (errors ?? []).some((e) => e.code === "too_many_debit_rows")) return "loy.adj.too_many_debits";
   if (status === 403) return (errors ?? []).some((e) => e.code === "out_of_scope") ? "loy.adj.refused_scope" : "loy.adj.refused_role";
   if (status === 409 && (errors ?? []).some((e) => e.code === "would_overdraw")) return "loy.adj.overdraw";
   if (status === 409 && code === "ERR_REQUEST_STATE") return "loy.adj.refused_state";
