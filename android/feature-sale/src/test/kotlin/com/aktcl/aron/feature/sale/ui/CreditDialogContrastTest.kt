@@ -16,4 +16,6 @@ class CreditDialogContrastTest {
     @Test fun errorInkOnTheTint() = assertTrue(contrast(CreditErrorInk, PopupTint) >= 7.0)
     @Test fun inkOnTheTint() = assertTrue(contrast(AronLook.Default.ink, PopupTint) >= 7.0)
     @Test fun purpleTitleOnThePage() = assertTrue(contrast(AronLook.Default.purple, AronLook.Default.page) >= 7.0)
+    // Sunlight: the box is the solid surface and the error line keeps the look's red
+    @Test fun sunlightErrorInkOnTheSolidSurface() = assertTrue(contrast(AronLook.Sunlight.red, Color.White) >= 7.0)
 }

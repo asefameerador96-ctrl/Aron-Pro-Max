@@ -8,6 +8,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -18,6 +20,7 @@ import com.aktcl.aron.rules.GeoAction
 import com.aktcl.aron.rules.GeoVerdict
 import com.aktcl.aron.rules.GeoVerdictResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,6 +57,12 @@ class VisitSrLayoutGateTest {
         compose.onNodeWithTag(OutletTags.REFRESH).assertIsDisplayed()
         compose.onNodeWithTag(OutletTags.FORCE).assertIsDisplayed()
         compose.onNodeWithText("Manual Override").assertExists()
+        // the buttons sit in the BOTTOM bar (in the lower part of the screen), not in the page
+        assertTrue("AMO: Force Sale is in the bottom bar", centreFraction(OutletTags.FORCE) > 0.8f)
+        assertTrue("AMO: Refresh is in the bottom bar", centreFraction(OutletTags.REFRESH) > 0.8f)
+        val force = compose.onNodeWithTag(OutletTags.FORCE).getUnclippedBoundsInRoot()
+        val refresh = compose.onNodeWithTag(OutletTags.REFRESH).getUnclippedBoundsInRoot()
+        assertTrue("AMO: the two buttons share one row", refresh.top < force.bottom && force.top < refresh.bottom)
         compose.onNodeWithTag(OutletTags.FORCE).performClick()
         assertEquals(1, forced)
     }
@@ -62,6 +71,19 @@ class VisitSrLayoutGateTest {
         show(sr = true) { VisitCheckContent(outside(), {}, {}, {}, {}, geoPanel = true) }
         compose.onNodeWithTag(OutletTags.REFRESH).assertExists()
         compose.onNodeWithTag(OutletTags.FORCE).assertExists()
+        // the SR page has its buttons in the page, high on the screen, and no bottom bar
+        assertTrue("SR: Force Sale is in the page, high on the screen", centreFraction(OutletTags.FORCE) < 0.6f)
+        // stacked one under the other (the AMO bar puts them side by side in one row)
+        val force = compose.onNodeWithTag(OutletTags.FORCE).getUnclippedBoundsInRoot()
+        val refresh = compose.onNodeWithTag(OutletTags.REFRESH).getUnclippedBoundsInRoot()
+        assertTrue("SR: Refresh is under Force Sale", refresh.top >= force.bottom)
+    }
+
+    /** The vertical centre of the tagged node as a fraction of the screen's height (0 top, 1 bottom). */
+    private fun centreFraction(tag: String): Float {
+        val root = compose.onRoot().getUnclippedBoundsInRoot()
+        val b = compose.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+        return ((b.top + b.bottom).value / 2f) / (root.bottom - root.top).value
     }
 
     @Test fun anSrOutletWithNoLocationAndNoForceSaleStillOffersBack() {

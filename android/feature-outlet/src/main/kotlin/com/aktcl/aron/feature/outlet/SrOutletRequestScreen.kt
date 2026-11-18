@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -186,11 +188,11 @@ private fun errorText(e: RequestError): String = stringResource(
 private fun DetailFields(form: OutletRequestForm, errors: Set<RequestError>, onChange: (OutletRequestForm) -> Unit) {
     FormCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            OutlinedFormField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors)
-            OutlinedFormField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors)
+            OutlinedFormField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors, errorText = errorText(RequestError.NAME_INVALID), words = true)
+            OutlinedFormField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors, errorText = errorText(RequestError.OWNER_INVALID), words = true)
             OutlinedFormField(
                 form.mobile.orEmpty(), { onChange(form.copy(mobile = it)) }, stringResource(R.string.out_req_mobile), Modifier.testTag(RequestTags.MOBILE),
-                isError = RequestError.MOBILE_INVALID in errors, keyboardType = KeyboardType.Phone,
+                isError = RequestError.MOBILE_INVALID in errors, errorText = errorText(RequestError.MOBILE_INVALID), keyboardType = KeyboardType.Phone, last = true,
             )
         }
     }
@@ -198,16 +200,23 @@ private fun DetailFields(form: OutletRequestForm, errors: Set<RequestError>, onC
 
 /** The old SR's text field (manual 42): the label above and a purple-outlined box (red on error); same value, keyboard and tags as the kit field. */
 @Composable
-private fun OutlinedFormField(value: String, onValueChange: (String) -> Unit, label: String, fieldModifier: Modifier, isError: Boolean, keyboardType: KeyboardType = KeyboardType.Text) {
+private fun OutlinedFormField(
+    value: String, onValueChange: (String) -> Unit, label: String, fieldModifier: Modifier, isError: Boolean, errorText: String,
+    keyboardType: KeyboardType = KeyboardType.Text, words: Boolean = false, last: Boolean = false,
+) {
     val look = LocalAronLook.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink)
+        // the field below carries the label once for TalkBack
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = Modifier.clearAndSetSemantics { })
         androidx.compose.foundation.text.BasicTextField(
             value = value, onValueChange = onValueChange, singleLine = true,
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = look.ink),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(look.purple),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
-            modifier = fieldModifier.fillMaxWidth().semantics { contentDescription = label },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = keyboardType, imeAction = if (last) androidx.compose.ui.text.input.ImeAction.Done else androidx.compose.ui.text.input.ImeAction.Next,
+                capitalization = if (words) androidx.compose.ui.text.input.KeyboardCapitalization.Words else androidx.compose.ui.text.input.KeyboardCapitalization.None,
+            ),
+            modifier = fieldModifier.fillMaxWidth().semantics { contentDescription = label; if (isError) error(errorText) },
             decorationBox = { inner ->
                 Box(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).border(1.5.dp, if (isError) look.red else look.purple, RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.L),

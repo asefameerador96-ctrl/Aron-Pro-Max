@@ -168,11 +168,14 @@ fun SrFrame(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    if (printer != null) HoldPrinter(printer, assist = printerAssist)
+    // the printer-connected bar (manual 17) is drawn by this frame, over its content: a flag the toast sets, an overlay that takes no touch
+    val barFlag = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (printer != null) androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.printing.ui.LocalPrinterBarFlag provides barFlag) { HoldPrinter(printer, assist = printerAssist) }
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
+    Box(modifier) {
     ParityScaffold(
-        modifier = modifier,
+        modifier = Modifier,
         topBar = {
             ParityTopBar(
                 title = title, icon = icon?.let { painterResource(it) }, onBack = onBack, backLabel = back,
@@ -191,6 +194,8 @@ fun SrFrame(
             Box(Modifier.weight(1f).fillMaxWidth()) { content() }
             bottomBar()
         }
+    }
+    if (barFlag.value) com.aktcl.aron.core.printing.ui.PrinterConnectedBar(Modifier.align(androidx.compose.ui.Alignment.Center))
     }
 }
 
@@ -497,7 +502,7 @@ fun SrApp(
                         },
                         mapSlot = rememberOutletMapSlot(day.isOnline()), geoPanel = true,
                         // the page's way out when nothing can be forced or refreshed (the visit is not open: back only leaves the screen)
-                        onBack = goBack,
+                        onBack = if (st is VisitUiState.NeedsDecision) goBack else null,
                     )
                 }
             }

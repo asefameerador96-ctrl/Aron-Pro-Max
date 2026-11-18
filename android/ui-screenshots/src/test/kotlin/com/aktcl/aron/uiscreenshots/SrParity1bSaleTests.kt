@@ -1,6 +1,7 @@
 package com.aktcl.aron.uiscreenshots
 
 import android.content.Context
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -242,12 +243,14 @@ class SrParity1bSaleTests {
     @Test fun tasksManualAsk() = shot("srp1b_tasks_resolve_ask", titleText = "টাস্ক", icon = null, clicks = listOf("#" + com.aktcl.aron.feature.tasks.TaskTags.resolve("t1"))) { Tasks() }
 
     @Test fun printerConnectedBar() = shot("srp1b_stock_printer_connected", title = com.aktcl.aron.feature.home.R.string.hm_tile_stock, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_stock) {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
         com.aktcl.aron.feature.stock.StockContent(
             listOf(com.aktcl.aron.feature.stock.StockRow(stockSku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380), com.aktcl.aron.feature.stock.StockRow(stockSku(3, "lighter", "Aster", "piece", 1), 400, 0, stockBase = 25)),
             listOf(com.aktcl.aron.feature.stock.CategoryTotal("cigarette", 600), com.aktcl.aron.feature.stock.CategoryTotal("lighter", 400)),
             null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true,
         )
-        com.aktcl.aron.core.printing.ui.PrinterConnectedBar()
+        com.aktcl.aron.core.printing.ui.PrinterConnectedBar(androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center))
+        }
     }
 
     // ---- fix round: font 2.0 partial payment with the buttons visible, no-location out-of-range page, failed print box ----
