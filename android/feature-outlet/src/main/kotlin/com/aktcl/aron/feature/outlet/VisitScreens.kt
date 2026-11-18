@@ -336,6 +336,8 @@ fun VisitCheckContent(
 ) {
     val c = LocalAronColors.current
     val startLabel = stringResource(R.string.out_start_call)
+    // the old SR's out-of-range page exists only inside the SR app (LocalSrManualLook); the AMO control call passes geoPanel too and keeps its verdict card and bottom bar
+    val srLayout = geoPanel && com.aktcl.aron.core.ui.LocalSrManualLook.current
     Column(modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
@@ -378,16 +380,16 @@ fun VisitCheckContent(
                     val kind = if (state.result.verdict == GeoVerdict.IN_RANGE) GeoKind.InRange else GeoKind.Warning
                     // the SR page of the manual (30): the red triangle and the sentence, then ফোর্স সেল and রিফ্রেশ on the page (no bottom bar);
                     // the distance, the refresh count and the map follow below as the supporting card
-                    if (geoPanel) {
+                    if (srLayout) {
                         Column(Modifier.fillMaxWidth().padding(top = AronTokens.Space.S).testTag(OutletTags.MESSAGE), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                             Icon(AronIcons.Warning, contentDescription = null, tint = c.danger, modifier = Modifier.size(40.dp))
                             Text(headline, color = c.accentOnContainer, fontSize = 18.sp, textAlign = TextAlign.Center)
                         }
-                        SrOutOfRangeButtons(state, texts?.forceLabel, onForceSale, onRefresh)
+                        SrOutOfRangeButtons(state, texts?.forceLabel, onForceSale, onRefresh, onBack)
                     }
                     val info0 = VisitGeoInfo.of(state.outlet, state.result.verdict, state.result.distanceM, state.phoneLat, state.phoneLng)
-                    val hasDetail = !geoPanel || lines.isNotEmpty() || info0?.hasFix == true || onMap != null
-                    if (hasDetail) GeoCard(kind, if (geoPanel) lines.firstOrNull().orEmpty() else headline, if (geoPanel) lines.drop(1) else lines, if (geoPanel) Modifier else Modifier.testTag(OutletTags.MESSAGE)) {
+                    val hasDetail = !srLayout || lines.isNotEmpty() || info0?.hasFix == true || onMap != null
+                    if (hasDetail) GeoCard(kind, if (srLayout) lines.firstOrNull().orEmpty() else headline, if (srLayout) lines.drop(1) else lines, if (srLayout) Modifier else Modifier.testTag(OutletTags.MESSAGE)) {
                         val info = VisitGeoInfo.of(state.outlet, state.result.verdict, state.result.distanceM, state.phoneLat, state.phoneLng)
                         if (geoPanel && info != null && info.hasFix) VisitGeoPanel(info, mapSlot = mapSlot, onOpenMaps = onMap)
                         else if (info != null && info.hasFix) {
@@ -441,7 +443,7 @@ fun VisitCheckContent(
         // the bar by verdict (screens-sr s6 table)
         when (state) {
             VisitUiState.ReadingFix -> OutletBar(BarAction(startLabel, {}, enabled = false), reason = stringResource(R.string.out_reason_wait_fix))
-            is VisitUiState.NeedsDecision -> if (!geoPanel) {
+            is VisitUiState.NeedsDecision -> if (!srLayout) {
                 val force = BarAction(texts?.forceLabel ?: stringResource(R.string.out_force_sale), onForceSale, OutletTags.FORCE)
                 when {
                     // outlet has no coordinates: the primary is Force Sale (screens-sr s6 table); a refresh changes nothing
@@ -466,7 +468,7 @@ fun VisitCheckContent(
 
 /** The two buttons of the old SR's out-of-range page (manual 30): ফোর্স সেল (the gradient primary, once the flow allows it) and রিফ্রেশ (charcoal, with the refreshes left). */
 @Composable
-private fun SrOutOfRangeButtons(state: VisitUiState.NeedsDecision, forceLabel: String?, onForceSale: () -> Unit, onRefresh: () -> Unit) {
+private fun SrOutOfRangeButtons(state: VisitUiState.NeedsDecision, forceLabel: String?, onForceSale: () -> Unit, onRefresh: () -> Unit, onBack: (() -> Unit)?) {
     val c = LocalAronColors.current
     val noCoordinates = state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
@@ -482,6 +484,10 @@ private fun SrOutOfRangeButtons(state: VisitUiState.NeedsDecision, forceLabel: S
                 com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.out_refresh), {}, Modifier.fillMaxWidth(), enabled = false)
                 Text(stringResource(R.string.out_no_refresh_left), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
             }
+        }
+        // nothing to force and nothing to refresh (an outlet with no location and no force sale yet): the page still offers a way out. No "no sale" here: the visit is not open yet, so nothing could be closed
+        if (!state.forceSaleAvailable && noCoordinates) {
+            if (onBack != null) com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.out_go_back), onBack, Modifier.fillMaxWidth())
         }
     }
 }

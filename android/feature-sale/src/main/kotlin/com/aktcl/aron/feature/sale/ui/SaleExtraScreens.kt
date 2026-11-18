@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
@@ -126,6 +127,9 @@ fun CreditPrompt(
     }
 }
 
+/** The error ink of the partial-payment box: 7:1 or better on [PopupTint]. */
+internal val CreditErrorInk = androidx.compose.ui.graphics.Color(0xFF8F1712)
+
 /**
  * The SR's partial-payment box (manual 27): over the Review, a lavender box with the title, the question, an outlined field "আদায়কৃত অর্থ" that shows
  * the live "বাকিঃ" due at its right, and the green হ্যাঁ and red না. Same rules as [CreditPrompt] (the amount must be below the net); না turns credit off.
@@ -145,20 +149,23 @@ fun CreditDialog(
     val valid = parsed != null && parsed < review.totals.netMtk
     val showError = text.isNotEmpty() && !valid
     val paidLabel = stringResource(R.string.credit_paid_label)
+    val boxColor = if (c.sunlight) c.surfaceSolid else PopupTint
+    // the error ink is darker than the look's red so it holds 7:1 on the lavender box (CreditDialogContrastTest)
+    val errorInk = if (c.sunlight) look.red else CreditErrorInk
     // a plain Dialog (not AlertDialog): the Material box measures its content by intrinsics, which a text field in it cannot answer
     androidx.compose.ui.window.Dialog(
-        onDismissRequest = {},
-        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false),
+        onDismissRequest = onCancel, // Back is "না": credit off, back to the Review
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false, usePlatformDefaultWidth = false),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(24.dp)).background(if (c.sunlight) c.surfaceSolid else PopupTint).padding(20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 560.dp).clip(RoundedCornerShape(24.dp)).background(boxColor).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
             Text(stringResource(R.string.credit_title), color = look.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                 Text(stringResource(R.string.credit_body), color = look.ink, fontSize = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 // the outlined field of the manual: a purple (red on error) border, the label sitting on the top edge, the typed amount at the left, the live due at the right
-                val edge = if (showError) look.red else look.purple
+                val edge = if (showError) errorInk else look.purple
                 Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 60.dp).border(2.dp, edge, RoundedCornerShape(4.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
@@ -175,10 +182,10 @@ fun CreditDialog(
                     }
                     Text(
                         paidLabel, color = edge, fontSize = 13.sp,
-                        modifier = Modifier.padding(start = 10.dp).offset(y = (-9).dp).background(PopupTint).padding(horizontal = 4.dp),
+                        modifier = Modifier.padding(start = 10.dp).offset(y = (-9).dp).background(boxColor).padding(horizontal = 4.dp).clearAndSetSemantics { },
                     )
                 }
-                if (showError) Text(stringResource(R.string.credit_error), color = look.red, fontSize = 13.sp)
+                if (showError) Text(stringResource(R.string.credit_error), color = errorInk, fontSize = 13.sp)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
                 com.aktcl.aron.core.ui.AronYesButton(stringResource(R.string.sale_yes), { onPaid(parsed) }, Modifier.testTag(CreditTags.YES), enabled = valid)

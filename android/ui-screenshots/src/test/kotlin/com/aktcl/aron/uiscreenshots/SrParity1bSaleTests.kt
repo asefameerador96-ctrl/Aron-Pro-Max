@@ -71,12 +71,12 @@ class SrParity1bSaleTests {
     private val open = VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z"))
     private val q = CallQuestion(label, {}, {}, {})
 
-    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, titleText: String? = null, content: @Composable () -> Unit) {
+    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, sr: Boolean = true, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, titleText: String? = null, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         // a dialog focuses its text field, whose cursor blinks for ever: the clock is stepped by hand for those frames
         if (frozenClock) rule.mainClock.autoAdvance = false
         rule.setContent {
-            CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
+            CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale), com.aktcl.aron.core.ui.LocalSrManualLook provides sr) {
                 AronTheme(AppLanguage.BN, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
                     ParityFrame(titleText ?: stringResource(title), icon, printerConnected = false) { content() }
                 }
@@ -248,5 +248,23 @@ class SrParity1bSaleTests {
             null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true,
         )
         com.aktcl.aron.core.printing.ui.PrinterConnectedBar()
+    }
+
+    // ---- fix round: font 2.0 partial payment with the buttons visible, no-location out-of-range page, failed print box ----
+    @Test fun creditDialogFont20() = shot("srp1b_credit_dialog_font20", fontScale = 2.0f, title = reviewTitle) { WithCredit("100") }
+    @Test fun outOfRangeNoLocation() = shot("srp1b_out_of_range_no_location") {
+        VisitCheckContent(
+            VisitUiState.NeedsDecision(outlet.copy(lat = null, lng = null), GeoVerdictResult(GeoVerdict.NO_OUTLET_LOCATION, GeoAction.FORCE_SALE, null), 0, false, 3, false, false),
+            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = null, geoPanel = true, onBack = {},
+        )
+    }
+    @Test fun printFailedBox() = shot("srp1b_dialog_print_failed", title = reviewTitle) { Step(SaveAndPrint.Step.PrintFailed(com.aktcl.aron.core.printing.bt.PrintFailure.UNREACHABLE)) }
+
+    // the AMO control call's out-of-range step (geoPanel = true, no SR look): recorded here and proved equal to the integration branch's drawing (D-PAR-SR1-19)
+    @Test fun amoOutOfRangeGeoPanel() = shot("srp1b_amo_out_of_range_geopanel", sr = false) {
+        VisitCheckContent(
+            VisitUiState.NeedsDecision(outlet, GeoVerdictResult(GeoVerdict.OUT_OF_RANGE, GeoAction.REFRESH_OFFERED, 180.0), 1, true, 3, true, false, phoneLat = 23.7912, phoneLng = 90.4009),
+            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = {}, geoPanel = true, texts = com.aktcl.aron.feature.outlet.VisitCheckTexts(forceLabel = "Manual Override"),
+        )
     }
 }

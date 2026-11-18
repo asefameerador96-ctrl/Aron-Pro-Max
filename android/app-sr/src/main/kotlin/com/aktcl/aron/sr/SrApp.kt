@@ -496,6 +496,8 @@ fun SrApp(
                             { context.startActivity(OutletMapActivity.intent(context, d.outlet.name, d.outlet.lat!!, d.outlet.lng!!, d.outlet.radiusM, d.phoneLat, d.phoneLng)) }
                         },
                         mapSlot = rememberOutletMapSlot(day.isOnline()), geoPanel = true,
+                        // the page's way out when nothing can be forced or refreshed (the visit is not open: back only leaves the screen)
+                        onBack = goBack,
                     )
                 }
             }

@@ -238,7 +238,10 @@ fun SaveAndPrintStepDialog(
         SaveAndPrint.Step.Saving -> Busy(R.string.ui_print_saving)
         SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, onPrintAnswer, manual, ManualDialogKind.Info)
         SaveAndPrint.Step.Printing -> Busy(R.string.printer_printing)
-        is SaveAndPrint.Step.PrintFailed -> AlertDialog(
+        is SaveAndPrint.Step.PrintFailed -> if (manual) AronManualDialog(
+            ManualDialogKind.Warning, stringResource(R.string.ui_print_failed), stringResource(PrintFailureText.of(s.reason)), stringResource(R.string.ui_print_retry), { onRetry() },
+            dismissLabel = stringResource(R.string.ui_print_later), onDismiss = { onLater() }, dismissable = false,
+        ) else AlertDialog(
             onDismissRequest = {},
             text = { Text(stringResource(R.string.ui_print_failed) + "\n\n" + stringResource(PrintFailureText.of(s.reason))) },
             confirmButton = { TextButton(onClick = { onRetry() }) { Text(stringResource(R.string.ui_print_retry)) } },
@@ -313,6 +316,7 @@ private fun Info(@StringRes text: Int, @StringRes title: Int?, manual: Boolean, 
         AronManualDialog(
             if (title != null) ManualDialogKind.Success else ManualDialogKind.Warning,
             title?.let { stringResource(it) }, stringResource(text), stringResource(R.string.dialog_ok), ok,
+            onDismiss = ok, // Back or a tap outside is OK, as the plain box was (Done still fires onFinished once)
         )
         return
     }
