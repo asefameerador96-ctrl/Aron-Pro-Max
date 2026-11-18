@@ -124,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -134,6 +134,7 @@ object SrNav {
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.ASTHA_TARGET -> SrScreen.ASTHA_MENU
+        SrScreen.LOYALTY_POINTS -> SrScreen.LOYALTY_MENU
         SrScreen.EDIT -> SrScreen.MEMO
         else -> SrScreen.HOME
     }
@@ -388,7 +389,8 @@ fun SrApp(
                         // the programme tiles (Astha, Loyalty Point, Photo Capture, Match Program) open the plain "coming with the next
                         // update" screen until the lane that owns the screen has built it (SRM-A-13); never a dead tile
                         HomeTile.ASTHA -> screen = SrScreen.ASTHA_MENU // lane android-sr-programmes, manual 48
-                        HomeTile.LOYALTY_POINT, HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
+                        HomeTile.LOYALTY_POINT -> screen = SrScreen.LOYALTY_MENU // lane android-sr-programmes, manual 53/55
+                        HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
                         else -> onOtherTile(t)
                     }
                 },
@@ -518,6 +520,11 @@ fun SrApp(
         SrScreen.ASTHA_MENU -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
             com.aktcl.aron.feature.programmes.AsthaMenuScreen(onTarget = { screen = SrScreen.ASTHA_TARGET }, onGift = null)
         }
+        SrScreen.LOYALTY_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_loyalty_point), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) {
+            // Redemption joins this menu with slice 4; Points is the interim entry of the outlet points page (the manual opens it from the Sales screen)
+            com.aktcl.aron.feature.programmes.LoyaltyMenuScreen(onPoints = { screen = SrScreen.LOYALTY_POINTS }, onRedeem = null)
+        }
+        SrScreen.LOYALTY_POINTS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_points), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { OutletPointsHost(day, locale) }
         SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
         SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {

@@ -16,4 +16,9 @@ class ProgrammeNavTest {
         // 2026-12-31T20:00:00Z is already 2027-01-01 in Dhaka (UTC+6)
         assertEquals(2027, programmeYear(null, java.time.Instant.parse("2026-12-31T20:00:00Z").toEpochMilli()))
     }
+
+    @Test fun loyaltyPointsBacksToTheLoyaltyMenuAndTheMenuToHome() {
+        assertEquals(SrScreen.LOYALTY_MENU, SrNav.parent(SrScreen.LOYALTY_POINTS))
+        assertEquals(SrScreen.HOME, SrNav.parent(SrScreen.LOYALTY_MENU))
+    }
 }

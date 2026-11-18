@@ -36,6 +36,16 @@
     <string name="pg_shop_owner">মালিকের নাম</string>
     <string name="pg_shop_contact">যোগাযোগ</string>
     <string name="pg_shop_sub">Sub-Channel</string>
+    <string name="pg_loyalty_redeem">রিডিম্পশন</string>
+    <string name="pg_loyalty_points">পয়েন্ট</string>
+    <string name="pg_loyalty_none">আপনার রুটে কোনো লয়্যালটি কর্মসূচি চালু নেই।</string>
+    <string name="pg_loyalty_no_outlets">এই ফোনে আপনার কোনো দোকানের লয়্যালটি পয়েন্ট নেই।</string>
+    <string name="pg_loyalty_pick_outlet">খুচরা বিক্রেতা নির্বাচন করুন</string>
+    <string name="pg_loyalty_manage">খুচরা বিক্রেতার গিফট রিকুইজিশন ও রিডিম্পশন পরিচালনা করুন।</string>
+    <string name="pg_loyalty_overdrawn">ব্যালেন্স শূন্যের নিচে (ওভারড্র)</string>
+    <string name="pg_loyalty_expiring">মেয়াদ শেষ হচ্ছে এমন পয়েন্ট:</string>
+    <string name="pg_loyalty_expiry">মেয়াদ শেষের তারিখ:</string>
+    <string name="pg_pts">পয়েন্ট</string>
     <string-array name="pg_months_short">
         <item>Jan</item>
         <item>Feb</item>

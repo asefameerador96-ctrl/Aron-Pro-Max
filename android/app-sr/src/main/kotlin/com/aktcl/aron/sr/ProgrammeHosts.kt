@@ -7,6 +7,8 @@ import com.aktcl.aron.core.ui.aron.rememberAsyncLoad
 import com.aktcl.aron.feature.programmes.AsthaData
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
+import com.aktcl.aron.feature.programmes.LoyaltyModel
+import com.aktcl.aron.feature.programmes.OutletPointsScreen
 import com.aktcl.aron.feature.programmes.ShopInfo
 import com.aktcl.aron.feature.programmes.ShopModel
 import com.aktcl.aron.feature.programmes.ShopOutlet
@@ -32,8 +34,7 @@ internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: Li
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val data = readAstha(day)
     val date = day.reference.businessDate()
-    val outlets = day.reference.routesOfDay(date ?: "").flatMap { it.outlets }.distinctBy { it.outletId }
-        .map { ShopOutlet(it.outletId, com.aktcl.aron.feature.outlet.OutletPicker.label(it), it.code, it.ownerName, it.contactNumber, it.subChannelId) }
+    val outlets = readShopOutlets(day)
     val subs = ShopModel.subChannels(day.reference.section("code_lists"))
     AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale))
 }
@@ -44,5 +45,20 @@ fun AsthaHost(day: SrDay, locale: UiLocale) {
     val load = rememberAsyncLoad(locale) { readAsthaPage(day, locale) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         AsthaTargetScreen(page.data, locale, page.year, shops = page.shops)
+    }
+}
+
+/** The outlets of every route of the bundle, as the programme screens need them (picker label, owner, phone, sub-channel). */
+internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext(Dispatchers.IO) {
+    day.reference.routesOfDay(day.reference.businessDate() ?: "").flatMap { it.outlets }.distinctBy { it.outletId }
+        .map { ShopOutlet(it.outletId, com.aktcl.aron.feature.outlet.OutletPicker.label(it), it.code, it.ownerName, it.contactNumber, it.subChannelId) }
+}
+
+/** The outlet points page (manual 55): the bundle's real balances, nothing invented; offline. */
+@Composable
+fun OutletPointsHost(day: SrDay, locale: UiLocale) {
+    val load = rememberAsyncLoad { withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) } to readShopOutlets(day) }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { (data, outlets) ->
+        OutletPointsScreen(outlets, data, locale)
     }
 }

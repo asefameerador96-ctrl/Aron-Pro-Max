@@ -20,7 +20,12 @@ import com.aktcl.aron.feature.programmes.AsthaMenuScreen
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaSelection
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
+import com.aktcl.aron.feature.programmes.LoyaltyMenuScreen
+import com.aktcl.aron.feature.programmes.LoyaltyModel
+import com.aktcl.aron.feature.programmes.OutletPointsScreen
 import com.aktcl.aron.feature.programmes.ShopInfo
+import com.aktcl.aron.feature.programmes.ShopOutlet
+import com.aktcl.aron.feature.home.R as HomeR
 import com.aktcl.aron.feature.programmes.R as ProgR
 import com.aktcl.aron.rules.UiLocale
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -61,7 +66,7 @@ class SrProgrammesScreenshotTests {
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
     }
 
-    @Composable private fun Frame(content: @Composable () -> Unit) = AronScreen(topBar = { AronTopBar(title = stringResource(ProgR.string.pg_astha_title), onBack = {}) }) { content() }
+    @Composable private fun Frame(title: Int = ProgR.string.pg_astha_title, content: @Composable () -> Unit) = AronScreen(topBar = { AronTopBar(title = stringResource(title), onBack = {}) }) { content() }
 
     private val programmes = """{"astha_as_of":"2026-11-17T10:00:00Z","astha_truncated":false,"astha_targets":[
       {"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-11","std_target":"21600","std_achieved":"4680","memo_target":0,"memo_achieved":0,"value_target_mtk":"86400000","value_achieved_mtk":"18720000","by_pack":[{"pack_factor":20,"std_achieved":"3600"},{"pack_factor":10,"std_achieved":"1080"}]},
@@ -87,4 +92,18 @@ class SrProgrammesScreenshotTests {
     @Test fun astha_shops_bn() = shot("astha_shops_bn") { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, shops = shops, startOnShops = true) } }
     @Test fun astha_shops_bn_empty() = shot("astha_shops_bn_empty") { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, shops = emptyList(), startOnShops = true) } }
     @Test fun astha_shops_bn_font20() = shot("astha_shops_bn_font20", fontScale = 2.0f) { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, shops = shops, startOnShops = true) } }
+
+    // Loyalty Point (manual 53 left, 55): the bundle's real balances, an overdrawn one shown plainly
+    private val loyaltyJson = """{"programmes":[{"programme_id":3,"kind":"diamond_league","name_en":"Diamond League","name_bn":"ডায়মন্ড লীগ","period_label":"2026-04"}],
+      "loyalty":[{"outlet_id":10,"programme_id":3,"league_label":"Diamond League (April)","balance_points":110,"overdrawn":false,"expiring_points":110,"expiry_date":"2026-05-07","as_of_date":"2026-04-17"},
+                 {"outlet_id":11,"programme_id":3,"league_label":"Diamond League (April)","balance_points":-20,"overdrawn":true,"expiring_points":0,"expiry_date":null,"as_of_date":"2026-04-17"}],"gifts":[]}"""
+    private val pointOutlets = listOf(ShopOutlet(10, "Bipu Store (6909084-01779223366-Apsis Cluster)", "6909084", "A", null, null), ShopOutlet(11, "Milon Store (2663519)", "2663519", "B", null, null))
+    private val loyalty get() = LoyaltyModel.parse(loyaltyJson)
+
+    @Test fun loyalty_menu_bn() = shot("loyalty_menu_bn") { Frame(HomeR.string.hm_tile_loyalty_point) { LoyaltyMenuScreen(onPoints = {}, onRedeem = null) } }
+    @Test fun outlet_points_bn() = shot("outlet_points_bn") { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.BN, onRedeem = {}, initialOutlet = 10) } }
+    @Test fun outlet_points_bn_overdrawn() = shot("outlet_points_bn_overdrawn") { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.BN, onRedeem = {}, initialOutlet = 11) } }
+    @Test fun outlet_points_en_sunlight() = shot("outlet_points_en_sunlight", AppLanguage.EN, sunlight = true) { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.EN, initialOutlet = 10) } }
+    @Test fun outlet_points_bn_font20() = shot("outlet_points_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.BN, onRedeem = {}, initialOutlet = 10) } }
+    @Test fun outlet_points_bn_empty() = shot("outlet_points_bn_empty") { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, null, UiLocale.BN) } }
 }

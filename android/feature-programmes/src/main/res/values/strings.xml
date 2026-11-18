@@ -36,6 +36,16 @@
     <string name="pg_shop_owner">Owner name</string>
     <string name="pg_shop_contact">Contact</string>
     <string name="pg_shop_sub">Sub-Channel</string>
+    <string name="pg_loyalty_redeem">Redemption</string>
+    <string name="pg_loyalty_points">Points</string>
+    <string name="pg_loyalty_none">No loyalty programme is active for your routes.</string>
+    <string name="pg_loyalty_no_outlets">No outlet of yours has loyalty points on this phone.</string>
+    <string name="pg_loyalty_pick_outlet">Select retailer</string>
+    <string name="pg_loyalty_manage">Manage retailer gift requisition and redemption.</string>
+    <string name="pg_loyalty_overdrawn">Balance is below zero (overdrawn)</string>
+    <string name="pg_loyalty_expiring">Expiring Points:</string>
+    <string name="pg_loyalty_expiry">Expiry Date:</string>
+    <string name="pg_pts">Pts</string>
     <string-array name="pg_months_short">
         <item>Jan</item>
         <item>Feb</item>
