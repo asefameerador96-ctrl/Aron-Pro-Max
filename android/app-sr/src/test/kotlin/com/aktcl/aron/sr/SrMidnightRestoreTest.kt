@@ -237,5 +237,57 @@ class SrMidnightRestoreTest {
         }
     }
 
+    /** D-AGATE-18: the rep's own close after midnight is never told as "the phone ended it": the notice comes from the local marker only, and the rep's close writes none. */
+    @Test fun theRepsOwnCloseAfterMidnightIsNeverToldAsThePhones() = runBlocking {
+        val v = f.openCall(); f.creditMemo(v)
+        f.trustAt(at(next(), 0, 6))
+        f.day.resumeDay()
+        assertNotNull("the call is held open (before 04:00)", f.day.visitSession.current.value)
+        f.day.sale.closeCall() // the rep's own close, after midnight
+        f.day.resumeDay()
+        assertNull("no 'the phone ended it' notice for a call the rep closed himself", f.day.rolloverNotice.value.abandonedDate)
+        assertTrue("and no marker is stored", f.day.capture.phoneMarks().none { it.kind == "call_ended" })
+    }
+
+    /** D-AGATE-18: the marker is stored in the SAME transaction as the close: a close that fails stores no marker and tells nothing; the call and its draft stay. */
+    @Test fun aPhoneCloseThatFailsLeavesNoMarkerAndNoNotice() = runBlocking {
+        val v = f.openCall()
+        f.day.visitSession.restore(v)
+        f.db.openHelper.writableDatabase.execSQL("DELETE FROM visit WHERE client_uuid = '${v.visitUuid}'") // the close cannot be written
+        f.trustAt(at(next(), 8, 0))
+        assertFalse(f.day.abandonStaleCall())
+        assertNotNull("the call stays until a close is stored", f.day.visitSession.current.value)
+        assertTrue(f.day.capture.phoneMarks().isEmpty()); assertNull(f.day.rolloverNotice.value.abandonedDate)
+    }
+
+    /** D-AGATE-18: a dropped draft's notice is rebuilt after a kill from its marker, and only when a draft was really dropped. */
+    @Test fun theDroppedDraftNoticeSurvivesAKillAndNothingIsToldWhenNothingWasDropped() = runBlocking {
+        val v = f.openCall(); f.stockedCatalog()
+        val vm = f.saleViewModel(); day().sale.prepare(); vm.start(day().sale.saleVisit(v))
+        SrLockFixture.await("drafted") { day().sale.flow.state.value.draft?.visitUuid == v.visitUuid }
+        vm.setQuantity(105, 2, QtyUnit.DOZEN)
+        SrLockFixture.await("two dozen") { day().sale.flow.state.value.draft?.lines?.isNotEmpty() == true }
+        f.trustAt(at(next(), 4, 0))
+        f.day.resumeDay()
+        assertTrue(f.day.rolloverNotice.value.draftDropped)
+        f.day.rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice() // the process dies before the screen
+        f.day.resumeDay()
+        assertTrue("told again from the stored marker", f.day.rolloverNotice.value.draftDropped)
+        f.day.dismissRolloverNotice(); f.day.resumeDay()
+        assertFalse(f.day.rolloverNotice.value.any)
+        // nothing open: nothing dropped, no edit notice
+        assertFalse(f.day.dropStaleEdit()); assertFalse(f.day.rolloverNotice.value.editDropped)
+    }
+
+    /** D-AGATE-18: Attendance is not usable until the first resumeDay result is in (check-in refused with a "one moment" state), then it opens. */
+    @Test fun attendanceIsNotUsableUntilTheFirstResumeDayResultIsIn() = runBlocking {
+        SrLockFixture(context, latePolicy = null, settled = false).use { g ->
+            assertTrue(g.day.attendance.state.value.settling); assertFalse("check-in stays off", g.day.attendance.state.value.checkInEnabled)
+            assertEquals("a press is ignored", com.aktcl.aron.feature.attendance.AttendanceResult.Ignored, g.day.attendance.checkIn())
+            g.day.resumeDay()
+            assertFalse("the screen opens with the first result", g.day.attendance.state.value.settling)
+        }
+    }
+
     private fun day() = f.day
 }

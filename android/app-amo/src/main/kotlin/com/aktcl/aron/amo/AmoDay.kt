@@ -339,9 +339,10 @@ class AmoDay(
         return dropped
     }
 
+    /** The day's one background scope (visit flow and the notice's marker clean-up). */
+    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
     private val resumeLock = kotlinx.coroutines.sync.Mutex()
     private val fixLock = kotlinx.coroutines.sync.Mutex()
-    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
 
     /** The ONE sequence of a start, a resume, the midnight timer and the end of an open call (see SrDay.resumeDay): the location attempt runs outside the resume lock. */
     suspend fun resumeDay() {
@@ -439,7 +440,7 @@ class AmoDay(
         },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
-        background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default),
+        background = background,
     )
 
     val outletRequests = OutletRequests(

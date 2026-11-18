@@ -62,6 +62,8 @@ internal class SrLockFixture(
     context: Context, latePolicy: String?, checkoutMinutes: Int? = null,
     /** A transport factory for a SAVED printer (the printer assist tests); null: no printer is saved, as before. */
     printerTransports: com.aktcl.aron.core.printing.bt.PrinterTransportFactory? = null,
+    /** The production start has run (resumeDay's first result is in, so Attendance is usable); false keeps the day in its first-moment state (D-AGATE-18). */
+    private val settled: Boolean = true,
 ) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
@@ -111,6 +113,7 @@ internal class SrLockFixture(
 
     val day = SrDay(7L, context, db, components, SyncScheduler.None, fixManager, printerManager, "sr", memoNumbering = MemoNumbering("sr334001", 0, 500), parentJob = work.dayJob, checkoutMinutes = checkoutMinutes?.let { m -> { m } })
         .also { it.routeId = route } // reload() would read it from the bundle
+    init { if (settled) day.attendance.settle() }
 
     val date: String get() = day.businessDate()
 

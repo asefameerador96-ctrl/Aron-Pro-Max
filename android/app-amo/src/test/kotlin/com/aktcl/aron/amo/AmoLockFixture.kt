@@ -61,7 +61,7 @@ import java.io.File
  * `day.sale.new…ViewModel()` directly) and hands a screen it shows to [own]. [close] lets that work finish, cancels and
  * joins it, drains Room, and only then closes the database; a test restores its exception catchers after [close].
  */
-internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoCloseable {
+internal class AmoLockFixture(context: Context, latePolicy: String?, private val settled: Boolean = true) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
         .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
@@ -113,6 +113,7 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoClose
     }, work.printerScope)
 
     val day = AmoDay(9L, context, db, components, SyncScheduler.None, fixManager, printerManager, "amo", memoNumbering = MemoNumbering("amo334001", 0, 500), parentJob = work.dayJob)
+    init { if (settled) day.attendance.settle() } // the production start has run (D-AGATE-18)
 
     val date: String get() = day.businessDate()
 
