@@ -396,7 +396,7 @@ data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
-    /** Contract 1.20.0, `check_out` only: `rep` (also what an absent member means) or `phone` (the phone closed a forgotten day at a later start; read as "no check-out"). */
+    /** Contract 1.19.0, meant for a `check_out`: `rep` (also what an absent member means; accepted on a check-in) or `phone` (the phone closed a forgotten day at a later start, one location attempt whose reading is kept on the attendance row only; read as "no check-out"; refused on a check-in). */
     @SerialName("closed_by") val closedBy: String? = null,
 )
 

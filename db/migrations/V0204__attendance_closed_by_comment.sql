@@ -1,0 +1,4 @@
+-- V0204 (train 117 follow-up; lead review of 1c8c3cb0, low): the comment of attendance_event.closed_by (V0201) said the phone close has "no location". The ruling is ONE location attempt whose reading,
+-- if any, is stored with the attendance row and nowhere else (no geo_fix, not the newest location, no geo risk rule). V0201 is never edited: a new COMMENT replaces it. Metadata only.
+SET lock_timeout = '5s';
+COMMENT ON COLUMN app.attendance_event.closed_by IS 'Who closed a check-out: rep (the rep pressed check-out; every check-in and every record of an older phone) or phone (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is kept on this row only: never a geo_fix, never the newest location). A phone close is read everywhere as "no check-out"; a real check-out of the same day outranks it.';

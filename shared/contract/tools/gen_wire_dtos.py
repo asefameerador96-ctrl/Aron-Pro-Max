@@ -138,6 +138,16 @@ def ktype(s, owner, prop):
     raise SystemExit(f"unmapped {owner}.{prop}: {s}")
 
 
+# Hand-written member comments, kept HERE so the generated file stays reproducible (gen_wire_dtos.py --check is clean). (class, property) -> the comment line emitted before the member;
+# a text starting with "//" is a line comment, anything else becomes a KDoc.
+MEMBER_DOCS = {
+    ("AttendanceEventPayload", "closed_by"): "Contract 1.19.0, meant for a `check_out`: `rep` (also what an absent member means; accepted on a check-in) or `phone` (the phone closed a forgotten day at a later start, one location attempt whose reading is kept on the attendance row only; read as \"no check-out\"; refused on a check-in).",
+    ("RouteDayState", "late_rows_after_sales_submit"): "Contract 1.16.0 (supervisor reads only): memos and due collections captured after the Sales Submit and stored before the Final Submit.",
+    ("RouteDayState", "late_rows_anchor"): "Contract 1.16.0: `phone` or `server`, whose clock stamped the Sales Submit the late-row count is measured from.",
+    ("TargetAchievementRow", "report_unit"): "// Contract 1.11.2 (D-AMO-FND-16): the same figures in the field unit (rule 5), summed per SKU after conversion; absent from older servers.",
+}
+
+
 def schema_members(sch):
     if "allOf" in sch:
         props, req = {}, []
@@ -180,6 +190,9 @@ def emit_class(name, sch, owner_for_nested):
             decl, default = f"{t}?", " = null"
             if t in WIRE_NULLS:
                 prefix = f"@Serializable(with = {t}Wire::class) "
+        note = MEMBER_DOCS.get((name, p))
+        if note:
+            lines.append(f"    {note}" if note.startswith("//") else f"    /** {note} */")
         lines.append(f'    {prefix}@SerialName("{p}") val {kt_name(p)}: {decl}{default},')
     secret = [p for p in props if is_secret(p)]
     if secret:

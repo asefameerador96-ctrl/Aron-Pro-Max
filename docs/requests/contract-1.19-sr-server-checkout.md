@@ -11,11 +11,12 @@ Contract 1.19.0 and migrations V0201..V0203 are FINAL (lead, 2026-11-18, by land
 
 ## Behaviour (A): `closed_by`
 
-* Only on a `check_out`. A `check_in` that carries it is refused `schema_invalid` (final); so is any value other than `rep` or `phone`. Absent means `rep` (every phone before this round).
-* `phone` = the phone closed a forgotten day at a later start (no location read). The record is stored and acknowledged `accepted` (idempotent by `client_uuid` like any record), but it is read
+* Meant for a `check_out`. `rep` on a `check_in` is accepted (it means the rep); `phone` on a `check_in` is refused `schema_invalid` (final), and so is any value other than the text `rep` or `phone`, or an explicit `null` (null is NOT allowed). The refusal names its reason in the stored detail (`closed_by must be rep or phone, got '...'`, `closed_by must be the text rep or phone`, `closed_by phone is only for a check_out`). Absent means `rep` (every phone before this round).
+* `phone` = the phone closed a forgotten day at a later start (one location attempt; its reading, if any, is kept on the attendance row only). The record is stored and acknowledged `accepted` (idempotent by `client_uuid` like any record), but it is read
   everywhere as "no check-out": no check-out time and no hours (`dw.fact_attendance.check_out_*` stay empty, so `dw.v_attendance.check_out_at`/`hours_in_field` and the attendance report `gigo` show none),
   AMO `supervisor_day.checked_out_at` is not set, it is never judged by `cfg.day.checkout_earliest_time` (no `checkout_too_early`), and `CHECKOUT_WITHOUT_SUBMIT` is not judged for it.
 * Uniqueness (V0202, its own migration): at most one REP row per user, day and kind and at most one phone close per user and day, so a real check-out of the same day outranks a phone close whatever the arrival order (both are stored; every reader looks at the rep rows). `closed_by = rep` on a check-in is accepted; `phone` on a check-in is refused `schema_invalid`. A phone close's fix is never a geo_fix (not the newest location, no geo risk rule).
+* The web paper backfill (registry flag `manual_entry`) is not a route capture for the worker late raise: the paper backfill stays exempt.
 * **Order of deployment:** `PayloadShapes` is strict, so an older server refuses the member `schema_invalid`. The server ships (migration V0201 first, then the API) before any phone sends it.
 
 ## Behaviour (B): `CHECKOUT_WITHOUT_SUBMIT`
