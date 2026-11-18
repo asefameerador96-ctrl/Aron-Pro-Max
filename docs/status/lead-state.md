@@ -198,3 +198,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Told: A-GATE7 (merge, closed_by on the wire, then final pass and landing as one unit), SV6, L-A11, T-KPI1, P-AMO3, A-PROG1, P-TSO (nudged for its missing 'checked').
 - P-SR1b: four messages had not reached its turn; fifth sent as an interrupt 06:11 (fix the AMO out-of-range defect first).
 - gates closing round d9997b8a PASS (7 small follow-ups sent); integrity lows closed at 4bd1b1aa (final pass owed, incl. the removed test D-AINT-13).
+
+
+### 2026-11-18 06:25 update: train 117 migrate console read (ops-diagnose 44249846071)
+- Flyway on dev, verbatim: 'Current version of schema "public": 0200'; migrating to 0201, 0202, 0203; 'Successfully applied 3 migrations to schema "public", now at version v0203'; container exit code 0 (05:58:41 to 05:58:47 UTC).
+- No ERROR lines in the window; no SQLTransientConnectionException, no 'aggregation pass failed', no CHECKOUT_WITHOUT_SUBMIT text. Worker revision --0000226 running, first aggregation pass 20098 ms.
+- Not seen: any pre-flight line (the log has none of the words preflight, V0191, V0199, repair). To check: whether the pre-flight logs at all when it has nothing to do (backlog, low).
+- Loyalty fix round 2 (d88b751b) and TSO slice 1 (bfea7197) under review.
