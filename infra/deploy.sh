@@ -30,13 +30,13 @@ cd "$(dirname "$0")/.." || exit 1
 # PROFILE picks the parameter files (infra/params/<profile>*.bicepparam); ENV_NAME is the environment in resource
 # names. dev-lite is the cheap TEST profile of the same dev environment (docs/28), so both deploy the dev names.
 PROFILE="${1:-dev}"
-case "$PROFILE" in dev|dev-lite|stage|prod) ;; *) die "profile must be dev, dev-lite, stage or prod, was $PROFILE" ;; esac
+case "$PROFILE" in dev|dev-lite|stage|stage-lite|prod) ;; *) die "profile must be dev, dev-lite, stage, stage-lite or prod, was $PROFILE" ;; esac
 ENV_NAME="${PROFILE%-lite}"
 # stage and prod exist only in the FINAL account (docs/28, docs/30 s1): nothing deploys them while the owner has not
 # switched the final account on (repository variable ARON_FINAL_ACCOUNT=true; deploy.yml passes it, a person exports it).
 # deploy.yml and promote-prod.yml check the same switch, so this is the third and last line.
 case "$PROFILE" in
-  stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die "profile $PROFILE is deployed only in the final Azure account: ARON_FINAL_ACCOUNT is not true (docs/28)" ;;
+  stage|stage-lite|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die "profile $PROFILE is deployed only in the final Azure account: ARON_FINAL_ACCOUNT is not true (docs/28)" ;;
 esac
 need AZURE_RESOURCE_GROUP "the resource group to deploy into"
 need ARON_ALERT_EMAILS "who receives the budget and platform alerts"

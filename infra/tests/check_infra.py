@@ -541,9 +541,9 @@ class SizingParameters(unittest.TestCase):
         self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
         # D-FINAL-INFRA-03: stage is deployable (final account only); prod is still never offered by hand.
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('case "$PROFILE" in dev|dev-lite|stage|prod) ;;', d)
+        self.assertIn('case "$PROFILE" in dev|dev-lite|stage|stage-lite|prod) ;;', d)
         options = self.wf("deploy.yml").split("options:")[1].split("\n")[0]
-        self.assertEqual(options.strip(), "[dev, dev-lite, stage]")
+        self.assertEqual(options.strip(), "[dev, dev-lite, stage, stage-lite]")
         self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy (promote-prod only)")
 
     def test_promotion_workflows_are_inert_until_the_final_account(self):
@@ -654,7 +654,7 @@ class Workflows(unittest.TestCase):
         self.assertNotRegex(d, r"client-secret|creds:", "OIDC only, no client secret")
         for sname in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"):
             self.assertIn(f"secrets.{sname}", d)
-        self.assertIn("environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || ((inputs.environment || 'dev') == 'stage' && 'azure-stage' || 'azure-dev') }}", d,
+        self.assertIn("environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || (startsWith(inputs.environment || 'dev', 'stage') && 'azure-stage' || 'azure-dev') }}", d,
                       "dev and dev-lite keep azure-dev; stage and prod have their own environments")
         self.assertIn(f"INTEGRATION_BRANCH: {INTEGRATION_BRANCH}", d)
         # The exact guard (an inverted comparison would let every other branch deploy).
@@ -2446,11 +2446,11 @@ class FinalAccountStage(unittest.TestCase):
 
     def test_deploy_script_refuses_stage_and_prod_without_the_final_account_switch(self):
         d = self.deploy_sh()
-        self.assertIn('stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die', d)
+        self.assertIn('stage|stage-lite|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ] || die', d)
         # before anything touches Azure (the first `az` call is the freeze check's group lookup)
-        self.assertLess(d.index('stage|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ]'), d.index("az group show"))
+        self.assertLess(d.index('stage|stage-lite|prod) [ "${ARON_FINAL_ACCOUNT:-}" = true ]'), d.index("az group show"))
         import subprocess
-        for prof, final, want in (("stage", "", 1), ("prod", "false", 1), ("stage", "true", None), ("bogus", "true", 1)):
+        for prof, final, want in (("stage-lite", "", 1), ("stage", "", 1), ("prod", "false", 1), ("stage", "true", None), ("bogus", "true", 1)):
             r = subprocess.run(["bash", str(ROOT / "infra" / "deploy.sh"), prof],
                                env={k: v for k, v in dict(os.environ, ARON_FINAL_ACCOUNT=final).items() if k not in ("AZURE_RESOURCE_GROUP",)},
                                capture_output=True, text=True, cwd=ROOT, timeout=60)
@@ -2483,9 +2483,11 @@ class FinalAccountStage(unittest.TestCase):
     def test_deploy_workflow_guards_stage_and_prod_before_any_azure_sign_in(self):
         d = self.wf("deploy.yml")
         step = d[d.index("- name: Deploy only from the integration branch"):d.index("- name: Check the Azure secrets")]
-        self.assertIn('if [ "${ENV_NAME}" = stage ] || [ "${ENV_NAME}" = prod ]; then', step)
+        self.assertIn('if [[ "${ENV_NAME}" == stage* ]] || [ "${ENV_NAME}" = prod ]; then', step, "stage-lite is guarded like stage, never azure-dev")
+        self.assertIn('elif [[ "${ENV_NAME}" == stage* ]]; then', step)
+        self.assertIn("Deploy to ${{ inputs.environment == 'stage-lite' && 'stage' || inputs.environment || 'dev' }}", d, "promote-prod finds the soak job")
         self.assertIn('[ "${FINAL}" = "true" ] ||', step.split('if [ "${ENV_NAME}" = prod ]; then')[0], "final account first")
-        self.assertIn('gh_env="azure-${ENV_NAME}"', step)
+        self.assertIn('gh_env="azure-${ENV_NAME%-lite}"', step)
         self.assertIn('select(.type == "required_reviewers")', step, "an environment without a required reviewer is refused")
         self.assertIn("refusing to deploy", step, "an unreadable environment is a refusal (fail closed)")
         self.assertIn('[ "${REF}" = "refs/heads/main" ]', step, "stage deploys what the daily gate merged into main")
@@ -2498,6 +2500,20 @@ class FinalAccountStage(unittest.TestCase):
         trig = d[d.index("  workflow_run:"):d.index("  workflow_call:")]
         self.assertIn(f"branches: [{INTEGRATION_BRANCH}]", trig)
         self.assertNotIn("main", trig)
+
+    def test_stage_lite_is_the_same_environment_with_a_smaller_size(self):
+        lite, st = params("stage-lite.parameters.json"), params("stage.parameters.json")
+        self.assertEqual(lite["environmentName"], "stage", "same names, group and GitHub environment as stage")
+        self.assertEqual(params("stage-lite.apps.parameters.json")["environmentName"], "stage")
+        self.assertEqual(lite["postgresSkuName"], "Standard_D2ds_v5")
+        self.assertEqual(lite["postgresStorageSizeGb"], 128)
+        self.assertIs(lite["postgresReadReplica"], False)
+        for k in ("privateNetworking", "deployFrontDoor", "frontDoorSku", "postgresHaMode", "containerEnvZoneRedundant",
+                  "vnetAddressPrefix", "privateEndpointSubnetPrefix", "frontDoorPrivateLink"):
+            self.assertEqual(lite.get(k), st.get(k), f"stage-lite keeps the stage shape in {k}")
+        self.assertLess(lite["budgetAmount"], st["budgetAmount"])
+        self.assertEqual(params("stage-lite.apps.parameters.json")["apiMaxReplicas"], 3)
+        self.assertNotIn("param devSeed = true", (ROOT / "infra" / "params" / "stage-lite.apps.bicepparam").read_text(encoding="utf-8"))
 
     def test_ops_workflows_stay_dev_only(self):
         for name in ("drill.yml", "reset.yml", "acr-purge.yml", "cost-report.yml", "ops-diagnose.yml"):

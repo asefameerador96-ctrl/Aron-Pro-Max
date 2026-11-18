@@ -44,9 +44,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile, stage = staging in the FINAL account (run from main; needs ARON_FINAL_ACCOUNT=true and the azure-stage environment with its reviewer). prod is never offered here (it deploys only through promote-prod.yml).
+        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile, stage = staging in the FINAL account (stage-lite = its cheaper parameter set; run from main; needs ARON_FINAL_ACCOUNT=true and the azure-stage environment with its reviewer). prod is never offered here (it deploys only through promote-prod.yml).
         type: choice
-        options: [dev, dev-lite, stage]
+        options: [dev, dev-lite, stage, stage-lite]
         default: dev
       run_migrations:
         description: Run the database migrations job before the apps (untick only to redeploy apps without a migration)
@@ -72,7 +72,8 @@ env:
 
 jobs:
   deploy:
-    name: Deploy to ${{ inputs.environment || 'dev' }}
+    # stage-lite is the same environment as stage, so promote-prod's soak check finds the job under the name "Deploy to stage".
+    name: Deploy to ${{ inputs.environment == 'stage-lite' && 'stage' || inputs.environment || 'dev' }}
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     # One deploy per environment at a time, never cancelled mid-flight; GitHub keeps one pending run and a newer one
     # replaces it, so after a burst of pushes only the newest green head deploys. The group sits on the JOB (CI audit
@@ -84,7 +85,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || ((inputs.environment || 'dev') == 'stage' && 'azure-stage' || 'azure-dev') }}
+    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || (startsWith(inputs.environment || 'dev', 'stage') && 'azure-stage' || 'azure-dev') }}
     env:
       ENV_NAME: ${{ inputs.environment || 'dev' }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -113,12 +114,12 @@ jobs:
         run: |
           # docs/30 s2: dev and dev-lite come from the integration branch; stage only from main; prod only from a release
           # tag on main, through promote-prod.yml (the azure-prod environment adds the required approver).
-          if [ "${ENV_NAME}" = stage ] || [ "${ENV_NAME}" = prod ]; then
+          if [[ "${ENV_NAME}" == stage* ]] || [ "${ENV_NAME}" = prod ]; then
             # The final account only, and only into a GitHub environment that exists WITH a required reviewer: GitHub
             # creates a missing environment unprotected on first use, which would deploy without the owner's approval.
             # Fails closed: an unreadable answer is a refusal. Runs before any Azure sign-in.
             [ "${FINAL}" = "true" ] || { echo "::error::no ${ENV_NAME} before the final account exists (ARON_FINAL_ACCOUNT, docs/28)"; exit 1; }
-            gh_env="azure-${ENV_NAME}"
+            gh_env="azure-${ENV_NAME%-lite}"
             reviewers="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${gh_env}" \
               --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null)" \
               || { echo "::error::cannot read the GitHub environment ${gh_env} (does it exist? does this token have actions: read?); refusing to deploy ${ENV_NAME}"; exit 1; }
@@ -136,7 +137,7 @@ jobs:
               refs/tags/server-v[0-9]*) echo "prod release ${REF#refs/tags/}" ;;
               *) echo "::error::prod deploys only from a server-vX.Y.Z release tag through promote-prod.yml; this run is on ${REF}."; exit 1 ;;
             esac
-          elif [ "${ENV_NAME}" = stage ]; then
+          elif [[ "${ENV_NAME}" == stage* ]]; then
             # staging deploys what the daily gate merged into main (docs/30 s2 step 4), never an integration-branch commit
             [ "${REF}" = "refs/heads/main" ] || { echo "::error::stage deploys only from main (the daily gate), not ${REF}"; exit 1; }
           elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
