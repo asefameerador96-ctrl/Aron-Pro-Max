@@ -496,3 +496,125 @@ LOWS:
 - monthAwaitingOf calls memosOfMonth for up to 24 months, and each call re-reads the acked set, the uncertain set and the outbox per memo. That is an N+1 read on the IO thread at every page load and after every fetch.
 - When two routes of one month have the same read date, merge keeps the first one's as_of and ignores ties. This is cosmetic.
 - Not verified: any build, unit, screenshot or lint run; the three new PNGs; whether the server counts quarantined memos in programme figures; the server's quarter interpretation matching the phone's; and device behaviour (StrictMode, cancellation at logout).
+
+
+## Re-review 85b992cfd..b2f7b94ca (round 3), 2026-11-18
+
+Read from code only; nothing built, run or walked on a device.
+
+### five-fixes verdict=fail
+SUMMARY: Read-only review of 85b992cfd..b2f7b94ca (2 commits, 28 files). I ran the fetch; the ref was already at b2f7b94ca. I read the diff and the files at the head with git show and diffed the parity copy against the backend source by hand. Nothing was built, run, linted or rendered, and I did not view any golden PNG.
+
+Four of the five previous blockers are fixed, judged by reading the real code paths. One gap remains, in the quarantine fix for redemptions.
+
+(1) Quarantine, memos: fixed.
+- readState now returns "quarantined" before any other check. FigureRuleB leaves quarantined memos out of `live` and out of the no-order NEVER_SENT branch. tainted() treats a quarantined ancestor as uncertain, so an edit of a held memo is held with it.
+- BundleDownloader records quarantinedUuids() together with sentUnanswered() under the lock. A memo held when the request left therefore reads `uncertain` once the resolution arrives: never added, shown as awaiting. A real ProgrammeStoreTest exercises this.
+- A resolved_* acknowledgement that is not in the set is excluded from `add` and counted in awaiting. Discarded means rejected, which means gone.
+- A quarantined edit of an acknowledged memo is not a killer, so the old memo is left alone. Once the edit is resolved after the request, the old memo is subtracted and the edit counts as awaiting, which keeps the figure consistent with its note.
+- The same fix does not reach redemptions; see the blocker below.
+
+(2) Record types: fixed.
+- The lists are now memo, memo_void and redemption, gift_choice, checked in OrderRecordTypesTest against the contract RecordType enum.
+- RecordMapping.amoRecord writes the contract wire type into outbox.record_type, so a gift choice row really is 'gift_choice'.
+- ProgrammeStoreTest saves a redemption and a gift choice through saveProgramme, acknowledges them, and finds both in the set.
+
+(3) Set scope: fixed.
+- Memos are windowed from the first of the bundle month minus 2 months. Rule B only does arithmetic on the bundle month, and every 3-month quarter that contains that month starts at most 2 months earlier, so the window covers it for any start month.
+- Redemptions and gift choices have no date cut, tested at DAO level with a previous-month redemption.
+- LocalPurge deletes an amo_record and its outbox row in one transaction. A purged redemption therefore leaves the phone's redemption list and the set together, so there is no double subtraction. The remaining edge (a purge before any newer bundle arrives) is listed under lows.
+
+(4) Quarter naming: fixed.
+- AsthaQuarters uses integer arithmetic only. Math.floorMod and floorDiv on Int exist since Java 8 and Android API 24.
+- The parity copy matches backend/platform/AsthaQuarter.kt line for line (only the type name changed), and the test runs every month of 2020 to 2035 for every start month.
+- Every phone entry point now goes through AsthaQuarters: the target page's start month and year list, monthsOfQuarter, the quarter key, and GiftChoiceModel.quarterOf (used by the gift selection and gift photo hosts).
+- Drift is guarded only by the request file; the backend does not call the shared function yet (low).
+
+(5) Final month: fixed.
+- readSideOf runs under SyncEngine.underUserLock before AsthaQuarterFetcher sends its first page. A memo counts as outstanding if it is pending, in flight, quarantined, uncertain, or acknowledged but not in the recorded set (inside the window).
+- clean and awaiting are stored in each route-month file. Merging routes ANDs clean and adds awaiting counts. isFinal requires both endedAtRead and clean == true; a file without the flag is never final.
+- The labels distinguish open from unsettled, and the awaiting line survives a kill. A month that is not final is re-read once per online page open. It is not a loop, because LaunchedEffect(quarterKey, lacking) does not restart, but a permanently held memo makes every online open re-read that quarter (low).
+
+Tests: I found no weakened assertion. The changed expectations (GiftChoiceModelTest's Feb 2026 start-4 key, now 2026-Q4; the start-7 chips, now 2026-04..06; the BundleDownloaderTest window date; clean = true added to existing fixtures) follow the corrected server naming and the new finality rule. New tests drive real outbox rows through CaptureRepository.
+
+Strings: pg_held_review and pg_as_of_unsettled are present in both values and values-bn.
+
+Shared and core modules: OutboxDao gains new queries and the rename, BundleDownloader is touched only on the SR-only trackUncertain path, SyncEngine gains a new public underUserLock, and shared/rules gains a new file. Nothing else calls the renamed symbols, so I see no breakage risk for the AMO or TSO apps or the backend, subject to the unverified build question about Math in commonMain (see lows).
+
+#### BLOCKING upheld=3/3: A quarantined (held) redemption is still subtracted from the points balance with no note; the 'never added or subtracted' rule this commit states for it is not applied
+WHERE: android/app-sr/.../ProgrammeStore.kt readState (`outboxState == "quarantined" -> "quarantined"` is now the FIRST branch) used by redemptions() (l.47); android/feature-programmes/.../RedemptionModel.kt LocalRedeemed.points filters only rejected/uncertain and LocalRedeemed.awaiting counts only uncertain; OutboxDao.quarantinedUuids (memo AND redemption) and its comment 'recorded with the unanswered ones and never added or subtracted'; BundleDownloader adds those uuids to KEY_BUNDLE_UNCERTAIN
+WHY: The fix records held redemptions in the unsure set, but readState now returns 'quarantined' before it looks at that set. So while the row is still held, points() treats it as an ordinary local spend that is not in the set and subtracts it. The server can commit a held redemption without any upload ack (a reviewer accepts it, a sweep). Resolutions reach the phone only through batch answers and deltas, so a full bundle built after the server accepted it already carries the deduction. The phone then deducts it a second time. No awaiting or held note exists on the points or redemption screens: LocalRedeemed.awaiting counts only uncertain rows, and heldForReview exists only on the Astha page. This is a points balance that can be wrong without a note. The same ordering existed before for quarantined rows not in the set, but this commit claims to fix it (DAO comment, BundleDownloader) and the fix is not real for redemptions. No test covers a quarantined redemption.
+SCENARIO: 1. Outlet 10, programme 3. The bundle balance is 1,200. The SR redeems 500 points and the server answers 'quarantined' (held for review).
+2. 09:00: an admin accepts it on the server. The resolution is not yet on the phone: no upload batch has run and no delta has been polled.
+3. 09:30: a full bundle is requested. R is still quarantined, so it goes into the unsure set. The server builds the balance as 700, with R deducted.
+4. Outlet points shows 700 - 500 = 200, with no awaiting or held line. A 400-point gift the server would allow is refused on the phone. This lasts until the resolution arrives (then readState gives 'uncertain', R is no longer subtracted, and it is shown as awaiting).
+Fix direction: either do not subtract a quarantined redemption and count it in LocalRedeemed.awaiting, or keep subtracting it (conservative) and show a held-for-review line on the points and redemption screens. Add a ProgrammeStoreTest case with a real quarantined redemption row.
+
+LOWS:
+- Commit 1 adds FigureRuleB.show(countOnAnyLine) for the per-SKU memo count, but nothing in production calls FigureRuleB.show; only FigureRuleBTest does. The 'memo count per section definitions' change is not wired into any screen.
+- readSideOf counts a memo acknowledged after the last bundle request but before the read request as outstanding. Such a memo IS in the read, because it was acknowledged before the read was sent. The month then shows 'N memos awaiting confirmation; the figures update after the next sync' while the figure already holds them, and it is re-read on every online open until the next bundle request puts them in the set. The figure is not wrong, but the note is misleading.
+- Fetch volume: a past month that can never become clean (a permanently quarantined memo, or the server sending a month outside the computed quarter, which gets no side and so clean = null) is re-read for every route, up to 40 pages each, on every online opening of that quarter. TargetBody's LaunchedEffect runs again on each shop entry too. It is bounded per open, not a loop. The current quarter's future months already behave this way (an earlier low). Consider a once-per-day throttle per quarter.
+- A memo with routeId null is counted in readSideOf for every route of the read, and merge adds the route counts, so it is shown twice in the month's awaiting line.
+- quarantinedUuids is a literal ('memo', 'redemption'), not derived from the order lists. A quarantined gift_choice is not recorded as unsure, and GiftChoiceModel.stateOf has no held state.
+- Parity drift: AsthaQuartersParityTest compares against a copy of the server function. Today the copy matches backend/platform AsthaQuarter.kt exactly, but the backend still uses its own AsthaQuarter (BundleProgrammes, AsthaTargetUpload), and no backend-side test exists. A server change would only be caught if someone updates the copy. The request docs/requests/astha-quarter-shared-function.md is filed but not done.
+- shared/rules commonMain now uses java.lang.Math (floorMod, floorDiv). It is the only JVM API in commonMain; the module's own code avoids it (Formats has a private Long.floorMod, BusinessDate uses stdlib floorDiv). It compiles with the single jvm() target as far as I know, and the API level is 24, which is fine for minSdk 26. Stdlib Int.mod and floorDiv would keep it portable. Not built.
+- The quarter picker labels (pg_quarters, fixed 'Q-4 (Oct-Dec)') still assume January. With start month 7, 'Q-4 (Oct-Dec)' shows April to June, and AsthaScreensTest still selects by that mislabel.
+- GiftSelectionHost and the gift photo host (ProgrammeHosts l.201 and l.241) still fall back to start month 1 when the config key is missing, while the target page shows 'quarter unknown'. GiftChoiceModel.quarterOf returns '<year>-Q1' for a malformed date instead of refusing.
+- An edit of a held memo is counted in both the held line (the original) and the awaiting line (the edit), so one sale appears twice. The English strings pg_held_review and pg_order_unknown have no plural form ('1 memos').
+- readSideOf runs memosOfMonth (N+1 outbox reads per memo) for 3 months x routes while holding the user's sync lock, which delays an upload briefly. If an upload batch is slow, the read waits, and the page stays LOADING until it finishes.
+- Purge edge, pre-existing: an acknowledged redemption is purged (outbox and amo_record together) after 7 business days plus 3 days. If no newer bundle was stored in that time, the held bundle balance lacks it and the phone no longer subtracts it, so the balance is overstated. This is unlikely, since the acknowledgement needed connectivity.
+- Not verified: any build, unit, Robolectric, screenshot or lint run; whether Kotlin 2.4 K2 accepts java.lang.Math in commonMain; whether full bundles carry resolutions (I saw them only in deltas and batch answers); whether the server counts acknowledged memos in Astha reads synchronously; the Bangla wording of the two new strings beyond reading them; device behaviour.
+
+### regressions-shared-core verdict=pass
+SUMMARY: Regression-lens review of the delta 85b992cfd..b2f7b94ca (28 files). This was read-only: nothing was built or run.
+
+Files changed outside app-sr:
+- core-database OutboxDao: ackedOrderUuids is split into ackedMemoOrderUuids(from), ackedProgrammeOrderUuids() with no date cut, and the new quarantinedUuids(). The type lists are now memo/memo_void and redemption/gift_choice; amo_record is gone.
+- core-database OrderRecordTypesTest: rewritten against the contract's RecordType.
+- core-sync BundleDownloader.fetch: the uncertain list is now sentUnanswered plus quarantined. The memo window is the bundle month minus 2 months, using java.time (fine at minSdk 26).
+- core-sync SyncEngine: new public underUserLock.
+- core-sync BundleDownloaderTest: the September row moved to June; two tests added.
+- shared/rules: new AsthaQuarters plus a parity test.
+- ui-screenshots: one helper now passes clean=true.
+
+No change in core-media, core-network, core-common, app-amo or app-tso. No Room entity, schema JSON or Database version changed, so no migration is needed. HardcodedStringScan and the gate scans are not in the diff.
+
+AMO/TSO impact:
+- The DAO rename has no callers outside BundleDownloader.
+- trackUncertain is true only in the SR SessionModule, so AMO and TSO record nothing new. feature-programmes is a dependency of app-sr only.
+- shared:rules is used by backend:platform and by every app through core-common. The new object is additive and nothing else uses it yet.
+
+underUserLock:
+- It wraps the same kotlinx Mutex as SyncEngine.run, which is not reentrant. Its only caller is SrDay.readAsthaQuarter.
+- That block only reads Room (readSideOf, ackedBeforeRequest). It is released before the network fetch, and it never runs inside a sync run. The downloader takes its own lock first and then the sync lock; this path takes only the sync lock. I found no deadlock and no lock held across a network call.
+- It can wait behind a whole sync run, which holds the lock across its upload network calls. The page stays on LOADING meanwhile. Uploads are never frozen by it.
+
+New outbox queries:
+- They are suspend Room calls (off main) and filter on state='acked' or 'quarantined'. The existing (state, seq) index covers that, so the cost is fine with thousands of rows.
+
+Quarter key:
+- The backend/platform AsthaQuarter.of names a quarter by the year of its first month. For 2026-02 with start month 4 it gives first = 2026-01, qIndex 4, so the label is "2026-Q4".
+- The changed expectation (from 2025-Q4 to 2026-Q4) is therefore correct. The parity test copies the server's algorithm verbatim.
+- The test changes I checked match the new rules, and I found no weakened assertion.
+
+Strings: pg_held_review and pg_as_of_unsettled exist in both en and bn, and nothing new is hardcoded.
+
+One blocking defect in core-sync: putting quarantined uuids into the uncertain list makes refreshIfUncertainResolved fetch a full day bundle again and again while a memo is held for review.
+
+Not verified: compilation (in particular java.lang.Math inside commonMain with the single jvm target), any test, screenshot or lint run, device behaviour, the real size of the SR full bundle, and whether the server itself uses the same quarter function for gift-choice validation.
+
+LOWS:
+- SyncEngine.underUserLock is a new public API over a non-reentrant kotlinx Mutex, and the code does not guard against misuse. A future caller that calls SyncEngine.run, or BundleDownloader.download (which takes the same sync lock), inside the block deadlocks. A caller that makes a network call inside it blocks uploads for that time. Suggest making it internal to core-sync with a narrow function such as `recordAtReadRequest`, or documenting the rule and adding a test that it is never called from a sync run. Today's only caller (SrDay.readAsthaQuarter) only reads Room inside it and is safe. It can wait behind a full sync run, upload network calls included, so the page shows LOADING meanwhile.
+- shared/rules/src/commonMain/.../AsthaQuarters.kt calls java.lang.Math.floorDiv/floorMod. This is the first JVM API used in commonMain of shared:rules: every other match for Math. or java. in shared commonMain is in a comment, and the module otherwise sticks to common Kotlin. It compiles only because the root build declares a single jvm() target. A JS or wasm target for the web would break it. Kotlin's Int.floorDiv/mod would be portable. The API level (24) is within the 26 rule. Not verified by a build.
+- The backend's AsthaQuarter still has its own copy of the algorithm (docs/requests/astha-quarter-shared-function.md is only a request). Parity is pinned by AsthaQuartersParityTest's verbatim copy, not by the server calling the shared function. If the server code changes, that test keeps passing against its stale copy. Suggest a backend test that compares AsthaQuarter.of with AsthaQuarters.of directly (backend:platform already depends on shared:rules).
+- The quarter expectation change in GiftChoiceModelTest (2026-02 with start month 4: from 2025-Q4 to 2026-Q4) is CORRECT per the backend source. AsthaQuarter.of computes first = 2026-01 and qIndex = floorMod(1-4,12)/3+1 = 4, so the label is '2026-Q4'. The AsthaScreensTest change for start month 7 (Q4 = 2026-04..06) matches the server's parse() too. The fixed picker label 'Q-4 (Oct-Dec)' still mislabels it (a low carried over from the previous pass).
+- BundleDownloaderTest: the 'lastMonth' row moved from 2026-09-30 to 2026-06-30 so that the old exclusion still holds under the new window, which now starts two months before the bundle month. It is not weakened, but no test now asserts that a memo from the in-window previous months (for example 2026-08 or 2026-09) IS in the set, and that inclusion is the new behaviour.
+- OrderRecordTypesTest is rewritten. The old assertion that amo_record is in the list is now its inverse (amo_record not listed), because gift choices are written with record type 'gift_choice' (RecordType.GIFT_CHOICE, contract 1.17.0; GiftChoiceModel.plan). That is a real fix: the old list never matched a gift choice. The remaining assertions are equal or stronger, being derived from the contract enum.
+- Both new outbox queries are suspend Room calls on Room's executor, and BundleDownloader also runs them under the sync lock. state='acked' and state='quarantined' are served by Index(state, seq). ackedProgrammeOrderUuids has no date cut, but acked rows are purged after about 7 days, so the set stays small. readSideOf calls memosOfMonth once per month per route, an N+1 on IO bounded at 3 months times the route count.
+- readSideOf counts a memo acknowledged after the last bundle request as 'outstanding' even though it was acknowledged before the read was sent, so the read certainly holds it. awaiting is over-stated, the month stays unclean, and wantsRead stays true until the next full bundle, so every online opening re-reads the quarter (data budget). It also counts a memo with routeId null in every route, and merge adds the per-route awaiting counts, so the note can say 2 for 1 memo. In both cases the figure is right and only the note is off.
+- readSideOf ignores voids (`voidOf == null` filter). A pending or unanswered void of a memo in a fetched month leaves the month 'clean', so the cached read shows the voided memo with no note. Not verified: whether the SR app can void a memo of a past month at all (AsthaLocal says 'This phone has no void write yet').
+- Goldens: SrProgrammesScreenshotTests only gains clean=true, so the existing PNGs stay valid: the October month is final, as before. The new pg_held_review line and the pg_as_of_unsettled label have Robolectric text tests but no golden in any theme or font scale. Long Bangla wrapping at font 2.0 is not shot.
+- pg_held_review in English reads '1 memos ... are held' because there is no plurals resource. The same issue applies to pg_order_unknown and pg_awaiting_memos.
+- GiftChoiceModel.quarterOf now falls back silently to '<yyyy>-Q1' for a malformed date, where it used to throw on toInt. A gift-choice record could then carry a wrong machine key. The input is a CaptureMeta business date, so this is unlikely.
+- Not verified: any build, unit, Robolectric, screenshot or lint run; the K2 compile of java.lang.Math in commonMain; the real SR full-bundle size, which decides how bad the refetch loop is; whether the server's gift-choice validation actually calls AsthaQuarter.of.
+- (refuted 3/3) A quarantined memo in the uncertain list makes the SR fetch a full day bundle after every sync run, at most every 10 minutes, for as long as the memo is held: refreshIfUncertainResolved treats an uncertain uuid as answered when stillOpen() is 0. A quarantined row is neither pending nor in_flight, so the check passes straight away, the ETag is deleted, and a full day bundle is downloaded (fullOfTheDay). That new full bundle records the same quarantined uuid as uncertain again, so the cycle repeats every UNCERTAIN_REFETCH_GAP_MS (10 minutes) after the next sync run, until a reviewer resolves the memo. That can take days. Before this delta a quarantined memo never entered the list, so this is a new core-sync behaviour. It breaks non-negotiable constraint 3 (2 GB/day data pack, no chatty transfers) and turns the contract's 'discard and refetch once' into a loop. Only the SR is affected, because trackUncertain is true only there. The new test aMemoQuarantinedWhenTheRequestLeavesIsRecordedAsUnsure... checks that the uuid is recorded but never calls refreshIfUncertainResolved.
