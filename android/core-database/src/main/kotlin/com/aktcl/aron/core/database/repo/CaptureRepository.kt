@@ -23,6 +23,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.contract.MediaPurpose
 import com.aktcl.aron.contract.OutletRequestType
 import com.aktcl.aron.contract.RecordType
+import com.aktcl.aron.core.database.record.ProgrammePayloads
 import com.aktcl.aron.core.database.record.RecordMapping
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -271,6 +272,43 @@ class CaptureRepository(
         true
     }
 
+    /**
+     * The SR programme records (lane android-sr-programmes): `redemption` with its `redemption_line` rows, or one `gift_choice`, in ONE
+     * transaction, all or nothing. They share the generic `amo_record` store and the outbox (no schema change; a dedicated table is a Room 12
+     * item). Idempotent by client UUID: a replay of the same parent writes nothing and returns false, so a double tap, a retry after a kill
+     * and relaunch, or a duplicate upload never makes a second redemption. Family and rank follow docs/24 s4.3: parent self rank 0, lines
+     * rank 1 under the redemption. The open-route-day guard is the same one every operational write uses.
+     */
+    suspend fun recordProgramme(records: List<com.aktcl.aron.core.database.entity.AmoRecordEntity>): Boolean = db.withTransaction {
+        require(records.isNotEmpty()) { "no records" }
+        val parent = records.first()
+        if (purged(parent.clientUuid)) return@withTransaction false
+        requireUuids(*records.flatMap { listOf(it.clientUuid, it.familyUuid) }.toTypedArray())
+        require(parent.recordType in PROGRAMME_PARENT_TYPES && parent.familyUuid == parent.clientUuid && parent.rank == 0) { "the first programme record is a parent (redemption or gift_choice), own family, rank 0" }
+        val lines = records.drop(1)
+        require(lines.all { it.recordType == "redemption_line" && it.rank == 1 && it.familyUuid == parent.clientUuid }) { "children are redemption_line rank 1 of the redemption" }
+        require(parent.recordType == "redemption" || lines.isEmpty()) { "a gift_choice has no children" }
+        val parsed = records.map { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull()
+            require(o != null) { "the payload is a JSON object" }
+            ProgrammePayloads.problem(r.recordType, o)?.let { throw IllegalArgumentException(it) }
+            o
+        }
+        if (parent.recordType == "redemption") {
+            val pay = parsed.first()
+            fun n(o: JsonObject, k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+            require(n(pay, "line_count") == lines.size.toLong()) { "line_count must equal the number of lines" }
+            require(n(pay, "points_total") == n(pay, "cash_points") + parsed.drop(1).sumOf { n(it, "points_total") }) { "points_total = cash_points + the lines" }
+            require(lines.all { (Json.parseToJsonElement(it.payloadJson) as JsonObject)["redemption_client_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } == parent.clientUuid }) { "a line names its redemption" }
+        }
+        requireRoute(parent.meta)
+        if (capture.amoRecordCount(parent.clientUuid) > 0) return@withTransaction false
+        requireOpenRouteDay(parent.meta, parent.recordType)
+        records.forEach { capture.insertAmoRecord(it) }
+        outbox.insert(records.map { RecordMapping.amoRecord(it, nowIso()) })
+        true
+    }
+
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
         if (purged(skip.clientUuid)) return@withTransaction emptyList()
@@ -499,6 +537,7 @@ class CaptureRepository(
             "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
             "risk_review", "outlet_request_verification", "task",
         )
+        val PROGRAMME_PARENT_TYPES = setOf("redemption", "gift_choice")
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 
