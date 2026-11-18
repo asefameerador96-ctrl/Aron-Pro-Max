@@ -122,6 +122,7 @@ class AmoDayLockGateTest {
     }
 
     @Volatile private var loads = 0
+    private var stockSeeded = false
     private val sku = SaleSku(1, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 200)
 
     /** The stock gate (D-OWNER-PREREQ-01 rule 2, AMO as well as SR): the day's issue of [sku] before any sale. */
@@ -142,7 +143,8 @@ class AmoDayLockGateTest {
             repo, numbers = { _, _ -> error("numbered through MemoNumbering") }, metaSource = { _, rid -> meta(rid) }, nowIso = { now },
             findMemo = { db.captureDao().memo(it) }, numbering = MemoNumbering("amo334001", 0, 500),
         )
-        runCatching { issueStock() } // after the zone's Final Submit a stock issue is refused too; the sale below is what this test drives
+        // the day's stock is issued ONCE, before any lock lands (a Final Submit refuses a stock issue too); a failed seed fails the test, it is never swallowed
+        if (!stockSeeded) { issueStock(); stockSeeded = true }
         val flow = SaleFlow(FileDraftStore(File(app.cacheDir, "x4a-amo-drafts-" + ClientIds.newUuid())), { _, _ -> listOf(sku) }, committer)
         flow.start(SaleVisit(v.visitUuid, v.outletId, v.routeId, date, "outlet"))
         flow.setQuantity(sku.skuId, 2, sku.entry.unit)

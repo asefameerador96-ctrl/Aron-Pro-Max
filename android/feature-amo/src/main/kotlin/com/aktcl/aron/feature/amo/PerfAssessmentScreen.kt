@@ -1,6 +1,10 @@
 package com.aktcl.aron.feature.amo
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,26 +43,28 @@ internal val AmoOrange = Color(0xFFB45309)
 /** The solid save green of the assessment screens (screenshots 27, 31), white label above 4.5:1. */
 internal val AmoSaveGreen = Color(0xFF3F7D20)
 
-/** A section card with a coloured header band ("●" + title) and an info line under it. */
+/** A section card with a coloured header band ("●" + title and, inside the same band, the white info line with its (i): screenshot 27). */
 @Composable
 internal fun AmoBandCard(title: String, band: Color, info: String?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(look.card)) {
-        Text("● $title", style = amoText(17, bold = true, color = Color.White), modifier = Modifier.fillMaxWidth().background(band).padding(horizontal = 12.dp, vertical = 10.dp))
-        if (info != null) Text("ⓘ  $info", style = amoText(14, color = look.inkMuted), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+        Column(Modifier.fillMaxWidth().background(band).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("● $title", style = amoText(16, bold = true, color = Color.White))
+            if (info != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Info, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Text(info, style = amoText(13, color = Color.White))
+            }
+        }
         content()
     }
 }
 
-/** The retailer/route card shared by the assessment screens (screenshots 27, 31): bold labels, grey values. */
+/** The retailer/route card shared by the assessment screens (screenshots 27, 31): the shop icon, bold labels, grey values; retailer first. */
 @Composable
 internal fun AmoOutletHeader(outletLabel: String?, routeName: String?, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
     if (outletLabel == null && routeName == null) return
-    Column(modifier.fillMaxWidth().testTag(PerfTags.HEADER).clip(RoundedCornerShape(12.dp)).background(look.card).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (outletLabel != null) Row { Text(stringResource(R.string.amo_pa_retailer) + " ", style = amoText(15, bold = true)); Text(outletLabel, style = amoText(15, color = look.inkMuted), modifier = Modifier.weight(1f)) }
-        if (routeName != null) Row { Text(stringResource(R.string.amo_pa_route) + " ", style = amoText(15, bold = true)); Text(routeName, style = amoText(15, color = look.inkMuted), modifier = Modifier.weight(1f)) }
-    }
+    if (outletLabel != null) AmoSaleHeaderCard(routeName, outletLabel, modifier.testTag(PerfTags.HEADER), padded = false, retailerFirst = true)
+    else Text(stringResource(R.string.amo_pa_route) + " " + routeName.orEmpty(), style = amoText(15, bold = true), modifier = modifier.testTag(PerfTags.HEADER))
 }
 
 /** The wide green Save button of the assessment screens. */
@@ -72,18 +78,36 @@ internal fun AmoSaveButton(text: String, enabled: Boolean, onClick: () -> Unit, 
     ) { Text(text, style = amoText(18, bold = true, color = if (enabled) Color.White else look.disabledText)) }
 }
 
+/** One brand cell: a dark-outlined box and a 14 sp name that wraps at word breaks (the kit's 16 sp row broke names mid-word in three columns at 360 dp). */
+@Composable
+private fun AmoBrandCheck(name: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val look = LocalAronLook.current
+    val box = RoundedCornerShape(4.dp)
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 48.dp).alpha(if (enabled) 1f else 0.5f)
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChange).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(20.dp).clip(box).background(if (checked) look.purple else look.card).border(2.dp, if (checked) look.purple else look.ink, box),
+            contentAlignment = Alignment.Center,
+        ) { if (checked) androidx.compose.material3.Icon(com.aktcl.aron.core.ui.AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp)) }
+        Text(name, style = amoText(14, color = look.ink), modifier = Modifier.padding(start = 6.dp))
+    }
+}
+
 /** Brands in a 3-column grid of checkboxes (screenshot 27); [tag] names a cell's checkbox. */
 @Composable
 private fun BrandGrid(brands: List<AmoBrand>, bn: Boolean, checked: (Long) -> Boolean, enabled: (Long) -> Boolean, tag: (Long) -> String, onClick: (Long) -> Unit) {
     Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        brands.chunked(3).forEach { row ->
+        // at large text sizes one brand per line: three columns cannot hold a word at 200 % (D-PAR-AMO-26)
+        val cols = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f) 1 else 3
+        brands.chunked(cols).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { b ->
-                    Box(Modifier.weight(1f)) {
-                        com.aktcl.aron.core.ui.aron.AronCheckboxRow(if (bn) b.nameBn ?: b.name else b.name, checked(b.id), { onClick(b.id) }, Modifier.testTag(tag(b.id)), enabled = enabled(b.id))
-                    }
+                    Box(Modifier.weight(1f)) { AmoBrandCheck(if (bn) b.nameBn ?: b.name else b.name, checked(b.id), { onClick(b.id) }, Modifier.testTag(tag(b.id)), enabled = enabled(b.id)) }
                 }
-                repeat(3 - row.size) { Box(Modifier.weight(1f)) }
+                repeat(cols - row.size) { Box(Modifier.weight(1f)) }
             }
         }
     }

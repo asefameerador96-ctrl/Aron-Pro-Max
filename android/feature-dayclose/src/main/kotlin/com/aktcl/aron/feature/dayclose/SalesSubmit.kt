@@ -33,6 +33,11 @@ enum class RejectedOutcome {
     RETRY,
     /** Server only: refused for now, from another phone or an earlier install of this login; this phone cannot resend it, so it never blocks. */
     WAITING_ELSEWHERE,
+    /**
+     * D-AGATE-04: the PHONE gave up on the record after repeated failed tries (`rejected(retry_exhausted)`); the server never refused it.
+     * It is not on the server, so the counts disagree and Submit stays blocked until it is sent again ([RejectedRow.canSendAgain]).
+     */
+    PHONE_GAVE_UP,
 }
 
 /**
@@ -52,7 +57,24 @@ data class RejectedRow(
     val reasonEn: String? = null,
     /** False for a row the server reports from another phone or an earlier install of this login (contract 1.9 row 4). */
     val fromThisPhone: Boolean = true,
-)
+    /** D-AGATE-04: the `message_key` of the server's last answer, kept for support; never shown to the rep as it is. */
+    val messageKey: String? = null,
+    /** D-AGATE-04: the rep marked this refused record as seen. It left the banner count; the row, its payload and the gates are untouched. */
+    val seen: Boolean = false,
+    /** D-AGATE-04 round 2: how many records the entry stands for (a memo with its lines and QC is one entry led by its parent). */
+    val familySize: Int = 1,
+    /** The row is the day's own `day_submit` and that date already carries a check-out: the rep cannot sell or collect any more, so its text says what to do instead (B4). */
+    val afterCheckOut: Boolean = false,
+) {
+    /**
+     * A refused or held record of THIS phone can be marked seen (it leaves the banner, nothing is deleted); a queued retry cannot, and neither
+     * can a record the PHONE gave up on: it never reached the server, so its only action is Send again (D1-2).
+     */
+    val canMarkSeen: Boolean get() = fromThisPhone && !seen && (outcome == RejectedOutcome.DROPPED || outcome == RejectedOutcome.STORED_FLAGGED)
+
+    /** Only a record the phone itself gave up on is sent again from here, with the SAME client uuid (the server stores a uuid once). */
+    val canSendAgain: Boolean get() = fromThisPhone && outcome == RejectedOutcome.PHONE_GAVE_UP // also when listed as seen (a row marked by an older build)
+}
 
 /**
  * D-SRFIX-03: a refused record the server will never take (outcome [RejectedOutcome.DROPPED]) is listed under "Not accepted as
@@ -119,6 +141,8 @@ sealed interface SubmitBlock {
     data class Rejected(val count: Int) : SubmitBlock
     data class Quarantined(val count: Int) : SubmitBlock
     data class CountMismatch(val recordType: String, val device: Int, val server: Int?) : SubmitBlock
+    /** D-AGATE-04 round 2: the phone could not read its own outbox state (a damaged read); Submit is NOT offered on unknown data (fail closed). */
+    data object Unreadable : SubmitBlock
     data object AlreadySubmitted : SubmitBlock
 }
 

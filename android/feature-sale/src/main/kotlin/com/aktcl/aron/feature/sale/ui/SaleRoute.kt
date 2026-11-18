@@ -42,6 +42,8 @@ fun SaleRoute(
     quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
+    /** The way from the "add today's stock first" banner to the Stock screen; null shows the banner without the button. */
+    onOpenStock: (() -> Unit)? = null,
     /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
     entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false, creditAsDialog: Boolean = false, totalsQuantity: Boolean = false,
 ) {
@@ -68,7 +70,7 @@ fun SaleRoute(
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
-                        quantityPopup = quantityPopup, skuStats = skuStats,
+                        quantityPopup = quantityPopup, skuStats = skuStats, onOpenStock = onOpenStock,
                         onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
                         onPreviousSales = onPreviousSales, historyLabel = historyLabel, headerCard = entryHeaderCard, amoSkuCard = amoSkuCard,
@@ -108,5 +110,7 @@ fun SaleRoute(
     if (quantityPopup && stage == SaleStage.Credit && review != null) {
         CreditDialog(review, { vm.setPaid(it); stage = SaleStage.Review }, onCancel = { vm.setPaid(null); stage = SaleStage.Review })
     }
-    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, manual = quantityPopup)
+    // a save the transaction refused is worded with the SAME problem texts the review uses (SKU, held figure, unit; or "already edited")
+    val refusalText = ui.refusal.takeIf { it.isNotEmpty() }?.map { problemText(it) }?.joinToString("\n\n")
+    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, refusalText, manual = quantityPopup)
 }

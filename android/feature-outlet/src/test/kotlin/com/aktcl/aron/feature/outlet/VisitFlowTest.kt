@@ -402,4 +402,12 @@ class VisitFlowTest {
         assertTrue(f.refresh() is VisitUiState.NeedsDecision) // returns although the check is still waiting
         gate.complete(Unit)
     }
+
+    /** D-LEAD-PREREQ-04 ruling 4: a call the check-in gate refused is worded (check in / checked out), never the generic storage failure. */
+    @org.junit.Test fun aCallTheCheckInGateRefusedIsNotTheGenericFailure() {
+        val gate = com.aktcl.aron.core.database.repo.AttendanceRefusal.values()
+        assertEquals(CommitFailure.NOT_CHECKED_IN, VisitFlow.commitFailureOf(com.aktcl.aron.core.database.repo.AttendanceRefusedException(gate[0], "2026-10-05")))
+        assertEquals(CommitFailure.CHECKED_OUT, VisitFlow.commitFailureOf(com.aktcl.aron.core.database.repo.AttendanceRefusedException(com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT, "2026-10-05")))
+        assertEquals(CommitFailure.STORAGE, VisitFlow.commitFailureOf(IllegalStateException("disk")))
+    }
 }

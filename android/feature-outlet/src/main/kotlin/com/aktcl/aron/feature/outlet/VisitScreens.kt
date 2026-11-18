@@ -406,7 +406,7 @@ fun VisitCheckContent(
                 )
                 is VisitUiState.CommitFailed -> GeoCard(
                     GeoKind.Danger,
-                    stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.STORAGE -> R.string.out_commit_failed }),
+                    stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.NOT_CHECKED_IN -> R.string.out_commit_not_checked_in; CommitFailure.CHECKED_OUT -> R.string.out_commit_checked_out; CommitFailure.STORAGE -> R.string.out_commit_failed }),
                     emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.Open -> GeoCard(
                     // After a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never

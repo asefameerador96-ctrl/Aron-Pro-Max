@@ -79,6 +79,8 @@ fun AmoApp(
     onSync: (() -> Unit)? = null,
     /** Real screens by destination, supplied by the app module (it owns the day wiring); a screen not listed shows the placeholder frame. */
     screens: Map<AmoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
+    /** D-OWNER-PREREQ-01 rule 1: the operational screens while the day has no open check-in; a tile for one of them leads straight to Attendance. */
+    gateLocked: Set<AmoScreen> = emptySet(),
     /** The four target cards of Home (screenshot 9); null until the server answers (every card then prints "—"). */
     targets: CallTargets? = null,
     targetsStatus: CallTargetsStatus = CallTargetsStatus.Fresh,
@@ -97,7 +99,7 @@ fun AmoApp(
         when (s) {
             AmoScreen.HOME -> AmoHomeContent(
                 header, user, bundle, tiles,
-                onTile = { screen = AmoScreen.of(it) }, onSettings = { screen = AmoScreen.SETTINGS },
+                onTile = { val target = AmoScreen.of(it); screen = if (target in gateLocked && screens[AmoScreen.ATTENDANCE] != null) AmoScreen.ATTENDANCE else target }, onSettings = { screen = AmoScreen.SETTINGS },
                 hero = hero, health = health, banners = banners, sync = sync, onSync = onSync, targets = targets, targetsStatus = targetsStatus,
             )
             AmoScreen.SETTINGS -> AmoSettingsContent(

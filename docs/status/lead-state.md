@@ -1,14 +1,24 @@
 # Lead state (read by every two-hourly lane check; the cron prompt is only a pointer here)
 
-Updated: 2026-11-18 01:55 UTC by the lead
+Updated: 2026-11-18 04:20 UTC by the lead
 
-## Current state 2026-11-18 01:55 UTC (read this first)
-- **INT `f5bfee39040e941f8f8b4b6f6e7442234f579b94` (train 115) is LIVE on dev**: Loyalty push C (V0192..V0194, contract 1.17.0), sr-server pre-flight follow-ups, SR-1 Home lows and core-ui changes. ci 44212013503 success; deploy 44215333479 (#354) success; health build f5bfee390 (lead read 01:47); SR sale smoke RAN and PASSED; migrate caj-aron-dev-migrate-g56v4qr read through ops-diagnose 44218484516: Flyway 0191 -> v0194, 3 applied, no ERROR; pre-flight silent (nothing pending for it). One worker ERROR at 01:32:23 during the deploy window ("aggregation pass failed ... SQLTransientConnectionException"): look for a repeat at the next check; if it repeats outside a deploy, give it to the sr-server lane. Train 114a (9bb7f5cf1) landed 2026-11-17 23:07.
-- Landing order by numbers: **116 master data** (MD3 session_014mnioNCrZkAoVLKBo4xoEM merging f5bfee390; V0195..V0200, 1.18.1; round 3 passed review; needs "checked" then a merge-only check). **117 sr-server check-out round** (SV6 session_014mnioLvKP6ttPtSaCjKTmx; 2f5922ee passed; follow-ups ee82e904 in review; renumber to V0201..V0203 / 1.19.0 after 116). Then **integrity** (A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM; V0204, V0205, 1.20.0; Room 10 -> 11 after the gates branch). Then Loyalty follow-ups (L-A11 session_014mnioNKTCrrxE558S5LiUH; contract 1.21.0 provisional).
-- **android-gates** (owns Room 10; lands as ONE unit after its step 3 passes AND train 117 is live): step 2 (2ca39b11) FAILED review: docs/reviews/android-gates-step2-2026-11-18.md, rulings D-LEAD-PREREQ-04; A-GATE4 session_014mnioMeRBZpBjn8hgYFFtH on step 3. closed_by stays off the wire until 117 is live.
-- UI lanes: P-AMO3 session_014mnioQ9FLnKpmmTrqyizwA (slices 3-5b passed; 6-9 unchecked; merging f5bfee390 and re-recording 5 goldens; next UI train). P-SR1 session_014mnioL8dmZZ3bZhpZRX7Q8 (in sync with INT; starting Attendance look, picker, Sale page). P-TSO session_014mnioNwkkXvwzeAb95YqPq (re-recording goldens; not reported since 21:10: nudge). P-SR2b session_014mnioNRxcLVGqTKH73XB1Z: push blocked until the owner approves it in that session.
-- Retired since 17 Nov: A-GATE1, A-GATE2, A-GATE3, MD2, A-INT1, P-AMO2, SV5, L-A10. Integrator 24 session_014mnioLeug2PZXsjDesE3CM standing by.
-- Open with the owner: the P-SR2b push approval; decisions (unsold stock returned or carried over; who confirms the morning issue; TSO check-in; admin reopen after a mistaken check-out; the 04:00 limit for a call left open overnight); new completion date.
+## Current state 2026-11-18 04:20 UTC (read this first)
+- **INT `951292a48357505649cf9020ae04d0a24fd91aa8` (train 116) is LIVE on dev**: master data (V0195..V0200, contract 1.18.1, pre-flight check for V0199), AMO parity slices 3 to 9 + follow-ups, SR-1 Attendance and picker goldens. Lane ci 44226978166 green 12 of 12 first attempt; ci 44230235251 success; deploy 44233085627 (#355) success; migrate console in the deploy log: Flyway 0194 -> v0200, 6 applied; pre-flight silent (clean database prints nothing by design); health build 951292a48 (lead read 04:14); SR sale smoke RAN and PASSED. Not seen: the worker's start-up console. Train 115 (f5bfee390) landed 01:46; 115a was superseded by 116 (web job at its 30-minute limit).
+- **Next: train 117 = sr-server check-out round** (SV6 session_014mnioLvKP6ttPtSaCjKTmx: merging 951292a48, dropping its username widening already done by V0197/V0198, renumber from V0201, contract 1.19.0; lead review of ee82e904..final head, then GO) **+ lane/ci-web-e2e** (CI-E2E session_014mnioLZHqPfcspFYruwHTm; 1e4eb3bb passed review; merging; splits web e2e into 5 shards + aggregator with the old required name: integrator and lead read three web job names from then on).
+- Then: **integrity** (A-INT3 session_014mnioNgiPFH5xawBXBosjh; B1 fixed at afecc7e1; lab exemption part 2 in progress; numbers after 117: next free migrations, contract 1.20.0; Room 10 -> 11 after gates). **Loyalty sweep** (L-A11 session_014mnioNKTCrrxE558S5LiUH; review FAILED on 2 points: wrong waiver, no audit row; fix round; provisional V0207 / 1.21.0).
+- **android-gates** (owns Room 10; lands as ONE unit after its step passes AND train 117 is live): step 4 b680476e FAILED on 2 points (SR close outcome on manual close/back; Send again for prints and AMO rank-2 records) + lows: docs/reviews/android-gates-step4-2026-11-18.md; A-GATE6 session_014mnioQ21GSwRm87CXKK6QP on step 5.
+- UI lanes: P-AMO3 session_014mnioQ9FLnKpmmTrqyizwA (slices 10+ unchecked; merging 951292a48). P-SR1b session_014mnioQAtKKTq9KrTS98tic (Sale page slices 1 to 3a pushed, unchecked; printer connect, permissions next). P-TSO session_014mnioNwkkXvwzeAb95YqPq (4984d58a: "checked" not yet sent; nudged). P-SR2b session_014mnioNRxcLVGqTKH73XB1Z: push blocked until the owner approves it in that session.
+- Retired since 17 Nov: A-GATE1..5, MD2, MD3 (idle at ~350k, nothing owed), A-INT1, A-INT2, P-AMO2, P-SR1, SV5, L-A10. Integrator 24 session_014mnioLeug2PZXsjDesE3CM standing by.
+- Open with the owner: the P-SR2b push approval; decisions (unsold stock returned or carried over; who confirms the morning issue; TSO check-in; admin reopen after a mistaken check-out; the 04:00 limit for a call left open overnight; Force Sale shown only when the flow allows it vs the old page showing it always); new completion date.
+
+## Backlog owed (lead, 2026-11-18; start each when its blocker clears)
+- **SR quantity pop-up ADS** (R-PAR-SR1-02 on lane/android-parity-sr-1, docs/requests/android-parity-sr.md): the server already sends Bundle.outlet_sku_stats (contract 1.16.0); the Android consumer is missing (parse, store per outlet and SKU, pack_factor conversion, feed SkuStatsBuilder). Needs a Room table: start only after android-gates (Room 10) and android-integrity (Room 11) have landed; it takes Room 12.
+- **AMO verify form editable fields** (R-PAR-AMO-08 on lane/android-parity-amo): old app lets the AMO correct shop name, owner and mobile while verifying; needs contract + server + app; a logic round with the sr-server lane after train 117.
+- **SR Attendance address line** (R-PAR-SR1-01): display-only address when online.
+- **Flaky tests**: AuthzAuditTest "9999" probe (fixed on lane/sr-server, lands with 117); core-map LiteMapScreenTest threading (CI-E2E lane). **Web e2e** at the 30-minute limit: lane/ci-web-e2e splits it into 5 shards (CI-E2E session_014mnioLZHqPfcspFYruwHTm); lead reviews before landing.
+- **Loyalty waiting-child sweep** (L-A11): in the API process, config keys V0207 provisional, contract 1.21.0.
+- **Lab exemption key pair**: runbook on lane/android-integrity; the private half is a GitHub secret the owner sets; route to the owner when A-INT3 documents the commands.
+- **Owner device walk list** for the check-in / check-out rules: from A-GATE5's report once step 4 passes review.
 
 ## Train state
 - **INT `4e0645556` (train 112, pushed 2026-11-13 02:26 UTC): Loyalty field push B (bundle programmes section, Astha targets and upload, loyalty reads), contract 1.15.0 (D-LEAD-CONTRACT-115-01), V0180, V0181; ci 43352079662 (#2116) success (e2e 372 passed); REAL deploy 43355455618 (#351) success 03:17: PITR 2026-11-13T03:01:29Z, migrate caj-aron-dev-migrate-k1sdaeb, Flyway 0176 -> v0181 (2 applied; deploy log), worker --0000209, health build 4e0645556 (lead 03:21); SR sale smoke SKIPPED (not a selling day); DECISIONS 463; APK of record aron-release-signed-dev-2116. Next in the gate (order fixed by the numbers): sr-server push B (lane/sr-server, SV5 session_014mnioLR2kDeRWxWWzCPCXK on round B5; V0186..V0191; contract 1.16.0), then Loyalty push C (lane/portal-loyalty-api-c, L-A9 session_014mnioPR6o6JnDRdLM28uYi on round C-R3; V0192..V0194; contract 1.17.0).**
@@ -149,3 +159,55 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Update 09:31 UTC: midday check-in clean; waiting on Lane A's amended train 1 for train 92 (real deploy with V0152/V0153 and the scanner fix); Lane B (web) is created after train 92 lands.
 - Update 10:38 UTC: train 92 pushed to INT 34bef94a1 (Discount portal schema V0152/V0153, contract 1.12.0, scanner fix); INT ci 43004917350 and the REAL deploy are being watched. Lane B portal-discount-web session_014mnioNssb2Bfo65r8Z4CD6 started 10:37 on lane/portal-discount-web; Lane A on train 2 (Ktor admin API). Active set: Lane A, Lane B, integrator 23.
 - Update 2026-11-12 06:34 UTC: morning report posted; wave 8 build lanes opened (portal-loyalty-api L-A session_014mnioKucgAJ2pqfNM2ubNg, portal-loyalty-web L-B session_014mnioNcrD3k4NXuajNWoff); D-LEAD-CONTRACT-113-01 appended on the docs branch; integrator 23 at 414 k context is recycled to integrator 24 at the next GO; dev f46f8047f, APK 2002; owner items unchanged.
+
+
+### 2026-11-18 04:52 update
+- android-gates step 5 (abfa1ef4) PASS on both lenses, 0 blocking; review in docs/reviews/android-gates-step5-2026-11-18.md.
+- Successor lane A-GATE7 started (session_014mnioM2HobwPFoqAjUSGyu) for the closing round: 10 lows and the missing tests. Branch still lands as one unit after train 117 is live, then a final Opus pass on the full diff.
+- Train 116a lane ci 44238626124: 16 of 17 jobs green at 04:51, one still running; integrator pushes on green.
+
+
+### 2026-11-18 05:35 update
+- Train 116a LANDED: integration 874a71c97, ci 44240467287 green (web: build + five e2e shards + aggregator, 372 of 372), deploy #356 (44242257483) success, health build 874a71c97, SR slice smoke passed. The migrate job's console was not in Log Analytics (no migrations in this train).
+- Train 117 built: lane/lead-train117 a5f07f32e = 874a71c97 + docs + sr-server 1c8c3cb0; Opus pass on three lenses, 0 blocking; GO given to the integrator. Expect 0200 -> 0203, contract 1.19.0, 585 D-lines. After landing: read the migrate log through ops-diagnose; tell SV6 (follow-up lows), A-INT3 (renumber to the next free numbers, contract 1.20.0), A-GATE7 (closed_by may go on the wire), L-A11 (numbers), UI lanes (merge).
+- Reviews today: android-integrity slice 3 part 2 PASS (lows sent); AMO slices 10-16 PASS (head now 3eb30f2e, small unchecked change); Loyalty sweep fix 8a90f1b4 FAIL (stale waiting marker after return to device; fix round); SR Sale-page batch FAIL (AMO control call restyled through geoPanel; fix round, slice 4 8377f5c9 checked with it).
+- A-GATE7 (session_014mnioM2HobwPFoqAjUSGyu) on the gates closing round.
+
+
+### 2026-11-18 05:48 update: SR programme screens were never built on the phone
+- Found by P-SR1b, confirmed by the lead in code: the SR app's Astha, Loyalty Point, Photo Capture and Match Program tiles open ComingSoonContent. D-OWNER-SR-PROGRAMMES-01 (2026-11-12) put these screens in scope; the server side partly landed (trains 112, 115), but no Android lane was ever assigned (the SR manual brief gave Android lanes S1, S3..S6 other rows). This is the lead's planning miss.
+- New build lane A-PROG1 (session_014mnioPwjnzZjvN6ZbTva5k, branch lane/android-sr-programmes): step 1 scoping file docs/status/android-sr-programmes.md and server needs docs/requests/sr-programmes-server-needs.md; step 2 screens whose data is on the wire. No Room bump until the lead gives a number (after gates 10 and integrity 11).
+- Owed to the owner: say this plainly with the new completion date.
+
+
+### 2026-11-18 05:52 update: programme screens scoped
+- A-PROG1 scoping (lane/android-sr-programmes, docs/status/android-sr-programmes.md): 11 screens (manual 48-58) can be built now from the bundle `programmes` section, no schema change; 4 screens (10 SKU target, 21 outlet target, 61 brand-wise KPI, 62 Match Box Lifting Star) have no data on the wire.
+- New server lane T-KPI1 (session_014mnioNUHWh5TpUbp7V4JwN, branch lane/sr-targets-server) for N-2, N-3, N-5, N-8; provisional contract 1.22.0, migrations from V0230, renumbered at landing; design file docs/status/sr-targets-server.md first, with owner questions (formulas for PADS, LMS, LMWD, EWD, LMADS, growth, slab projection).
+- N-1, N-4, N-6, N-7 routed to L-A11 after its fix round; answers to be passed to A-PROG1.
+- Room order: gates 10, integrity 11, programmes 12 (if needed), SR ADS consumer after that.
+
+
+### 2026-11-18 05:55 update: T-KPI1 design in (lane/sr-targets-server 2f6bb8ac)
+- N-2 needs no new table (route_monthly_target is per SKU; working-day calendar with admin GUI exists). N-5, N-8, N-3 need new tables and admin tabs.
+- Owner questions Q-A..Q-K (defaults built meanwhile) are in docs/status/sr-targets-server.md on that branch; passed to the owner 05:55. Server month-to-date is through yesterday; today's memos are added on the phone.
+
+
+### 2026-11-18 06:20 update: train 117 LANDED
+- Integration 39db6c734 = lane/lead-train117 a5f07f32e + train row; lane ci 44242714300 green; integration ci 44245077961 (#2303) green (372 of 372 e2e); deploy #357 (44246946165) success; PITR 2026-11-18T05:56:34Z; migrate job caj-aron-dev-migrate-gyoweox 'migrations succeeded' but its console was not in the deploy log; health build 39db6c734; SR smoke passed. APK of record aron-release-signed-dev-2303. ops-diagnose run 44249846071 dispatched to read the migrate console (0200 -> 0203) and worker errors.
+- Numbers now: integrity V0204..V0207 + contract 1.20.0 (A-INT3 told to merge and renumber the server part; Room 10 -> 11 waits for gates); Loyalty V0208 + 1.21.0 (not yet renumbered); SV6 follow-ups provisional V0240+; T-KPI1 provisional V0230+ and 1.22.0.
+- Told: A-GATE7 (merge, closed_by on the wire, then final pass and landing as one unit), SV6, L-A11, T-KPI1, P-AMO3, A-PROG1, P-TSO (nudged for its missing 'checked').
+- P-SR1b: four messages had not reached its turn; fifth sent as an interrupt 06:11 (fix the AMO out-of-range defect first).
+- gates closing round d9997b8a PASS (7 small follow-ups sent); integrity lows closed at 4bd1b1aa (final pass owed, incl. the removed test D-AINT-13).
+
+
+### 2026-11-18 06:25 update: train 117 migrate console read (ops-diagnose 44249846071)
+- Flyway on dev, verbatim: 'Current version of schema "public": 0200'; migrating to 0201, 0202, 0203; 'Successfully applied 3 migrations to schema "public", now at version v0203'; container exit code 0 (05:58:41 to 05:58:47 UTC).
+- No ERROR lines in the window; no SQLTransientConnectionException, no 'aggregation pass failed', no CHECKOUT_WITHOUT_SUBMIT text. Worker revision --0000226 running, first aggregation pass 20098 ms.
+- Not seen: any pre-flight line (the log has none of the words preflight, V0191, V0199, repair). To check: whether the pre-flight logs at all when it has nothing to do (backlog, low).
+- Loyalty fix round 2 (d88b751b) and TSO slice 1 (bfea7197) under review.
+
+
+### 2026-11-18 06:35 update: order changed, Loyalty lands next
+- Loyalty sweep fix round 2 (d88b751b) PASS; TSO slice 1 (bfea7197) PASS (lows sent).
+- NEW ORDER AND NUMBERS: train 118 = Loyalty sweep (V0204, contract 1.20.0; L-A11 merging 39db6c734 and renumbering; then a delta check and GO). Then gates (Android, Room 10, closed_by on the wire, no migration). Then integrity V0205..V0208 + contract 1.21.0 + Room 11 (A-INT3 told). SV6 follow-ups provisional V0240+; T-KPI1 V0230+ / 1.22.0.
+- Loyalty facts (from code): no earning rule, no earning job, balances 0; postAdjustment has no caller or portal route -> L-A11 to build an audited portal points adjustment with N-1 (quarter rows) and tier_code on loyalty[]. Owner asked for the earning rule 06:30.

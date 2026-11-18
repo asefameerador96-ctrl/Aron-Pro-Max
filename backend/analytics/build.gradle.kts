@@ -5,6 +5,11 @@ plugins {
 }
 
 dependencies {
+    // D-SV2-14: bcpkix 1.80 pulls bcutil and bcprov by the range [1.80,1.81); pin both to the exact 1.80 (no version change).
+    constraints {
+        testImplementation(libs.bouncycastle.bcutil) { version { strictly(libs.versions.bouncycastle.get()) }; because("bcpkix declares a dynamic range; pinned exactly so resolution never reads maven-metadata.xml (a cached newer patch such as 1.80.2 no longer resolves in the test classpath; production classpaths do not hold bouncycastle)") }
+        testImplementation(libs.bouncycastle.bcprov) { version { strictly(libs.versions.bouncycastle.get()) }; because("bcpkix declares a dynamic range; pinned exactly so resolution never reads maven-metadata.xml (a cached newer patch such as 1.80.2 no longer resolves in the test classpath; production classpaths do not hold bouncycastle)") }
+    }
     implementation(project(":backend:platform"))
     implementation(libs.logback.classic)
     implementation(libs.fastexcel)

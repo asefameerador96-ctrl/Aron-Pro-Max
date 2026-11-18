@@ -213,10 +213,10 @@ fun PrinterPickerDialog(manager: PrinterManager, onDismiss: () -> Unit) {
  * once after the saved message, with whether paper was confirmed.
  */
 @Composable
-fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit, manual: Boolean = false) {
+fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit, saveFailedMessage: String? = null, manual: Boolean = false) {
     val step by flow.step.collectAsState()
     SaveAndPrintStepDialog(
-        step, manual,
+        step, manual, saveFailedMessage,
         onSaveAnswer = { scope.launch { flow.onSaveAnswer(it) } }, onPrintAnswer = { scope.launch { flow.onPrintAnswer(it) } },
         onReadableAnswer = { scope.launch { flow.onReadableAnswer(it) } }, onRetry = { scope.launch { flow.onRetry() } },
         onLater = { flow.onLater() }, onDismissSaveFailed = { flow.onDismissSaveFailed() }, onFinished = onFinished, key = flow,
@@ -226,14 +226,22 @@ fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (
 /** The dialog of one [SaveAndPrint.Step], with its answers as lambdas (the screen's scope owns them): what [SaveAndPrintDialogs] draws, and what the goldens record. */
 @Composable
 fun SaveAndPrintStepDialog(
-    s: SaveAndPrint.Step, manual: Boolean,
+    s: SaveAndPrint.Step, manual: Boolean, saveFailedMessage: String?,
     onSaveAnswer: (Boolean) -> Unit, onPrintAnswer: (Boolean) -> Unit, onReadableAnswer: (Boolean) -> Unit, onRetry: () -> Unit,
     onLater: () -> Unit, onDismissSaveFailed: () -> Unit, onFinished: (printed: Boolean) -> Unit, key: Any = Unit,
 ) {
     var finished by remember(key) { mutableStateOf(false) }
     when (s) {
         SaveAndPrint.Step.Idle -> Unit
-        SaveAndPrint.Step.SaveFailed -> Info(R.string.ui_sale_save_failed, null, manual) { onDismissSaveFailed() }
+        // a save the transaction REFUSED for a reason the rep can act on (stock moved, the memo was already edited) says that reason, not "try again"
+        SaveAndPrint.Step.SaveFailed -> if (saveFailedMessage != null) {
+            if (manual) AronManualDialog(ManualDialogKind.Warning, null, saveFailedMessage, stringResource(R.string.dialog_ok), { onDismissSaveFailed() }, onDismiss = { onDismissSaveFailed() })
+            else AlertDialog(
+                onDismissRequest = { onDismissSaveFailed() },
+                text = { Text(saveFailedMessage) },
+                confirmButton = { AronYesButton(stringResource(R.string.dialog_ok), { onDismissSaveFailed() }) },
+            )
+        } else Info(R.string.ui_sale_save_failed, null, manual) { onDismissSaveFailed() }
         SaveAndPrint.Step.AskSave -> YesNo(R.string.sale_confirm_title, R.string.sale_confirm_text, onSaveAnswer, manual, ManualDialogKind.Warning)
         SaveAndPrint.Step.Saving -> Busy(R.string.ui_print_saving)
         SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, onPrintAnswer, manual, ManualDialogKind.Info)

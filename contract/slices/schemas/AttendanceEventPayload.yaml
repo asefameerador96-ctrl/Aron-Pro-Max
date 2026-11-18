@@ -15,3 +15,8 @@ AttendanceEventPayload:
       - 'null'
       maxLength: 300
       description: Reverse-geocoded text shown on screen; display only, never used for a decision.
+    closed_by:
+      $ref: '#/components/schemas/AttendanceClosedBy'
+      description: 'Contract 1.19.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted;
+        `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored
+        and acknowledged, never a check-out time.'

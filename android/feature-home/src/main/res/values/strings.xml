@@ -161,4 +161,5 @@
     <string name="set_submit_warning_anyway">Log out anyway</string>
     <string name="set_config_current_title">Configuration is current</string>
     <string name="set_config_current_message">This phone already has the latest configuration.</string>
+    <string name="hm_tile_locked">Locked: check in first.</string>
 </resources>
