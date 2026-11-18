@@ -56,7 +56,7 @@ class AmoCloseFailureTest {
         scenario = f.own(ActivityScenario.launch(ComponentActivity::class.java))
         scenario!!.onActivity { activity ->
             val ctx = AppLocale.wrap(activity, AppLanguage.EN)
-            activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { content() } } }
+            activity.setContent { CompositionLocalProvider(LocalContext provides ctx, androidx.activity.compose.LocalActivityResultRegistryOwner provides activity) { AronTheme(AppLanguage.EN) { content() } } }
         }
         compose.waitForIdle()
     }

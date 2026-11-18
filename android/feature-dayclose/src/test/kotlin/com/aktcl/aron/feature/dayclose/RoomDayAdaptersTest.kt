@@ -220,9 +220,8 @@ class RoomDayAdaptersTest {
     @Test fun anEditWhoseSupersededMemoWasRefusedIsWithheldFromSendAgainButNotWhenItIsStored() = runTest {
         sell(due = 0)
         val old = db.captureDao().memosOn("2026-10-05").single()
-        val fixId = ClientIds.newUuid()
-        val fix = GeoFixEntity(fixId, old.clientUuid, "memo_edit", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
-        val editUuid = ClientIds.newUuid()
+        val fixId = ClientIds.newUuid(); val editUuid = ClientIds.newUuid()
+        val fix = GeoFixEntity(fixId, editUuid, "memo_edit", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
         repo.recordSale(SaleCapture(
             old.copy(clientUuid = editUuid, memoNo = "sr334001-261005-002", supersedesClientUuid = old.clientUuid, editReasonCode = "wrong_sku", editFixClientUuid = fixId),
             listOf(MemoLineEntity(ClientIds.newUuid(), meta(), editUuid, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)), editFix = fix,
