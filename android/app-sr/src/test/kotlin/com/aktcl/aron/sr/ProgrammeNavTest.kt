@@ -28,7 +28,7 @@ class ProgrammeNavTest {
     }
 
     @Test fun thePhotoMenuLeadsToTheGatedAsthaPhotoScreen() {
-        assertEquals(SrScreen.PHOTO_MENU, SrNav.parent(SrScreen.PHOTO_ASTHA))
+        assertEquals(SrScreen.PHOTO_MENU, SrNav.parent(SrScreen.PHOTO_ASTHA)); assertEquals(SrScreen.PHOTO_MENU, SrNav.parent(SrScreen.PHOTO_CAMPAIGN)); assertTrue(SrScreen.PHOTO_CAMPAIGN in SR_CHECKIN_GATED)
         assertEquals(SrScreen.HOME, SrNav.parent(SrScreen.PHOTO_MENU))
         assertTrue(SrScreen.PHOTO_ASTHA in SR_CHECKIN_GATED && SrScreen.PHOTO_MENU !in SR_CHECKIN_GATED)
     }

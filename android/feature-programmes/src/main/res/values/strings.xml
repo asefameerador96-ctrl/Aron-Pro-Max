@@ -113,4 +113,7 @@
     <string name="pg_awaiting_memos">%1$s memos are awaiting confirmation; the figures update after the next sync.</string>
     <string name="pg_awaiting_redemptions">%1$s redemptions are awaiting confirmation; the points update after the next sync.</string>
     <string name="pg_photo_locked">The server has locked this gift, no photo is needed: %1$s</string>
+    <string name="pg_campaign_none">No redeemed campaign gift is waiting for a photo.</string>
+    <string name="pg_campaign_progress">%1$s of %2$s photos taken</string>
+    <string name="pg_campaign_unit">Unit %1$s</string>
 </resources>

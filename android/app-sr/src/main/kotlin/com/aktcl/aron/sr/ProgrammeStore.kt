@@ -7,6 +7,7 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
+import com.aktcl.aron.feature.programmes.LocalCampaignGift
 import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.LocalGiftPhoto
 import com.aktcl.aron.feature.programmes.LocalMemo
@@ -69,8 +70,28 @@ class ProgrammeStore(
             fun t(k: String) = (o[k] as? JsonPrimitive)?.content
             LocalGiftPhoto(
                 t("programme_kind") ?: return@mapNotNull null, t("outlet_id")?.toLongOrNull() ?: return@mapNotNull null, t("gift_assignment_id")?.toLongOrNull(),
-                t("redemption_client_uuid"), t("unit_no")?.toIntOrNull(), db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending",
+                t("redemption_client_uuid"), t("unit_no")?.toIntOrNull(), db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending", t("gift_id")?.toLongOrNull() ?: 0L,
             )
+        }
+    }
+
+    /**
+     * This phone's own redemptions of the campaign programmes ([campaignProgrammeIds]) that are not refused, one entry per redeemed gift line, for the Gift Verify list: a
+     * redemption the bundle cannot list yet still needs its unit photos.
+     */
+    suspend fun campaignRedemptions(campaignProgrammeIds: Set<Long>): List<LocalCampaignGift> = withContext(Dispatchers.IO) {
+        val lines = db.captureDao().amoRecordsOfType("redemption_line").mapNotNull { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
+            fun t(k: String) = (o[k] as? JsonPrimitive)?.content
+            Triple(t("redemption_client_uuid") ?: return@mapNotNull null, t("gift_id")?.toLongOrNull() ?: return@mapNotNull null, t("qty")?.toIntOrNull() ?: return@mapNotNull null)
+        }.groupBy { it.first }
+        db.captureDao().amoRecordsOfType("redemption").flatMap { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@flatMap emptyList()
+            val programme = (o["programme_id"] as? JsonPrimitive)?.content?.toLongOrNull()
+            val outlet = (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull()
+            if (programme == null || outlet == null || programme !in campaignProgrammeIds) return@flatMap emptyList()
+            val state = db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending"
+            lines[r.clientUuid].orEmpty().groupBy { it.second }.map { (gift, ls) -> LocalCampaignGift(r.clientUuid, outlet, gift, ls.sumOf { it.third }.coerceAtMost(50), state) }
         }
     }
 

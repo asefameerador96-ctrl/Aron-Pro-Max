@@ -111,6 +111,14 @@ class ProgrammeRecordsTest {
         assertNull(ProgrammePayloads.problem("gift_photo", ProgrammePayloads.giftPhoto("campaign", 10, 4, photo, fix, redemptionUuid = u, unitNo = 3)))
     }
 
+    @Test fun aCampaignPhotoNamesItsRedemptionAsTheOutboxParentAndAnAsthaPhotoNamesNone() = runTest {
+        val fix = kotlinx.serialization.json.buildJsonObject { put("lat", kotlinx.serialization.json.JsonPrimitive(23.79)) }
+        val red = ClientIds.newUuid(); val c = ClientIds.newUuid(); val a = ClientIds.newUuid()
+        assertTrue(repo.recordProgramme(listOf(AmoRecordEntity(c, TestRows.meta(), "gift_photo", c, 0, ProgrammePayloads.giftPhoto("campaign", 10, 4, ClientIds.newUuid(), fix, redemptionUuid = red, unitNo = 1).toString()))))
+        assertTrue(repo.recordProgramme(listOf(AmoRecordEntity(a, TestRows.meta(), "gift_photo", a, 0, ProgrammePayloads.giftPhoto("astha", 10, 4, ClientIds.newUuid(), fix, assignmentId = 71).toString()))))
+        assertEquals(red, db.outboxDao().byClientUuid(c)!!.parentUuid); assertNull(db.outboxDao().byClientUuid(a)!!.parentUuid)
+    }
+
     @Test fun aMemberTheContractLacksIsRefused() = runTest {
         val u = ClientIds.newUuid()
         val extra = ProgrammePayloads.giftChoice(10, 4, "2026-Q4").toString().replace("}", ""","tier":"gold"}""")

@@ -4,7 +4,7 @@ import com.aktcl.aron.core.database.record.ProgrammePayloads
 import kotlinx.serialization.json.JsonObject
 
 /** A gift photo record this phone holds (from the stored `gift_photo` record and its outbox state). */
-data class LocalGiftPhoto(val programmeKind: String, val outletId: Long, val assignmentId: Long?, val redemptionUuid: String?, val unitNo: Int?, val state: String)
+data class LocalGiftPhoto(val programmeKind: String, val outletId: Long, val assignmentId: Long?, val redemptionUuid: String?, val unitNo: Int?, val state: String, val giftId: Long = 0L)
 
 /** Where the hand-over photo of an outlet's Astha gift stands. */
 sealed interface PhotoStatus {

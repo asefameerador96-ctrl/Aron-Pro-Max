@@ -174,4 +174,20 @@ class SrProgrammesScreenshotTests {
     @Test fun photo_astha_en_sunlight() = shot("photo_astha_en_sunlight", AppLanguage.EN, sunlight = true) { PhotoPage(10, shot1, UiLocale.EN) }
     @Test fun photo_astha_bn_font20() = shot("photo_astha_bn_font20", fontScale = 2.0f) { PhotoPage(10, shot1) }
     @Test fun photo_astha_bn_empty() = shot("photo_astha_bn_empty") { PhotoPage(10, data = null) }
+
+    // Campaign gift photo (manual 58)
+    private val campaignGifts = listOf(com.aktcl.aron.feature.programmes.LoyaltyGift(4, 3, "Chair", "চেয়ার", 200, emptyList(), null, true))
+    @Composable private fun Campaign(groups: List<com.aktcl.aron.feature.programmes.CampaignGroup>, ready: Boolean = false, locale: UiLocale = UiLocale.BN, state: com.aktcl.aron.feature.outlet.GeoPhotoState = com.aktcl.aron.feature.outlet.GeoPhotoState()) =
+        Frame(ProgR.string.pg_photo_campaign) {
+            com.aktcl.aron.feature.programmes.CampaignPhotoScreen(
+                giftShops, groups, campaignGifts, locale, 10, {}, slot = { _, _ -> com.aktcl.aron.feature.outlet.GeoPhotoBlock(state, {}) }, canSubmit = { ready }, onSubmit = { SaveOutcome.SAVED },
+            )
+        }
+    private val campaignGroup = com.aktcl.aron.feature.programmes.CampaignGroup("r1", 10, 4, 3, setOf(1))
+
+    @Test fun campaign_photo_bn() = shot("campaign_photo_bn") { Campaign(listOf(campaignGroup)) }
+    @Test fun campaign_photo_bn_taken() = shot("campaign_photo_bn_taken") { Campaign(listOf(campaignGroup), ready = true, state = shot1) }
+    @Test fun campaign_photo_en_sunlight() = shot("campaign_photo_en_sunlight", AppLanguage.EN, sunlight = true) { Campaign(listOf(campaignGroup), ready = true, locale = UiLocale.EN, state = shot1) }
+    @Test fun campaign_photo_bn_font20() = shot("campaign_photo_bn_font20", fontScale = 2.0f) { Campaign(listOf(campaignGroup), state = shot1) }
+    @Test fun campaign_photo_bn_empty() = shot("campaign_photo_bn_empty") { Campaign(emptyList()) }
 }

@@ -8,6 +8,11 @@ import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.aron.AronLoaded
 import com.aktcl.aron.core.ui.aron.rememberAsyncLoad
 import com.aktcl.aron.feature.programmes.AsthaData
+import com.aktcl.aron.feature.programmes.CampaignGroup
+import com.aktcl.aron.feature.programmes.CampaignPhotoModel
+import com.aktcl.aron.feature.programmes.CampaignPhotoScreen
+import com.aktcl.aron.feature.programmes.LocalCampaignGift
+import com.aktcl.aron.feature.programmes.ServerPendingGift
 import com.aktcl.aron.feature.programmes.AsthaLocal
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
@@ -217,6 +222,68 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
                     else -> Unit
                 }
                 out
+            },
+        )
+    }
+}
+
+/** What the campaign gift photo page reads in one pass. */
+internal data class CampaignLoad(val gifts: List<com.aktcl.aron.feature.programmes.LoyaltyGift>, val shops: List<ShopInfo>, val server: List<ServerPendingGift>, val local: List<LocalCampaignGift>, val photos: List<LocalGiftPhoto>)
+
+/**
+ * The campaign gift photo page (manual 58, Gift Verify): one slot per unit of every redeemed campaign gift still without a photo, from the bundle's pending list and this phone's own
+ * redemptions. Each unit has its own capture and its own fixed record uuid, so a retry or a double tap is one record per unit; Submit of a gift saves its units in order through the
+ * check-in-gated programme write path and stops at the first that is refused (the saved ones stay saved and show as done). Offline end to end.
+ */
+@Composable
+fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
+    val load = rememberAsyncLoad(locale) {
+        withContext(Dispatchers.IO) {
+            val prog = day.reference.section("programmes")
+            val loyalty = LoyaltyModel.parse(prog)
+            val campaignIds = loyalty?.programmes?.filter { it.kind == "campaign" }?.map { it.id }?.toSet().orEmpty()
+            val server = CampaignPhotoModel.serverPending(prog)
+            val local = day.programmes.campaignRedemptions(campaignIds)
+            val ids = (server.map { it.outletId } + local.map { it.outletId }).toSet()
+            CampaignLoad(loyalty?.gifts.orEmpty(), ShopModel.buildFor(readShopOutlets(day), ids, ShopModel.tiers(prog), day.currentRouteId()), server, local, day.programmes.giftPhotos())
+        }
+    }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        var photos by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.photos) }
+        var selected by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<Long?>(null) }
+        var round by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+        val uuids = androidx.compose.runtime.remember { HashMap<String, String>() } // one fixed record uuid per (redemption, gift, unit)
+        val captures = androidx.compose.runtime.remember(round) { HashMap<String, com.aktcl.aron.feature.outlet.GeoPhotoCapture>() }
+        val states = androidx.compose.runtime.remember(round) { androidx.compose.runtime.mutableStateMapOf<String, com.aktcl.aron.feature.outlet.GeoPhotoState>() }
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        fun key(g: CampaignGroup, u: Int) = "${g.redemptionUuid}/${g.giftId}/$u"
+        val groups = CampaignPhotoModel.groups(page.server, page.local, photos)
+        CampaignPhotoScreen(
+            page.shops, groups, page.gifts, locale, selected, { selected = it },
+            slot = { g, u ->
+                val k = key(g, u)
+                val capture = androidx.compose.runtime.remember(k, round) { captures.getOrPut(k) { day.newCapture("gift_photo") } }
+                androidx.compose.runtime.LaunchedEffect(capture) { capture.state.collect { states[k] = it } }
+                val cs = states[k] ?: com.aktcl.aron.feature.outlet.GeoPhotoState()
+                com.aktcl.aron.feature.outlet.GeoPhotoBlock(cs, { scope.launch { capture.shutter() } })
+            },
+            canSubmit = { g -> g.openUnits.isNotEmpty() && g.openUnits.all { u -> states[key(g, u)]?.let { it.complete && !it.geoMocked } == true } },
+            onSubmit = { g ->
+                var result = SaveOutcome.SAVED
+                for (u in g.openUnits) {
+                    val cs = states[key(g, u)]; val photo = cs?.photo; val fix = cs?.fix
+                    if (photo == null || fix == null || !fix.isOk) { result = SaveOutcome.REFUSED; break }
+                    val uuid = uuids.getOrPut(key(g, u)) { day.programmes.newUuid() }
+                    val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
+                    val plan = CampaignPhotoModel.planUnit(g, u, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)
+                    val shop = page.shops.firstOrNull { it.outletId == g.outletId }
+                    val out = day.programmes.saveGiftPhoto(day.programmes.metaFor(shop?.routeId ?: 0L), plan, photo.photoUuid, fixEntity)
+                    if (out == SaveOutcome.CONFLICT) uuids.remove(key(g, u))
+                    if (out != SaveOutcome.SAVED && out != SaveOutcome.ALREADY_SAVED) { result = out; break }
+                }
+                runCatching { day.programmes.giftPhotos() }.onSuccess { photos = it }
+                if (result == SaveOutcome.SAVED || result == SaveOutcome.ALREADY_SAVED) round++
+                result
             },
         )
     }

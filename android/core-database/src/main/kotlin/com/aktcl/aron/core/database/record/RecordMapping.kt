@@ -342,6 +342,7 @@ object RecordMapping {
     internal fun amoParent(type: String, payload: JsonObject): String? = when (type) {
         "distribution_check_line" -> (payload["check_client_uuid"] as? JsonPrimitive)?.contentOrNull
         "call_assessment_answer" -> (payload["assessment_client_uuid"] as? JsonPrimitive)?.contentOrNull
+        "gift_photo" -> (payload["redemption_client_uuid"] as? JsonPrimitive)?.contentOrNull // a campaign photo follows its redemption; an Astha photo has none
         else -> null
     }
 
