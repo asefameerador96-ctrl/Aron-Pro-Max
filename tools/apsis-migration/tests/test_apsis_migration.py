@@ -113,11 +113,14 @@ class Base(unittest.TestCase):
 
 
 class Unit(unittest.TestCase):
-    def test_parser_escapes_nulls_negatives_hex_and_doubled_quotes(self):
-        rows = parse_values("(1,'a''b\\n\\\\',NULL,-2.50,0xAB),(2,'x,(y);',NULL,1e3,''),(3,'it\\'\\'s','p''''q');")
-        self.assertEqual(rows[0], ("1", "a'b\n\\", None, "-2.50", "0xAB"))
+    def test_parser_escapes_nulls_negatives_and_doubled_quotes_and_refuses_hex(self):
+        rows = parse_values("(1,'a''b\\n\\\\',NULL,-2.50,'z'),(2,'x,(y);',NULL,1e3,''),(3,'it\\'\\'s','p''''q');")
+        self.assertEqual(rows[0], ("1", "a'b\n\\", None, "-2.50", "z"))
         self.assertEqual(rows[1], ("2", "x,(y);", None, "1e3", ""))
         self.assertEqual(rows[2], ("3", "it''s", "p''q"))      # an escaped quote pair and a doubled pair each decode once
+        from apsis_migration.mysqldump import UnsupportedShape
+        with self.assertRaises(UnsupportedShape):
+            parse_values("(1,0xAB);")                          # a hex literal is not modelled: refused, never skipped
 
     def test_uuid_v5_is_the_standard_one_and_pinned(self):
         ns = uuid.uuid5(uuid.NAMESPACE_URL, "urn:aktcl:aron:apsis-migration:v1")
