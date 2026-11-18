@@ -190,3 +190,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 ### 2026-11-18 05:55 update: T-KPI1 design in (lane/sr-targets-server 2f6bb8ac)
 - N-2 needs no new table (route_monthly_target is per SKU; working-day calendar with admin GUI exists). N-5, N-8, N-3 need new tables and admin tabs.
 - Owner questions Q-A..Q-K (defaults built meanwhile) are in docs/status/sr-targets-server.md on that branch; passed to the owner 05:55. Server month-to-date is through yesterday; today's memos are added on the phone.
+
+
+### 2026-11-18 06:20 update: train 117 LANDED
+- Integration 39db6c734 = lane/lead-train117 a5f07f32e + train row; lane ci 44242714300 green; integration ci 44245077961 (#2303) green (372 of 372 e2e); deploy #357 (44246946165) success; PITR 2026-11-18T05:56:34Z; migrate job caj-aron-dev-migrate-gyoweox 'migrations succeeded' but its console was not in the deploy log; health build 39db6c734; SR smoke passed. APK of record aron-release-signed-dev-2303. ops-diagnose run 44249846071 dispatched to read the migrate console (0200 -> 0203) and worker errors.
+- Numbers now: integrity V0204..V0207 + contract 1.20.0 (A-INT3 told to merge and renumber the server part; Room 10 -> 11 waits for gates); Loyalty V0208 + 1.21.0 (not yet renumbered); SV6 follow-ups provisional V0240+; T-KPI1 provisional V0230+ and 1.22.0.
+- Told: A-GATE7 (merge, closed_by on the wire, then final pass and landing as one unit), SV6, L-A11, T-KPI1, P-AMO3, A-PROG1, P-TSO (nudged for its missing 'checked').
+- P-SR1b: four messages had not reached its turn; fifth sent as an interrupt 06:11 (fix the AMO out-of-range defect first).
+- gates closing round d9997b8a PASS (7 small follow-ups sent); integrity lows closed at 4bd1b1aa (final pass owed, incl. the removed test D-AINT-13).
