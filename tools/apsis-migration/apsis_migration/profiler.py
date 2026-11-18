@@ -241,6 +241,7 @@ def load_refs(path):
 def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, order=(), ref_cap=REF_CAP, log=lambda m: None, whole_database=False):
     allowed = set(mapping["allowed_tables"])
     files, refused_names, refused_other, other_files = {}, 0, 0, []
+    tab_data, dup_tables = set(), set()
     problems = []
     unsupported_ext = re.compile(r"\.(zst|bz2|xz|zip|lz4|7z|tar|tgz|part[0-9]*|[0-9]{5})(\.|$)|-schema(-create)?\.sql|\.[0-9]{5}\.sql", re.I)
 
@@ -264,14 +265,26 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
                 problems.append({"table": "<file not on the allow-list>", "refused": "unsupported file shape: " + reason(p.name)})
                 refused_other += 1
             continue
+        mt = re.match(r"^(.*)\.txt(\.gz)?$", p.name)
+        if mt and mt.group(1) in allowed:
+            tab_data.add(mt.group(1))                                      # mysqldump --tab: the data is in a .txt file next to a schema-only .sql
+            continue
         if not m:
             continue
         try:
-            files[safety.table(m.group(1), allowed)] = p
+            t = safety.table(m.group(1), allowed)
         except safety.Refused:
             refused_names += 1
             if whole_database:
                 other_files.append(p)
+            continue
+        if t in files:
+            dup_tables.add(t)
+        files[t] = p
+    for t in sorted(dup_tables | (tab_data & set(files))):
+        files.pop(t, None)
+        problems.append({"table": t, "refused": "two files for one table (for example t.sql and t.sql.gz)" if t in dup_tables else
+                         "mysqldump --tab layout: a schema-only .sql next to a data .txt file is not supported; re-dump without --tab (one .sql per table with its INSERTs)"})
     out = {"tables": {}, "files_not_on_allow_list": refused_names, "tables_missing": sorted(allowed - set(files)), "refused": problems, "refused_files_not_on_allow_list": refused_other,
            "tables_not_on_allow_list_in_whole_file": 0, "whole_database_mode": bool(whole_database), "charset": charset,
            "limits": {"distinct_cap_per_column": cap, "reference_key_cap": ref_cap, "shape_prefix_chars": PREFIX}}
@@ -302,6 +315,17 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
     def read_file(path, table, multi_file):
         """One file: one table (named by the file) or, for a whole-database file, one table per CREATE TABLE section (name validated, allow-list applied)."""
         cur, cols, schema, rows, names, t0, skip = None, None, None, 0, Names(), time.time(), False
+        remedy = (" [whole-database file: dump that table on its own (mysqldump --skip-triggers db table > table.sql) or split the file; see the runbook]" if multi_file else "")
+
+        def refused_name(e):
+            """The table whose section was being read when the refusal happened, printed only if it is on the allow-list."""
+            hint = getattr(e, "table_hint", None) if e is not None else (schema.name if schema is not None else None)
+            if not multi_file:
+                return table
+            try:
+                return safety.table(hint, allowed) if hint else "<whole-database file>"
+            except safety.Refused:
+                return "<table not on the allow-list>"
         try:
             for ev in events(path, batch_rows=20000, charset=charset, strict=True, expect_table=table, multi=multi_file):
                 if ev[0] == "schema":
@@ -372,14 +396,17 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
             if cur is not None:
                 finish(cur, schema, cols, rows, names, t0)
         except UnsupportedShape as e:
-            problems.append({"table": cur or table or "<whole-database file>", "refused": str(e)[:240]})
-            log(f"{cur or table or '<whole-database file>'}: REFUSED ({e})")
+            who = refused_name(e)
+            problems.append({"table": who, "refused": (str(e) + remedy)[:300]})
+            log(f"{who}: REFUSED ({e})")
         except CharsetError as e:
-            problems.append({"table": cur or table or "<whole-database file>", "refused": str(e)[:240], "kind": "charset"})
-            log(f"{cur or table or '<whole-database file>'}: REFUSED (character set)")
+            who = refused_name(e)
+            problems.append({"table": who, "refused": (str(e) + remedy)[:300], "kind": "charset"})
+            log(f"{who}: REFUSED (character set)")
         except Exception as e:      # a garbled file must refuse its table, never abort the whole run or print what it holds
-            problems.append({"table": cur or table or "<whole-database file>", "refused": f"unreadable file (internal error class {type(e).__name__})"})
-            log(f"{cur or table or '<whole-database file>'}: REFUSED (unreadable)")
+            who = refused_name(None)
+            problems.append({"table": who, "refused": f"unreadable file (internal error class {type(e).__name__})"})
+            log(f"{who}: REFUSED (unreadable)")
 
     for table in ordered:
         read_file(files[table], table, False)

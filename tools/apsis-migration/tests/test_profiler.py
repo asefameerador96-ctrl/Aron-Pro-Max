@@ -641,6 +641,139 @@ class RealFormats(unittest.TestCase):
         self.assertNotIn("hour_of_day_stored", san)
 
 
+C1 = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n"
+
+
+class LineAccounting(unittest.TestCase):
+    """Round 4: line accounting in skipped regions, silent skips, and the whole-database constructs."""
+
+    def run_files(self, files, extra=()):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            for name, body in files.items():
+                (d / name).write_bytes(body if isinstance(body, bytes) else body.encode("utf-8"))
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER, whole_database=bool(extra))
+            p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out")] + list(extra), capture_output=True)
+            text = all_text(Path(t) / "out") if (Path(t) / "out").exists() else ""
+            return full, p, text
+
+    def one(self, body):
+        return self.run_files({"master_sku.sql": body})
+
+    def test_a_forged_delimiter_line_inside_a_string_does_not_end_the_block(self):
+        body = (C1 + "INSERT INTO `master_sku` VALUES ('a',1);\nDELIMITER ;;\nCREATE TRIGGER t1 BEFORE INSERT ON `master_sku` FOR EACH ROW SET NEW.sku_code = 'x\nDELIMITER ;\n"
+                "INSERT INTO `master_sku` VALUES ('secret-row-value',9);\n' ;;\nDELIMITER ;\n")
+        full, p, text = self.one(body)
+        self.assertFalse(full["refused"], full["refused"])
+        self.assertEqual(full["tables"]["master_sku"]["rows"], 1)                      # the forged line and the INSERT inside the string were never read
+        self.assertNotIn("secret-row-value", text + p.stderr.decode())
+
+    def test_a_delimiter_block_that_ends_mid_statement_or_never_ends_is_refused(self):
+        for tail in ("DELIMITER ;;\nCREATE TRIGGER t1 BEFORE INSERT ON x FOR EACH ROW SET a = 1\nDELIMITER ;\nINSERT INTO `master_sku` VALUES ('secret-row-value',1);\n",
+                     "DELIMITER ;;\nDELIMITER ;\nINSERT INTO `master_sku` VALUES ('secret-row-value',1);\n",
+                     "DELIMITER ;;\nCREATE TRIGGER t1 BEFORE INSERT ON x FOR EACH ROW SET a = 1 ;;\n",
+                     "DELIMITER ;;\nCREATE TRIGGER t1 /* never closed ;;\nDELIMITER ;\n"):
+            full, p, _ = self.one(C1 + tail)
+            self.assertTrue(full["refused"], tail)
+            self.assertNotIn("secret-row-value", p.stderr.decode() + p.stdout.decode())
+
+    def test_partition_continuation_lines_must_match_the_grammar(self):
+        head = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\n/*!50100 PARTITION BY RANGE (`n`)\n"
+        ok = head + "(PARTITION p0 VALUES LESS THAN (10) ENGINE = InnoDB,\n PARTITION p1 VALUES LESS THAN MAXVALUE ENGINE = InnoDB) */;\nINSERT INTO `master_sku` VALUES ('a',1);\n"
+        full, _, _ = self.one(ok)
+        self.assertEqual(full["tables"]["master_sku"]["partitions"], 2)
+        full, _, _ = self.one(ok.replace("InnoDB) */;", "InnoDB)*/;"))
+        self.assertFalse(full["refused"], full["refused"])
+        for bad in ("(PARTITION p0 VALUES LESS THAN (10) ENGINE = InnoDB,\n INSERT INTO `master_sku` VALUES ('secret-row-value',1);\n PARTITION p1 VALUES LESS THAN MAXVALUE) */;\n",
+                    "(PARTITION p0 VALUES LESS THAN (10),\n DROP TABLE x; PARTITION p1 VALUES LESS THAN MAXVALUE) */;\n"):
+            full, p, _ = self.one(head + bad + "INSERT INTO `master_sku` VALUES ('a',1);\n")
+            self.assertTrue(full["refused"]); self.assertNotIn("secret-row-value", p.stderr.decode())
+        sub = head.replace("RANGE (`n`)", "RANGE (`n`) SUBPARTITION BY HASH (`n`) SUBPARTITIONS 2") + "(PARTITION p0 VALUES LESS THAN (10),\n PARTITION p1 VALUES LESS THAN MAXVALUE) */;\nINSERT INTO `master_sku` VALUES ('a',1);\n"
+        full, _, _ = self.one(sub)
+        self.assertEqual(full["tables"]["master_sku"]["partitions"], 2)
+        cont = head.replace("RANGE (`n`)", "HASH (`n`)") + "PARTITIONS 6 */;\nINSERT INTO `master_sku` VALUES ('a',1);\n"
+        full, _, _ = self.one(cont)
+        self.assertEqual(full["tables"]["master_sku"]["partitions"], 6)
+
+    def test_a_plain_comment_has_no_comment_end_inside(self):
+        for line in ("/* c */ INSERT INTO `master_sku` VALUES ('secret-row-value',1); /* d */", "/* c */ SET @a=1; /* d */"):
+            full, p, _ = self.one(C1 + line + "\n")
+            self.assertTrue(full["refused"], line); self.assertNotIn("secret-row-value", p.stderr.decode())
+
+    def test_a_schema_only_sql_next_to_a_tab_txt_and_a_sql_gz_pair_are_refused_not_skipped(self):
+        full, p, _ = self.run_files({"master_sku.sql": C1, "master_sku.txt": "secret-row-value\t1\n"})
+        self.assertEqual(full["refused"][0]["table"], "master_sku"); self.assertIn("--tab", full["refused"][0]["refused"]); self.assertEqual(p.returncode, 3)
+        import gzip
+        full, p, _ = self.run_files({"master_sku.sql": C1 + "INSERT INTO `master_sku` VALUES ('a',1);\n", "master_sku.sql.gz": gzip.compress((C1 + "INSERT INTO `master_sku` VALUES ('b',2);\n").encode())})
+        self.assertEqual(full["refused"][0]["table"], "master_sku"); self.assertIn("two files", full["refused"][0]["refused"])
+        self.assertNotIn("master_sku", full["tables"])
+
+    def test_a_column_list_is_exactly_comma_separated_backticked_names(self):
+        for lst in ("(`sku_code` , `n`)", "(`sku_code`;`n`)", "(sku_code,n)", "(`sku_code``x`,`n`)", "(`sku_code`,`n`,)"):
+            full, _, _ = self.one(C1 + f"INSERT INTO `master_sku` {lst} VALUES ('a',1);\n")
+            self.assertTrue(full["refused"], lst)
+        full, _, _ = self.one(C1 + "INSERT INTO `master_sku` (`sku_code`,`n`) VALUES ('a',1);\nINSERT INTO `master_sku` (`sku_code`, `n`) VALUES ('b',2);\n")
+        self.assertFalse(full["refused"], full["refused"])
+
+    def test_a_multi_line_gtid_purged_header_is_a_named_construct(self):
+        gtid = "SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'aaaaaaaa-0000-0000-0000-000000000000:1-99,\nbbbbbbbb-0000-0000-0000-000000000000:1-5';\n"
+        full, _, _ = self.one(gtid + C1 + "INSERT INTO `master_sku` VALUES ('a',1);\n")
+        self.assertFalse(full["refused"], full["refused"])
+        full, p, _ = self.one("SET @@GLOBAL.GTID_PURGED='aaaaaaaa-0000:1-99,\nINSERT INTO `master_sku` VALUES ('secret-row-value',1);\n" + C1)
+        self.assertTrue(full["refused"]); self.assertNotIn("secret-row-value", p.stderr.decode())
+
+    ROCKS = ("/*!50717 SELECT COUNT(*) INTO @rocksdb_has_p_s_session_variables FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'performance_schema' AND TABLE_NAME = 'session_variables' */;\n"
+             "/*!50717 SET @rocksdb_get_is_supported = IF (@rocksdb_has_p_s_session_variables, 'SELECT COUNT(*) FROM performance_schema.session_variables WHERE VARIABLE_NAME=\\'rocksdb_bulk_load\\'', 'SELECT 0') */;\n"
+             "/*!50717 PREPARE s FROM @rocksdb_get_is_supported */;\n/*!50717 EXECUTE s */;\n/*!50717 DEALLOCATE PREPARE s */;\n"
+             "/*!50717 SET @rocksdb_enable_bulk_load = IF (@rocksdb_is_supported, 'SET SESSION rocksdb_bulk_load = 1', 'SET @rocksdb_dummy_bulk_load = 0') */;\n")
+
+    def test_the_mysql_8_rocksdb_preamble_lines_are_accepted(self):
+        full, _, _ = self.one(self.ROCKS + C1 + "INSERT INTO `master_sku` VALUES ('a',1);\n")
+        self.assertFalse(full["refused"], full["refused"])
+
+    WHOLE_DB = ("CREATE DATABASE /*!32312 IF NOT EXISTS*/ `aron` /*!40100 DEFAULT CHARACTER SET utf8mb4 */ /*!80016 DEFAULT ENCRYPTION='N' */;\n\nUSE `aron`;\n"
+                "DROP TABLE IF EXISTS `master_routes`;\nCREATE TABLE `master_routes` (\n  `route_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_routes` VALUES ('SR-1');\n"
+                "--\n-- Temporary view structure for view `secret_view_name`\n--\n\nDROP TABLE IF EXISTS `secret_view_name`;\n/*!50001 DROP VIEW IF EXISTS `secret_view_name`*/;\n"
+                "SET @saved_cs_client     = @@character_set_client;\nSET character_set_client = utf8;\n/*!50001 CREATE TABLE `secret_view_name` (\n  `a` int(11),\n  `b` varchar(5)\n) ENGINE=MyISAM */;\n"
+                "SET character_set_client = @saved_cs_client;\n"
+                "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('x');\n"
+                "--\n-- Final view structure for view `secret_view_name`\n--\n\n/*!50001 DROP TABLE IF EXISTS `secret_view_name`*/;\n/*!50001 DROP VIEW IF EXISTS `secret_view_name`*/;\n"
+                "/*!50001 SET @saved_cs_client          = @@character_set_client */;\n/*!50001 SET character_set_client      = utf8 */;\n"
+                "/*!50001 CREATE ALGORITHM=UNDEFINED */\n/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */\n/*!50001 VIEW `secret_view_name` AS select `master_sku`.`sku_code` AS `a` from `master_sku` where `master_sku`.`sku_code` = 'secret-row-value' */;\n"
+                "/*!50001 SET character_set_client      = @saved_cs_client */;\n"
+                "--\n-- Dumping events for database 'aron'\n--\n/*!50106 SET @save_time_zone= @@TIME_ZONE */ ;\n/*!50106 DROP EVENT IF EXISTS `secret_event` */;\nDELIMITER ;;\n"
+                "/*!50106 CREATE*/ /*!50117 DEFINER=`root`@`localhost`*/ /*!50106 EVENT `secret_event` ON SCHEDULE EVERY 1 DAY DO DELETE FROM master_sku */ ;;\nDELIMITER ;\n"
+                "/*!50106 SET TIME_ZONE= @save_time_zone */ ;\n"
+                "--\n-- Dumping routines for database 'aron'\n--\n/*!50003 DROP PROCEDURE IF EXISTS `secret_proc` */;\n/*!50003 SET @saved_cs_client      = @@character_set_client */ ;\nDELIMITER ;;\n"
+                "CREATE DEFINER=`root`@`%` PROCEDURE `secret_proc`() BEGIN DELETE FROM `master_sku` WHERE sku_code = 'secret-row-value'; END ;;\nDELIMITER ;\n"
+                "/*!50003 SET character_set_client  = @saved_cs_client */ ;\n")
+
+    def test_whole_database_constructs_are_consumed_unread_and_never_profiled_or_printed(self):
+        full, p, text = self.run_files({"all.sql": PRE_57 + self.WHOLE_DB + POST_57}, extra=["--whole-database"])
+        self.assertFalse(full["refused"], full["refused"])
+        self.assertEqual(sorted(full["tables"]), ["master_routes", "master_sku"])          # the view stand-in is NOT a table of the profile
+        self.assertEqual(full["tables"]["master_sku"]["rows"], 1)
+        out = text + p.stderr.decode() + p.stdout.decode()
+        for secret in ("secret_view_name", "secret_event", "secret_proc", "secret-row-value", "aron"):
+            self.assertNotIn(secret, out)
+
+    def test_a_multi_line_view_body_or_stray_line_in_a_whole_database_file_is_refused_naming_the_right_table_and_the_remedy(self):
+        bad = self.WHOLE_DB.replace("from `master_sku` where", "from `master_sku`\nwhere")
+        full, p, _ = self.run_files({"all.sql": bad}, extra=["--whole-database"])
+        self.assertTrue(full["refused"]); self.assertNotIn("secret-row-value", p.stderr.decode())
+        two = ("CREATE TABLE `master_routes` (\n  `route_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_routes` VALUES ('SR-1');\n"
+               "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nUPDATE `master_sku` SET a = 'secret-row-value';\n")
+        full, p, _ = self.run_files({"all.sql": two}, extra=["--whole-database"])
+        self.assertEqual(full["refused"][0]["table"], "master_sku")                       # the section being read, not the previous one
+        self.assertIn("mysqldump --skip-triggers", full["refused"][0]["refused"])
+        self.assertIn("master_routes", full["tables"])
+        self.assertNotIn("secret-row-value", p.stderr.decode() + p.stdout.decode())
+        other = two.replace("`master_sku`", "`secret_other`").replace("INSERT INTO `master_routes` VALUES ('SR-1');\n", "")
+        full, p, _ = self.run_files({"all.sql": other}, extra=["--whole-database"])
+        self.assertTrue(full["refused"]); self.assertNotIn("secret_other", p.stderr.decode() + p.stdout.decode() + json.dumps(full))
+
+
 class OutDir(unittest.TestCase):
     def test_any_git_work_tree_is_refused_not_only_this_checkout(self):
         with tempfile.TemporaryDirectory() as t:

@@ -57,7 +57,7 @@ class Binary:
 ABSENT = object()           # a column that a column-list INSERT does not name (generated columns are normally absent)
 _DIRECTIVE_SET = re.compile(r"^/\*!\d{5} SET [^;*]*\*/ ?;$")
 _DIRECTIVE_KEYS = re.compile(r"^/\*!\d{5} ALTER TABLE `[^`]*` (DISABLE|ENABLE) KEYS \*/;$")
-_COMMENT = re.compile(r"^/\*[^!].*\*/$|^/\*\*/$")
+_COMMENT = re.compile(r"^/\*(?!!)(?:(?!\*/).)*\*/$")             # a plain comment: no `*/` inside (so `/* c */ INSERT ... /* d */` is not one)
 _SET = re.compile(r"^SET [A-Za-z@_][^;]*;$", re.I)
 _DROP = re.compile(r"^DROP TABLE IF EXISTS `[^`]*`;$", re.I)
 _LOCK = re.compile(r"^(LOCK TABLES `[^`]*` WRITE;|UNLOCK TABLES;)$", re.I)
@@ -212,6 +212,115 @@ def _open(path, charset="utf-8", strict=True):
     return open(path, "r", encoding=charset, errors=errors, newline="\n")
 
 
+# --- named constructs of whole-database dumps, consumed UNREAD (never profiled, never printed)
+_CREATE_DB = re.compile(r"^CREATE DATABASE (?:/\*!\d{5} IF NOT EXISTS\*/ )?`[^`]*`(?: /\*!\d{5} (?:(?!\*/)[^;])*\*/)*;$", re.I)
+_USE = re.compile(r"^USE `[^`]*`;$", re.I)
+_DROPX = re.compile(r"^/\*!\d{5} DROP (?:TABLE|VIEW|PROCEDURE|FUNCTION|EVENT|TRIGGER) IF EXISTS `[^`]*` ?\*/ ?;$", re.I)
+_STANDIN_START = re.compile(r"^/\*!\d{5} CREATE TABLE `[^`]*` \($")             # a view's stand-in table: never a table in the profile
+_STANDIN_COL = re.compile(r"^\s*`[^`]*` [A-Za-z]")
+_STANDIN_END = re.compile(r"^\) ENGINE=[A-Za-z0-9_]+ \*/;$")
+_VIEW_ALGO = re.compile(r"^/\*!\d{5} CREATE ALGORITHM=[A-Z]+ \*/$")
+_VIEW_DEFINER = re.compile(r"^/\*!\d{5} DEFINER=(?:(?!\*/).)* \*/$")
+_VIEW_BODY = re.compile(r"^/\*!\d{5} VIEW `[^`]*` AS (?:(?!\*/).)* \*/;$")
+_ROCKSDB = re.compile(r"^/\*!50717 (?:SELECT COUNT\(\*\) INTO @rocksdb_\w+ FROM \w+\.\w+ WHERE (?:(?!\*/).)*|SET @rocksdb_\w+ ?= ?(?:(?!\*/).)*|PREPARE s FROM @rocksdb_\w+|EXECUTE s|DEALLOCATE PREPARE s) ?\*/;$")
+_GTID_START = re.compile(r"^SET @@GLOBAL\.GTID_PURGED\s*=\s*(?:/\*!\d{5} '[+-]?'\s*\*/\s*)?'[0-9a-fA-F:,\-]*$")
+_GTID_CONT = re.compile(r"^[0-9a-fA-F:,\-]*(?:';)?$")
+_COLLIST = re.compile(r"^\(`[^`]+`(?:, ?`[^`]+`)*\)$")
+# partition clause grammar (the bounds are values: they are matched by character class, never kept)
+_PEXPR = "A-Za-z0-9_`,. ()+\\-"
+_PCHAR = re.compile("[" + _PEXPR + "]")
+_PHEAD = re.compile(r"\s*(?:(?:SUB)?PARTITION BY (?:LINEAR )?(?:RANGE|LIST|HASH|KEY)(?: COLUMNS)?)\s*(?=\()", re.I)
+_PTOK = re.compile(r"\s*(?:(?:SUB)?PARTITION\s+`?[A-Za-z0-9_]+`?|VALUES\s+LESS\s+THAN\s+(?:MAXVALUE|\([" + _PEXPR + r"'\-:]*?\)(?=\s*(?:[,)]|ENGINE|STORAGE|COMMENT|$)))"
+                   r"|VALUES\s+IN\s+\([" + _PEXPR + r"'\-:]*?\)(?=\s*(?:[,)]|ENGINE|STORAGE|COMMENT|$))|(?:STORAGE\s+)?ENGINE\s*=\s*[A-Za-z0-9_]+|COMMENT\s*=\s*'[A-Za-z0-9_ ]*'"
+                   r"|(?:SUB)?PARTITIONS\s+[0-9]+|[(),])", re.I)
+
+
+def _partition_line(s, first):
+    """One line of a /*!50100 PARTITION BY ... */ clause. Returns (definitions, PARTITIONS n or None, ends_here). Anything outside the grammar refuses."""
+    end = False
+    m = re.search(r"\s*\*/;$", s)
+    if m:
+        end, s = True, s[:m.start()]
+    if first:
+        s = re.sub(r"^/\*!\d{5}\s+", "", s, count=1)
+    pos, heads = 0, 0
+    while True:
+        mh = _PHEAD.match(s, pos) if (first or heads) else None
+        if not mh:
+            break
+        depth, j = 0, mh.end()
+        while j < len(s):
+            ch = s[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif not _PCHAR.match(ch):
+                raise UnsupportedShape("a partition expression outside the recognised grammar")
+            j += 1
+        if depth != 0 or j >= len(s):
+            raise UnsupportedShape("an unclosed partition expression")
+        pos, heads = j + 1, heads + 1
+    if first and not heads:
+        raise UnsupportedShape("a partition clause outside the recognised grammar")
+    while s[pos:].strip():
+        mt = _PTOK.match(s, pos)
+        if not mt:
+            raise UnsupportedShape("a line of a PARTITION clause outside the recognised grammar (PARTITION name VALUES ... ENGINE = x): a partition clause is never skipped")
+        pos = mt.end()
+    defs = len(re.findall(r"(?<![A-Za-z])PARTITION\s+(?!BY\b)`?[A-Za-z0-9_]+", s, re.I))
+    mn = re.search(r"(?<![A-Za-z])PARTITIONS\s+([0-9]+)", s, re.I)
+    return defs, (int(mn.group(1)) if mn else None), end
+
+
+class _BlockScan:
+    """Scans a DELIMITER ;; block with a linear quote/comment state machine. The block ends only at a `DELIMITER ;` line that follows a statement terminated by `;;`
+    OUTSIDE quotes and comments: a forged `DELIMITER ;` inside a string or an unfinished statement never exposes the lines after it."""
+
+    def __init__(self):
+        self.q, self.pending, self.terms = None, False, 0
+
+    def feed(self, line):
+        if line.strip() == "DELIMITER ;":
+            if self.q is not None:
+                pass                                          # inside a string or comment: just text
+            elif self.pending or self.terms == 0:
+                raise UnsupportedShape("a DELIMITER block ends in the middle of a statement (no ;; terminator before DELIMITER ;)")
+            else:
+                return True
+        i, n = 0, len(line)
+        while i < n:
+            c = line[i]
+            if self.q in ("'", '"', "`"):
+                if c == "\\" and self.q != "`":
+                    i += 2
+                    continue
+                if c == self.q:
+                    self.q = None
+            elif self.q == "/*":
+                if c == "*" and line[i + 1:i + 2] == "/":
+                    self.q = None
+                    i += 1
+            else:
+                if c in "'\"`":
+                    self.q, self.pending = c, True
+                elif c == "/" and line[i + 1:i + 2] == "*":
+                    self.q = "/*"
+                    i += 1
+                elif c == "#" or (c == "-" and line[i + 1:i + 2] == "-" and (i + 2 >= n or line[i + 2] in " \t")):
+                    break
+                elif c == ";" and line[i + 1:i + 2] == ";":
+                    self.pending, self.terms = False, self.terms + 1
+                    i += 1
+                elif not c.isspace():
+                    self.pending = True
+            i += 1
+        return False
+
+
+
 def _lines(fh):
     """Lines with a size guard; a decode failure is reported with the line number only (never the bytes)."""
     n = 0
@@ -268,35 +377,62 @@ def _check_row(row, schema, order, lineno, ordinal):
 def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=True, expect_table=None, multi=False):
     """Yield ('schema', TableSchema) and ('rows', table, rows, statement_ordinal, statement_done). expect_table: the file's table (stem) when it is known; a CREATE of
     another name is refused and a second CREATE is refused. multi=True: a whole-database file: every CREATE TABLE section is its own table (the caller validates the
-    name against its allow-list), an INSERT must target the table whose CREATE is current. skip_statements: INSERT statements with ordinal <= this are skipped (resume)."""
-    schema, in_create, in_block, in_part, in_tail = None, False, False, False, False
+    name against its allow-list), an INSERT must target the table whose CREATE is current. skip_statements: INSERT statements with ordinal <= this are skipped (resume).
+    A refusal carries `table_hint`: the table whose section was being read (a raw name: the caller validates it before printing)."""
+    state = {"schema": None}
+    try:
+        yield from _events(path, batch_rows, skip_statements, charset, strict, expect_table, multi, state)
+    except (UnsupportedShape, CharsetError) as e:
+        e.table_hint = state["schema"].name if state["schema"] is not None else None
+        raise
+
+
+def _events(path, batch_rows, skip_statements, charset, strict, expect_table, multi, state):
+    schema, in_create, in_block, in_part, in_tail, in_gtid, in_standin = None, False, None, False, False, False, False
     creates, ordinal, part_count = 0, 0, 0
     seen = set()
+
+    def finish_part():
+        schema.partitions = part_count
+
     with _open(path, charset, strict) as fh:
         for lineno, line in _lines(fh):
-            if in_block:                                         # a DELIMITER block (trigger/routine body): skipped WITHOUT reading its statements
-                if line.strip() == "DELIMITER ;":
-                    in_block = False
+            if in_block is not None:                             # a DELIMITER block (trigger/routine/event body): skipped WITHOUT reading its statements
+                if in_block.feed(line):
+                    in_block = None
+                continue
+            if in_gtid:                                          # the continuation of a multi-line SET @@GLOBAL.GTID_PURGED='...,\n...';
+                if not _GTID_CONT.match(line):
+                    raise UnsupportedShape(f"a line inside a GTID_PURGED header the reader does not recognise (file line {lineno})")
+                if line.endswith("';"):
+                    in_gtid = False
+                continue
+            if in_standin:                                       # a view's stand-in table: consumed unread, never a table of the profile
+                if _STANDIN_END.match(line):
+                    in_standin = False
+                elif not _STANDIN_COL.match(line):
+                    raise UnsupportedShape(f"a line inside a view stand-in table the reader does not recognise (file line {lineno})")
                 continue
             if in_tail:                                          # `) ENGINE=...` without `;`: only a PARTITION clause may follow
                 in_tail = False
-                if not _PART.search(line.strip()):
-                    raise UnsupportedShape(f"the closing line of a CREATE TABLE does not end the statement (file line {lineno})")
                 s = line.strip()
+                if not _PART.search(s):
+                    raise UnsupportedShape(f"the closing line of a CREATE TABLE does not end the statement (file line {lineno})")
                 schema.partitioned = True
-                mn = _PARTITIONS_N.search(s)
-                part_count = int(mn.group(1)) if mn else len(_PARTITION_WORD.findall(s))
-                if s.endswith("*/;"):
-                    schema.partitions = part_count
+                d, n, end = _partition_line(s, True)
+                part_count = n if n is not None else d
+                if end:
+                    finish_part()
                     yield ("schema", schema)
                 else:
                     in_part = True
                 continue
-            if in_part:                                          # the rest of a multi-line /*!50100 PARTITION BY ... */ clause: counted, never read (the bounds are values)
-                part_count += len(_PARTITION_WORD.findall(line))
-                if line.rstrip().endswith("*/;"):
+            if in_part:                                          # the rest of a multi-line /*!50100 PARTITION BY ... */ clause: matched against the grammar, never read
+                d, n, end = _partition_line(line.strip(), False)
+                part_count = n if n is not None else part_count + d
+                if end:
                     in_part = False
-                    schema.partitions = part_count
+                    finish_part()
                     yield ("schema", schema)
                 continue
             if in_create:
@@ -305,12 +441,13 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     in_create = False
                     me, mc2 = _TAIL.search(s), _TAILCS.search(s)
                     schema.engine, schema.charset = (me.group(1) if me else ""), (mc2.group(1) if mc2 else "")
-                    if _PART.search(s):
+                    mpart = _PART.search(s)
+                    if mpart:
                         schema.partitioned = True
-                        mn = _PARTITIONS_N.search(s)
-                        part_count = int(mn.group(1)) if mn else len(_PARTITION_WORD.findall(s))
-                        if s.endswith("*/;"):
-                            schema.partitions = part_count
+                        d, n, end = _partition_line(s[mpart.start():], True)
+                        part_count = n if n is not None else d
+                        if end:
+                            finish_part()
                             yield ("schema", schema)
                         else:
                             in_part = True
@@ -347,9 +484,16 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
             if not s or s.startswith("--") or _COMMENT.match(s):
                 continue
             if s == "DELIMITER ;;":
-                in_block = True
+                in_block = _BlockScan()
                 continue
-            if _DIRECTIVE_SET.match(s) or _DIRECTIVE_KEYS.match(s) or _SET.match(s) and s.count(";") == 1 or _DROP.match(s) or _LOCK.match(s):
+            if _GTID_START.match(s):
+                in_gtid = True
+                continue
+            if (_DIRECTIVE_SET.match(s) or _DIRECTIVE_KEYS.match(s) or _SET.match(s) and s.count(";") == 1 or _DROP.match(s) or _LOCK.match(s)
+                    or _CREATE_DB.match(s) or _USE.match(s) or _DROPX.match(s) or _VIEW_ALGO.match(s) or _VIEW_DEFINER.match(s) or _VIEW_BODY.match(s) or _ROCKSDB.match(s)):
+                continue
+            if _STANDIN_START.match(s):
+                in_standin = True
                 continue
             head = line.lstrip()[:12].upper()
             if head.startswith("REPLACE"):
@@ -369,6 +513,7 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     seen.add(mc.group(1))
                     ordinal = 0
                 schema = TableSchema(mc.group(1))
+                state["schema"] = schema
                 in_create = True
                 continue
             mi = _INSERT.match(line)
@@ -379,6 +524,8 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     raise UnsupportedShape("an INSERT targets another table than the CREATE TABLE that precedes it")
                 order = None
                 if mi.group(2):
+                    if not _COLLIST.match(mi.group(2)):
+                        raise UnsupportedShape(f"an INSERT column list that is not exactly comma-separated backticked names (line {lineno})")
                     names = re.findall(r"`([^`]*)`", mi.group(3))
                     cn = schema.column_names()
                     if not names or len(names) != len(set(names)) or any(n not in cn for n in names):
@@ -402,14 +549,10 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     raise UnsupportedShape(f"statement {ordinal} (file line {lineno}): {e}") from None
                 continue
             raise UnsupportedShape(f"a line the reader does not recognise (file line {lineno}): UPDATE, DELETE, ALTER, a conditional-comment statement or other text is refused, never skipped")
-        if in_block:
+        if in_block is not None:
             raise UnsupportedShape("a DELIMITER block is not closed before the end of the file")
-        if in_tail:
-            raise UnsupportedShape("a CREATE TABLE statement is not closed before the end of the file")
-        if in_part:
-            raise UnsupportedShape("a PARTITION clause is not closed before the end of the file")
-        if in_create:
-            raise UnsupportedShape("a CREATE TABLE statement is not closed before the end of the file")
+        if in_gtid or in_standin or in_tail or in_part or in_create:
+            raise UnsupportedShape("a statement is not closed before the end of the file")
 
 
 def tsv_events(path, table, batch_rows=50000, charset="utf-8", strict=True):
