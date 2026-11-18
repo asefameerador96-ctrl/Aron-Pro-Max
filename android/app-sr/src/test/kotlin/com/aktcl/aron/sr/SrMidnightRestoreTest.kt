@@ -150,7 +150,7 @@ class SrMidnightRestoreTest {
             f.day.restoreOpenVisit(); f.day.abandonStaleCall()
         }
         f.db.captureDao().visitClosesOn(d0).forEach { got[it.visitClientUuid] = it.outcomeCode }
-        assertEquals("zero_sale_stock_ok", got[qcCall.visitUuid]); assertEquals("zero_sale_stock_ok", got[surveyCall.visitUuid]); assertEquals("abandoned", got[emptyCall.visitUuid])
+        assertEquals("zero_sale_stock_ok", got[qcCall.visitUuid]); assertEquals("a survey and no memo: what the back press writes", "abandoned", got[surveyCall.visitUuid]); assertEquals("abandoned", got[emptyCall.visitUuid])
     }
 
     /** D-AGATE-15 T1: an UNSAVED memo edit open across midnight never holds the day: dropped with a notice, the saved memo untouched, the day closes, the gate follows today. */
@@ -205,6 +205,36 @@ class SrMidnightRestoreTest {
         f.day.dismissRolloverNotice()
         f.day.resumeDay()
         assertFalse("told once: after the rep has seen it, a later start does not show it again", f.day.rolloverNotice.value.any)
+    }
+
+    /** Lead ruling: for each kind of call content the automatic end writes what the rep's own way out of that call writes (outcome and is_zero_sale). */
+    @Test fun theAutomaticEndWritesWhatTheRepsOwnWayOutWritesForEveryKindOfCall() = runBlocking {
+        val survey = com.aktcl.aron.core.database.entity.SurveyEntity(1, 1, "S", null)
+        val q = com.aktcl.aron.feature.outlet.SurveyQuestion(1, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q1", true, false)
+        suspend fun call(kind: String, outlet: Long, seq: Int): com.aktcl.aron.feature.outlet.OpenVisit {
+            val v = f.openCall(outletId = outlet, seq = seq)
+            when (kind) {
+                "sold" -> f.creditMemo(v)
+                "zero" -> f.qcLineOn(v)
+                "survey" -> f.day.saveSurveyResult(v.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
+            }
+            return v
+        }
+        val kinds = listOf("sold", "zero", "survey", "empty")
+        val rep = kinds.mapIndexed { i, k -> k to call(k, 50001L + i, i + 1) }
+        val auto = kinds.mapIndexed { i, k -> k to call(k, 50011L + i, i + 5) }
+        // the rep's own way out of each call: the sale screen's close (sold / zero sale) or the back press (abandoned)
+        rep.forEach { (k, v) ->
+            f.day.visitSession.restore(v)
+            when (k) { "sold" -> f.day.sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.SOLD); "zero" -> f.day.sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.ZERO_SALE); else -> f.day.closeVisitAbandoned() }
+        }
+        f.trustAt(at(next(), 8, 0))
+        repeat(kinds.size) { f.day.restoreOpenVisit(); f.day.abandonStaleCall() }
+        val closes = f.db.captureDao().visitClosesOn(d0).associateBy { it.visitClientUuid }
+        kinds.indices.forEach { i ->
+            val a = closes.getValue(auto[i].second.visitUuid); val r = closes.getValue(rep[i].second.visitUuid)
+            assertEquals(kinds[i] + " outcome", r.outcomeCode, a.outcomeCode); assertEquals(kinds[i] + " is_zero_sale", r.isZeroSale, a.isZeroSale)
+        }
     }
 
     private fun day() = f.day

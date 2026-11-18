@@ -95,3 +95,6 @@ ACCEPTED by the server (ruling 5), so the signal is rare; the field above lets t
 **5. Acceptance test (server lane).** (a) `closed_by=phone` check-out three days late: attendance shows no check-out time, AMO supervisor_day.checked_out_at
 stays null, no `checkout_too_early`. (b) check-out on a day with no captures: no signal. (c) check-out then an accepted `day_submit` for the same
 user-date: signal present after the first, withdrawn after the second.
+
+## Question (A-GATE5, 2026-11-18): is `abandoned` right for a call that holds only a survey answer?
+The SR's back press from a call that has a survey answer and no memo writes `abandoned` (not counted as a visit). The AMO's `AmoCallOutcome` counts the same content as an audit-only call (`zero_sale_stock_ok`). The 04:00 automatic end follows the rep's own way out on each app (SR: abandoned; AMO: audit only), by the lead's ruling, and nothing was changed in the back press. If a survey-only SR call should count as a visit, the back press and the automatic end change together; no change made here.

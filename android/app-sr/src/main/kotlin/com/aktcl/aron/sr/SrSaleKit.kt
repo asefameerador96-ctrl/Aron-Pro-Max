@@ -224,7 +224,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
     /**
      * D-AGATE-15 (T2): the phone's end of a call at the 04:00 limit. It classifies by what the call holds, as the rep's own close does and as the AMO does
-     * (`AmoCallOutcome`): a saved memo with lines is `sold`; a zero-sale memo or a survey answer is `zero_sale_stock_ok`; nothing is `abandoned`. The close is written
+     * as the rep's own close: a saved memo with lines is `sold`; a saved zero-sale memo is `zero_sale_stock_ok`; anything else is `abandoned`. The close is written
      * through [closeVisit] (or `closeVisitAbandoned`), dated with the visit's date. That the phone ended it is carried locally (the notice), not on the wire.
      */
     suspend fun closeVisitByPhone(): DayRefusal? {
@@ -232,10 +232,11 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val memos = dao.memosOn(day.visitDate(open)).filter { it.visitClientUuid == open.visitUuid }
         val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
         val live = memos.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
-        val audited = dao.surveyResponsesOf(open.visitUuid).isNotEmpty()
+        // exactly what the rep's own way out writes: a saved memo with lines = sold, a saved zero-sale memo = zero sale, anything else (a survey answer and no memo included) = the
+        // back press's `abandoned` (lead ruling 2026-11-18; whether a survey-only call should count as a call is a question in docs/requests/android-gates.md)
         return when {
             live != null && live.lineCount > 0 -> closeVisit(VisitOutcomeCode.SOLD)
-            live != null || audited -> closeVisit(VisitOutcomeCode.ZERO_SALE)
+            live != null -> closeVisit(VisitOutcomeCode.ZERO_SALE)
             else -> day.closeVisitAbandoned()
         }
     }
