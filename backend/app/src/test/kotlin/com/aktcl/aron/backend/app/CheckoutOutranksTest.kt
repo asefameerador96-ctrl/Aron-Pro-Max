@@ -122,10 +122,10 @@ class CheckoutOutranksTest : NightSyncHarness() {
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(attendance("check_out", d2))))
         assertEquals(null, signal(d2))
         seedCapture(d2)
-        val soon = java.time.Instant.now()
+        val soon = clock.now() // the harness clock stamps received_at: the check-out was just received
         assertEquals(0, worker { evaluator.raiseCheckoutWithoutSubmit(it, today, soon) }, "the check-out is younger than the settle window: its captures and submit may still be on the way")
         assertEquals(null, signal(d2))
-        val later = java.time.Instant.now().plusSeconds(3600)
+        val later = clock.now().plusSeconds(3600)
         assertEquals(1, worker { evaluator.raiseCheckoutWithoutSubmit(it, today, later) })
         assertTrue(signal(d2)!!.startsWith("open ") && signal(d2)!!.contains("\"raised_by\": \"worker\""), signal(d2))
         assertTrue(client.send(t, phone, listOf(daySubmit(d2))).single().startsWith("accepted"))
@@ -133,7 +133,7 @@ class CheckoutOutranksTest : NightSyncHarness() {
         assertTrue(signal(d2)!!.startsWith("dismissed "))
 
         // A day whose submit was accepted and LATER data-voided by an admin is never raised by the worker (the rep did submit; the void log is the trail).
-        val d3 = "2026-12-31"
+        val d3 = "2026-12-27" // the oldest day inside the 7-day sync window; no other test of this class checks out on it
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(attendance("check_out", d3))))
         seedCapture(d3, "memo") // registered after the check-out, so the ingest raised nothing
         val sub3 = daySubmit(d3)
