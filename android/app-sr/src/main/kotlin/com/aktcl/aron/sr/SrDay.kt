@@ -395,6 +395,26 @@ class SrDay(
         )
     }
 
+    /** The SR programme records (Astha, Loyalty): reads of what the phone holds and the one write path (lane android-sr-programmes). */
+    val programmes by lazy { ProgrammeStore(db, capture, metaProvider, claimPhoto = { photoUuid, recordUuid, fix -> claimGiftPhoto(photoUuid, recordUuid, fix) }, releasePhoto = { photoUuid, recordUuid -> media?.release(photoUuid, com.aktcl.aron.core.media.MediaRef("gift_photo", "gift_photo", recordUuid)) }) { requestSync() } }
+
+    /** The Astha months read online and kept on the phone: app-private files per user and route, no database (the screen works offline from them and after a kill and relaunch). */
+    val asthaMonths by lazy { com.aktcl.aron.feature.programmes.AsthaMonthCache(java.io.File(context.filesDir, "astha-months-$userId")) }
+
+    /** Reads a quarter of Astha rows online for the given routes and keeps its months; null when all came, else why not (offline is "connect once", never an error). */
+    suspend fun readAsthaQuarter(quarter: String, routeIds: Collection<Long>, months: List<String>): com.aktcl.aron.feature.programmes.QuarterFetch? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { // parsing and file writes stay off the main thread
+        // what this phone holds of each month is recorded under the sync lock at the moment the read is requested, exactly like the bundle's acknowledged set (no upload batch in flight then)
+        val sides = HashMap<Pair<Long, String>, com.aktcl.aron.feature.programmes.ReadSide>()
+        com.aktcl.aron.core.sync.SyncEngine.underUserLock(userId) { routeIds.distinct().forEachIndexed { i, r -> programmes.readSideOf(months, r, countRoutelessMemos = i == 0).forEach { (m, side) -> sides[r to m] = side } } }
+        com.aktcl.aron.feature.programmes.AsthaQuarterFetcher(asthaMonths) { q, route, cursor ->
+            when (val r = components.syncApi.listAsthaTargets(q, route, cursor)) {
+                is com.aktcl.aron.core.network.ApiResult.Success -> com.aktcl.aron.feature.programmes.PageOutcome.Page(r.value)
+                is com.aktcl.aron.core.network.ApiResult.Transport -> if (r.failure == com.aktcl.aron.core.network.TransportFailure.MALFORMED) com.aktcl.aron.feature.programmes.PageOutcome.Failed else com.aktcl.aron.feature.programmes.PageOutcome.Offline
+                else -> com.aktcl.aron.feature.programmes.PageOutcome.Failed
+            }
+        }.fetch(quarter, routeIds, months) { route, month -> sides[route to month] ?: com.aktcl.aron.feature.programmes.ReadSide(null, 0) }
+    }
+
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
 
@@ -997,6 +1017,19 @@ class SrDay(
     private suspend fun claimPhoto(photoUuid: String, purpose: String, refType: String, refUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
         val m = media ?: return
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { claimPhotoIo(m, photoUuid, purpose, refType, refUuid, fix) }
+    }
+
+    /** Claims a gift photo for its record; unlike the other captures a photo that is gone from the media queue, or already belongs to ANOTHER record, is an error (the record must never be saved without its photo). */
+    private suspend fun claimGiftPhoto(photoUuid: String, recordUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
+        val m = media ?: return // no camera queue (previews, tests): nothing to claim
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val item = m.store.get(photoUuid) ?: throw IllegalStateException("the photo is no longer in the media queue")
+            val owner = item.ref
+            check(owner == null || owner.refClientUuid == recordUuid) { "the photo already belongs to another record" }
+            // the record uuid is fixed by its subject: a claim left by a save that was cancelled or killed before its record committed must not upload beside this photo
+            val stamp = fix?.let { com.aktcl.aron.core.media.PhotoStamp(it.lat, it.lng, it.accuracyM, it.isMock, it.clientUuid) }
+            m.attachExclusive(photoUuid, com.aktcl.aron.core.media.MediaRef("gift_photo", "gift_photo", recordUuid), stamp)
+        }
     }
 
     private suspend fun claimPhotoIo(

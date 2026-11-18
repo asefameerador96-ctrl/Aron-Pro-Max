@@ -906,6 +906,12 @@ class SyncEngine(
         private val locks = ConcurrentHashMap<Long, Mutex>()
         private fun lockOf(userId: Long): Mutex = locks.getOrPut(userId) { Mutex() }
 
+        /** The user's sync lock, shared with [BundleDownloader] so a bundle request and an upload never overlap. */
+        internal fun userLock(userId: Long): Mutex = lockOf(userId)
+
+        /** Runs [block] holding the user's sync lock: no upload batch is in flight while it runs (single flight); used to record what the phone holds at the moment a read request is sent. */
+        suspend fun <T> underUserLock(userId: Long, block: suspend () -> T): T = lockOf(userId).withLock { block() }
+
         internal fun gzip(text: String): ByteArray {
             val out = ByteArrayOutputStream()
             GZIPOutputStream(out).use { it.write(text.toByteArray(Charsets.UTF_8)) }

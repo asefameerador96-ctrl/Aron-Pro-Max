@@ -40,6 +40,7 @@ dependencies {
     testImplementation(project(":android:feature-attendance")) // CloseShot (look-and-fix captures of attendance, submit, tasks and login)
     testImplementation(project(":android:feature-dayclose"))
     testImplementation(project(":android:feature-tasks"))
+    testImplementation(project(":android:feature-programmes")) // lane android-sr-programmes: SrProgrammesScreenshotTests
     testImplementation(project(":android:feature-auth"))
     testImplementation(project(":android:feature-amo")) // AmoShot (goldens of the AMO screens in their five states)
     testImplementation(project(":android:core-system")) // amo-shell A1: AmoShellScreenshotTests (the AMO update screens)

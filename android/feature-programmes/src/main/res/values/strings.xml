@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pg_astha_title">Astha</string>
+    <string name="pg_astha_tile_target">Target</string>
+    <string name="pg_astha_tile_gift">Gift selection</string>
+    <string name="pg_tab_route">Route info</string>
+    <string name="pg_tab_shop">Shop-wise info</string>
+    <string name="pg_pick_year">Select year</string>
+    <string name="pg_pick_quarter">Select quarter</string>
+    <string name="pg_pick_month">Select month</string>
+    <string name="pg_year">Year</string>
+    <string name="pg_quarter">Quarter</string>
+    <string name="pg_sub_std">STD target</string>
+    <string name="pg_sub_memo">Memo target</string>
+    <string name="pg_col_brand">Brand</string>
+    <string name="pg_col_target">Target</string>
+    <string name="pg_col_achieved">Achieved</string>
+    <string name="pg_col_remaining">Remaining</string>
+    <string name="pg_col_pct">%</string>
+    <string name="pg_volume">(Volume)</string>
+    <string name="pg_value">(Value)</string>
+    <string name="pg_all_brand">All Brand</string>
+    <string name="pg_no_data">No data found</string>
+    <string name="pg_not_downloaded">This month is not on this phone yet. Connect to the internet once to download it.</string>
+    <string name="pg_month_loading">Loading this month…</string>
+    <string name="pg_month_failed">This month could not be loaded. Try again when the connection is better.</string>
+    <string name="pg_retry">Try again</string>
+    <plurals name="pg_order_unknown">
+        <item quantity="one">%1$s acknowledged memo of this phone is not in these figures until the next full download.</item>
+        <item quantity="other">%1$s acknowledged memos of this phone are not in these figures until the next full download.</item>
+    </plurals>
+    <string name="pg_quarter_unknown">The quarter start month is not known on this phone, so the months it holds are listed as they are.</string>
+    <string name="pg_as_of_open">Data as of %1$s; the month was still open then</string>
+    <plurals name="pg_held_review">
+        <item quantity="one">%1$s memo of this phone is held for review by the server and is not in these figures.</item>
+        <item quantity="other">%1$s memos of this phone are held for review by the server and are not in these figures.</item>
+    </plurals>
+    <string name="pg_as_of_unsettled">Data as of %1$s; some memos of this month were not confirmed then</string>
+    <string name="pg_held_points">Held for review: %1$s</string>
+    <string name="pg_unconfirmed_points">Not yet confirmed: %1$s</string>
+    <string name="pg_gift_held">Held for review by the server: %1$s</string>
+    <string name="pg_gift_quarter_unknown">The quarter start month is not known on this phone, so no gift can be chosen or photographed yet. Connect once to download it.</string>
+    <string name="pg_no_programme">No Astha programme is active for your routes.</string>
+    <string name="pg_as_of">Data as of %1$s</string>
+    <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>
+    <string name="pg_load_failed">The Astha data could not be read from this phone.</string>
+    <string name="pg_pack_packets">%1$s, %2$s per pack: %3$s packets</string>
+    <string name="pg_pack_packets_loose">%1$s, %2$s per pack: %3$s packets + %4$s sticks</string>
+    <string name="pg_pack_dozens">%1$s: %2$s dozens</string>
+    <string name="pg_pack_unknown">%1$s: %2$s (base units)</string>
+    <string name="pg_pack_boxes">%1$s, %2$s per box: %3$s boxes</string>
+    <string name="pg_pack_boxes_loose">%1$s, %2$s per box: %3$s boxes + %4$s pieces</string>
+    <string name="pg_back">Back</string>
+    <string name="pg_all_shops">All shops</string>
+    <string name="pg_search_hint">Search by name, code, or phone</string>
+    <string name="pg_no_shops">No Astha shops are on this phone.</string>
+    <string name="pg_no_match">No shop matches your search.</string>
+    <string name="pg_shop_name">Retailer name</string>
+    <string name="pg_shop_owner">Owner name</string>
+    <string name="pg_shop_contact">Contact</string>
+    <string name="pg_shop_sub">Sub-Channel</string>
+    <string name="pg_loyalty_redeem">Redemption</string>
+    <string name="pg_loyalty_points">Points</string>
+    <string name="pg_loyalty_none">No loyalty programme is active for your routes.</string>
+    <string name="pg_loyalty_no_outlets">No outlet of yours has loyalty points on this phone.</string>
+    <string name="pg_loyalty_pick_outlet">Select retailer</string>
+    <string name="pg_loyalty_manage">Manage retailer gift requisition and redemption.</string>
+    <string name="pg_loyalty_overdrawn">Balance is below zero (overdrawn)</string>
+    <string name="pg_loyalty_expiring">Expiring Points:</string>
+    <string name="pg_loyalty_expiry">Expiry Date:</string>
+    <string name="pg_pts">Pts</string>
+    <string name="pg_all">All</string>
+    <string name="pg_remaining">%1$s Remaining</string>
+    <string name="pg_no_gifts">This programme has no gifts to redeem.</string>
+    <string name="pg_confirm_redemption">Confirm Redemption</string>
+    <string name="pg_confirm_title">Confirm redemption</string>
+    <string name="pg_confirm_text">Confirm redemption of these items? Points will be deducted.</string>
+    <string name="pg_confirm_yes">Confirm</string>
+    <string name="pg_confirm_no">Cancel</string>
+    <string name="pg_redeem_saved">Redemption saved on this phone; points are deducted when it syncs.</string>
+    <string name="pg_redeem_failed">The redemption could not be saved. Nothing was deducted. Try again.</string>
+    <string name="pg_cashback_waiting">Cash-back: awaiting the owner\'s rule. It cannot be redeemed yet.</string>
+    <string name="pg_redeem_conflict">This basket changed after an earlier save. Nothing was deducted. Check the items and confirm again.</string>
+    <string name="pg_gift_conflict">This choice changed after an earlier save. Choose again.</string>
+    <string name="pg_day_submitted">This route-day has already been submitted. It cannot be changed.</string>
+    <string name="pg_check_in_first">Check in first. Nothing was saved.</string>
+    <string name="pg_ok">OK</string>
+    <string name="pg_shop_code">Retailer code</string>
+    <string name="pg_gift_route">Route</string>
+    <string name="pg_gift_cluster">Cluster</string>
+    <string name="pg_gift_pick">Choose one gift.</string>
+    <string name="pg_gift_submit">Submit</string>
+    <string name="pg_gift_locked">The gift is locked after the hand-over photo: %1$s</string>
+    <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
+    <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
+    <string name="pg_gift_sent">Sent to the server: %1$s</string>
+    <string name="pg_gift_tier_unknown">The server has not sent this outlet\'s category yet, so its gifts cannot be shown.</string>
+    <string name="pg_gift_chosen">Chosen gift: %1$s</string>
+    <string name="pg_gift_none_for_tier">No gift is offered to this outlet\'s category.</string>
+    <string name="pg_gift_saved">Gift choice saved on this phone. It goes out with the next sync.</string>
+    <string name="pg_gift_failed">The gift choice could not be saved. Try again.</string>
+    <string-array name="pg_months_short">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string-array name="pg_quarters">
+        <item>Q-1 (Jan-Mar)</item>
+        <item>Q-2 (Apr-Jun)</item>
+        <item>Q-3 (Jul-Sep)</item>
+        <item>Q-4 (Oct-Dec)</item>
+    </string-array>
+    <string name="pg_photo_astha">Astha</string>
+    <string name="pg_photo_campaign">Campaign</string>
+    <string name="pg_photo_need_gift">No gift is held for this outlet yet. Choose a gift in Gift selection and sync once, then take the photo.</string>
+    <string name="pg_photo_already">The hand-over photo is already captured: %1$s</string>
+    <string name="pg_photo_on_phone">The photo is saved on this phone and goes out with the next sync: %1$s</string>
+    <string name="pg_photo_submit">Submit</string>
+    <string name="pg_photo_checking">Checking geofencing…</string>
+    <string name="pg_photo_saved">Photo saved on this phone. It uploads compressed, on Wi-Fi first.</string>
+    <string name="pg_photo_failed">The photo could not be saved. Try again.</string>
+    <plurals name="pg_awaiting_memos">
+        <item quantity="one">%1$s memo is awaiting confirmation; the figures update after the next sync.</item>
+        <item quantity="other">%1$s memos are awaiting confirmation; the figures update after the next sync.</item>
+    </plurals>
+    <plurals name="pg_awaiting_redemptions">
+        <item quantity="one">%1$s redemption is awaiting confirmation; the points update after the next sync.</item>
+        <item quantity="other">%1$s redemptions are awaiting confirmation; the points update after the next sync.</item>
+    </plurals>
+    <string name="pg_photo_locked">The server has locked this gift, no photo is needed: %1$s</string>
+    <string name="pg_campaign_none">No redeemed campaign gift is waiting for a photo.</string>
+    <string name="pg_campaign_progress">%1$s of %2$s photos taken</string>
+    <string name="pg_campaign_unit">Unit %1$s</string>
+    <string name="pg_cashback_waiting_rate">Cash-back (%1$s per point): awaiting the owner\'s rule. It cannot be redeemed yet.</string>
+    <string name="pg_shop_wing">Wing</string>
+    <string name="pg_shop_division">Division</string>
+    <string name="pg_shop_territory">Territory</string>
+    <string name="pg_shop_zone">Zone</string>
+    <string name="pg_pack_base">%1$s: %2$s %3$s</string>
+</resources>

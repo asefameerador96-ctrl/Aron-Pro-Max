@@ -73,7 +73,7 @@ object SessionModule {
     @Provides
     @Singleton
     fun bundleDownloaders(@ApplicationContext context: Context, databases: UserDatabases, components: SessionComponents): BundleDownloaders =
-        BundleDownloaders(File(context.noBackupFilesDir, "aron/bundle-staging"), databases, components.syncApi, components.clock)
+        BundleDownloaders(File(context.noBackupFilesDir, "aron/bundle-staging"), databases, components.syncApi, components.clock, trackUncertain = true)
 
     /** F-SYS-081: the device's daily telemetry, one per process, kept in a device-level file (never per user). */
     @Provides
