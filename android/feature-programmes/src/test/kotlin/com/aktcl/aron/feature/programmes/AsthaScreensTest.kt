@@ -61,6 +61,12 @@ class AsthaScreensTest {
         assertEquals(2, compose.onAllNodesWithText("Territory").fetchSemanticsNodes().size) // the label stays, its value is a dash
     }
 
+    @Test fun theBrandRowNamesTheUnitOfItsVolumeFigures() {
+        show(AppLanguage.EN, AsthaModel.parse(outletRows, products), currentMonth = "2026-11")
+        // the fixture's brand has no SKU, so its unit is unknown: no word is shown rather than a wrong one
+        assertEquals(0, compose.onAllNodesWithTag(AsthaTags.UNIT).fetchSemanticsNodes().size)
+    }
+
     private fun choose(placeholder: String, option: String) {
         compose.onNodeWithText(placeholder).performClick(); compose.waitForIdle()
         compose.onNodeWithText(option).performClick(); compose.waitForIdle()

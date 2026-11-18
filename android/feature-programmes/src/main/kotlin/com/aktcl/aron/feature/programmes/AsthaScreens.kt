@@ -45,6 +45,7 @@ import com.aktcl.aron.rules.UiLocale
 import com.aktcl.aron.core.ui.R as CoreR
 
 object AsthaTags {
+    const val UNIT = "astha_unit"
     const val AWAITING = "astha_awaiting"
     const val MENU_TARGET = "astha_menu_target"
     const val MENU_GIFT = "astha_menu_gift"
@@ -214,7 +215,11 @@ private fun StdTable(data: AsthaData, rows: List<AsthaRow>, locale: UiLocale) {
         HeaderRow(listOf(R.string.pg_col_brand, R.string.pg_col_target, R.string.pg_col_achieved, R.string.pg_col_remaining, R.string.pg_col_pct), twoLine = true)
         rows.forEach { r ->
             Row(Modifier.fillMaxWidth().testTag(AsthaTags.row(r.brandId)).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Top) {
-                Text(data.brandName(r.brandId, locale), Modifier.weight(Weights[0]), style = TextStyle(fontSize = 16.sp, color = look.purple, fontWeight = FontWeight.Medium))
+                Column(Modifier.weight(Weights[0])) {
+                    Text(data.brandName(r.brandId, locale), style = TextStyle(fontSize = 16.sp, color = look.purple, fontWeight = FontWeight.Medium))
+                    // the unit of the volume figures of this row (the base unit the target and achievement are stored in), so a column never mixes sticks, pieces and dozens unmarked
+                    data.baseUnitKey(r.brandId)?.let { Text(com.aktcl.aron.core.ui.entryUnitLabel(it), Modifier.testTag(AsthaTags.UNIT), style = small(look.inkMuted)) }
+                }
                 Cell(AsthaModel.stdText(r.stdTargetMilli, locale), AsthaModel.valueText(r.valueTargetMtk, locale), Modifier.weight(Weights[1]))
                 Cell(AsthaModel.stdText(r.stdAchievedMilli, locale), AsthaModel.valueText(r.valueAchievedMtk, locale), Modifier.weight(Weights[2]))
                 Cell(AsthaModel.stdText(AsthaModel.remaining(r.stdTargetMilli, r.stdAchievedMilli), locale), AsthaModel.valueText(AsthaModel.remaining(r.valueTargetMtk, r.valueAchievedMtk), locale), Modifier.weight(Weights[3]))
@@ -359,6 +364,7 @@ private fun packText(data: AsthaData, brandId: Long?, p: AsthaPack, locale: UiLo
     // matches count in dozens (the base unit; a fraction is a fraction of a dozen) and an unknown category in neutral base units: one figure, no pack size
     if (l.kind == PackKind.DOZEN) return stringResource(R.string.pg_pack_dozens, name, AsthaModel.stdText(p.stdAchievedMilli, locale))
     if (l.kind == PackKind.UNKNOWN) return stringResource(R.string.pg_pack_unknown, name, AsthaModel.stdText(p.stdAchievedMilli, locale))
+    if (l.kind == PackKind.BASE) return stringResource(R.string.pg_pack_base, name, AsthaModel.stdText(p.stdAchievedMilli, locale), com.aktcl.aron.core.ui.entryUnitLabel(l.baseKey))
     val res = when (l.kind) {
         PackKind.PACKET -> if (hasLoose) R.string.pg_pack_packets_loose else R.string.pg_pack_packets
         else -> if (hasLoose) R.string.pg_pack_boxes_loose else R.string.pg_pack_boxes

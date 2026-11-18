@@ -121,4 +121,5 @@
     <string name="pg_shop_division">ডিভিশন</string>
     <string name="pg_shop_territory">টেরিটরি</string>
     <string name="pg_shop_zone">জোন</string>
+    <string name="pg_pack_base">%1$s: %2$s %3$s</string>
 </resources>

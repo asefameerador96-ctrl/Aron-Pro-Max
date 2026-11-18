@@ -118,4 +118,26 @@ class AsthaModelTest {
         assertEquals(PackKind.UNKNOWN, d.packLine(17, AsthaPack(1, 5_000)).kind) // mixed categories
         assertEquals(PackKind.UNKNOWN, d.packLine(null, AsthaPack(1, 5_000)).kind)
     }
+
+    // the unit comes from the SHARED rule (EntryUnits.resolve), SKU by SKU, not from the category alone
+    private fun withSkus(skus: String) = AsthaModel.parse(programmes, """{"nodes":[{"id":2,"level":"segment","name":"S","sort":1},{"id":15,"level":"brand","name":"B","parent_id":2,"sort":1},{"id":35,"level":"variant","name":"V","parent_id":15,"sort":1}],"skus":[$skus]}""")!!
+
+    @Test fun aLighterWithOnePieceInItsPackIsCountedInPiecesNotBoxes() {
+        val d = withSkus("""{"id":906,"variant_id":35,"category_code":"lighter","base_unit":"piece","base_per_pack":1,"entry_unit_default":"pack"}""")
+        val l = d.packLine(15, AsthaPack(1, 7_000)); assertEquals(PackKind.BASE, l.kind); assertEquals("piece", l.baseKey); assertEquals(7L, l.packs)
+        assertEquals("piece", d.baseUnitKey(15))
+    }
+
+    @Test fun aLighterBoxOf25AndAMatchDozenAndACigarettePacketKeepTheirUnits() {
+        assertEquals(PackKind.BOX, withSkus("""{"id":906,"variant_id":35,"category_code":"lighter","base_unit":"piece","base_per_pack":25,"entry_unit_default":"pack"}""").packLine(15, AsthaPack(25, 60_000)).kind)
+        assertEquals(PackKind.DOZEN, withSkus("""{"id":905,"variant_id":35,"category_code":"match","base_unit":"dozen","base_per_pack":1,"entry_unit_default":"dozen"}""").packLine(15, AsthaPack(1, 36_500)).kind)
+        val c = withSkus("""{"id":901,"variant_id":35,"category_code":"cigarette","base_unit":"stick","base_per_pack":10,"entry_unit_default":"pack"}""").packLine(15, AsthaPack(10, 105_000))
+        assertEquals(PackKind.PACKET, c.kind); assertEquals(10L, c.packs); assertEquals(5_000L, c.looseMilli)
+    }
+
+    @Test fun aMatchSetUpInPacksOfTwelveIsNeutralNeverAWrongWordAndSkusOfOneBrandThatDisagreeAreUnknown() {
+        assertEquals(PackKind.UNKNOWN, withSkus("""{"id":905,"variant_id":35,"category_code":"match","base_unit":"piece","base_per_pack":12,"entry_unit_default":"pack"}""").packLine(15, AsthaPack(12, 36_000)).kind)
+        val mixed = withSkus("""{"id":901,"variant_id":35,"category_code":"cigarette","base_unit":"stick","base_per_pack":20,"entry_unit_default":"pack"},{"id":902,"variant_id":35,"category_code":"cigarette","base_unit":"stick","base_per_pack":20,"entry_unit_default":"stick"}""")
+        assertEquals(PackKind.PACKET, mixed.packLine(15, AsthaPack(20, 40_000)).kind) // both resolve to packets of 20: the same unit, so not unknown
+    }
 }
