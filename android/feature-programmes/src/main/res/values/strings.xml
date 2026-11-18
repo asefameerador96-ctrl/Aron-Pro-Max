@@ -21,6 +21,7 @@
     <string name="pg_value">(Value)</string>
     <string name="pg_all_brand">All Brand</string>
     <string name="pg_no_data">No data found</string>
+    <string name="pg_not_downloaded">This month is not downloaded to this phone yet. Sync to see it.</string>
     <string name="pg_no_programme">No Astha programme is active for your routes.</string>
     <string name="pg_as_of">Data as of %1$s</string>
     <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>

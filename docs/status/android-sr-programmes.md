@@ -17,6 +17,13 @@
 - Home tiles for Astha, Loyalty Point, Photo Capture and Match Program exist and are flag-gated (`ProgrammeFlags.kt`); all four open COMING_SOON today (SrApp.kt:389).
 - Gift pictures: `GET /v1/sku-images/{asset_id}` serves them; the phone fetches once per id.
 
+## Server answers received (lead, 2026-11-18)
+- N-4: earning is NOT posted (no earning rule yet, owner question open): `balance_points` is 0 or negative; the points and redemption screens show the real balance, 0 included, no fake points; the confirm step says honestly when the balance does not cover a gift and follows the server's policy only (no phone-side rule). Status of those screens: **"built, server path not verified" and "needs owner's earning rule"**. Nightly expiry runs; ingest of `redemption`, `redemption_line`, `gift_choice`, `gift_photo` is real on dev (gift_photo parent is `redemption_client_uuid`). A refused record arrives in the sync acks (`RecordAck`: gift_locked and gift_not_for_tier final; parent_missing retryable; texts in the bundle `reason_texts`); the existing refused-records screen and Send-again rules are reused, no second mechanism.
+- N-6: confirmed brand_id is the brand-level product node id; only active nodes are sent, so a missing node shows `#id` (guarded).
+- N-7: tier is NOT on the wire except via the outlet's `sub_channel_id` (mapped through the `sub_channel` code list) and `gift_assignments[].tier_code`; the Loyalty lane adds `loyalty[].tier_code` with N-1. Shop-wise info shows a dash where the tier is unknown: "tier pending server".
+- N-1: not built yet; months without downloaded rows show "not downloaded", never zero (done in slice 2 follow-up).
+- Lesson: run `:android:core-ui:testDebugUnitTest --tests '*HardcodedStringScanTest'` before every push (visible text must live in resources); the first CI run failed on it.
+
 ## Screen table
 Legend: WIRE = data is in the bundle today. LOCAL = a write that goes through the outbox. SCHEMA = needs a new Room table (not before the lead gives a version).
 

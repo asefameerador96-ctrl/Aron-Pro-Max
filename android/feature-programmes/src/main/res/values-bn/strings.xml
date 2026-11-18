@@ -21,6 +21,7 @@
     <string name="pg_value">(Value)</string>
     <string name="pg_all_brand">All Brand</string>
     <string name="pg_no_data">তথ্য পাওয়া যায়নি</string>
+    <string name="pg_not_downloaded">এই মাসের তথ্য এখনো এই ফোনে নামানো হয়নি। দেখতে সিঙ্ক করুন।</string>
     <string name="pg_no_programme">আপনার রুটে কোনো আস্থা কর্মসূচি চালু নেই।</string>
     <string name="pg_as_of">ডেটা: %1$s</string>
     <string name="pg_truncated">এই ফোনে শুধু প্রথম সারিগুলো আছে। বাকিটা দেখতে ওয়াই-ফাইয়ে সিঙ্ক করুন।</string>

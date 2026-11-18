@@ -79,7 +79,7 @@ class AsthaScreensTest {
         choose("Year", "2026"); choose("Quarter", "Q-1 (Jan-Mar)")
         compose.onNodeWithTag(AsthaTags.month("2026-01")).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(AsthaTags.EMPTY).assertIsDisplayed()
-        assertEquals(1, compose.onAllNodesWithText("No data found").fetchSemanticsNodes().size)
+        assertEquals(1, compose.onAllNodesWithText("This month is not downloaded to this phone yet. Sync to see it.").fetchSemanticsNodes().size)
     }
 
     @Test fun truncationAndAsOfAreShownOnATable() {
@@ -120,7 +120,8 @@ class AsthaScreensTest {
         compose.onNodeWithTag(AsthaTags.SHOP_TITLE).assertIsDisplayed()
         choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
         compose.onNodeWithTag(AsthaTags.month("2026-11")).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(AsthaTags.EMPTY).assertIsDisplayed() // outlet 502 has no rows: no data, never the route's figures
+        compose.onNodeWithTag(AsthaTags.EMPTY).assertIsDisplayed() // outlet 502 has no rows in a downloaded month: no data, never the route's figures
+        compose.onNodeWithText("No data found").assertExists()
         compose.onNodeWithTag(AsthaTags.SHOP_BACK).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(AsthaTags.shop(502)).assertIsDisplayed()
     }

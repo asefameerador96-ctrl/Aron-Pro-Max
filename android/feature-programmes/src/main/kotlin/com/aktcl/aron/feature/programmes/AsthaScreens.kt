@@ -162,7 +162,11 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         }
         val brandRows = data.brandRows(m, outletId, locale)
         val allBrand = data.allBrandRow(m, outletId)
-        if (brandRows.isEmpty() && allBrand == null) { EmptyNote(stringResource(R.string.pg_no_data)); return }
+        if (brandRows.isEmpty() && allBrand == null) {
+            // a month the phone never downloaded is not zero: say so (request N-1 brings the whole quarter)
+            EmptyNote(stringResource(if (data.rows.none { it.month == m }) R.string.pg_not_downloaded else R.string.pg_no_data))
+            return
+        }
         if (big) StackedCards(data, brandRows, allBrand, memoTab, locale)
         else if (!memoTab) StdTable(data, brandRows, locale) else MemoTable(allBrand, locale)
         data.asOf?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(it.take(10), locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
@@ -319,7 +323,7 @@ private fun ShopList(shops: List<ShopInfo>, query: String, onQuery: (String) -> 
             ShopLine(R.string.pg_shop_name, sh.nameLine, look.ink)
             ShopLine(R.string.pg_shop_owner, sh.owner, look.ink)
             ShopLine(R.string.pg_shop_contact, sh.contact?.let { com.aktcl.aron.rules.Formats.digits(it, locale) }.orEmpty(), look.ink)
-            sh.subChannel?.let { ShopLine(R.string.pg_shop_sub, it, look.red) }
+            ShopLine(R.string.pg_shop_sub, sh.subChannel ?: "—", look.red) // a dash until the server sends the tier (request N-7)
         }
     }
 }
