@@ -24,6 +24,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -299,6 +300,28 @@ class SyncEngineTest {
         assertEquals(SyncStop.AUTH_REQUIRED, engine().run(SyncTrigger.MANUAL).stop)
         assertTrue(inState().all { it.state == OutboxState.PENDING })
         assertTrue(fake.requests.isEmpty())
+    }
+
+    /**
+     * Lost-answer rule (lane android-sr-programmes): after a REAL sync run that did not get a clean answer, every memo the server may hold is listed as sent-but-unanswered, so a bundle
+     * requested now neither adds it to the Astha figure nor subtracts it twice: a lost answer (timeout), and a batch answered with a 500, 502, 503 or 504 (released to pending).
+     */
+    @Test fun aMemoOfARunWithoutACleanAnswerIsListedAsSentButUnanswered() = runBlocking {
+        suspend fun listed(memo: String) = db.outboxDao().sentUnanswered().contains(memo)
+        val lost = sale(1); fake.dropAfterCommit = 1
+        assertEquals(SyncStop.OFFLINE, engine().run(SyncTrigger.WRITE_DEBOUNCE).stop)
+        assertTrue("answer lost after the commit", listed(lost))
+        assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.CONNECTIVITY).stop)
+        assertFalse("answered: no longer unanswered", listed(lost))
+        for (code in listOf(500, 502, 503, 504)) {
+            val memo = sale(10 + code % 10)
+            fake.failBefore += code
+            engine().run(SyncTrigger.PERIODIC)
+            assertTrue("memo after a $code answer: ${inState().filter { it.clientUuid == memo }.map { it.state + "/" + it.attempts + "/" + it.lastCode }}", listed(memo))
+            var guard = 0
+            while (engine().run(SyncTrigger.PERIODIC).stop != SyncStop.DRAINED && guard++ < 20) { /* drain what is left (a 500 bisects) */ }
+            assertFalse("answered now", listed(memo))
+        }
     }
 
     @Test fun serviceUnavailableKeepsTheBatchForAnIdenticalResend() = runBlocking {

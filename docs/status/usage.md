@@ -3365,3 +3365,16 @@
 - Passed final review, waiting to land: android-integrity (31647f49: comment clean-up push; merges after 'Loyalty landed'). SV6 follow-ups (after integrity, V0209).
 - In fix rounds: A-PROG2 (274dac72; single-flight double count, edit chain, gift tier), P-SR1b (e017b2d7; QC locked-Cancel crash and stale state). A-GATE8 fd6825d4 (7 of 10 done, push 3 pending). T-KPI2 on the admin tab (6af9be04). P-TSO fd8625c8 pushed 07:31, 'checked' not yet received (nudge at the next check if still silent). L-A11: push (B) not yet pushed. P-AMO3 ff9fb511.
 - Usage: seven_day 'allowed_warning' seen on L-A11 at 08:07 (not rejected).
+
+### Lane check 2026-11-18 10:47 UTC
+- Dev health ok, "build":"4d310d8c0 (train 119 server; train 120 was Android-only). Integration a4691a061.
+- Train 121 (android-integrity) STOPPED before any push: lane ci 44284944308 red only at the gitleaks step ("leaks found: 1", log redacted, nothing named). SV6 asked to run the pinned scanner and report rule, file, line, commit (never the value).
+- Owner message 10:40: final Azure ready, Apsis dump on the organisation's FTP (D-OWNER-FINAL-AZURE-01). Lanes F-INFRA1 and M-APSIS1 started; owner asked for size/budget, release flow, bootstrap login, region, Google project, dump format.
+- P-SR1b push of 41ee52a1 denied by its classifier twice; owner approval asked. P-SR2b still blocked the same way.
+- Reviews passed and waiting to land after 121: gates-2 (A-GATE8), look train 2 (SR d60e2e2f, TSO), Loyalty push B (hygiene fix with L-A12), SV6 follow-ups (V0209). In work: A-PROG2 (5xx release rule, slice 7), T-KPI2 (admin tab), L-A12 (points adjustment), SV6 ops-diagnose-api (second re-check running).
+
+- 2026-11-18T12:46Z lane check: health build ce6792f67 ok; INT ce6792f67 (train 121). All lanes active within the last 90 min except loyalty (L-A12) and P-TSO (ci running). Blocker for every lane ci: one gitleaks false positive (bfd0087c8), owner asked.
+
+- 2026-11-18T14:46Z lane check: health build ffbe8d6fd (train 122) ok. All active lanes reported within 90 min. Usage not re-read (no rejection seen on any session start today).
+
+- 2026-11-18T16:46Z lane check: INT 0aa547b62 (train 124 pushed; integration ci 44344358786 green; deploy run 44347162539 see state). All active lanes reported within 90 min.

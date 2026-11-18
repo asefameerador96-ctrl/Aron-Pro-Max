@@ -63,13 +63,16 @@ class CheckoutLateRaiseTest {
         checkout(voidedSubmit); capture(voidedSubmit); submit(voidedSubmit, voided = true)
         checkout(tooOld); capture(tooOld)
         checkout(state); capture(state, "day_open"); capture(state, "geo_breadcrumb")
+        // A web paper backfill (registry flag manual_entry) is no route capture: the paper backfill stays exempt.
+        val paper = "2027-01-01"; checkout(paper)
+        env.exec("INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, business_date, user_id, first_batch_uuid, flags) VALUES (gen_random_uuid(), 'memo', decode(repeat('ab', 32), 'hex'), 'accepted', DATE '$paper', $uid, gen_random_uuid(), '{manual_entry}')")
         // received 10 minutes before `now`: inside the 30-minute settle window.
         checkout(young, receivedAt = "2027-01-03 03:50+00"); capture(young)
         val ev = RiskSignalEvaluator(env.db.fresh.db, DbServerConfig(env.db.fresh.db, RegistryDefaults()))
         val raised = env.db.fresh.db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL ROLE worker_rw"); ev.raiseCheckoutWithoutSubmit(h, today, now) }
         assertEquals(1, raised, "only the real check-out of a capture day without any submit, past the grace period and inside the window")
         assertEquals("open", status(c, late))
-        for (d in listOf(noCaptures, phoneClosed, submitted, voidedSubmit, tooOld, state, young)) assertEquals(null, status(c, d), "no signal for $d")
+        for (d in listOf(noCaptures, phoneClosed, submitted, voidedSubmit, tooOld, state, young, paper)) assertEquals(null, status(c, d), "no signal for $d")
         val e = evidence(c, late)
         assertTrue(e.contains("\"raised_by\": \"worker\"") && e.contains("\"day_submit_found\": false"), e)
         assertEquals(route, env.sql("SELECT route_id FROM app.risk_signal WHERE code = '$c' AND user_id = $uid AND business_date = DATE '$late'"), "the check-out's route, like the ingest raise")

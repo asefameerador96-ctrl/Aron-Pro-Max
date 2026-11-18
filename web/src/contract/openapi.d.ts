@@ -4197,6 +4197,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/programmes/{id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
+         * @description From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated and the answer reports `valid`, the totals and the row errors (`errors[]`: row index, column, code; the first 200, with `error_count` and `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply refuses the whole file with `409`). Only the outlets of DEBIT rows are locked (one statement, in sorted order; `allow_overdraw` or not); a file may carry at most 2,000 debit rows (`400`, pointer `body.rows`, error code `too_many_debit_rows`, already at the dry run: split the file; credit rows are neither locked nor counted). The audit row of a batch lists the rows that went below zero (`overdrawn`: row, outlet_id, balance_before; at most 200) beside `overdrawn_rows`. When the database has no free lock slots the apply is `503` `ERR_SERVICE_UNAVAILABLE` and nothing is written. A replay is judged on the stored rows only.
+         */
+        put: operations["putProgrammeAdjustments"];
+        /**
+         * Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
+         * @description From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters. IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only. An outlet with no CURRENT enrolment in the programme (every kind, a campaign programme included) is `400` `not_enrolled`, because the bundle shows a balance only for an enrolled outlet; this is the lead's ruling and the owner may change it; a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid` is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. EVERY debit (a guarded one and one with `allow_overdraw`, single or bulk) takes the ledger job's per-outlet lock and reads the balance in one statement under it, so two concurrent ADMIN debits and a ledger-job pass are serialised: they cannot both pass the guard, and the `overdraw` flag and `balance_before` are decided under the lock; a phone redemption arriving at the same instant is NOT serialised with it (redemptions are field facts and are never refused): the ledger job's next pass and the `overdrawn` flag of the bundle show the result. A credit takes no lock. A debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row. A token of an ADMIN without the `modules` claim is refused (`403`) here.
+         */
+        post: operations["postProgrammeAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The points ledger of a programme (newest first), with the reason of each portal adjustment.
+         * @description From 1.23.0. Ledger rows are outlet data, cut to the caller's server-side reach exactly as `listProgrammeEnrolments`: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the rows of the outlets of their zones and routes; a BRAND user is refused `403`. A programme outside the caller's reach is `404`. Optional filters `outlet_id` and `source_type`. `reason` is set on `adjustment` rows only (from their audit row).
+         */
+        get: operations["listProgrammeLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/gifts": {
         parameters: {
             query?: never;
@@ -4756,7 +4800,7 @@ export interface components {
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /**
-         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
+         * @description Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is stored on the attendance row only; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
          * @enum {string}
          */
         AttendanceClosedBy: "rep" | "phone";
@@ -6634,6 +6678,18 @@ export interface components {
                 rows: number;
             }[];
         };
+        BundleGeoName: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            name_bn: string | null;
+        };
+        BundleGeography: {
+            wing: components["schemas"]["BundleGeoName"];
+            division: components["schemas"]["BundleGeoName"];
+            territory: components["schemas"]["BundleGeoName"];
+            zone: components["schemas"]["BundleGeoName"];
+        };
         BundleUser: {
             user_id: components["schemas"]["Id"];
             username: components["schemas"]["Username"];
@@ -6648,6 +6704,8 @@ export interface components {
             zone_id?: number | null;
             /** Format: int64 */
             territory_id?: number | null;
+            /** @description From 1.22.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them. */
+            geography?: components["schemas"]["BundleGeography"] | null;
             /** @description Policy versions the user accepted (F-SYS-075), earliest acceptance per version. The phone seeds its consent flag from it and does not show the notice again. */
             consents?: {
                 /** @enum {string} */
@@ -10256,7 +10314,7 @@ export interface components {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
             visit_client_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). */
+            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it is stored as sent (a display fact; the database refuses a negative value) and is never compared with the ledger, which is the server's balance; an overdraw is accepted whatever it says. A phone whose balance is already negative sends 0 (clamped). */
             balance_before_points: number;
             points_total: number;
             /** @description Cash-back points (at most cfg.loyalty.cash_max_points). */
@@ -10541,6 +10599,125 @@ export interface components {
             rows: components["schemas"]["ProgrammeEnrolment"][];
             change_reason: components["schemas"]["ChangeReason"];
         };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentWrite: {
+            request_uuid: components["schemas"]["Uuid"];
+            outlet_id: components["schemas"]["Id"];
+            /** @description Signed, never 0: a credit is positive, a debit negative. */
+            points: number;
+            reason: components["schemas"]["ChangeReason"];
+            /**
+             * Format: date
+             * @description Last day the credited points count (not before today, Dhaka); null or absent = no expiry.
+             */
+            expires_on?: string | null;
+            /**
+             * @description A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).
+             * @default false
+             */
+            allow_overdraw: boolean;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentRow: {
+            outlet_id: components["schemas"]["Id"];
+            points: number;
+            /** Format: date */
+            expires_on?: string | null;
+        };
+        /** @description From 1.23.0. */
+        ProgrammeAdjustmentBatch: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @description true = validate and report, write nothing. */
+            dry_run: boolean;
+            change_reason: components["schemas"]["ChangeReason"];
+            /**
+             * @description As on the single post, for every debit row of the file.
+             * @default false
+             */
+            allow_overdraw: boolean;
+            rows: components["schemas"]["ProgrammeAdjustmentRow"][];
+        };
+        ProgrammeAdjustmentRowError: {
+            /** @description Zero-based index in `rows`. */
+            row: number;
+            /** @description The member at fault (`outlet_id`, `points`, `expires_on`) or `row`. */
+            column: string;
+            /** @description Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, not_enrolled, in_the_past, debit_has_no_expiry, would_overdraw, too_many_debit_rows, invalid_value ... */
+            code: string;
+            /**
+             * Format: int64
+             * @description With `would_overdraw`: the balance before the file.
+             */
+            balance_points?: number;
+        };
+        /** @description From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries `posted`. */
+        ProgrammeAdjustmentBatchResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            dry_run: boolean;
+            rows: number;
+            /** @description Apply only: ledger rows written now (0 on a replay). */
+            posted?: number;
+            /** @description The batch was posted before (an apply answers it with posted 0; a dry run says so). */
+            replayed: boolean;
+            /**
+             * Format: int64
+             * @description Sum of the valid rows points.
+             */
+            total_points: number;
+            /** @description Dry run only: no row error and the programme can take the batch (or it is a replay). */
+            valid?: boolean;
+            /** @description Dry run only. */
+            outlets?: number;
+            /**
+             * Format: int64
+             * @description Dry run only.
+             */
+            credit_points?: number;
+            /**
+             * Format: int64
+             * @description Dry run only (negative or 0).
+             */
+            debit_points?: number;
+            /**
+             * @description Dry run only.
+             * @enum {string}
+             */
+            programme_status?: "draft" | "active" | "inactive";
+            /** @description Dry run only: the first 200 row errors. */
+            errors?: components["schemas"]["ProgrammeAdjustmentRowError"][];
+            /** @description Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`). */
+            error_count?: number;
+            /** @description Dry run only. */
+            errors_truncated?: boolean;
+        };
+        /** @description From 1.23.0. One row of the append-only points ledger. */
+        LedgerEntry: {
+            /** Format: int64 */
+            ledger_id: number;
+            /** @description adjustment, redemption, redemption_void, expiry, ... */
+            source_type: string;
+            /** @description For an adjustment: the request_uuid, or `<batch_uuid>:<row index>` for a bulk row. */
+            source_id: string;
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            points: number;
+            business_date: components["schemas"]["BusinessDate"];
+            /** Format: date */
+            expires_on: string | null;
+            /** @description Portal adjustments carry `portal`, and `overdraw` when the debit took the balance below zero (allowed with `allow_overdraw`). */
+            flags: string[];
+            /** @description The audit reason of an adjustment; null on other rows. */
+            reason: string | null;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description From 1.23.0. */
+        LedgerPage: {
+            programme_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            programme_status: "draft" | "active" | "inactive";
+            items: components["schemas"]["LedgerEntry"][];
+            next_cursor: string | null;
+        };
         Gift: {
             gift_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
@@ -10591,6 +10768,8 @@ export interface components {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
             league_label: string | null;
+            /** @description From 1.22.0, additive. The outlet's tier in this programme at the business date (`programme_enrolment.tier_code`, an Astha tier or Superstar slab); null when the enrolment names none. The phone needs it to judge a gift against the tier (`gift.tier_codes`) before the outlet has chosen a gift (a `gift_assignment` row exists only after the first choice). */
+            tier_code?: string | null;
             /** @description Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption is in the figure at once), read in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still include points past their date. A negative balance means the outlet is overdrawn. Transients (the first three are gone after the next ledger-job pass, at most about ten minutes): a debit that synced late with an earlier business date is in the figure before the expiry give-back it causes is posted (the figure is LESS favourable until then); a redemption voided after it was posted keeps its debit until the pass posts the reversal (LESS favourable); and points whose date has passed stay in the figure until the first pass after Dhaka midnight posts their expiry row; and, the fourth, a backdated adjustment whose transaction committed late is found at the latest by the first pass of the next Dhaka day (up to one Dhaka day): until then only the expiry correction it causes is off, while the balance sum is exact (the adjustment row is in the sum as soon as it is committed). */
             balance_points: number;
             /** @description 1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row. */
@@ -10614,6 +10793,10 @@ export interface components {
             outlet_id?: number | null;
             /** Format: int64 */
             brand_id?: number | null;
+            /** @description From 1.22.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id` is the product-tree node id of the brand level), sent ONLY when that node is not active, i.e. not among the bundle's `products.nodes` (an active brand is named there; a row costs no extra bytes), so the phone never shows an id for an inactive brand. */
+            brand_name?: string;
+            /** @description From 1.22.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name` when the node has one. */
+            brand_name_bn?: string;
             month: components["schemas"]["Month"];
             std_target: components["schemas"]["Decimal3"];
             std_achieved: components["schemas"]["Decimal3"];
@@ -10699,18 +10882,22 @@ export interface components {
             gift_id: components["schemas"]["Id"];
             qty: number;
             photos_captured: number;
+            /** @description From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending, at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift, from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count: it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone offers exactly the open units. Same bound and snapshot as the rest of the section. */
+            units_captured?: number[];
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle's business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed from scratch after each bundle; the SAME rule covers the loyalty balances: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and the phone subtracts its own redemptions that had NOT been acknowledged when it sent the request, keyed by redemption uuid; the phone never uploads records while a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it discards the section's achievement and refetches. `astha_as_of` and a row's `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` the 1,000-row Astha bound. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle's business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row's `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section's achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer's accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server's per-uuid answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];
             gifts: components["schemas"]["Gift"][];
-            /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
+            /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the quarter of the business date (before 1.22.0: the month); the Dhaka start of the quarter when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
             astha_as_of: components["schemas"]["Timestamp"];
             /** @description 1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
             truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments" | "pending_gift_verifications")[];
-            /** @description 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. */
+            /** @description 1.15.0. True when the user's routes had more Astha rows (for the quarter from 1.22.0, before that for the month) than the bound of 1,000 and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. `astha_truncated_months` says which months. */
             astha_truncated: boolean;
+            /** @description From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty when `astha_truncated` is false); a month not named here is complete FOR THE OUTLETS ENROLLED TODAY ON TODAY'S ROUTES: a row of a past month is not sent (and the month is not named) when the outlet's enrolment ended earlier in the quarter or its target row still carries an old route; `listAsthaTargets` has the same route and enrolment filter, so the limit is the same online. A month the bound cut is named even when the cut left it with no row sent. */
+            astha_truncated_months?: components["schemas"]["Month"][];
             astha_targets: components["schemas"]["AsthaTargetRow"][];
             gift_assignments: components["schemas"]["GiftAssignment"][];
             pending_gift_verifications: components["schemas"]["PendingGiftVerification"][];
@@ -19927,6 +20114,110 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    putProgrammeAdjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentBatch"];
+            };
+        };
+        responses: {
+            /** @description The dry-run report, or the result of the apply. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeAdjustmentBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    postProgrammeAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeAdjustmentWrite"];
+            };
+        };
+        responses: {
+            /** @description A repeat of the same request; the stored row, nothing added. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            /** @description Posted now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntry"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listProgrammeLedger: {
+        parameters: {
+            query?: {
+                outlet_id?: components["schemas"]["Id"];
+                source_type?: string;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of ledger rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listGifts: {

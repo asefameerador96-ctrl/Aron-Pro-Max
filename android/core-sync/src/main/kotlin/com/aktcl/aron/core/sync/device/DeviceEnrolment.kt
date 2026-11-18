@@ -269,7 +269,7 @@ class AndroidEnrolmentFacts(context: Context, override val appVersion: String) :
         @Suppress("DEPRECATION")
         @SuppressLint("PackageManagerGetSignatures")
         fun currentSignerSha256(context: Context): String? = runCatching {
-            fun hex(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
+            fun hex(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
             val pm = context.packageManager
             if (Build.VERSION.SDK_INT >= 28) {
                 val si = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo ?: return null

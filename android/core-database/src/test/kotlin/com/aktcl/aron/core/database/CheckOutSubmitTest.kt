@@ -12,6 +12,8 @@ import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.DayRefusal
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -269,6 +271,37 @@ class CheckOutSubmitTest {
             repo.recordDaySubmit(submit(date = date, cycle = 2))
             assertEquals(2, db.captureDao().daySubmitsFor(date, 10231).size)
         }
+    }
+
+    // ---- D-AGATE-22 item 1: closed_by says WHO closed (the DAY_CLOSED mark of the same transaction), never the times
+
+    private suspend fun closedByOf(uuid: String): String? =
+        kotlinx.serialization.json.Json.parseToJsonElement(db.outboxDao().byClientUuid(uuid)!!.payloadJson).jsonObject["payload"]!!.jsonObject["closed_by"]?.jsonPrimitive?.content
+
+    @Test fun aRepCloseStampedAfterMidnightSendsNoClosedByAndWritesNoPhoneMark() = runTest {
+        checkIn()
+        // pressed 23:59:45 on D, stored with a stamp on the next Dhaka date (a late fix): still the rep's close
+        val (e, f) = checkOutEvent(at = "2026-10-05T18:00:10.000Z")
+        repo.recordCheckOut(e, f)
+        assertNull("a rep close sends no closed_by", closedByOf(e.clientUuid))
+        assertTrue("and no phone mark", repo.phoneMarks().isEmpty())
+    }
+
+    @Test fun thePhonesOwnCloseSaysPhoneAndAgreesWithItsLocalMark() = runTest {
+        checkIn()
+        val (e, f) = checkOutEvent(at = "2026-10-06T08:00:00.000Z")
+        val mark = com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED, businessDate = D, createdAt = "2026-10-06T08:00:00.000Z")
+        repo.recordCheckOut(e, f, listOf(mark))
+        assertEquals("phone", closedByOf(e.clientUuid))
+        assertTrue(repo.phoneMarks().any { it.kind == "day_closed" && it.businessDate == D })
+    }
+
+    @Test fun aPhoneCloseWhoseStampIsOnTheSameDateStillSaysPhone() = runTest {
+        checkIn() // a clock set back: the stamp does not look late, the caller still knows who closed
+        val (e, f) = checkOutEvent(at = "2026-10-05T10:00:00.000Z")
+        val mark = com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED, businessDate = D, createdAt = "2026-10-05T10:00:00.000Z")
+        repo.recordCheckOut(e, f, listOf(mark))
+        assertEquals("phone", closedByOf(e.clientUuid))
     }
 
     private companion object {

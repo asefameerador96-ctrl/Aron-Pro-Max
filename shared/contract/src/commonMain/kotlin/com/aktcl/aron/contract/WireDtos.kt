@@ -156,6 +156,7 @@ data class BundleUser(
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
     @SerialName("zone_id") val zoneId: Long? = null,
     @SerialName("territory_id") val territoryId: Long? = null,
+    @SerialName("geography") val geography: JsonElement? = null,
     @SerialName("consents") val consents: List<BundleUserConsents>? = null,
 )
 
@@ -398,7 +399,7 @@ data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
-    /** Contract 1.19.0, `check_out` only: `rep` (also what an absent member means) or `phone` (the phone closed a forgotten day at a later start; read as "no check-out"). */
+    /** Contract 1.19.0, meant for a `check_out`: `rep` (also what an absent member means; accepted on a check-in) or `phone` (the phone closed a forgotten day at a later start, one location attempt whose reading is kept on the attendance row only; read as "no check-out"; refused on a check-in). */
     @SerialName("closed_by") val closedBy: String? = null,
 )
 
@@ -837,6 +838,7 @@ data class ServerTotals(
     @SerialName("money") val money: JsonElement,
 )
 
+/** A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant */
 @Serializable
 data class ResolvedConfigValue(
     @SerialName("key") val key: String,

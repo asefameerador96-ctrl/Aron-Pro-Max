@@ -6,8 +6,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Round 1.20.0 (D-SV2-16; `docs/requests/android-gates.md` section 5): a login of three characters makes memo numbers like `srx-270103-101`. The phone has accepted
- * `^[a-z][a-z0-9]{2,31}$` since 2026-11-13; the server's memo number rule (MemoNumbers) and the database CHECKs (V0204) said four. A whole sale family of such a user is stored,
+ * Master-data train 116 (V0197/V0198, contract 1.18.x; `docs/requests/android-gates.md` section 5): a login of three characters makes memo numbers like `srx-270103-101`. The phone has accepted
+ * `^[a-z][a-z0-9]{2,31}$` since 2026-11-13; the server's memo number rule (MemoNumbers) and the database CHECKs (V0197) said four. A whole sale family of such a user is stored,
  * and the numbers of another user are still refused.
  */
 class MemoUsernameThreeCharsTest : NightSyncHarness() {

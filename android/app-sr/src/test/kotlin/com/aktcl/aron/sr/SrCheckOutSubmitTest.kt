@@ -106,8 +106,8 @@ class SrCheckOutSubmitTest {
         assertEquals(OpenWork.OPEN_CALL, f.day.attendance.state.value.checkOutBlockedBy)
         assertEquals(0, f.db.captureDao().daySubmitsOn(f.date).size)
         assertEquals(0, f.db.captureDao().attendanceOn(f.date).count { it.kind == "check_out" })
-        // closing the call opens the way
-        f.day.visitSession.close()
+        // closing the call opens the way (the real close: its visit_close is stored; D-AGATE-22 item 6 makes the check-out look at the STORED call too, not only the session)
+        f.day.sale.closeCall()
         assertTrue(f.day.attendance.checkOut() is AttendanceResult.Done)
     }
 

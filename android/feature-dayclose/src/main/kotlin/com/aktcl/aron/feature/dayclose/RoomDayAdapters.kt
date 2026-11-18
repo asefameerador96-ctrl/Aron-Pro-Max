@@ -242,7 +242,8 @@ class AutoDaySubmits(
     /** The capture envelope of "now" for a route (null: the AMO's supervisor day, no route). */
     private val metaFor: (routeId: Long?) -> CaptureMeta,
     private val categoryOf: (Long) -> String,
-    private val stockSlipPrinted: suspend () -> Boolean = { false },
+    /** D-AGATE-22 (item 2): asked for the date being CLOSED (a forgotten day is not today), never for today. */
+    private val stockSlipPrinted: suspend (businessDate: String) -> Boolean = { false },
     /** `route_day` for the SR; the AMO submits its supervisor day (`supervisor_day`, no route). */
     private val scope: String = "route_day",
     private val newUuid: () -> String = ClientIds::newUuid,
@@ -258,7 +259,7 @@ class AutoDaySubmits(
         val money = MoneyTotalsJson.build(db, businessDate, categoryOf).toString()
         val rejected = db.outboxDao().countOnInState(businessDate, OutboxState.REJECTED)
         val quarantined = db.outboxDao().countOnInState(businessDate, OutboxState.QUARANTINED)
-        val slip = stockSlipPrinted()
+        val slip = stockSlipPrinted(businessDate)
         return targets.mapNotNull { route ->
             val meta = metaFor(route).copy(businessDate = businessDate, routeId = route)
             // a submit that stands (the rep's own Sales Submit) is left alone: the check-out then writes only itself

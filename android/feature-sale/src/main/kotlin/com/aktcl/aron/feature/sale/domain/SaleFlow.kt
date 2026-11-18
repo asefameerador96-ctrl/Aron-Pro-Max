@@ -39,6 +39,8 @@ data class SaleUiState(
     val refusal: List<ReviewProblem> = emptyList(),
     /** A one-line notice for the screen (a change refused, QC dropped at start); cleared by the next accepted change. */
     val notice: SaleNotice? = null,
+    /** D-AGATE-25: a replayed Save (the memo was already stored) answered with the STORED memo while the draft on screen differed from it: the later changes were not saved; the screen says so. */
+    val laterChangesNotSaved: Boolean = false,
 )
 
 /**
@@ -178,6 +180,15 @@ class SaleFlow(
         val s = ui.value
         s.committed?.let { return it }
         val draft = checkNotNull(s.draft) { "no sale in progress" }
+        // D-AGATE-22 (item 3): a Save that landed in Room but whose coroutine was cancelled before the screen state was set is still a saved memo: look it up by the draft's own memo UUID
+        // (as `start` does) BEFORE the closed-call refusal, so a retry after the call was closed in between answers with the stored memo, never "nothing was saved"
+        committer.existing(draft.memoUuid)?.let { landed ->
+            store.clear(draft.visitUuid)
+            // the stored memo is what was saved; when the draft the rep sees now carries other totals, his later changes are NOT in it, and the screen says so
+            val differs = s.review?.let { it.totals.netMtk != landed.netMtk || it.settlement.dueMtk != landed.dueMtk } == true
+            ui.value = s.copy(committed = landed, laterChangesNotSaved = differs)
+            return landed
+        }
         if (draft.edit == null && isCallClosed(draft)) {
             // D-AGATE-19: the call was closed while this sale was open: nothing is written; the rep is told so (never the generic "save failed")
             val problems = listOf<ReviewProblem>(ReviewProblem.CallClosed)

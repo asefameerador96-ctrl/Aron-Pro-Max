@@ -1,0 +1,23 @@
+ProgrammeAdjustmentRowError:
+  type: object
+  required:
+  - row
+  - column
+  - code
+  additionalProperties: false
+  properties:
+    row:
+      type: integer
+      minimum: 0
+      description: Zero-based index in `rows`.
+    column:
+      type: string
+      description: The member at fault (`outlet_id`, `points`, `expires_on`) or `row`.
+    code:
+      type: string
+      description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope,
+        not_enrolled, in_the_past, debit_has_no_expiry, would_overdraw, too_many_debit_rows, invalid_value ...'
+    balance_points:
+      type: integer
+      format: int64
+      description: 'With `would_overdraw`: the balance before the file.'

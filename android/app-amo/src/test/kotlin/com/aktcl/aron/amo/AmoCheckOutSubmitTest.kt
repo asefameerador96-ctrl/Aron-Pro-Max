@@ -71,7 +71,7 @@ class AmoCheckOutSubmitTest {
         f.day.attendance.restore(f.day.attendanceToday())
         assertEquals(AttendanceResult.Refused(OpenWork.OPEN_CALL), f.day.attendance.checkOut())
         assertEquals(0, f.db.captureDao().daySubmitsOn(f.date).size)
-        f.day.visitSession.close()
+        f.day.closeVisit() // the real close (its visit_close is stored); D-AGATE-22 item 6: the check-out also looks at the STORED call
         assertTrue(f.day.attendance.checkOut() is AttendanceResult.Done)
     }
 }
