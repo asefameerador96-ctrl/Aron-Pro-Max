@@ -341,4 +341,34 @@ class DeviceGateTest {
         client.send(listOf(attendance("check_out", "2027-01-01")), lastError = "HTTP_503")
         assertEquals("HTTP_503", lastError())
     }
+
+    /**
+     * D-SV2-22 (lead review of 9b69fba3): a record held by the device gate (open integrity item) that is resent with a DIFFERENT payload (here a bad `closed_by`, which a later check would refuse)
+     * is a `payload_conflict`: the registry rule comes before the value check and before the release logic, so the resend never closes or releases the integrity item of the first copy.
+     * The first copy, resent unchanged once the gate is off, is still released and stored.
+     */
+    @Test
+    @Order(5)
+    fun aDifferentPayloadResendOfADeviceHeldRecordIsAPayloadConflictAndLeavesItsIntegrityItemOpen() = testApplication {
+        application { aronApi(wiring) }
+        val held = attendance("check_in", "2026-12-30")
+        val id = cu(held)
+        fun open() = count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('$id' AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+        fun closed() = count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('$id' AS uuid) AND code = 'device_integrity_failed' AND status <> 'open'")
+        // The phone enrolled in test 3 holds a failed Play Integrity verdict: with the integrity gate on its attendance is held (open integrity item).
+        set("cfg.device.require_integrity", true)
+        try {
+            assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(held)))
+            assertEquals(1L, open())
+            val changed = JsonObject(held + ("payload" to JsonObject(held["payload"]!!.jsonObject + ("closed_by" to JsonPrimitive("server")))))
+            assertEquals(listOf("quarantined:payload_conflict"), client.send(listOf(changed)), "known uuid, different payload: the registry rule wins")
+            assertEquals(1L, open(), "the integrity item of the first copy is still open")
+            assertEquals(0L, closed(), "and nothing closed or discarded it")
+            assertEquals("quarantined", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.ingest_registry WHERE client_uuid = CAST('$id' AS uuid)").mapTo(String::class.java).one() }, "and its registry row is still the held one")
+            assertEquals(0L, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST('$id' AS uuid)"))
+        } finally { set("cfg.device.require_integrity", false) }
+        assertEquals(listOf("accepted:-"), client.send(listOf(held)), "the first copy, resent unchanged with the gate off, is released and stored")
+        assertEquals(0L, open())
+        assertEquals(1L, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST('$id' AS uuid)"))
+    }
 }

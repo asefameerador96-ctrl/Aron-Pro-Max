@@ -115,7 +115,7 @@ class ApiWorld(
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
-        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to jwtKeyFile.absolutePath)), clock, extraRecordHandlers, blobPorts = blobs.ports())
+        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to jwtKeyFile.absolutePath, "ARON_LAB_GRANT_KEY" to throwawayLabGrantKey())), clock, extraRecordHandlers, blobPorts = blobs.ports())
     }
 
     /**
@@ -490,3 +490,7 @@ fun publicJwk(k: java.security.KeyPair): String {
     }
     return """{"kty":"EC","crv":"P-256","x":"${b64(w.affineX)}","y":"${b64(w.affineY)}"}"""
 }
+
+/** A lab-grant signing key made for this world only (PKCS#8, base64): never written anywhere, so the conformance suite can see the admin route answer 2xx. */
+private fun throwawayLabGrantKey(): String =
+    java.util.Base64.getEncoder().encodeToString(KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private.encoded)

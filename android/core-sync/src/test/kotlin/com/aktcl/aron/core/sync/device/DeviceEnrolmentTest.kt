@@ -113,14 +113,13 @@ class DeviceEnrolmentTest {
 
     private val identity get() = DeviceIdentity(File(dir, "aron"))
 
-    private fun enrolment(keys: Keys = Keys(), owner: Boolean = false, applied: MutableList<String> = mutableListOf(), facts: Facts = Facts(owner)) = DeviceEnrolment(
+    private fun enrolment(keys: Keys = Keys(), owner: Boolean = false, facts: Facts = Facts(owner)) = DeviceEnrolment(
         EnrolmentStore(File(dir, "dpc")), keys, ApiEnrolmentTransport(client), facts, identity, origin,
-    ) { r -> applied += r.policy.lockdownLevel }
+    )
 
     @Test fun aTypedTokenEnrolsThePhoneAndTheServerUuidBecomesTheDeviceIdentity() = runTest {
         val before = identity.deviceUuid
-        val applied = mutableListOf<String>()
-        val e = enrolment(applied = applied)
+        val e = enrolment()
         assertFalse(e.enrolled())
         assertEquals(EnrolmentOutcome.Enrolled, e.submit("  $token\n"))
         assertTrue(e.enrolled())
@@ -133,26 +132,19 @@ class DeviceEnrolmentTest {
         assertEquals(before, uuid)
         assertEquals(uuid, identity.deviceUuid)
         assertEquals(uuid, deviceHeaders.single())
-        assertTrue(applied.isEmpty()) // not device owner: no policy apply
         assertFalse(dir.walkTopDown().filter { it.isFile }.any { token in it.readText() }) // the token left the phone
         assertEquals(EnrolmentOutcome.Enrolled, e.submit(null)) // idempotent, no second call
         assertEquals(1, bodies.size)
     }
 
-    @Test fun aDeviceOwnerPhoneAppliesThePolicyFromTheResponse() = runTest {
-        val applied = mutableListOf<String>()
-        assertEquals(EnrolmentOutcome.Enrolled, enrolment(owner = true, applied = applied).submit(token))
-        assertEquals(1, applied.size)
-    }
-
-    @Test fun theQrStoredByTheProvisioningActivityIsEnrolledInTheSameProcess() = runTest {
-        val e = enrolment(owner = true)
+    @Test fun aTokenStoredWhileTheAppRunsIsEnrolledInTheSameProcess() = runTest {
+        val e = enrolment()
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
         e.install(scope).join() // app start: nothing pending yet
         assertTrue(bodies.isEmpty())
         assertSame(e.coordinator, Enrolment.coordinator(ApplicationProvider.getApplicationContext()))
-        // What acceptProvisioningExtras does after the QR, in the process that is already running. (The fake server is
-        // http on loopback, which the QR parser refuses, so the validated extras are built here.)
+        // A registration code stored in the running process. (The fake server is http on loopback, which the extras parser
+        // refuses, so the validated extras are built here.)
         e.coordinator.accept(com.aktcl.aron.dpc.enrolment.EnrolmentExtras(token, origin, "dev", "sr", "prod", null))
         Enrolment.accepted()
         scope.coroutineContext[kotlinx.coroutines.Job]!!.children.toList().forEach { it.join() }
@@ -160,9 +152,9 @@ class DeviceEnrolmentTest {
         assertEquals(Json.parseToJsonElement(bodies.single()).jsonObject["device_uuid"]!!.jsonPrimitive.content, identity.deviceUuid)
     }
 
-    @Test fun aQrStoredWhileTheAppWasNotRunningIsEnrolledAtTheNextStart() = runTest {
-        enrolment(owner = true).coordinator.accept(com.aktcl.aron.dpc.enrolment.EnrolmentExtras(token, origin, "dev", "sr", "prod", null))
-        val e = enrolment(owner = true)
+    @Test fun aTokenStoredWhileTheAppWasNotRunningIsEnrolledAtTheNextStart() = runTest {
+        enrolment().coordinator.accept(com.aktcl.aron.dpc.enrolment.EnrolmentExtras(token, origin, "dev", "sr", "prod", null))
+        val e = enrolment()
         e.install(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)).join()
         assertTrue(e.enrolled())
     }

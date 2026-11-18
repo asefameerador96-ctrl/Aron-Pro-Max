@@ -11,7 +11,7 @@ import { QrCode } from "./qr-code";
 export function EnrolmentForm() {
   const { t, problem } = useI18n();
   const router = useRouter();
-  const [v, setV] = useState({ flavour: "sr", lockdown_level: "prod", zone_id: "", max_uses: "1", expires_in_h: "24", note: "", ssid: "", wifi_security: "WPA", wifi_password: "" });
+  const [v, setV] = useState({ flavour: "sr", lockdown_level: "", zone_id: "", max_uses: "1", expires_in_h: "24", note: "", ssid: "", wifi_security: "WPA", wifi_password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +26,7 @@ export function EnrolmentForm() {
     const hours = Number(v.expires_in_h);
     if (!Number.isInteger(uses) || uses < 1 || uses > 500) local.max_uses = t("error.field.invalid");
     if (!Number.isInteger(hours) || hours < 1 || hours > 168) local.expires_in_h = t("error.field.invalid");
+    if (v.lockdown_level !== "prod" && v.lockdown_level !== "dev") local.lockdown_level = t("enr.lockdown.choose"); // no default: the level decides how strictly the phone key is checked (D-OWNER-MDM-02)
     if (v.zone_id !== "" && !/^[1-9]\d{0,14}$/.test(v.zone_id)) local.zone_id = t("error.field.invalid");
     if (v.ssid !== "" && v.ssid.length > 32) local.ssid = t("error.field.too_long");
     setErrors(local);
@@ -58,8 +59,9 @@ export function EnrolmentForm() {
             {["sr", "amo", "tso"].map((f) => (<option key={f} value={f}>{t(`dev.flavour.${f as "sr"}`)}</option>))}
           </select>
         </Field>
-        <Field label={t("enr.lockdown")} htmlFor="e-lock" hint={t("enr.lockdown.hint")}>
+        <Field label={t("enr.lockdown")} htmlFor="e-lock" hint={t("enr.lockdown.hint")} error={errors.lockdown_level}>
           <select id="e-lock" value={v.lockdown_level} onChange={(e) => set("lockdown_level", e.target.value)} className={inputClass}>
+            <option value="" disabled>{t("enr.lockdown.choose")}</option>
             <option value="prod">{t("enr.lockdown.prod")}</option>
             <option value="dev">{t("enr.lockdown.dev")}</option>
           </select>

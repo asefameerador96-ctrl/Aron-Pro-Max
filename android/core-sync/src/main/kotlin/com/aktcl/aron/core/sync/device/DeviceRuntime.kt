@@ -27,7 +27,7 @@ import com.aktcl.aron.core.network.DeviceProofSigner
 import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.session.SessionState
 import com.aktcl.aron.core.sync.SyncEngine
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
+import com.aktcl.aron.dpc.release.DeviceOwnerReleaseRunner
 import com.aktcl.aron.contract.SyncTrigger
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.database.UserDatabases
@@ -39,10 +39,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * The geo, integrity and device-owner call sites the app shells owe android-geo-dpc (docs/requests/android-geo-dpc-wiring.md),
+ * The geo, integrity and device-owner-release call sites the app shells owe android-geo-dpc (docs/requests/android-geo-dpc-wiring.md),
  * built once per process in the app's DI and shared by SR, AMO and TSO:
  * - [fixManager]: the one on-demand fix manager, with `cfg.geo.*` from the active user's bundle and `integrity_ref`;
- * - [onAppCreate]: `DeviceOwnerPolicy.configure(trusted clock, bundle calendar)` then `reapply()` (offline, no network);
+ * - [onAppCreate]: releases device-owner mode left by an older build (D-OWNER-MDM-02), loads the calendar (offline, no network);
  * - [beforeBatch]: run by the sync worker before each batch: integrity signals and Play Integrity evidence as `device_status`;
  * - [start]/[wantEvidence]: login and check-in ask for fresh evidence, collected by the next sync run, never awaited.
  * Nothing here is in the path of a sale.
@@ -53,7 +53,7 @@ class DeviceRuntime(
     private val databases: UserDatabases,
     private val playIntegrityProjectNumber: Long,
 ) {
-    /** Completed once the DPC has been configured and has re-applied its policy (a report waits for it, briefly). */
+    /** Completed once the device-owner release has run and the calendar is loaded (a report waits for it, briefly). */
     private val started = CompletableDeferred<Unit>()
 
     private val app = context.applicationContext
@@ -65,10 +65,11 @@ class DeviceRuntime(
         FixManager(
             FallbackLocationSource.of(app), AndroidLocationAccess(app), deviceStateReader, components.clock, PrefsFixLedger(app),
             AndroidGnssObserver(app, components.clock), settings = { dayConfig.fixSettings },
+            spoof = com.aktcl.aron.core.geo.spoof.AndroidSpoofChecker(
+                com.aktcl.aron.core.geo.spoof.AndroidSpoofProbes(app, components.clock), com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app), components.clock,
+            ),
         )
     }
-
-    private val policy: () -> DeviceOwnerPolicy = { DeviceOwnerPolicy.get(app) }
 
     /**
      * Optional breadcrumbs (N-035, D-MDM-BREADCRUMB-01), owned by lane mdm for SR and AMO: the controller exists only as a
@@ -90,7 +91,7 @@ class DeviceRuntime(
             deviceStateReader, components.clock,
             BreadcrumbWiring.settings(
                 { dayConfig.breadcrumbsEnabled }, { dayConfig.breadcrumbIntervalMin },
-                { policy().mdmApplier?.locationMode() }, { policy().mdmApplier?.locationIntervalMin() },
+                { null }, { null }, // no MDM sampling policy since D-OWNER-MDM-02: the bundle setting decides
                 backgroundGranted = { app.checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED },
             ),
         ).also { Breadcrumbs.controller = it }
@@ -147,12 +148,14 @@ class DeviceRuntime(
         val (pct, charging) = battery(); breadcrumbs.reconcile(pct, charging)
     }
 
+    init { com.aktcl.aron.core.system.integrity.IntegrityGates.deviceUuid = { runCatching { components.deviceIdentity.deviceUuid }.getOrNull() } }
+
     val reporter: DeviceStatusReporter by lazy {
         val evidence = IntegrityEvidenceService(
             DeviceNonceApi(components.apiClient), PlayIntegritySource(app, playIntegrityProjectNumber), { components.deviceIdentity.deviceUuid },
         )
         DeviceStatusReporter(
-            facts = AndroidDeviceFacts(app, policy),
+            facts = AndroidDeviceFacts(app),
             signals = IntegritySignalsReader(app, deviceStateReader)::read,
             tracker = IntegritySignalsTracker(File(app.noBackupFilesDir, "aron/integrity")),
             evidence = evidence::collect,
@@ -160,19 +163,18 @@ class DeviceRuntime(
             clock = components.trustedClock,
             appVersion = components.appVersion,
             evidenceConfigured = playIntegrityProjectNumber > 0,
+            eventLog = runCatching { com.aktcl.aron.core.system.integrity.IntegrityGates.eventLog(app) }.getOrNull(),
         )
     }
 
     /**
-     * Application.onCreate (off the main thread): the DPC gets the trusted clock and the calendar, the active user's calendar
-     * is loaded from Room (so a cold start on a Friday or a holiday never re-blocks apps), then the stored policy is
-     * re-applied. No network.
+     * Application.onCreate (off the main thread): first the device-owner release (idempotent, kill-safe, D-OWNER-MDM-02),
+     * then the active user's calendar is loaded from Room. No network.
      */
     suspend fun onAppCreate() {
         try {
-            runCatching { policy().configure(components.trustedClock::nowMs, dayConfig::isWorkingDay) }
+            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeviceOwnerReleaseRunner.run(app) } }
             activeUserId()?.let { id -> runCatching { refreshDayConfig(id, databases.of(id), reevaluate = false) } }
-            runCatching { policy().reapply() }
             reconcileBreadcrumbs()
         } finally {
             started.complete(Unit)
@@ -206,7 +208,7 @@ class DeviceRuntime(
 
     /**
      * Reloads the settings device code reads synchronously, for the active user only (their bundle is the one in force;
-     * nothing when logged out), then lets the DPC re-decide blocking with the new calendar.
+     * nothing when logged out). [reevaluate] is kept for callers; there is no blocking to re-decide any more.
      */
     suspend fun refreshDayConfig(userId: Long, db: AronDatabase, reevaluate: Boolean = true) {
         if (activeUserId() != userId) return
@@ -229,7 +231,6 @@ class DeviceRuntime(
             } catch (_: Exception) {
             }
         }
-        if (reevaluate) runCatching { policy().reevaluateBlocking() }
         reconcileBreadcrumbs()
     }
 
@@ -238,7 +239,7 @@ class DeviceRuntime(
      * the Sync button, check-out) never wait for Play Integrity; background runs collect it within a hard deadline.
      */
     suspend fun beforeBatch(userId: Long, db: AronDatabase, trigger: SyncTrigger) {
-        withTimeoutOrNull(5_000) { started.await() } // a report built before the DPC re-applied would say "no policy"
+        withTimeoutOrNull(5_000) { started.await() } // a report built before the release ran could still say device owner
         refreshDayConfig(userId, db)
         reporter.beforeBatch(db, allowEvidence = trigger !in WAITED_FOR)
     }

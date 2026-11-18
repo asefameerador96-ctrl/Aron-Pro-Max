@@ -149,6 +149,7 @@ class BatchAcceptanceTest {
         dueMtk: Long = 0,
         provider: String = "fused",
         gnss: String? = null,
+        signals: String? = null,
     ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
@@ -157,7 +158,7 @@ class BatchAcceptanceTest {
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
-             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"$provider","is_mock":false,"reused":false,${gnss?.let { "\"gnss\":$it," } ?: ""}
+             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"$provider","is_mock":false,"reused":false,${signals?.let { "\"signals\":$it," } ?: ""}${gnss?.let { "\"gnss\":$it," } ?: ""}
                     "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
              "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}
             """.trimIndent(),
@@ -196,6 +197,57 @@ class BatchAcceptanceTest {
     private fun statuses(r: JsonObject) = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content }
 
     private fun ApplicationTestBuilder.app() = application { aronApi(wiring) }
+
+    private fun statusPayload(events: String?, reportedAt: String = "2027-01-03T03:50:00.000Z") = Json.parseToJsonElement(
+        """
+        {"reported_at":"$reportedAt","trigger":"integrity_change","app_version":"1.0.9+9",
+         "device_info":{"manufacturer":"Itel","model":"A70","os_api_level":33,"os_version":"13","abi":"arm64-v8a","ram_mb":2048},
+         "device_owner":false,"lockdown_level_applied":"prod","policy_version_applied":null,"blocking_active":false,"location_enabled":true,
+         "dev_options_enabled":true,"adb_enabled":false,"auto_time_enabled":true,"mock_location_apps":[],"pending_rows":0,"battery_pct":80${events?.let { ""","integrity_events":$it""" } ?: ""}}
+        """.trimIndent(),
+    ).jsonObject
+
+    /**
+     * Contract 1.19.0 phone evidence through the real ingest. One batch only: the endpoint is rate limited per user, so this class sends one batch per test.
+     * (1) `GeoFix.signals` is stored with the fix and an older phone without it is still accepted. (2) Review B1: the contents of `integrity_events` and of `signals` were never
+     * checked, so one tampered report (an object where a flag code belongs) was stored whole and made the risk evaluation throw for every user; now the record is refused
+     * schema_invalid, a well-formed one is stored, and it reaches the risk table through the real evaluator.
+     */
+    @Test
+    fun thePhoneEvidenceOfContract119IsStoredAndAMalformedOneIsRefusedAtIngest() = testApplication {
+        app()
+        val token = client.token()
+        val withSignals = saleFamily(signals = "[\"mock_app_selected\",\"jump\"]")
+        val old = saleFamily()
+        fun status(events: String?) = envelope("device_status", uuid(), uuid(), 0, statusPayload(events), route = null)
+        val bad = listOf(
+            status("""[{"at":"2027-01-03T03:40:00Z","flags":[{"x":1}],"exempt":"none"}]"""), status("""[{"at":"2027-01-03T03:40:00Z","flags":["adb"],"exempt":["none"]}]"""),
+            status(""""not an array""""), status("""[{"at":"never","flags":["adb"],"exempt":"none"}]"""),
+            status("[" + List(51) { """{"at":"2027-01-03T03:40:00Z","flags":["adb"],"exempt":"none"}""" }.joinToString(",") + "]"),
+        )
+        val ok = status("""[{"at":"2027-01-03T03:40:00Z","flags":["dev_options","adb"],"exempt":"none","app_version":"1.0.9+9"},{"at":"2027-01-03T03:45:00Z","flags":["a_flag_from_a_newer_phone"],"exempt":"a_newer_exemption"}]""")
+        val badFamily = saleFamily(signals = "{\"a\":1}"); val badList = saleFamily(signals = "[{\"a\":1}]"); val good = saleFamily(signals = "[\"jump\",\"a_code_from_a_newer_phone\"]")
+        val r = client.send(token, batch(withSignals + old + bad + ok + badFamily + badList + good, uuid()))
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val acks = json(r.bodyAsText())["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content + ":" + (it.jsonObject["code"]?.takeIf { c -> c !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content ?: "") }
+        assertEquals(List(10) { "accepted:" }, acks.take(10), "a phone on 1.19.0 and an older phone without the member")
+        val a = withSignals[0]["client_uuid"]!!.jsonPrimitive.content; val b = old[0]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(1, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '$a' AND signals = ARRAY['mock_app_selected','jump']"))
+        assertEquals(1, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '$b' AND signals IS NULL"))
+        assertEquals(List(5) { "rejected:schema_invalid" } + "accepted:", acks.drop(10).take(6))
+        assertEquals("rejected:schema_invalid", acks[16], "an object where the fix signals list belongs"); assertEquals("rejected:schema_invalid", acks[21], "an object inside the list")
+        assertEquals(List(5) { "accepted:" }, acks.drop(26), "the good family lands whole")
+        val g = good[0]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(1, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '$g' AND signals = ARRAY['jump','a_code_from_a_newer_phone']"))
+        assertEquals(0, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '${badFamily[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+        for (x in bad) assertEquals(0, count("SELECT count(*) FROM app.device_status_report WHERE client_uuid = '${x["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(1, count("SELECT count(*) FROM app.device_status_report WHERE client_uuid = '${ok["client_uuid"]!!.jsonPrimitive.content}'"))
+        // ingest -> the real evaluator -> the risk table: one blocked onset (the other element has an unknown exemption, never counted as blocked)
+        val evaluator = com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(fresh.db, com.aktcl.aron.backend.platform.DbServerConfig(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), clock))
+        evaluator.evaluateDay(java.time.LocalDate.parse(day))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'DEVICE_DEBUG_ENABLED' AND subject_type = 'device' AND business_date = '$day'"))
+        assertEquals("1", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT evidence ->> 'blocked_events' FROM app.risk_signal WHERE code = 'DEVICE_DEBUG_ENABLED' AND business_date = '$day'").mapTo(String::class.java).one() })
+    }
 
     @Test
     fun aSaleFamilyIsStoredOnceAndARepeatedBatchReplaysTheStoredResponse() = testApplication {

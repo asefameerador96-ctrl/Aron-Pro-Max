@@ -305,7 +305,7 @@ object Aggregator {
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
     }
 
-    /** `dw.fact_attendance`: one row per user-day with the first check-in and the last check-out of the users who checked in or out on this route-day. A check-out the phone made for a forgotten day (`closed_by = 'phone'`, contract 1.20.0) is no check-out: `check_out_*` stay empty. */
+    /** `dw.fact_attendance`: one row per user-day with the first check-in and the last check-out of the users who checked in or out on this route-day. A check-out the phone made for a forgotten day (`closed_by = 'phone'`, contract 1.19.0) is no check-out: `check_out_*` stay empty. */
     private fun rebuildAttendance(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
         h.createUpdate(
             """

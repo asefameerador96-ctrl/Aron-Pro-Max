@@ -58,13 +58,18 @@ data class Settings(
      * migrate roles ignore it.
      */
     val workerPaused: Boolean = false,
+    /**
+     * Private key (PKCS#8, base64) that signs the lab grants of D-OWNER-MDM-02 iii (GitHub secret and Key Vault secret `ARON_LAB_GRANT_KEY`; written once by
+     * `tools/make-lab-grant-key.sh`). Never stored in the repository, never logged; without it no lab exemption can be granted (the portal action answers 409).
+     */
+    val labGrantKey: Secret? = null,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
         "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
             "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
             "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId, fcmServiceAccountJson=$fcmServiceAccountJson, " +
-            "playIntegrityServiceAccountJson=$playIntegrityServiceAccountJson)"
+            "playIntegrityServiceAccountJson=$playIntegrityServiceAccountJson, labGrantKey=$labGrantKey)"
 
     companion object {
         /** Removes `password=...` parameters and `user:password@` credentials from a JDBC URL. */
@@ -122,6 +127,7 @@ data class Settings(
                 mfaKeyPrevious = src.secret("ARON_MFA_KEY_PREVIOUS"),
                 playIntegrityServiceAccountJson = src.secret("ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON"),
                 workerPaused = src.get("ARON_WORKER_PAUSED")?.trim()?.lowercase() == "true",
+                labGrantKey = src.secret("ARON_LAB_GRANT_KEY"),
             )
         }
     }

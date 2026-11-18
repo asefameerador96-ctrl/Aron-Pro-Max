@@ -7,10 +7,11 @@ import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { Device, DeviceStatusReport, Directive } from "@/lib/admin/types";
 import { formatDateTime, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
 import { deviceActions } from "./devices-view";
+import { LabExemptionCard } from "./lab-exemption-card";
 
 const DIRECTIVES = ["send_status", "redownload_bundle", "upload_support_bundle"] as const;
 
-export function DeviceDetailView({ locale, device, history, directives, canWrite }: { locale: Locale; device: Device; history: DeviceStatusReport[]; directives: Directive[]; canWrite: boolean }) {
+export function DeviceDetailView({ locale, device, history, directives, canWrite, canLab = false }: { locale: Locale; device: Device; history: DeviceStatusReport[]; directives: Directive[]; canWrite: boolean; canLab?: boolean }) {
   const hist: Column<DeviceStatusReport>[] = [
     { key: "at", header: t(locale, "dev.col.reported"), render: (r) => formatDateTime(locale, r.reported_at) },
     { key: "app", header: t(locale, "dev.col.app"), render: (r) => r.app_version },
@@ -32,6 +33,7 @@ export function DeviceDetailView({ locale, device, history, directives, canWrite
         </p>
         {deviceActions(locale, device, canWrite)}
       </Card>
+      <LabExemptionCard deviceId={device.device_id} active={device.lab_exemption ?? null} available={device.lab_exemption_available === true} canWrite={canLab} />
       <Card title={t(locale, "dev.detail.users")}>
         {device.bound_users.length === 0 ? <EmptyNote /> : null}
         <ul className="text-sm">
