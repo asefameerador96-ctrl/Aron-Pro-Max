@@ -87,6 +87,9 @@ export const OPS = {
   // Wave 4 route monthly targets (D-TARGET-MIN-01): preview (dry run, no reason, writes nothing) then commit; idempotent by batch_uuid. REQUEST: docs/requests/backend-admin-route-targets.md
   "route-targets.validate": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: null },
   "route-targets.commit": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: "change_reason" },
+  // KPI targets of the SR programme screens (contract 1.22.0, D-TKPI): one section per request; same preview-then-commit contract as the route targets.
+  "kpi-targets.validate": { method: "PUT", path: "/v1/admin/route-kpi-targets", roles: ADMINS, reason: null },
+  "kpi-targets.commit": { method: "PUT", path: "/v1/admin/route-kpi-targets", roles: ADMINS, reason: "change_reason" },
   // Wave 4 outlet import (docs/34 s2: channel mandatory): preview, then commit. REQUEST: docs/requests/backend-admin-outlet-import.md
   "outlet-import.validate": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: null },
   "outlet-import.commit": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: "change_reason" },

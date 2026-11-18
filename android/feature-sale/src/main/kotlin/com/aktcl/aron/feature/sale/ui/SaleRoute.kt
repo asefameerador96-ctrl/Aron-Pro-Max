@@ -175,7 +175,7 @@ fun SaleRoute(
     val refusalText = ui.refusal.takeIf { it.isNotEmpty() }?.map { problemText(it) }?.joinToString("\n\n")
     SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, refusalText, manual = quantityPopup)
     // D-AGATE-25: the Save had already been stored; changes made after it are not in the memo
-    var laterShown by remember(ui.committed?.memoUuid) { mutableStateOf(true) }
+    var laterShown by androidx.compose.runtime.saveable.rememberSaveable(ui.committed?.memoUuid) { mutableStateOf(true) } // survives a rotation: a dialog the rep closed does not come back
     if (ui.laterChangesNotSaved && laterShown) {
         com.aktcl.aron.core.ui.aron.AronDialog(
             stringResource(R.string.review_later_title), stringResource(R.string.review_later_body), stringResource(R.string.sale_yes_ok),

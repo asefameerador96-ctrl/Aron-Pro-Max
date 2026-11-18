@@ -81,7 +81,7 @@ class SrParity1bContentTests {
             }
         }
     }
-    @Composable private fun Kv() = ContentStepView("KV", "× বন্ধ করুন", {}) { Picture() }
+    @Composable private fun Kv() = ContentStepView("KV", "× বন্ধ করুন", {}, "কেভি (KV) ছবি") { Picture() }
     @Test fun kv() = shot("srp1b_content_kv", titleText = "বিক্রয়") { Kv() }
     @Test fun kvSunlight() = shot("srp1b_content_kv_sunlight", sunlight = true, titleText = "বিক্রয়") { Kv() }
     @Test fun kvFont20() = shot("srp1b_content_kv_font20", fontScale = 2.0f, titleText = "বিক্রয়") { Kv() }
@@ -113,5 +113,6 @@ class SrParity1bContentTests {
     }
     @Test fun clusterPickerOpen() = shot("srp1b_cluster_picker_open", titleText = "ক্লাস্টার") { Sheet("") }
     @Test fun clusterPickerFiltered() = shot("srp1b_cluster_picker_filtered", titleText = "ক্লাস্টার") { Sheet("গুলশান") }
+    @Test fun clusterPickerSunlight() = shot("srp1b_cluster_picker_sunlight", sunlight = true, titleText = "ক্লাস্টার") { Sheet("") }
     @Test fun clusterPickerNone() = shot("srp1b_cluster_picker_none", titleText = "ক্লাস্টার") { Sheet("zzz") }
 }

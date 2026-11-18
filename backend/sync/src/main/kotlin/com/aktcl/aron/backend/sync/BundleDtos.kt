@@ -273,6 +273,18 @@ data class RouteDayStateDto(
 )
 
 @Serializable
+data class RouteCalendarDto(
+    val month: String,
+    val working_days: Int,
+    val elapsed_working_days_before_today: Int,
+    val remaining_working_days_after_today: Int,
+    val today_is_working: Boolean,
+    val last_month_working_days: Int,
+    val through_date: String,
+    val as_of: String,
+)
+
+@Serializable
 data class RouteSnapshot(
     val route_id: Long,
     val route_snapshot_version: Int,
@@ -284,11 +296,25 @@ data class RouteSnapshot(
     val outlets: List<BundleOutlet>,
     val open_memos: List<OpenMemo>,
     val sales_plan_sku_ids: List<Long>,
-    /** Deferred (docs/27): empty. */
+    /** N-2 (contract 1.22.0): the route's per-SKU monthly targets; empty in zone-wide (AMO, TSO) bundles. */
     val targets: List<JsonObject>,
-    /** Achievement against deferred targets (docs/27): empty. */
+    /** N-2: server month-to-date achievement through `through_date` (never today); empty in zone-wide bundles. */
     val achievement_mtd: List<JsonObject>,
     val day_state: RouteDayStateDto,
+    /** N-2 (contract 1.22.0, optional): working-day numbers; absent in zone-wide bundles. */
+    val calendar: RouteCalendarDto? = null,
+    /** N-5 (contract 1.22.0, optional): brand-wise KPI; absent in zone-wide bundles. */
+    val kpi: JsonObject? = null,
+    /** N-8 (contract 1.22.0, optional): Match Box Lifting Star snapshot; absent when the route has no target for an active superstar programme. */
+    val star: JsonObject? = null,
+    /** N-3 (contract 1.22.0, optional): outlets of the route in an active campaign with target and achievement; absent when none. */
+    val campaigns: List<JsonObject>? = null,
+    /** True only when campaign outlets (over 150) or an outlet's campaign SKUs (over 20) were cut; absent otherwise (never silent). */
+    val campaigns_truncated: Boolean? = null,
+    /** True only when `targets` or `achievement_mtd` had more than 500 rows and were cut (never silent); absent otherwise. */
+    val targets_truncated: Boolean? = null,
+    /** True only when the route had more than one active superstar programme with a target and only the lowest id is in `star`; absent otherwise. */
+    val star_truncated: Boolean? = null,
     /**
      * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
      * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent

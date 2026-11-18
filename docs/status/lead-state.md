@@ -410,3 +410,19 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 126 built (Android only): gates-2 45178efa + programmes d762c3aa1 + parity-sr-1 b08c3782; D-LEAD-TRAIN-126-01; GO to the integrator. Follow-ups after landing: A-GATE8 fixes the SR outlet-request photo claim before the gate (pre-existing) + Gradle input gaps; A-PROG3 fixes the 3-chain fallback double count; P-SR1b lows round; P-SR2b (7924c154c, 31 goldens changed, 16 conflicts resolved) merges INT again, then my review.
 - T-KPI3: confirming check of bfd2efd1d = 4 blocking (month-end anchor, RouteCalendar text, caches inside the snapshot, two stale doc lines); waiting for its next head.
 - CI note: web summary job failed twice on run 44372290509 with GitHub artifact storage 503 (egress limit); other runs passed; watch on the train run.
+
+## 2026-11-18 20:05 UTC
+
+- **Train 126 LANDED** (Android only): INT 0baf2b4dd. Lane ci 44379713186 green (19 rows, no re-run, no 503), INT ci 44382424499 (#2507) green, deploy #366 skipped by design (nothing deployable changed), health stays on build 2c7ff3c1b. APK aron-release-signed-dev-2507 42,155,997 B (+16,184 B). 13 goldens added, none modified. Size gate: 10 warnings (sr +8.0..8.8 %, amo +9.4..10.5 % vs the 6 Nov baseline; fail line +15 %); growth looks real, not a stale baseline; A-INT3 asked for a breakdown (no baseline change).
+- T-KPI3 third pass on b79247502: 3 blocking (Star last month not cut at through, unclamped anchor text, count tests assert only a sum). L-A13 8e807fd1b: 1 blocking (race latch reads server-wide pg_locks). Both sent.
+- After-landing rounds sent: A-GATE8 (SR outlet-request gate before photo claims + inputs; 7550ce14 fixture clock), A-PROG3 (3-chain fallback double count), P-SR1b (lows), P-SR2b (merge INT, then my review).
+- Not walked on a device: trains 121..126.
+
+## 2026-11-18 21:12 UTC
+
+- **Train 127 LANDED** (server, T1): INT 71941f7fc. Lane ci 44387855991 green (19 rows; every Repository gates step read: migrations 'order: 4 new migration(s)', oasdiff '0 breaking, 1.23.0 -> 1.24.0', slices up to date, Redocly valid), INT ci 44391010429 (#2516) green, deploy 44394153062 (#367) green: PITR 2026-11-18T20:49:29Z, migrate job caj-aron-dev-migrate-byiz9bk 'migrations succeeded' (console NOT in the deploy log), worker --0000247, SR smoke passed, health build 71941f7fc. APK aron-release-signed-dev-2516 42,155,413 B. e2e 383 of 383. ops-diagnose dispatched for 20:44..21:10Z to read the migrate console (0209 -> 0213).
+- Train 128 (Android) built: gates-2 b8bc2a70 + programmes d6ab7faef + parity-sr-1 abe7415d; D-LEAD-TRAIN-128-01.
+- P-SR2b ed947557c reviewed: 3 blocking (stale Slide pop-up state, Back discards QC without asking, golden without its dialog); fixed locally, holding for train 128.
+- L-A13 690a43fb6 PASS; rides the next server train after merging INT. T-KPI3 lows round local (b611dd910).
+- A-INT3 size reductions 026037794: only ~45 KB per app; sr +7.3 %, amo +8.6 %; owner decision 18 (reset baseline or keep the warning). The OkHttp public-suffix asset drop needs a short check before it lands.
+- Owner list: 17 decisions + item 18; laptop inventory; dump listing (attachment did not arrive); device walk tomorrow; portal brief.

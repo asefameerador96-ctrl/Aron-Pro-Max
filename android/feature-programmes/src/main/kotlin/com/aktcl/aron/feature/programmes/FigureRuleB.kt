@@ -39,15 +39,27 @@ object FigureRuleB {
         return memos.filter { it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && hasUncertainAncestor(it) }.map { it.uuid }.toSet()
     }
 
+    /** [m] and the memos it replaced, newest first, down to the root of its edit chain; null when an ancestor is missing on this phone or the chain loops. */
+    private fun chainOf(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo>? {
+        val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
+        while (cur != null) {
+            if (guard++ > 64) return null
+            out += cur
+            val up = cur.supersedes ?: return out
+            cur = byId[up] ?: return null
+        }
+        return out
+    }
+
     /** Memo states that can only mean "never left this phone" (the outbox row is pending with no attempt): certainly NOT inside any server figure, whatever the order is. */
     private val NEVER_SENT = setOf("pending")
 
     /**
      * The memos to add and to subtract, or null when there is no month. With the recorded order ([ackedBeforeRequest]) the full rule applies. WITHOUT it (a promoted prefetch, a bundle stored before
      * the order was recorded) only what is certain is done, and nothing is ever subtracted. ADDED are the live memos of the month that are certainly not in the server figure: a memo that never left the
-     * phone (not an edit, not a void), and a memo dated AFTER [throughDate] (the figure is cut there, so it never holds it), including an edit of such a memo when the edit's own date and the edited memo's
-     * date are both after [throughDate] (the figure holds neither version, so the edit counts in full and the edited memo is dead). NOT added: an acknowledged memo dated up to [throughDate] (it may be in the
-     * figure), an edit of anything dated up to [throughDate] (the original may be in the figure, so nothing can be netted); [unknownOrder] counts what was left out for the page's note.
+     * phone (not an edit, not a void), and a memo dated AFTER [throughDate] (the figure is cut there, so it never holds it), including an edit of such a memo when EVERY memo of its edit chain, down to the root, is
+     * dated after [throughDate] (the figure holds none of the versions, so the newest edit counts in full and the older ones are dead). NOT added: an acknowledged memo dated up to [throughDate] (it may be in the
+     * figure), an edit whose chain reaches a memo dated up to [throughDate] (that memo may be in the figure, so nothing can be netted); [unknownOrder] counts what was left out for the page's note.
      */
     fun delta(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?): Delta? {
         if (month == null) return null
@@ -63,7 +75,8 @@ object FigureRuleB {
         if (ackedBeforeRequest == null) {
             // the old-phone fallback of the identity rule: never-sent pending memos, and memos dated after through_date (the figure is cut there)
             val byId = memos.associateBy { it.uuid }
-            fun editOfLaterDay(m: LocalMemo) = m.supersedes != null && cutAfter(m) && byId[m.supersedes]?.let { cutAfter(it) } == true
+            // an edit counts only when EVERY memo of its chain, down to the root, is dated after through_date (the figure holds none of them); a chain that reaches back to a memo the figure may hold, or to one this phone does not have, is left out
+            fun editOfLaterDay(m: LocalMemo) = m.supersedes != null && chainOf(m, byId)?.all { cutAfter(it) } == true
             return Delta(live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && ((it.supersedes == null && (it.state in NEVER_SENT || cutAfter(it))) || editOfLaterDay(it)) }, emptyList())
         }
         // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
@@ -100,8 +113,10 @@ object FigureRuleB {
     fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean, month: String? = null, throughDate: String? = null): Int {
         if (orderKnown) return 0
         val added = delta(memos, null, month, throughDate)?.add?.map { it.uuid }?.toSet().orEmpty()
-        val replaced = memos.filter { it.uuid in added }.mapNotNull { it.supersedes }.toSet() // an edited memo that an ADDED edit replaces is accounted for
-        return memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in added && it.uuid !in replaced && (it.state !in NEVER_SENT || it.supersedes != null) }
+        val byId = memos.associateBy { it.uuid }
+        val replaced = memos.filter { it.uuid in added }.flatMap { chainOf(it, byId).orEmpty().drop(1) }.map { it.uuid }.toSet() // every older version an ADDED edit replaces is accounted for
+        val edited = memos.filter { it.state != "rejected" }.mapNotNull { it.supersedes }.toSet()
+        return memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in added && it.uuid !in replaced && !(throughDate != null && it.businessDate > throughDate && it.uuid in edited) /* a later-day memo with a live edit is counted by its edit */ && (it.state !in NEVER_SENT || it.supersedes != null) }
     }
 
     /**

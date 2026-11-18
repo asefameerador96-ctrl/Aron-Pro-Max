@@ -61,6 +61,8 @@
     <string name="sr_survey_answer">উত্তরঃ</string>
     <string name="sr_survey_pick">নির্বাচন করুন</string>
     <string name="sr_content_kv">KV</string>
+    <string name="sr_content_kv_desc">কেভি (KV) ছবি</string>
+    <string name="sr_content_av_desc">এভি (AV) ভিডিও</string>
     <string name="sr_content_av">AV</string>
     <string name="sr_content_close_x">× বন্ধ করুন</string>
     <string name="sr_journey_load_failed">বিক্রয় যাত্রা লোড করা যায়নি</string>

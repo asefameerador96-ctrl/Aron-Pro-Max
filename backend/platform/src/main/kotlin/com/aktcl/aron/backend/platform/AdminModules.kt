@@ -95,6 +95,7 @@ object AdminModules {
         p("/v1/admin/prices/**") to "prices",
         p("/v1/admin/targets/**") to "targets",
         p("/v1/admin/route-targets/**") to "targets",
+        p("/v1/admin/route-kpi-targets/**") to "targets",
         p("/v1/admin/target-revisions/**") to "targets",
         p("/v1/admin/supervisor-targets/**") to "targets",
         p("/v1/admin/sales-plans/**") to "targets",

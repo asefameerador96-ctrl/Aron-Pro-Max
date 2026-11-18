@@ -1,0 +1,21 @@
+KpiProgrammeTargetWriteRow:
+  type: object
+  required:
+  - route_code
+  - programme_code
+  - month
+  - target_qty
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    programme_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    target_qty:
+      $ref: '#/components/schemas/Decimal3'
