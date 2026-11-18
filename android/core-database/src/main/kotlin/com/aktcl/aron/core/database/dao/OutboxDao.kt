@@ -32,20 +32,19 @@ abstract class OutboxDao {
      * others (poison-row skip-ahead), and families in [excludedFamilies] (isolated by a bisect in this run) are left out.
      *
      * D-AGATE-06 (owner rule 3, check-out submits the sales): the day's `day_submit` is HELD until every EARLIER record of its business
-     * date is in a final state (acked, rejected or quarantined: nothing earlier is still pending or in flight), and the `attendance_event`
-     * record (the check-out) is HELD (D-LEAD-PREREQ-03 ruling 5, round 3) until a `day_submit` of its date has been ACCEPTED by the server, when the date has
-     * one: a submit that is pending, in flight, rejected, quarantined or exhausted keeps it held (the rep sends it again, or submits cycle 2, and the check-out
-     * follows the accepted one); a date with NO `day_submit` row releases it at once (a day with no routed captures). So the server never sees a day's own records as late, nor a
-     * check-out without its submit, whatever order retries, a bisect-isolated family or a slow batch put the rows in. A row that is held
-     * stays pending and is picked again as soon as what it waits for is final.
+     * date is in a final state (acked, rejected or quarantined: nothing earlier is still pending or in flight). The CHECK-OUT of its own date is NOT such a
+     * record (D-LEAD-PREREQ-04 ruling 6, step 3 S6): it waits for the submit, so a day_submit is never held behind it (a cycle-2 submit has a higher seq than the
+     * check-out, and holding it behind the check-out that waits for it was a deadlock). The check-out itself (a `check_out` attendance event) is HELD
+     * ([CHECKOUT_HELD]) while the NEWEST submit of ANY route-day of its date can still change (pending, in flight, held for review, or given up by the phone as
+     * `retry_exhausted`) and is released when that submit was accepted or finally refused by the server (rulings 6 and 7). A date with no submit releases it
+     * at once. A row that is held stays pending and is picked again as soon as what it waits for is final; it blocks nothing else.
      */
     @Query(
         """SELECT * FROM outbox o WHERE o.state = 'pending' AND o.family_uuid NOT IN (:excludedFamilies)
            AND NOT (o.record_type = 'day_submit' AND EXISTS (
-               SELECT 1 FROM outbox e WHERE e.business_date = o.business_date AND e.seq < o.seq AND e.state IN ('pending', 'in_flight')))
-           AND NOT (o.record_type = 'attendance_event' AND EXISTS (
-               SELECT 1 FROM outbox d WHERE d.record_type = 'day_submit' AND d.business_date = o.business_date AND d.seq < o.seq)
-               AND NOT EXISTS (SELECT 1 FROM outbox a WHERE a.record_type = 'day_submit' AND a.business_date = o.business_date AND a.state = 'acked'))
+               SELECT 1 FROM outbox e WHERE e.business_date = o.business_date AND e.seq < o.seq AND e.state IN ('pending', 'in_flight')
+               AND e.client_uuid NOT IN (SELECT ae.client_uuid FROM attendance_event ae WHERE ae.kind = 'check_out')))
+           AND NOT ($CHECKOUT_HELD)
            ORDER BY CASE WHEN o.attempts >= :skipAfter THEN 1 ELSE 0 END, o.seq LIMIT :limit""",
     )
     abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>
@@ -56,6 +55,13 @@ abstract class OutboxDao {
      */
     @Query("UPDATE outbox SET attempts = attempts + 1 WHERE client_uuid = :clientUuid")
     abstract suspend fun countFailure(clientUuid: String): Int
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 6: waiting rows for the manual Sales Submit gate, a check-out that is HELD behind its date's submit NOT counted (it is not
+     * "unsent work" the rep can act on, and it must not disable the submit of this or a later day).
+     */
+    @Query("SELECT COUNT(*) FROM outbox o WHERE o.state = 'pending' AND NOT ($CHECKOUT_HELD)")
+    abstract suspend fun pendingNotHeld(): Int
 
     /** Rows waiting for an upload: pending or in a batch not yet answered (`X-Pending-Rows`, the periodic-work rule). */
     @Query("SELECT COUNT(*) FROM outbox WHERE state IN ('pending', 'in_flight')")
@@ -329,6 +335,20 @@ private const val REFUSED_SELECT =
        LEFT JOIN memo qm ON qm.client_uuid = q.memo_client_uuid
        LEFT JOIN visit qv ON qv.client_uuid = q.visit_client_uuid
        LEFT JOIN visit fv ON fv.client_uuid = o.family_uuid"""
+
+/**
+ * The predicate (over alias `o`) of a check-out that must still wait: a `check_out` event whose date has a submit, where the NEWEST submit of some route-day of
+ * that date is pending, in flight, quarantined (held for review) or given up by the phone (`retry_exhausted`). An accepted submit, or one the server refused
+ * for good, releases it. Routes are told apart by the `day_submit` table's `route_id` (null for a supervisor-day submit).
+ */
+private const val CHECKOUT_HELD =
+    """o.record_type = 'attendance_event'
+       AND EXISTS (SELECT 1 FROM attendance_event ae WHERE ae.client_uuid = o.client_uuid AND ae.kind = 'check_out')
+       AND EXISTS (SELECT 1 FROM outbox s JOIN day_submit ds ON ds.client_uuid = s.client_uuid
+           WHERE s.record_type = 'day_submit' AND s.business_date = o.business_date
+           AND s.seq = (SELECT MAX(s2.seq) FROM outbox s2 JOIN day_submit ds2 ON ds2.client_uuid = s2.client_uuid
+                        WHERE s2.record_type = 'day_submit' AND s2.business_date = s.business_date AND ds2.route_id IS ds.route_id)
+           AND (s.state IN ('pending', 'in_flight', 'quarantined') OR (s.state = 'rejected' AND IFNULL(s.last_code, '') = 'retry_exhausted')))"""
 
 /** Rows per outbox state. */
 data class StateCount(val state: String, val count: Int)

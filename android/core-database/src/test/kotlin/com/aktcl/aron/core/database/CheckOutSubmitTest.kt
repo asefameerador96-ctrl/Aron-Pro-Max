@@ -192,23 +192,37 @@ class CheckOutSubmitTest {
     }
 
     /**
-     * D-LEAD-PREREQ-03 ruling 5 (round-3 B5): the check-out goes to the server only after a submit of its date was ACCEPTED, when the date has one. A submit
-     * that is rejected, quarantined (also by the device-integrity hold) or exhausted keeps the check-out held; Send again or a cycle-2 submit that the server
-     * accepts releases it. The old rule released it as soon as the submit was "final", so the server raised CHECKOUT_WITHOUT_SUBMIT against the rep.
+     * D-LEAD-PREREQ-04 rulings 6 and 7 (step 3 S6): the check-out is held while the NEWEST submit of its date can still change (pending, in flight, held for
+     * review (quarantined), or given up by the phone: retry_exhausted) and is released when that submit is accepted or FINALLY REFUSED by the server (a
+     * refusal no resend can cure must not hold the check-out for ever). Replaces ruling 5 of D-LEAD-PREREQ-03 ("until accepted"). The cycle-2 case runs through
+     * the real engine (CheckOutOrderSyncTest); here the real rows decide, nothing is inserted as already accepted.
      */
-    @Test fun theCheckOutWaitsForAnAcceptedSubmitWhateverElseHappenedToTheFirstOne() = runTest {
+    @Test fun theCheckOutIsHeldWhileTheNewestSubmitCanStillChangeAndReleasedWhenItIsFinal() = runTest {
         val (stock, sub, _) = seedDay()
         val checkIn = db.outboxDao().nextPending(100).first { it.recordType == "attendance_event" }.clientUuid
         db.outboxDao().applyAck(checkIn, "acked", null, null, "t"); db.outboxDao().applyAck(stock, "acked", null, null, "t")
         val sql = db.openHelper.writableDatabase
-        for ((state, code) in listOf("rejected" to "schema_invalid", "quarantined" to "device_integrity_failed", "rejected" to "retry_exhausted", "pending" to "scope_stale")) {
+        for ((state, code, held) in listOf(
+            Triple("quarantined", "device_integrity_failed", true), Triple("rejected", "retry_exhausted", true), Triple("pending", "scope_stale", true),
+            Triple("rejected", "schema_invalid", false), Triple("acked", "", false),
+        )) {
             sql.execSQL("UPDATE outbox SET state = '$state', last_code = '$code' WHERE client_uuid = '$sub'")
-            assertEquals("a submit that is $state ($code) keeps the check-out held", emptyList<String>().let { if (state == "pending") listOf("day_submit") else it }, sendable())
+            val expect = if (held) (if (state == "pending") listOf("day_submit") else emptyList()) else listOf("attendance_event")
+            assertEquals("a submit that is $state ($code): check-out ${if (held) "held" else "released"}", expect, sendable())
         }
-        // a cycle-2 submit the server accepted releases it, although the first one stays refused
-        sql.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'schema_invalid' WHERE client_uuid = '$sub'")
-        db.outboxDao().insert(listOf(OutboxEntity(clientUuid = ClientIds.newUuid(), recordType = "day_submit", familyUuid = ClientIds.newUuid(), rank = 0, businessDate = D, payloadJson = "{}", payloadSha256 = "x", state = "acked", createdAt = "t")))
-        assertEquals(listOf("attendance_event"), sendable())
+    }
+
+    /** A day_submit is never held behind its own date's check-out; a held check-out is not counted as unsent work. */
+    @Test fun aSecondSubmitIsNotHeldByTheCheckOutAndAHeldCheckOutIsNotCounted() = runTest {
+        val (stock, sub, _) = seedDay()
+        val checkIn = db.outboxDao().nextPending(100).first { it.recordType == "attendance_event" }.clientUuid
+        db.outboxDao().applyAck(checkIn, "acked", null, null, "t"); db.outboxDao().applyAck(stock, "acked", null, null, "t")
+        db.outboxDao().applyAck(sub, "rejected", "retry_exhausted", null, "t")
+        assertEquals("exhausted submit: the check-out is held", emptyList<String>(), sendable())
+        assertEquals("a held check-out is not waiting work", 0, db.outboxDao().pendingNotHeld())
+        repo.recordDaySubmit(submit(cycle = 2)) // the rep submits again: written through the real path, queued pending
+        assertEquals("the cycle-2 submit is sendable although the held check-out has the lower seq", listOf("day_submit"), sendable())
+        assertEquals("only the cycle-2 submit counts as waiting", 1, db.outboxDao().pendingNotHeld())
     }
 
     @Test fun theCheckOutOfADayWithNoSubmitIsReleasedAtOnce() = runTest {

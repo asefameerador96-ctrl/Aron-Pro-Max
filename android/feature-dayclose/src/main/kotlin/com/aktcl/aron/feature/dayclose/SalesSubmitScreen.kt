@@ -487,7 +487,14 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                 if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
                 // D-AGATE-06: the day's own submit (the check-out sends it for the rep) was refused or held: say it, and the way out
                 if (r.recordType == "day_submit" && r.fromThisPhone) {
-                    Text(stringResource(if (r.afterCheckOut) R.string.submit_day_submit_refused_after_checkout else R.string.submit_day_submit_refused), style = MaterialTheme.typography.bodySmall, color = WarnInk)
+                    // after the check-out the text names only actions that exist in that state (D-LEAD-PREREQ-04 ruling 6): Send again exists only for a submit the phone gave up on
+                    val daySubmitText = when {
+                        !r.afterCheckOut -> R.string.submit_day_submit_refused
+                        r.outcome == RejectedOutcome.PHONE_GAVE_UP -> R.string.submit_day_submit_gave_up_after_checkout
+                        r.outcome == RejectedOutcome.STORED_FLAGGED -> R.string.submit_day_submit_held_after_checkout
+                        else -> R.string.submit_day_submit_refused_after_checkout
+                    }
+                    Text(stringResource(daySubmitText), style = MaterialTheme.typography.bodySmall, color = WarnInk)
                 }
                 Text(
                     stringResource(

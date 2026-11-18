@@ -26,7 +26,8 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
      * and the `day_submit` counts read, exactly as before "seen" existed: "seen" is a SCREEN matter only (see [seenRefused]).
      */
     override suspend fun outboxStates(businessDate: String): OutboxStates {
-        val pending = outbox.countInState("pending")
+        // D-LEAD-PREREQ-04 ruling 6: a check-out held behind its date's submit is not waiting work the rep can act on, so it is not counted here
+        val pending = outbox.pendingNotHeld()
         val inFlight = outbox.countInState("in_flight")
         return OutboxStates(pending, inFlight, outbox.countInState("acked"), outbox.countRefused(OutboxState.REJECTED), outbox.countRefused(OutboxState.QUARANTINED))
     }

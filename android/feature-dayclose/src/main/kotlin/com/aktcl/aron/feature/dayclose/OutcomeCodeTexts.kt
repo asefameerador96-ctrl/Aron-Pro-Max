@@ -16,6 +16,8 @@ internal object OutcomeCodeTexts {
         code == "price_list_unknown" -> R.string.submit_code_price_list_unknown
         code == "schema_invalid" -> R.string.submit_code_schema_invalid
         code == "unknown_record_type" -> R.string.submit_code_unknown_record_type
+        code == "gift_locked" -> R.string.submit_code_gift_locked
+        code == "gift_not_for_tier" -> R.string.submit_code_gift_not_for_tier
         code == "unknown_sku" -> R.string.submit_code_unknown_sku
         code == "unknown_outlet" -> R.string.submit_code_unknown_outlet
         code == "unknown_route" -> R.string.submit_code_unknown_route

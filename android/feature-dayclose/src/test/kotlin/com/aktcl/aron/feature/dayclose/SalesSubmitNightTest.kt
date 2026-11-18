@@ -98,19 +98,33 @@ class SalesSubmitNightTest {
         compose.onNodeWithText("Your day's sales submit was not accepted by the server. The day is open again on this phone: you can sell and collect, then submit again from Sales Submit.").assertExists()
     }
 
-    /** Review round 3, B4: after the check-out the rep cannot sell or collect, so the text must never say so; it says what happened, Submit again, and who to contact. */
-    @Test fun aRefusedDaySubmitAfterCheckOutNeverTellsTheRepToSellAndSaysWhatToDo() {
-        val afterOut = listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true))
-        show(AppLanguage.EN, owner, afterOut)
+    /**
+     * D-LEAD-PREREQ-04 ruling 6: after the check-out the text never tells the rep to sell, and names only actions that exist in that state. A submit the server
+     * refused for good has no Send again and no "Submit again" (a cycle 2 is only possible on its own date): it says the check-out goes on its own and who to
+     * contact; a submit the phone gave up on offers Send again (which exists); a held one says there is nothing to do.
+     */
+    @Test fun aRefusedDaySubmitAfterCheckOutNamesOnlyActionsThatExistInThatState() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true)))
         compose.onNodeWithText("You have already checked out", substring = true).assertExists()
-        compose.onNodeWithText("Submit again", substring = true).assertExists()
-        compose.onNodeWithText("tap Send again", substring = true).assertExists() // round-3 B5: Send again or a cycle-2 submit is the way forward
-        compose.onNodeWithText("check-out is sent to the server after your sales submit is accepted", substring = true).assertExists()
-        compose.onNodeWithText("contact your supervisor", substring = true).assertExists()
+        compose.onNodeWithText("check-out is sent to the server on its own", substring = true).assertExists()
+        compose.onNodeWithText("Contact your supervisor", substring = true).assertExists()
+        compose.onNodeWithText("Send again", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Submit again", substring = true).assertDoesNotExist()
         compose.onNodeWithText("you can sell and collect", substring = true).assertDoesNotExist()
     }
 
-    @Test fun theAfterCheckOutTextReadsInBanglaToo() {
+    @Test fun aSubmitThePhoneGaveUpOnAfterCheckOutOffersSendAgainAndAHeldOneSaysNothingToDo() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "retry_exhausted", RejectedOutcome.PHONE_GAVE_UP, afterCheckOut = true)))
+        compose.onNodeWithText("Tap Send again on this record", substring = true).assertExists()
+        compose.onNodeWithText("sent to the server after the submit is accepted or refused", substring = true).assertExists()
+    }
+
+    @Test fun aHeldDaySubmitAfterCheckOutSaysThereIsNothingToDoOnThePhone() {
+        show(AppLanguage.EN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "payload_conflict", RejectedOutcome.STORED_FLAGGED, afterCheckOut = true)))
+        compose.onNodeWithText("nothing to do on the phone", substring = true).assertExists()
+    }
+
+    @Test fun theAfterCheckOutTextsReadInBanglaToo() {
         show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true)))
         compose.onNodeWithText("আপনি আগেই চেক-আউট করেছেন", substring = true).assertExists()
         compose.onNodeWithText("এই ফোনে দিনটি আবার খোলা", substring = true).assertDoesNotExist()

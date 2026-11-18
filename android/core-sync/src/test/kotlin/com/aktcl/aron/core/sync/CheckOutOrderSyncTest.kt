@@ -138,6 +138,79 @@ class CheckOutOrderSyncTest {
         assertEquals("every record of the phone reached the server exactly once", db.outboxDao().countsByState().sumOf { it.count }, fake.registry.size)
     }
 
+    // ---- step 3 S6 (D-LEAD-PREREQ-04 rulings 6 and 7): the hold of the check-out, through the real engine and real rows
+
+    private fun submitUuids(): List<String> = db.openHelper.readableDatabase.query("SELECT client_uuid FROM outbox WHERE record_type = 'day_submit' ORDER BY seq").use { c -> generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList() }
+    private fun outboxState(uuid: String) = runBlocking { db.outboxDao().byClientUuid(uuid)!!.state }
+    private fun submitRow(date: String = "2026-10-05", route: Long? = 10231, cycle: Int = 1) =
+        DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(routeId = route), "route_day", cycle, "{}", MONEY, 0, 0, 0, false, 0, 0, false)
+
+    /**
+     * The cycle-2 deadlock of the lead's step-2 review, reproduced with REAL rows (nothing inserted as already accepted): the first submit is given up by the
+     * phone (retry_exhausted), the check-out is held, the rep submits again (cycle 2) and the cycle-2 submit must go to the server although the held check-out
+     * of its own date has the lower seq; then the check-out follows it.
+     */
+    @Test fun aCycleTwoSubmitIsNotHeldBehindItsOwnDatesHeldCheckOut() = runBlocking {
+        val ids = theDay()
+        val first = submitUuids().single()
+        fake.rejectRetryable[first] = 1000
+        val policy = SyncPolicy(rowMaxRetries = 2, familySkipAfter = 1)
+        repeat(4) { engine(policy).run(SyncTrigger.MANUAL) }
+        assertEquals("the phone gave the first submit up", OutboxState.REJECTED, outboxState(first))
+        assertEquals("retry_exhausted", db.outboxDao().byClientUuid(first)!!.lastCode)
+        assertTrue("the check-out is held while the newest submit can still change", wire().none { it.endsWith(ids.getValue("checkout")) })
+        repo.recordDaySubmit(submitRow(cycle = 2))   // the rep's way forward
+        repeat(2) { engine(policy).run(SyncTrigger.MANUAL) }
+        val second = submitUuids().last()
+        assertEquals("the cycle-2 submit reached the server and was accepted", OutboxState.ACKED, outboxState(second))
+        val w = wire()
+        assertTrue("then the check-out followed it", w.indexOfFirst { it.endsWith(ids.getValue("checkout")) } > w.indexOfFirst { it.endsWith(second) })
+    }
+
+    /** A submit the SERVER refused for good is final: the check-out is released (it is not held for ever behind a refusal no resend can cure). */
+    @Test fun aSubmitTheServerRefusedForGoodReleasesTheCheckOut() = runBlocking {
+        val ids = theDay()
+        fake.rejectFinal += submitUuids().single()
+        engine().run(SyncTrigger.CHECKOUT)
+        assertEquals(OutboxState.REJECTED, outboxState(submitUuids().single()))
+        assertTrue("the check-out went", wire().any { it.endsWith(ids.getValue("checkout")) })
+        assertEquals(OutboxState.ACKED, outboxState(ids.getValue("checkout")))
+    }
+
+    /** A held check-out is not counted as waiting work by the Sales Submit status of later days, and never blocks a later day's own record. */
+    @Test fun aHeldCheckOutIsNeitherCountedNorBlocksALaterDay() = runBlocking {
+        theDay()
+        val first = submitUuids().single()
+        fake.rejectRetryable[first] = 1000
+        val policy = SyncPolicy(rowMaxRetries = 2, familySkipAfter = 1)
+        repeat(4) { engine(policy).run(SyncTrigger.MANUAL) }
+        assertEquals("the held check-out is still pending in the outbox", 1, runBlocking { db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM outbox WHERE state = 'pending' AND record_type = 'attendance_event'").use { it.moveToFirst(); it.getInt(0) } })
+        assertEquals("but it does not count as unsent work for the manual gate", 0, db.outboxDao().pendingNotHeld())
+        val later = com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = ClientIds.newUuid(), recordType = "stock_movement", familyUuid = ClientIds.newUuid(), rank = 0, businessDate = "2026-10-06", payloadJson = "{}", payloadSha256 = "x", createdAt = "t")
+        db.outboxDao().insert(listOf(later))
+        assertEquals("a later day's row is sendable", listOf(later.clientUuid), runBlocking { db.outboxDao().nextSendable(10, 10, listOf("none")) }.map { it.clientUuid })
+    }
+
+    /** Two route-days: the check-out waits for EVERY route-day's newest submit to be final. */
+    @Test fun withTwoRouteDaysTheCheckOutWaitsForBoth() = runBlocking {
+        val (ci, cif) = TestRows.attendance(); repo.recordAttendance(ci, cif)
+        repo.recordStock(listOf(TestRows.stock()))
+        val u = ClientIds.newUuid(); val of = TestRows.fix(u, "attendance_out")
+        repo.recordCheckOut(AttendanceEventEntity(u, TestRows.meta(routeId = null), "check_out", of.clientUuid, null), of) { listOf(submitRow(route = 10231), submitRow(route = 10232)) }
+        val (a, b) = submitUuids()
+        fake.rejectRetryable[b] = 1000
+        val policy = SyncPolicy(rowMaxRetries = 2, familySkipAfter = 1)
+        repeat(5) { engine(policy).run(SyncTrigger.MANUAL) }
+        assertEquals(OutboxState.ACKED, outboxState(a))
+        assertEquals("route B was given up by the phone", "retry_exhausted", runBlocking { db.outboxDao().byClientUuid(b)!!.lastCode })
+        assertTrue("route A is accepted but route B is not final: the check-out waits", wire().none { it.endsWith(u) })
+        runBlocking { db.outboxDao().requeueRetryExhausted(b) }
+        fake.rejectRetryable.remove(b)
+        engine(policy).run(SyncTrigger.MANUAL)
+        assertEquals(OutboxState.ACKED, outboxState(b))
+        assertTrue("both accepted: the check-out goes", wire().any { it.endsWith(u) })
+    }
+
     private class KillAfterFirst(private val d: BatchSender) : BatchSender {
         var n = 0
         override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): com.aktcl.aron.core.network.ApiResult<com.aktcl.aron.contract.SyncBatchResponse> {
