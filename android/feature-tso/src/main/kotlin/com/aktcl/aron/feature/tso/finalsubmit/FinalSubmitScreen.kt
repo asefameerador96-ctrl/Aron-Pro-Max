@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
@@ -242,9 +244,11 @@ private fun Routes(ui: FinalSubmitState.Ui, phase: FsPhase, onClear: ((FsRoute) 
 @Composable
 private fun ClearIcon(r: FsRoute, onClear: ((FsRoute) -> Unit)?, solid: Boolean) {
     val label = stringResource(R.string.tso_fs_clear_route)
+    val red = LocalAronLook.current.red
     Box(
-        Modifier.size(48.dp).then(if (onClear != null) Modifier.clip(CircleShape).clickable(role = Role.Button, onClickLabel = label) { onClear(r) } else Modifier)
-            .semantics { contentDescription = label }.testTag(FsTags.clear(r.routeId)),
+        // inert (no action yet): nothing for TalkBack to announce, no click, no role (lead check, low 1)
+        if (onClear != null) Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = label) { onClear(r) }.semantics { contentDescription = label }.testTag(FsTags.clear(r.routeId))
+        else Modifier.size(48.dp).clearAndSetSemantics { testTag = FsTags.clear(r.routeId) },
         contentAlignment = Alignment.Center,
-    ) { Icon(com.aktcl.aron.feature.tso.TsoIcons.Delete, contentDescription = null, tint = if (solid) Color(0xFFFF6B6B) else Color(0xFFC62828), modifier = Modifier.size(26.dp)) }
+    ) { Icon(com.aktcl.aron.feature.tso.TsoIcons.Delete, contentDescription = null, tint = red, modifier = Modifier.size(26.dp)) }
 }

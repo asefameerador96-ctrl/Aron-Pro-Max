@@ -113,6 +113,8 @@ fun TeamScreen(
     val live = online() && MapsKey.present(context)
     var full by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = full) { full = false }
+    // the network drops while the map is full screen: leave full screen cleanly, the list and the banners come back (lead check, low 5)
+    LaunchedEffect(live) { if (!live) full = false }
     TsoFrame(stringResource(R.string.tso_pe_my_teams), nav, homeButton = true, modifier = modifier, onBack = onBack) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (full) 0.dp else AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             if (ui.zones.isNotEmpty() && !full) TsoDropdownField(
@@ -138,7 +140,7 @@ fun TeamScreen(
                         RefreshButton(stringResource(R.string.tso_pe_refresh), PeripheryTags.REFRESH, withText = true) { scope.launch { state.refresh() } }
                     }
                     val points = teamPoints(p.result.value, p.codes) { n -> resources.getString(R.string.tso_pe_mock_today, LocaleDigits.localize(n.toString(), language)) }
-                    MapCard(live, full, { full = !full }, Modifier.weight(1f).fillMaxWidth()) {
+                    MapCard(live, full, { full = !full }, { scope.launch { state.refresh() } }, stringResource(R.string.tso_as_of, p.result.asOf), PeripheryTags.REFRESH, Modifier.weight(1f).fillMaxWidth()) {
                         LiteMapScreen(
                             points, settings, online(), MapsKey.present(context), nowMs(), cache, "team_${userKey}_${ui.zoneId}", Modifier,
                             staleAfterMin = ui.config.staleAfterMin, interactive = true,
@@ -156,7 +158,7 @@ fun TeamScreen(
  * location layer is turned on, so nothing listens to the GPS). Fullscreen asks the screen to give the map the whole page.
  */
 @Composable
-private fun MapCard(live: Boolean, full: Boolean, onFull: () -> Unit, modifier: Modifier = Modifier, map: @Composable () -> Unit) {
+private fun MapCard(live: Boolean, full: Boolean, onFull: () -> Unit, onRefresh: () -> Unit, asOf: String, refreshTag: String, modifier: Modifier = Modifier, map: @Composable () -> Unit) {
     var recentred by remember { mutableIntStateOf(0) }
     val look = LocalAronLook.current
     Box(modifier.clip(RoundedCornerShape(if (full) 0.dp else 20.dp))) {
@@ -164,7 +166,14 @@ private fun MapCard(live: Boolean, full: Boolean, onFull: () -> Unit, modifier: 
         if (live) Column(Modifier.align(Alignment.TopEnd).padding(AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             MapButton(if (full) TsoIcons.FullscreenExit else TsoIcons.Fullscreen, stringResource(if (full) R.string.tso_pe_map_exit_full else R.string.tso_pe_map_full), PeripheryTags.FULL, look.card, look.ink, onFull)
             MapButton(TsoIcons.Recentre, stringResource(R.string.tso_pe_map_recentre), PeripheryTags.RECENTRE, look.card, look.ink) { recentred++ }
+            // a way to read the data again stays (lead check, low 4): one new read of the last synced answer, never live tracking
+            MapButton(com.aktcl.aron.core.ui.AronIcons.Refresh, stringResource(R.string.tso_pe_refresh), refreshTag, look.card, look.ink, onRefresh)
         }
+        // and the age of the data, small, on the map's lower edge
+        if (live) Text(
+            localizedDigits(asOf), Modifier.align(Alignment.BottomStart).padding(AronTokens.Space.S).clip(RoundedCornerShape(8.dp)).background(look.card).padding(horizontal = 8.dp, vertical = 4.dp).testTag(PeripheryTags.ASOF),
+            style = MaterialTheme.typography.labelSmall, color = look.ink,
+        )
     }
 }
 
@@ -221,6 +230,8 @@ fun RetailerScreen(
     val live = online() && MapsKey.present(context)
     var full by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = full) { full = false }
+    // the network drops while the map is full screen: leave full screen cleanly, the list and the banners come back (lead check, low 5)
+    LaunchedEffect(live) { if (!live) full = false }
     TsoFrame(stringResource(R.string.tso_pe_outlets_title), nav, homeButton = true, modifier = modifier, onBack = onBack) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (full) 0.dp else AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             if (!full) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -267,7 +278,7 @@ fun RetailerScreen(
             }
             if (shown != null) {
                 val metres: (Int) -> String = { d -> resources.getString(R.string.tso_unit_m, LocaleDigits.localize(d.toString(), language)) }
-                MapCard(live, full, { full = !full }, Modifier.weight(1f).fillMaxWidth()) {
+                MapCard(live, full, { full = !full }, { scope.launch { state.find() } }, stringResource(R.string.tso_as_of, shown.result.asOf), PeripheryTags.FIND, Modifier.weight(1f).fillMaxWidth()) {
                     LiteMapScreen(
                         nearbyPoints(shown.result.value, metres, shown.lat to shown.lng, resources.getString(R.string.tso_pe_me)), settings, online(), MapsKey.present(context), nowMs(), cache,
                         "near_${userKey}_${shown.zoneId}_${shown.radiusM}_${positionKey(shown.lat, shown.lng)}", Modifier, interactive = true, circle = nearbyCircle(shown),

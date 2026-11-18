@@ -154,6 +154,11 @@ class TsoAreaScreenshotTests {
         SetPlanScreen(st, onBack = {})
     }
 
+    @Test fun visit_query_bn() = shot("tso_visit_query_bn", AppLanguage.BN) {
+        val st = VisitQueryState(Rubric(5, 1, listOf(Criterion(1, "এসআর কি নিয়মিত আপনার দোকানে ভিজিট করে?", "Does the SR visit regularly?", text = true), Criterion(2, "এসআর কি নিয়মিত মেমো প্রিন্ট করে দেয়?", "Does the SR print memos regularly?", text = true))), "p", 1, 1) { true }
+        st.text(1, "প্রতি সপ্তাহে"); VisitQueryScreen(st, "রহমান স্টোর", onDone = {}, onBack = {})
+    }
+
     // ---- Final Submit
     private fun fs(already: Boolean = false) = object : FinalSubmitApi {
         override suspend fun zones() = listOf(10L, 11L)
