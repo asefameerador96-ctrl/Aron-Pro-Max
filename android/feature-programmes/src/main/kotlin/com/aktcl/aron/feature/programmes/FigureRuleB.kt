@@ -40,6 +40,8 @@ object FigureRuleB {
     }
 
     /** [m] and the memos it replaced, newest first, down to the root of its edit chain; null when an ancestor is missing on this phone or the chain loops. */
+    fun chainOfOrNull(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo>? = chainOf(m, byId)
+
     private fun chainOf(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo>? {
         val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
         while (cur != null) {
@@ -77,7 +79,11 @@ object FigureRuleB {
             val byId = memos.associateBy { it.uuid }
             // an edit counts only when EVERY memo of its chain, down to the root, is dated after through_date (the figure holds none of them); a chain that reaches back to a memo the figure may hold, or to one this phone does not have, is left out
             fun editOfLaterDay(m: LocalMemo) = m.supersedes != null && chainOf(m, byId)?.all { cutAfter(it) } == true
-            return Delta(live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && ((it.supersedes == null && (it.state in NEVER_SENT || cutAfter(it))) || editOfLaterDay(it)) }, emptyList())
+            val cand = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && ((it.supersedes == null && (it.state in NEVER_SENT || cutAfter(it))) || editOfLaterDay(it)) }
+            // a FORK (two live edits of one memo, even on different days) has two tips for one sale: neither is added (the page names them), never both
+            val rootOf = cand.filter { it.supersedes != null }.associate { it.uuid to chainOf(it, byId)!!.last().uuid }
+            val forked = rootOf.entries.groupBy({ it.value }, { it.key }).filterValues { it.size > 1 }.values.flatten().toSet()
+            return Delta(cand.filter { it.uuid !in forked }, emptyList())
         }
         // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
         val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
@@ -116,7 +122,9 @@ object FigureRuleB {
         val byId = memos.associateBy { it.uuid }
         val replaced = memos.filter { it.uuid in added }.flatMap { chainOf(it, byId).orEmpty().drop(1) }.map { it.uuid }.toSet() // every older version an ADDED edit replaces is accounted for
         val edited = memos.filter { it.state != "rejected" }.mapNotNull { it.supersedes }.toSet()
-        return memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in added && it.uuid !in replaced && !(throughDate != null && it.businessDate > throughDate && it.uuid in edited) /* a later-day memo with a live edit is counted by its edit */ && (it.state !in NEVER_SENT || it.supersedes != null) }
+        val voided = memos.filter { it.state != "rejected" }.mapNotNull { it.voidOf }.toSet()
+        return memos.count { (month == null || it.businessDate.take(7) == month) && it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in added && it.uuid !in replaced &&
+            !(throughDate != null && it.businessDate > throughDate && it.uuid in voided) /* a later-day memo that was voided is simply gone */ && !(throughDate != null && it.businessDate > throughDate && it.uuid in edited) /* a later-day memo with a live edit is counted by its edit */ && (it.state !in NEVER_SENT || it.supersedes != null) }
     }
 
     /**
@@ -127,9 +135,17 @@ object FigureRuleB {
     fun show(
         server: ServerFigure?, memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?,
         memoIn: (LocalMemo) -> Boolean = { true }, lineIn: (LocalMemoLine) -> Boolean = { true },
-    ): Shown? {
+    ): Shown? = show(server, plan(memos, ackedBeforeRequest, month, throughDate), memoIn, lineIn)
+
+    /** What to add and subtract for ALL the phone's memos, computed ONCE (the maps of the chains and the taint are built here, not per figure); null when there is no month. */
+    class Plan(val delta: Delta?)
+
+    fun plan(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?): Plan = Plan(delta(memos, ackedBeforeRequest, month, throughDate))
+
+    /** One figure from a [plan] built once: the plan's memos filtered by [memoIn] (an edit stays in the route and outlet of the memo it edits), then [lineIn]. */
+    fun show(server: ServerFigure?, plan: Plan, memoIn: (LocalMemo) -> Boolean = { true }, lineIn: (LocalMemoLine) -> Boolean = { true }): Shown? {
         server ?: return null
-        val d = delta(memos.filter(memoIn), ackedBeforeRequest, month, throughDate)
+        val d = plan.delta?.let { Delta(it.add.filter(memoIn), it.subtract.filter(memoIn)) }
             ?: return Shown(server.qtyBase, server.memoCount, server.grossMtk, server.byPack, false, server.asOf)
         var qty = server.qtyBase; var count = server.memoCount; var mtk = server.grossMtk
         val packs = server.byPack.toMutableMap()
