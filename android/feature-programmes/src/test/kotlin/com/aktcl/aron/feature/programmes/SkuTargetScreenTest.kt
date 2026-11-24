@@ -25,8 +25,8 @@ import org.robolectric.annotation.Config
 class SkuTargetScreenTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun row(id: Long = 900, name: String = "Maxim", factor: Long = 20, target: Long = 500_000, achieved: Long = 120_000, bp: Long? = 2_400, unit: String = "packet") =
-        SkuTargetRow(id, name, "ম্যাক্সিম", "cigarette", unit, factor, target, achieved, (target - achieved).coerceAtLeast(0L), bp, 8_571, 35_714, 8_571, 34_545)
+    private fun row(id: Long = 900, name: String = "Maxim", factor: Long = 20, target: Long = 500_000, achieved: Long = 120_000, pct: Long? = 24, unit: String = "packet") =
+        SkuTargetRow(id, name, "ম্যাক্সিম", "cigarette", unit, factor, target, achieved, (target - achieved).coerceAtLeast(0L), pct, 14, 11)
     private fun data(rows: List<SkuTargetRow> = listOf(row()), fromFirst: Boolean = false, hasCalendar: Boolean = true, truncated: Boolean = false) =
         SkuTargetData(rows, "2026-11", "2026-11-17", "2026-11-18T01:00:00Z", fromFirst, hasCalendar, truncated)
 
@@ -69,14 +69,20 @@ class SkuTargetScreenTest {
     }
 
     @Test fun missingFiguresShowADashNeverZero() {
-        show(AppLanguage.EN, data(listOf(row(bp = null).copy(adsMilli = null, tadsMilli = null, padsMilli = null, radsMilli = null)), hasCalendar = false))
+        show(AppLanguage.EN, data(listOf(row(pct = null).copy(elapsedDays = null, remainingDays = null)), hasCalendar = false))
         compose.onNodeWithTag(SkuTargetTags.NO_CALENDAR).assertExists()
         assertEquals(5, compose.onAllNodesWithText("—").fetchSemanticsNodes().size) // % and the four daily figures
     }
 
-    @Test fun emptyAndOfflineAndTruncatedStates() {
+    @Test fun emptyAndOfflineStates() {
         show(AppLanguage.EN, null, offline = true)
         compose.onNodeWithTag(SkuTargetTags.EMPTY).assertIsDisplayed(); compose.onNodeWithTag(SkuTargetTags.OFFLINE).assertExists()
+    }
+
+    @Test fun aCutTargetListSaysSo() {
+        show(AppLanguage.EN, data(truncated = true))
+        compose.onNodeWithTag(SkuTargetTags.TRUNCATED).assertIsDisplayed()
+        compose.onNodeWithText("The download was cut at 500 rows: some SKUs are not shown.").assertExists()
     }
 
     private fun androidx.compose.ui.test.SemanticsNodeInteractionCollection.count() = fetchSemanticsNodes().size

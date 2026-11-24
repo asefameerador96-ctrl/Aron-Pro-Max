@@ -102,4 +102,10 @@ class KpiScreensTest {
         show(AppLanguage.EN) { BrandKpiScreen(data, KpiKind.BLM, it) }
         compose.onNodeWithText("KPI on - BLM Sales").assertExists(); compose.onNodeWithTag(KpiTags.category("match")).assertExists(); compose.onNodeWithTag(KpiTags.category("lighter")).assertExists()
     }
+
+    @Test fun anIncompleteSeveralRouteKpiSaysSoOnBothScreens() {
+        val inc = data!!.copy(incomplete = true)
+        show(AppLanguage.EN) { KpiDashboardScreen(inc, it) }
+        compose.onNodeWithTag(KpiTags.INCOMPLETE).assertExists()
+    }
 }

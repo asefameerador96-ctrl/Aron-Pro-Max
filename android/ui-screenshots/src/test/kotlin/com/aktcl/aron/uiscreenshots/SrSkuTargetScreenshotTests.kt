@@ -52,10 +52,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Goldens of the SR Astha screens (lane android-sr-programmes, manual 48 to 50): menu, target table, empty, Sunlight and font scale 2.0.
- * Same frame, tier B, 360 x 800 dp. Record on Linux only: `-Daron.screenshots.recordTo=src/test/screenshots` (docs/status/android-core-ui.md).
- */
-/**
  * Goldens of the SR SKU target screen (manual 10, lane android-sr-programmes slice 2): the manual's K-13 fixture (Maxim 500, Avon 900 ...), English, Sunlight, font scale 2.0, a part-way month with
  * the phone's own lines, the first of the month, no calendar, empty and offline. Same frame, tier B, 360 x 800 dp. Record on Linux only: `-Daron.screenshots.recordTo=src/test/screenshots`.
  */

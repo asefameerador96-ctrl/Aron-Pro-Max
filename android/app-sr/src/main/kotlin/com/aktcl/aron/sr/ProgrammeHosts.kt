@@ -341,14 +341,14 @@ internal suspend fun cashRateOf(day: SrDay): Long? = withContext(Dispatchers.IO)
 /** What the SKU target page reads in one pass: the server's route figures of the bundle as sent, and the phone's own memos as separate lines (never added into a figure). */
 internal data class SkuTargetLoad(val data: com.aktcl.aron.feature.programmes.SkuTargetData?, val today: Map<Long, com.aktcl.aron.feature.programmes.LocalToday>, val unconfirmed: Int, val fork: Int)
 
-/** The SKU target figures of every route of the bundle (`route.<id>` sections) with the frame of this phone's memos (FigureFrame): today on this phone per SKU, and the count of earlier-day memos the server has not confirmed. */
-/** The server's SKU target figures of the bundle's routes as sent (no memo of this phone): what the Home card needs. Returns the data and the route ids. */
+/** The parsed `route.<id>` figures of every route of the bundle's day (the server's figures as sent, no memo of this phone) and the route ids. */
 private suspend fun readRouteFigures(day: SrDay): Pair<List<com.aktcl.aron.feature.programmes.RouteFigures>, List<Long>> {
     val date = day.reference.businessDate()
     val routeIds = day.reference.routesOfDay(date ?: "").map { it.route.routeId }.distinct()
     return routeIds.mapNotNull { com.aktcl.aron.feature.programmes.RouteFigures.parse(day.reference.section("route.$it")) } to routeIds
 }
 
+/** The server's SKU target figures of the bundle's routes as sent (no memo of this phone): what the Home card needs. Returns the data and the route ids. */
 private suspend fun readSkuTargetData(day: SrDay): Pair<com.aktcl.aron.feature.programmes.SkuTargetData?, List<Long>> {
     val (figures, routeIds) = readRouteFigures(day)
     val skus = day.reference.skus().associate { k ->
@@ -357,6 +357,7 @@ private suspend fun readSkuTargetData(day: SrDay): Pair<com.aktcl.aron.feature.p
     return com.aktcl.aron.feature.programmes.SkuTargetModel.build(figures, skus) to routeIds
 }
 
+/** The SKU target figures of every route of the bundle (`route.<id>` sections) with the frame of this phone's memos (FigureFrame): today on this phone per SKU, and the count of earlier-day memos the server has not confirmed. */
 internal suspend fun readSkuTargets(day: SrDay): SkuTargetLoad = withContext(Dispatchers.IO) {
     val (data, routeIds) = readSkuTargetData(day)
     val month = data?.month; val through = data?.throughDate

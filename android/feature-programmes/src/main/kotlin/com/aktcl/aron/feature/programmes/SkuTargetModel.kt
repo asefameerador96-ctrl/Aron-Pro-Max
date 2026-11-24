@@ -12,13 +12,15 @@ data class SkuInfo(val skuId: Long, val name: String, val nameBn: String?, val c
 
 /**
  * One SKU of screen 10 (Target and achievement by SKU). Every quantity is in THOUSANDTHS of the SKU's base unit (the server's Decimal3 target, the achieved base units times 1000), so nothing is rounded
- * before the display; [factor] converts it to the unit the field counts in (rule 5: packets of 20s or 10s, boxes of 25 lighters, dozens of matches; [unitKey] names it). The ratios are the shared
- * [SkuProgress] maths over the day counts the SERVER sent; they are null when the bundle has no calendar or a divisor is zero (a dash, never 0).
+ * before the display; [factor] converts it to the unit the field counts in (rule 5: packets of 20s or 10s, boxes of 25 lighters, dozens of matches; [unitKey] names it). NOTHING here is rounded
+ * before the display: the percentage is the whole percent of the raw achieved over the raw target ([Percent.whole], once), and the daily figures (ADS, TADS, PADS, RADS) are the exact quotient of the raw
+ * figure by the day count the SERVER sent ([elapsedDays], [remainingDays], read through [SkuProgress.dayCounts]) and the unit factor, rounded ONCE at display in the unit shown ([perDayText]).
+ * A figure whose divisor is 0 or whose calendar is missing is a dash, never 0.
  */
 data class SkuTargetRow(
     val skuId: Long, val name: String, val nameBn: String?, val categoryCode: String, val unitKey: String, val factor: Long,
-    val targetMilli: Long, val achievedMilli: Long, val remainingMilli: Long, val achievementBp: Long?,
-    val adsMilli: Long?, val tadsMilli: Long?, val padsMilli: Long?, val radsMilli: Long?,
+    val targetMilli: Long, val achievedMilli: Long, val remainingMilli: Long, val achievementPct: Long?,
+    val elapsedDays: Int?, val remainingDays: Int?,
 )
 
 /** The SKU target page of the route(s) of the bundle: the server figures as sent, with the closed day they cover. */
@@ -40,19 +42,15 @@ object SkuTargetModel {
         val calendar = figures.firstNotNullOfOrNull { it.calendar }
         val through = figures.mapNotNull { it.throughDate }.minOrNull()
         val month = figures.firstNotNullOfOrNull { it.month }
-        val cal = calendar?.skuCalendar()
+        val counts = calendar?.dayCounts() // the day counts exactly as the server sent them, through the one shared convention
         val order = skus.keys.withIndex().associate { it.value to it.index } // the SKU table's own order (sort, code), as the reference lists them
         val rows = targets.entries.mapNotNull { (id, t) ->
             val k = skus[id] ?: return@mapNotNull null
             val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
             val a = achieved[id] ?: 0L
-            // the ratios are the shared maths in WHOLE base units, exactly as the server and the fixtures compute them (target 500: TADS 36, RADS 45); only the display converts to packets, boxes and dozens
-            val tBase = (t + 500L) / 1000L; val aBase = a / 1000L
-            val r = if (cal != null) SkuProgress.row(tBase, aBase, cal) else null
-            fun milli(v: Long?): Long? = v?.times(1000L)
             SkuTargetRow(
                 id, k.name, k.nameBn, k.categoryCode, EntryUnits.labelKey(k.categoryCode, spec.unit), spec.factor.toLong(), t, a, (t - a).coerceAtLeast(0L),
-                r?.achievementBp ?: Percent.bp(aBase, tBase), milli(r?.ads), milli(r?.tads), milli(r?.pads), milli(r?.rads),
+                if (t > 0L) Percent.whole(a, t) else null, counts?.elapsed, counts?.remaining,
             )
         }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { order[it.skuId] ?: Int.MAX_VALUE }))
         if (rows.isEmpty()) return null
@@ -69,6 +67,7 @@ object SkuTargetModel {
      * it), or null when there is no cigarette target (the card shows a dash, never a made-up figure).
      */
     fun homeStd(data: SkuTargetData?): Pair<Long, Long>? {
+        if (data == null || data.truncated) return null // a cut list gives a partial total: a dash, not a wrong percentage
         val cig = data?.rows?.filter { it.categoryCode == "cigarette" }.orEmpty()
         if (cig.isEmpty()) return null
         return cig.sumOf { it.achievedMilli } to cig.sumOf { it.targetMilli }
@@ -82,6 +81,17 @@ object SkuTargetModel {
         return Formats.integer(t / 10L, locale) + if (frac != 0L) Formats.digits(".$frac", locale) else ""
     }
 
-    /** The achievement as a whole percent, not capped ("104%"); a dash when the target is 0. */
-    fun percentText(bp: Long?, locale: UiLocale): String = if (bp == null) Percent.DASH else Percent.text((bp + 50L) / 100L, 0, locale)
+    /** The achievement as a whole percent, not capped ("104%"); a dash when the target is 0. [pct] is already the single rounding of the raw figures. */
+    fun percentText(pct: Long?, locale: UiLocale): String = Percent.text(pct, 0, locale)
+
+    /**
+     * A daily figure: [numMilli] (thousandths of base units) over [days] working days and the unit [factor], as one exact quotient rounded once to one decimal in the unit shown ("1.7"); a dash when
+     * [days] is null or 0.
+     */
+    fun perDayText(numMilli: Long, days: Int?, factor: Long, locale: UiLocale): String {
+        if (days == null || days <= 0) return Percent.DASH
+        val t = Qty.tenths(numMilli.coerceAtLeast(0L), days.toLong() * factor * 1000L) ?: return Percent.DASH
+        val frac = t % 10L
+        return Formats.integer(t / 10L, locale) + if (frac != 0L) Formats.digits(".$frac", locale) else ""
+    }
 }

@@ -55,10 +55,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Goldens of the SR Astha screens (lane android-sr-programmes, manual 48 to 50): menu, target table, empty, Sunlight and font scale 2.0.
- * Same frame, tier B, 360 x 800 dp. Record on Linux only: `-Daron.screenshots.recordTo=src/test/screenshots` (docs/status/android-core-ui.md).
- */
-/**
  * Goldens of the SR KPI Dashboard and Brand wise KPI (manual 60 and 61, lane android-sr-programmes slice 3): the manual's numbers where the server defines them and the dashes where the owner has not
  * (achieved KPI, its percentage, KPI today, achieved CPR). Tier B, 360 dp wide; the dashboard is tall. Record on Linux only: `-Paron.screenshots.recordTo=<abs>/src/test/screenshots`.
  */

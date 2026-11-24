@@ -69,4 +69,16 @@ class KpiModelTest {
         assertNull(KpiModel.build(listOf(RouteFigures.EMPTY), names)); assertNull(KpiModel.build(emptyList(), names))
         assertTrue(KpiModel.build(listOf(route(kpi(emptyList()).replace("2026-11-17", "2026-10-31"))), names)!!.fromFirst)
     }
+
+    @Test fun severalRoutesWithAMissingKpiOrACutBrandListShowDashesAndSayIncomplete() {
+        val a = route(kpi(listOf(brand(1, 1000, 300, 50, 20))))
+        val noKpi = RouteFigures.parse("""{"route_id":8}""")!!
+        val missing = KpiModel.build(listOf(a, noKpi), names)!!
+        assertTrue(missing.incomplete); assertNull(missing.volume.bp); assertNull(missing.memo.bp); assertNull(missing.brands.single().volumeBp); assertNull(missing.achievementBp)
+        val cut = KpiModel.build(listOf(a, route(kpi(listOf(brand(1, 1000, 100, 50, 10))).replace("\"brands_truncated\":false", "\"brands_truncated\":true"))), names)!!
+        assertTrue(cut.incomplete); assertNull(cut.brands.single().memoBp)
+        val ok = KpiModel.build(listOf(a, route(kpi(listOf(brand(1, 1000, 100, 50, 10))))), names)!!
+        assertEquals(false, ok.incomplete); assertEquals(3000L, ok.brands.single().memoBp) // Percent.bp of the raw sums, once
+        assertEquals(false, KpiModel.build(listOf(a), names)!!.incomplete) // one route: the server's figures as sent
+    }
 }

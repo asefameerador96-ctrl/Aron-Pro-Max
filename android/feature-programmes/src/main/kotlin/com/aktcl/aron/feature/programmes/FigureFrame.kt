@@ -33,24 +33,19 @@ data class FigureFrame(
             val killed = HashSet<String>()
             mine.forEach { k -> k.supersedes?.let { killed += it }; k.voidOf?.let { killed += it } }
             fun hasLines(m: LocalMemo) = m.memoKind == "sale" && m.lines.any { it.lineKind == "sale" && lineIn(it) }
-            /** [m] and the memos it replaced, newest first, as far as this phone has them. */
-            fun known(m: LocalMemo): List<LocalMemo> {
-                val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
-                while (cur != null && guard++ < 64) { out += cur; cur = cur.supersedes?.let { byId[it] } }
-                return out
-            }
+            fun known(m: LocalMemo): List<LocalMemo> = FigureRuleB.knownChain(m, byId)
             fun inWindow(m: LocalMemo) = m.businessDate.take(7) == month && m.businessDate <= throughDate // a day the server figure covers
             // a memo belongs to this figure when it, or any memo of its edit chain, has lines for it (an edit that drops the lines, or became a zero sale, still changes what the figure holds)
             fun relevant(m: LocalMemo) = known(m).any { hasLines(it) }
             val tips = mine.filter { it.voidOf == null && it.uuid !in killed && it.businessDate.take(7) == month }
             // a FORK: two live later-day edits of one memo have two tips for one sale; neither is put into "today" (named instead)
-            val forkRoots = tips.filter { it.supersedes != null && it.businessDate > throughDate }.groupBy { known(it).last().uuid }.filter { it.value.size > 1 }.keys
+            val forkRoots = tips.filter { it.supersedes != null && it.businessDate > throughDate }.groupBy { FigureRuleB.rootKey(it, byId) }.filter { it.value.size > 1 }.keys
             var qty = 0L; var count = 0L; var mtk = 0L; val packs = HashMap<Int, Long>(); var unconfirmed = 0; var fork = 0
             for (m in tips) {
                 if (!relevant(m)) continue
                 if (m.businessDate > throughDate) {
                     // a live tip dated after through_date is today on this phone WHATEVER its chain holds: the figure never holds it
-                    if (m.supersedes != null && known(m).last().uuid in forkRoots) { if (hasLines(m)) fork++; continue }
+                    if (m.supersedes != null && FigureRuleB.rootKey(m, byId) in forkRoots) { if (hasLines(m)) fork++; continue }
                     if (hasLines(m)) {
                         val ls = m.lines.filter { it.lineKind == "sale" && lineIn(it) }
                         qty += ls.sumOf { it.qtyBase }; mtk += ls.sumOf { it.grossMtk }; count += 1
@@ -64,7 +59,7 @@ data class FigureFrame(
             for (v in mine) {
                 if (v.voidOf == null || confirmed(v, ackedBeforeRequest)) continue
                 val target = byId[v.voidOf] ?: continue
-                if (inWindow(target) && relevant(target)) unconfirmed++
+                if (known(target).any { inWindow(it) && hasLines(it) }) unconfirmed++ // the target, or any memo of its chain, is in the window with lines for this figure
             }
             return FigureFrame(month, throughDate, asOf, fromFirst, LocalToday(qty, count, mtk, packs.filterValues { it != 0L }), unconfirmed, fork)
         }

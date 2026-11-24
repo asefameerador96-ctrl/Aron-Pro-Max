@@ -111,13 +111,14 @@ private fun SkuCard(r: SkuTargetRow, today: LocalToday?, locale: UiLocale) {
     val name = if (locale == UiLocale.BN) r.nameBn ?: r.name else r.name
     val unit = unitWord(r.unitKey)
     fun q(m: Long?) = SkuTargetModel.qtyText(m, r.factor, locale)
+    fun perDay(n: Long, days: Int?) = SkuTargetModel.perDayText(n, days, r.factor, locale) // PADS = ADS (owner question Q-B, the shared default)
     // at a large font size the eight cells stack two per line so no label or figure is cut, and the name sits beside the pack picture
     val large = LocalDensity.current.fontScale >= 1.3f
     val cells = listOf(
         Triple(stringResource(R.string.pg_tgt_target), q(r.targetMilli), null as androidx.compose.ui.graphics.Color?), Triple(stringResource(R.string.pg_tgt_achieved), q(r.achievedMilli), null),
-        Triple(stringResource(R.string.pg_tgt_remaining), q(r.remainingMilli), null), Triple(stringResource(R.string.pg_tgt_percent), SkuTargetModel.percentText(r.achievementBp, locale), if ((r.achievementBp ?: 0L) >= 10_000L) look.online else look.red),
-        Triple(stringResource(R.string.pg_tgt_ads), q(r.adsMilli), look.purple), Triple(stringResource(R.string.pg_tgt_tads), q(r.tadsMilli), look.purple),
-        Triple(stringResource(R.string.pg_tgt_pads), q(r.padsMilli), look.purple), Triple(stringResource(R.string.pg_tgt_rads), q(r.radsMilli), look.purple),
+        Triple(stringResource(R.string.pg_tgt_remaining), q(r.remainingMilli), null), Triple(stringResource(R.string.pg_tgt_percent), SkuTargetModel.percentText(r.achievementPct, locale), if ((r.achievementPct ?: 0L) >= 100L) look.online else look.red),
+        Triple(stringResource(R.string.pg_tgt_ads), perDay(r.achievedMilli, r.elapsedDays), look.purple), Triple(stringResource(R.string.pg_tgt_tads), perDay(r.targetMilli, r.elapsedDays), look.purple),
+        Triple(stringResource(R.string.pg_tgt_pads), perDay(r.achievedMilli, r.elapsedDays), look.purple), Triple(stringResource(R.string.pg_tgt_rads), perDay(r.remainingMilli, r.remainingDays), look.purple),
     )
     Column(Modifier.fillMaxWidth().testTag(SkuTargetTags.card(r.skuId)).clip(shape).background(look.card).border(2.dp, look.red, shape).padding(8.dp)) {
         if (large) {

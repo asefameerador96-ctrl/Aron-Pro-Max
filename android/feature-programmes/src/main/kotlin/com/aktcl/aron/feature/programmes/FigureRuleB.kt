@@ -42,6 +42,16 @@ object FigureRuleB {
     /** [m] and the memos it replaced, newest first, down to the root of its edit chain; null when an ancestor is missing on this phone or the chain loops. */
     fun chainOfOrNull(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo>? = chainOf(m, byId)
 
+    /** [m] and the memos it replaced, newest first, as far as this phone has them (an ancestor it does not have ends the list). */
+    fun knownChain(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo> {
+        val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
+        while (cur != null && guard++ < 64) { out += cur; cur = cur.supersedes?.let { byId[it] } }
+        return out
+    }
+
+    /** The key of the root of [m]'s edit chain: the oldest memo this phone has, or the memo that one edits when the phone no longer has it, so two edits of the same missing memo still group as a fork. */
+    fun rootKey(m: LocalMemo, byId: Map<String, LocalMemo>): String = knownChain(m, byId).last().let { it.supersedes ?: it.uuid }
+
     private fun chainOf(m: LocalMemo, byId: Map<String, LocalMemo>): List<LocalMemo>? {
         val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
         while (cur != null) {
@@ -90,12 +100,12 @@ object FigureRuleB {
         // a FORK (two live edits of one memo) has two tips for one sale: neither is added and the memo they edit is not subtracted (the figure may read low, never high); on one phone an edit always supersedes the
         // newest live version, so a fork needs a record the phone did not make itself, but it is handled the same way here as without the order
         val forkedTips = live.filter { it.voidOf == null && it.supersedes != null && it.uuid !in dead && inMonth(it) }
-            .groupBy { chainOf(it, byUuid)?.last()?.uuid }.filter { (root, tips) -> root != null && tips.size > 1 }
+            .groupBy { rootKey(it, byUuid) }.filter { (_, tips) -> tips.size > 1 }
         val forkedIds = forkedTips.values.flatten().map { it.uuid }.toSet()
         val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && it.uuid !in forkedIds && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
         val subtract = dead.mapNotNull { id ->
             val m = byUuid[id] ?: return@mapNotNull null
-            if (forkedTips.isNotEmpty() && chainOf(m, byUuid)?.last()?.uuid in forkedTips.keys) return@mapNotNull null
+            if (forkedTips.isNotEmpty() && rootKey(m, byUuid) in forkedTips.keys) return@mapNotNull null
             val k = killer.getValue(id)
             // held by the server figure (acknowledged before the request, inside the month, up to through_date), and the record that voids or replaces it is not
             if (m.voidOf == null && inMonth(m) && !cutAfter(m) && id in ackedBeforeRequest && k !in ackedBeforeRequest && m.state != "rejected" && m.state != "uncertain") m else null

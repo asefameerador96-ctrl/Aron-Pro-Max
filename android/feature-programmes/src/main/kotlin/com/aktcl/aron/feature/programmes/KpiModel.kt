@@ -31,6 +31,8 @@ data class KpiData(
     val volume: KpiPair, val memo: KpiPair, val categories: List<KpiCategoryRow>,
     val cprTargetBp: Long?, val cprAchievedBp: Long?, val cprAllocMtk: Long?,
     val brands: List<KpiBrandRow>, val brandsTruncated: Boolean, val fromFirst: Boolean,
+    /** Several routes and at least one has no KPI section or a cut brand list: the summed percentages would not be complete, so they are dashes and the page says so (never a partial figure presented as the server's). */
+    val incomplete: Boolean = false,
 )
 
 object KpiModel {
@@ -42,9 +44,11 @@ object KpiModel {
         val routes = figures.filter { it.kpi != null }
         if (routes.isEmpty()) return null
         val ks = routes.map { it.kpi!! }
-        val single = ks.size == 1
+        val single = figures.size == 1 // one route in the bundle: the server's figures as sent; any other count recomputes from the raw sums
         val k = ks.first()
-        fun bp(a: Long, t: Long, sent: Long?): Long? = if (single) sent else Percent.bp(a, t)
+        // several routes: the percentage is Percent.bp of the raw summed figures, once; it is shown only when every route of the bundle has its KPI and no brand list was cut
+        val incomplete = !single && (figures.size != routes.size || ks.any { it.brandsTruncated })
+        fun bp(a: Long, t: Long, sent: Long?): Long? = if (single) sent else if (incomplete) null else Percent.bp(a, t)
         val brandSums = LinkedHashMap<Long, MutableList<KpiBrand>>()
         ks.forEach { r -> r.brands.forEach { brandSums.getOrPut(it.brandId) { mutableListOf() } += it } }
         val packBrands = brandSums.values.map { merge(it) }
@@ -60,7 +64,7 @@ object KpiModel {
         }.sortedBy { if (it.categoryCode == "match") 0 else 1 }
         val allocated = if (ks.all { it.allocatedMtk != null }) ks.sumOf { it.allocatedMtk!! } else null
         val achievedMtk = if (ks.all { it.achievedMtk != null }) ks.sumOf { it.achievedMtk!! } else null
-        val achievementBp = if (single) k.achievementBp else if (achievedMtk != null && allocated != null) Percent.bp(achievedMtk, allocated) else null
+        val achievementBp = if (single) k.achievementBp else if (!incomplete && achievedMtk != null && allocated != null) Percent.bp(achievedMtk, allocated) else null
         val through = ks.minOf { it.throughDate }
         return KpiData(
             k.month, through, ks.mapNotNull { it.asOf }.minOrNull(), cal?.dayCounts()?.elapsed, cal?.workingDays, allocated, achievedMtk, achievementBp,
@@ -70,7 +74,7 @@ object KpiModel {
                 val vt = brandQty(b)
                 KpiBrandRow(b.brandId, brandNames[b.brandId], vt, bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk)
             },
-            ks.any { it.brandsTruncated }, through.take(7) < k.month,
+            ks.any { it.brandsTruncated }, through.take(7) < k.month, incomplete,
         )
     }
 

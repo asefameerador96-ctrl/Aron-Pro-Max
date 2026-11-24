@@ -54,6 +54,7 @@ object KpiTags {
     const val EMPTY = "kpi_empty"
     const val CUT = "kpi_cut"
     const val CPR = "kpi_cpr"
+    const val INCOMPLETE = "kpi_incomplete"
     fun section(kind: KpiKind) = "kpi_section_${kind.name.lowercase()}"
     fun seeAll(kind: KpiKind) = "kpi_see_all_${kind.name.lowercase()}"
     fun today(kind: KpiKind) = "kpi_today_${kind.name.lowercase()}"
@@ -96,6 +97,7 @@ fun KpiDashboardScreen(
         }
         Note(if (data.fromFirst) stringResource(R.string.pg_tgt_through_first) else stringResource(R.string.pg_tgt_through, LoyaltyModel.dateText(data.throughDate, locale)), KpiTags.THROUGH)
         if (unconfirmedEarlier > 0) Note(countText(R.plurals.pg_tgt_unconfirmed, unconfirmedEarlier, locale), KpiTags.UNCONFIRMED)
+        if (data.incomplete) Note(stringResource(R.string.pg_kpi_incomplete), KpiTags.INCOMPLETE)
         MonthCard(data, locale)
         Section(
             KpiKind.VOLUME, stringResource(R.string.pg_kpi_volume_title), look.red, KpiModel.bpText(data.volume.bp, locale),
@@ -308,6 +310,7 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
                 BrandRow(KpiTags.brand(b.brandId), b.name?.text(locale) ?: "#${b.brandId}", stringResource(R.string.pg_kpi_target_line, target, KpiModel.takaText(b.kpiTodayMtk, locale)), if (volumeFirst) cols else cols.reversed())
             }
         }
+        if (data.incomplete) Note(stringResource(R.string.pg_kpi_incomplete), KpiTags.INCOMPLETE)
         if (data.brandsTruncated) Note(stringResource(R.string.pg_kpi_brands_cut), KpiTags.CUT)
     }
 }

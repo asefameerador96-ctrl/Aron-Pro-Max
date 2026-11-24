@@ -28,7 +28,7 @@ class FigureFrameTest {
         assertEquals(1, frame(listOf(memo("p", "2026-11-03", "pending")), null).unconfirmedEarlier)
     }
 
-    @Test fun anEditChainAllAfterCountsItsTipOnceAndAnEditOfAnEarlierDayIsOnlyCounted() {
+    @Test fun anEditChainAllAfterThroughDateCountsItsTipOnceAndNothingIsCounted() {
         val a = memo("a", "2026-11-18", "acked", 1); val b = memo("b", "2026-11-18", "acked", 2, supersedes = "a"); val c = memo("c", "2026-11-18", "pending", 3, supersedes = "b")
         val f = frame(listOf(a, b, c))
         assertEquals(3L, f.today.qtyBase); assertEquals(1L, f.today.memoCount); assertEquals(0, f.unconfirmedEarlier)
@@ -103,5 +103,18 @@ class FigureFrameTest {
         val f = FigureFrame.of(listOf(memo("t", "2026-11-18", "pending", 5), memo("x", "2026-10-30", "pending", 9)), month, through, null, emptySet(), lineIn = { it.skuId == 5L })
         assertEquals(5L, f.today.qtyBase); assertEquals(0, f.unconfirmedEarlier)
         assertEquals(0L, FigureFrame.of(listOf(memo("t", "2026-11-18", "pending", 5)), month, through, null, emptySet(), lineIn = { it.skuId == 6L }).today.memoCount)
+    }
+
+    @Test fun twoLaterDayEditsOfAMemoThePhoneNoLongerHasAreStillAForkAndNamed() {
+        // the edited memo "gone" is not in the list: both edits point at it, so the root key is the missing uuid and they group
+        val e1 = memo("e1", "2026-11-18", "pending", 2, supersedes = "gone"); val e2 = memo("e2", "2026-11-19", "pending", 3, supersedes = "gone")
+        val f = frame(listOf(e1, e2))
+        assertTrue(f.today.isEmpty); assertEquals(2, f.forkLeftOut)
+    }
+
+    @Test fun aVoidOfAMemoWhoseChainReachesTheWindowIsCounted() {
+        // the voided tip e is dated after through_date but edits o (11-10, in the window, held by the figure): an unconfirmed void is an unconfirmed change of o's day
+        val o = memo("o", "2026-11-10", "acked", 4); val e = memo("e", "2026-11-18", "acked", 5, supersedes = "o"); val v = memo("v", "2026-11-18", "pending", voidOf = "e")
+        assertEquals(1, frame(listOf(o, e, v), setOf("o", "e")).unconfirmedEarlier)
     }
 }
