@@ -28,7 +28,7 @@ export const outlets = defineEntity<Outlet, OutletWrite, OutletPatch>({
     { name: "name", labelKey: "entity.field.name", kind: "text", required: true, minLength: 2, maxLength: 120, column: true, section: "outlet.section.basic" },
     { name: "name_bn", labelKey: "entity.field.name_bn", kind: "text", nullable: true, maxLength: 120, section: "outlet.section.basic" },
     { name: "owner_name", labelKey: "entity.field.owner_name", kind: "text", required: true, minLength: 2, maxLength: 120, column: true, section: "outlet.section.basic" },
-    { name: "contact_number", labelKey: "entity.field.contact_number", kind: "text", nullable: true, maxLength: 11, pattern: "^01[3-9]\\d{8}$", normalizeDigits: true, section: "outlet.section.basic" },
+    { name: "contact_number", labelKey: "entity.field.contact_number", kind: "text", nullable: true, maxLength: 11, pattern: "^01[3-9]\\d{8}$", normalizeDigits: true, phone: true, section: "outlet.section.basic" },
     { name: "status", labelKey: "entity.field.status", kind: "enum", mode: "update-only", ...STATUS, column: true, section: "outlet.section.basic" },
     { name: "address", labelKey: "entity.field.address", kind: "text", nullable: true, maxLength: 300, section: "outlet.section.address" },
     { name: "zone_id", labelKey: "entity.field.zone_id", kind: "ref", mode: "create-only", required: true, min: 1, ref: ZONE_REF, column: true, section: "outlet.section.address" },
@@ -73,7 +73,7 @@ export const outlets = defineEntity<Outlet, OutletWrite, OutletPatch>({
 });
 
 const OUTLET_REQ_STATUS = { options: ["pending", "verified", "approved", "rejected", "lapsed", "discarded"], optionKeys: { pending: "req.status.pending", verified: "req.status.verified", approved: "req.status.approved", rejected: "req.status.rejected", lapsed: "req.status.lapsed", discarded: "req.status.discarded" } } as const;
-const OUTLET_REQ_TYPE = { options: ["new", "close", "info", "cluster", "location", "route_add"], optionKeys: { new: "req.type.new", close: "req.type.close", info: "req.type.info", cluster: "req.type.cluster", location: "req.type.location", route_add: "req.type.route_add" } } as const;
+const OUTLET_REQ_TYPE = { options: ["new", "close", "info", "cluster", "location", "route_add", "cluster_create"], optionKeys: { new: "req.type.new", close: "req.type.close", info: "req.type.info", cluster: "req.type.cluster", location: "req.type.location", route_add: "req.type.route_add", cluster_create: "req.type.cluster_create" } } as const;
 
 export const outletRequests = defineEntity<OutletRequestSummary, Record<never, never>, Record<never, never>>({
   slug: "outlet-requests",

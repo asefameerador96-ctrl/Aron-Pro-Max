@@ -3,6 +3,7 @@ import { isRealDate } from "@/components/admin/crud/validation";
 import { businessDate } from "@/lib/i18n";
 import { accessShapeRules } from "./access-grants";
 import { outletImportRules } from "./outlet-import";
+import { kpiTargetRules } from "./kpi-targets";
 import { routeTargetRules } from "./route-targets";
 import { containsMask } from "./mask";
 
@@ -28,6 +29,7 @@ export function opRules(op: string, body: Record<string, unknown>): FieldProblem
   if (op === "user-access.put") return accessShapeRules(body);
   if (op === "outlet-import.validate" || op === "outlet-import.commit") return outletImportRules(op === "outlet-import.validate" ? "validate" : "commit", body);
   if (op === "route-targets.validate" || op === "route-targets.commit") return routeTargetRules(op === "route-targets.validate" ? "validate" : "commit", body);
+  if (op === "kpi-targets.validate" || op === "kpi-targets.commit") return kpiTargetRules(op === "kpi-targets.validate" ? "validate" : "commit", body);
   if (op === "quarantine.resolve") {
     const out: FieldProblem[] = [];
     const fix = body.fixed_record;
@@ -51,7 +53,7 @@ export function opRules(op: string, body: Record<string, unknown>): FieldProblem
   }
   if (op === "paper-backfill.create") {
     const out: FieldProblem[] = [];
-    if (typeof body.memo_no !== "string" || !/^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$/.test(body.memo_no)) out.push({ pointer: "/memo_no", code: "invalid" });
+    if (typeof body.memo_no !== "string" || !/^[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}$/.test(body.memo_no)) out.push({ pointer: "/memo_no", code: "invalid" });
     const d = body.business_date;
     if (typeof d !== "string" || !isRealDate(d)) out.push({ pointer: "/business_date", code: "invalid" });
     else if (d > businessDate() || d < shiftDate(businessDate(), -PAPER_WINDOW_DAYS)) out.push({ pointer: "/business_date", code: "window" }); // cfg.entry.paper_backfill_window_days (7)

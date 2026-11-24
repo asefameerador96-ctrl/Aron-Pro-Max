@@ -22,7 +22,7 @@ extensions.configure<TestExtension> {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        testInstrumentationRunnerArguments["aron.targetPackage"] = "com.aktcl.aron.$benchmarkApp"
+        testInstrumentationRunnerArguments["aron.targetPackage"] = "com.aktcl.aron.$benchmarkApp.benchmark" // the benchmark build types carry the ".benchmark" application id suffix (D-AINT-05)
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -37,6 +37,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.BannerKind
@@ -57,19 +60,25 @@ private val longDate = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLIS
 /** "November 3, 2025": the date field of the form prints the vendor's English long date in both languages. */
 fun formDateText(iso: String): String = runCatching { LocalDate.parse(iso).format(longDate) }.getOrDefault(iso)
 
-/** The alphabet bar (screenshot 38): a dark rounded panel of letters; the selected one is a green pill. "All" is the empty choice. */
+/** The words of the description error: a deep red for both looks (the normal look red 0xD5484A is only 4:1 on the page, the Sunlight red 6.5:1). */
+internal val DescriptionErrorInk = Color(0xFFA00018)
+
+/** The dark panel behind the letters (the vendor's #4F4F4F); the letters on it are pinned at 7:1 by AmoDrawnArtContrastTest. */
+internal val AlphabetPanel = Color(0xFF4F4F4F)
+
+/** The alphabet bar (screenshot 38): a dark rounded panel of letters; the selected one is a green rounded square. "All" is the empty choice. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AlphabetBar(letters: List<String>, selected: String?, onSelect: (String?) -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    FlowRow(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF4F4F4F)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AlphabetPanel).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         (listOf<String?>(null) + letters).forEach { l ->
             val on = l == selected
             Box(
-                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(20.dp)).background(if (on) look.goEnd else Color.Transparent).clickable(role = androidx.compose.ui.semantics.Role.Button) { onSelect(l) }
+                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).background(if (on) look.goEnd else Color.Transparent).clickable(role = androidx.compose.ui.semantics.Role.Button) { onSelect(l) }
                     .padding(horizontal = 12.dp).testTag(TaskFormTags.LETTER + (l ?: "all")),
                 contentAlignment = Alignment.Center,
-            ) { Text(l ?: stringResource(R.string.amo_team_task_all), style = amoText(16, bold = on, color = if (on) Color.Black else Color.White)) }
+            ) { Text(l ?: stringResource(R.string.amo_team_task_all), style = amoText(16, bold = on, color = if (on) (if (look.sunlight) Color.White else Color.Black) else Color.White)) }
         }
     }
 }
@@ -77,7 +86,11 @@ fun AlphabetBar(letters: List<String>, selected: String?, onSelect: (String?) ->
 /** A date field that opens the calendar; dates before [today] cannot be chosen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AmoDateField(iso: String, today: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+fun AmoDateField(
+    iso: String, today: String, onPick: (String) -> Unit, modifier: Modifier = Modifier,
+    /** The selectable window, ISO dates, inclusive; the defaults keep the task form's rule (today or later). */
+    min: String? = today, max: String? = null,
+) {
     val look = LocalAronLook.current
     var open by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
@@ -90,10 +103,11 @@ fun AmoDateField(iso: String, today: String, onPick: (String) -> Unit, modifier:
         Text(formDateText(iso), style = amoText(16))
     }
     if (open) {
-        val min = LocalDate.parse(today).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        fun ms(d: String) = LocalDate.parse(d).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val lo = min?.let(::ms); val hi = max?.let(::ms)
         val state = rememberDatePickerState(
-            initialSelectedDateMillis = LocalDate.parse(iso).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            selectableDates = object : SelectableDates { override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= min },
+            initialSelectedDateMillis = ms(iso),
+            selectableDates = object : SelectableDates { override fun isSelectableDate(utcTimeMillis: Long) = (lo == null || utcTimeMillis >= lo) && (hi == null || utcTimeMillis <= hi) },
         )
         DatePickerDialog(
             onDismissRequest = { open = false },
@@ -139,7 +153,7 @@ fun TaskFormPageContent(
             if (AssignError.TYPE_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_task_type_required), kind = BannerKind.Error)
             AmoDateField(due, today, onDue, Modifier.testTag(TaskFormTags.DATE))
             if (AssignError.DATE_INVALID in errors) AmoBanner(stringResource(R.string.amo_task_date_invalid), kind = BannerKind.Error)
-            AmoField(description, { onDescription(it.take(TaskDelegation.MAX_FORM_DESCRIPTION)) }, stringResource(R.string.amo_team_task_description), error = AssignError.TEXT_TOO_LONG in errors || AssignError.DESCRIPTION_REQUIRED in errors, singleLine = false, modifier = Modifier.testTag(TaskFormTags.TEXT))
+            DescriptionBox(description, { onDescription(it.take(TaskDelegation.MAX_FORM_DESCRIPTION)) }, stringResource(R.string.amo_team_task_description), error = AssignError.TEXT_TOO_LONG in errors || AssignError.DESCRIPTION_REQUIRED in errors, modifier = Modifier.testTag(TaskFormTags.TEXT))
             if (AssignError.DESCRIPTION_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_team_task_description_required), kind = BannerKind.Error)
         }
         Column(Modifier.fillMaxWidth().padding(12.dp)) { AmoPrimary(stringResource(R.string.amo_team_task_assign_btn), onSave, Modifier.fillMaxWidth().testTag(TaskTags.FORM_SAVE), enabled = !busy, busy = busy) }
@@ -149,5 +163,32 @@ fun TaskFormPageContent(
 @Composable
 private fun InfoLine(label: String, value: String) {
     val look = LocalAronLook.current
-    Column { Text(label, style = amoText(14, bold = true)); if (value.isNotEmpty()) Text(value, style = amoText(14, color = look.inkMuted)) }
+    // the vendor prints "label:value" on one line, the label in ink and the value in the muted grey (screenshot 38); the line wraps at long Bangla
+    Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)); append(label); pop()
+            if (value.isNotEmpty()) { append(" "); pushStyle(androidx.compose.ui.text.SpanStyle(color = look.inkMuted)); append(value); pop() }
+        },
+        style = amoText(14),
+    )
 }
+
+/** The description box of screenshot 38: a tall white box with the purple 2 dp outline; the label shows as the hint while it is empty (red outline on an error). */
+@Composable
+private fun DescriptionBox(value: String, onValueChange: (String) -> Unit, hint: String, error: Boolean, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val errorText = stringResource(R.string.amo_field_invalid)
+    val shape = RoundedCornerShape(8.dp)
+    Column {
+    androidx.compose.foundation.text.BasicTextField(
+        value = value, onValueChange = onValueChange, textStyle = amoText(16),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(look.purple),
+        modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).clip(shape).background(look.card).border(BorderStroke(2.dp, if (error) look.red else look.purple), shape)
+            .semantics { contentDescription = hint; if (error) error(errorText) },
+        decorationBox = { inner -> Box(Modifier.padding(12.dp)) { if (value.isEmpty()) Text(hint, style = amoText(16, color = look.inkMuted)); inner() } },
+    )
+    // the error is said in words as well as in the red outline (colour alone is not enough for TalkBack or the sun): the same "check this value" line the other fields print
+    if (error) Text(errorText, style = amoText(13, color = DescriptionErrorInk), modifier = Modifier.padding(top = 2.dp, start = 4.dp))
+    }
+}
+

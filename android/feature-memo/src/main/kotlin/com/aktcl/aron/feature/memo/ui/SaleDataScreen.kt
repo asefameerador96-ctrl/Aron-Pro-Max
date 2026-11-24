@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -98,12 +100,23 @@ fun SaleDataScreen(
         } else {
             WhiteCard(Modifier.testTag(SaleDataTags.TABLE)) {
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
+                    // the old SR's purple header (manual 23); this screen is reached only from the SR Sale page
+                    Row(
+                        Modifier.fillMaxWidth().background(look.purple, RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+                    ) {
+                        Text(stringResource(R.string.memo_col_sku), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.memo_col_qty), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = QtyColumn))
+                        Text(stringResource(R.string.memo_col_price), style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = PriceColumn))
+                    }
                     day.skuRows.forEach { r ->
                         TableRow(skuName(r.skuId), lineQtyText(r.qtyEntered, r.unitEntered, skuCategory(r.skuId), r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
                     }
                     CardDivider()
-                    Row(Modifier.fillMaxWidth().testTag(SaleDataTags.TOTAL), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth().testTag(SaleDataTags.TOTAL).background(AronLook.LavenderPanel, RoundedCornerShape(8.dp)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(stringResource(R.string.history_footer), color = look.purple, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Text(amount(day.skuTotalMtk), color = look.purple, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                     }

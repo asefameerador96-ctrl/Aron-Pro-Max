@@ -104,6 +104,17 @@ class MemoManualScreensTest {
         assertEquals(1, printed); assertEquals(1, edited)
     }
 
+    // D-PAR-AMO-12: the AMO's shop card replaces the title lines; the default keeps the SR/TSO header ("Route:" / "Retailer:" lines)
+    @Test fun headerCardReplacesTheTitleLinesAndTheDefaultKeepsThem() {
+        show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, outletName = "Tasmin", routeName = "Savar", headerCard = { androidx.compose.material3.Text("SHOP-CARD") }) }
+        compose.onNodeWithText("SHOP-CARD").assertExists()
+        compose.onNodeWithText("Retailer: Tasmin").assertDoesNotExist()
+    }
+    @Test fun withoutAHeaderCardTheRouteAndRetailerLinesStay() {
+        show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, outletName = "Tasmin", routeName = "Savar") }
+        compose.onNodeWithText("Retailer: Tasmin").assertExists()
+    }
+
     @Test fun dueBoxShowsTheButtonBesideTheSentenceAndTheConfirmStillAsks() {
         var paid = 0
         show { MemoDetailView(MemoMenu.detail(memo), true, 50_000, { names.getValue(it) }, {}, {}, { paid++ }, dashedDueBox = true, dueSideBySide = true) }

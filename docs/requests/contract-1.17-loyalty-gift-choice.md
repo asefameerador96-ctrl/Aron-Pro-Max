@@ -1,0 +1,30 @@
+# Contract 1.17.0: loyalty push C (gift choice, gift photo rule, overdraw signal)
+
+Ruling: D-LEAD-CONTRACT-117-01 (lead, written at the gate). Predecessor: `docs/requests/contract-1.15-loyalty-field.md` (sections 11 and 12 described this push while it was still numbered 1.15.0 and 1.17.0 provisional). Lane: portal-loyalty-api, push C. Additive only.
+
+## Additive changes
+
+- `RecordType` gains `gift_choice`; new schemas `GiftChoiceRecord` and `GiftChoicePayload` (`outlet_id`, `gift_id`, `quarter`, optional `fix`). Server table `app.gift_choice` (V0192, immutable, idempotent by `client_uuid`); the later `captured_at` wins until the hand-over photo locks the outlet's gift. The quarter must be the open quarter (`cfg.astha.quarter_start_month`, Dhaka date).
+- `RecordOutcomeCode` gains `gift_locked` (choice after the photo lock, rejected, not retryable) and `gift_not_for_tier` (rejected, not retryable). Mirrored in `shared/contract`.
+- `ProgrammesSection` gains `pending_gift_verifications`; `truncated_sections` gains the values `gift_assignments` and `pending_gift_verifications` and is now bounded by `maxItems: 5`.
+- `LoyaltyBalance` gains the required boolean `overdrawn` (= `balance_points < 0`). A negative balance is the overdraw signal. It is derived on read and never stored on a ledger row.
+- `gift_photo`, first photo wins (V0193): the FIRST photo by `captured_at` (tie: client uuid) takes the lock; a later one is stored as a flagged duplicate, never refused or deleted. `gift_photo_exists` stays in the enum for old rows but is no longer produced. `GiftPhotoPayload` text is updated.
+- Config: default of `cfg.astha.gift_choice_roles` is SR and TSO (V0192; explicit values untouched).
+
+## Round C-R2 (description-only changes inside 1.17.0, no member added)
+
+- `LoyaltyBalance.balance_points` = every ledger row posted so far less the stored, non-voided redemptions not yet posted; a posted-then-voided one keeps its debit until the pass posts the reversal (a transient, never added back); NO business-date cut; one function for the bundle and the live read; `as_of_date` is display only ("figures include everything the server held when the bundle was built"); the phone subtracts its own redemptions not acknowledged when it sent the request (ACHIEVEMENT RULE of `ProgrammesSection`, the one rule). `expiring_points` is what the earliest upcoming expiry takes after debits and after later credits settled unfunded debt.
+- `GiftPhotoPayload`: several photos may be sent; the first is the winner, the rest are flagged duplicates; a campaign-unit photo of a FINAL redemption (voided, refused, a line voided or refused) is stored and flagged `parent_voided` / `parent_refused` (new `check_flag` values, a server-side column, not a contract enum); only a redemption not synced yet answers `parent_missing`.
+
+## Round C-R4 (text and migration notes inside 1.17.0, no member added)
+
+- `LoyaltyBalance.balance_points` names a FOURTH transient: a backdated adjustment committed late is found by the first pass of the next Dhaka day (up to one Dhaka day); meanwhile only the expiry correction is off, the balance sum is exact.
+- V0193 builds `ingest_registry_family_unresolved` (16 partitions of `app.ingest_registry`) with `CREATE INDEX IF NOT EXISTS`: it holds SHARE on each partition for the whole build inside a migration that already holds ACCESS EXCLUSIVE on the gift tables. Pilot size: accepted. FLEET SIZE: build the index per partition CONCURRENTLY, outside Flyway, before the migration runs; the migration then finds it. V0193 also adds the partial index `loyalty_ledger_adjustment_date` for the daily sweep's adjustment probe.
+
+## Not built
+
+`cfg.loyalty.negative_balance_policy = reject` is NOT enforced at ingest (not built; the ledger job posts every stored redemption and the overdraw is the derived `overdrawn` flag). Config validation refuses the value `reject` until it is built (V0192 narrows the validation to `["accept_and_flag"]`).
+
+## Compatibility
+
+A phone on 1.15.0 never sends `gift_choice` and reads a bundle where the new members are ignorable; a phone that does not know `overdrawn` ignores it. Old clients that see `gift_locked` or `gift_not_for_tier` treat an unknown rejected code as final. Migrations V0192 to V0194.

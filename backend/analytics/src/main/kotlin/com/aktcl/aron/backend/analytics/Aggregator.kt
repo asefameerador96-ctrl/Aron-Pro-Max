@@ -305,19 +305,19 @@ object Aggregator {
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
     }
 
-    /** `dw.fact_attendance`: one row per user-day with the first check-in and the last check-out of the users who checked in or out on this route-day. */
+    /** `dw.fact_attendance`: one row per user-day with the first check-in and the last check-out of the users who checked in or out on this route-day. A check-out the phone made for a forgotten day (`closed_by = 'phone'`, contract 1.19.0) is no check-out: `check_out_*` stay empty. */
     private fun rebuildAttendance(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
         h.createUpdate(
             """
             INSERT INTO dw.fact_attendance (business_date, user_id, role, zone_id, check_in_at, check_in_lat, check_in_lng, check_in_accuracy_m, check_in_is_mock,
                                             check_out_at, check_out_lat, check_out_lng, check_out_accuracy_m, check_out_is_mock, last_event_id, updated_at)
-            SELECT e.business_date, e.user_id, coalesce(uh.role, u.role), (array_agg(coalesce(app.route_zone_on(e.route_id, e.business_date), g.zone_id) ORDER BY e.captured_at))[1],
+            SELECT e.business_date, e.user_id, coalesce(uh.role, u.role), coalesce((array_agg(coalesce(app.route_zone_on(e.route_id, e.business_date), g.zone_id) ORDER BY e.captured_at) FILTER (WHERE e.closed_by = 'rep'))[1], (array_agg(coalesce(app.route_zone_on(e.route_id, e.business_date), g.zone_id) ORDER BY e.captured_at))[1]),
                    min(e.captured_at) FILTER (WHERE e.kind = 'check_in'),
                    (array_agg(e.fix_lat ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1], (array_agg(e.fix_lng ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1],
                    (array_agg(e.fix_accuracy_m ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1], (array_agg(e.fix_is_mock ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1],
-                   max(e.captured_at) FILTER (WHERE e.kind = 'check_out'),
-                   (array_agg(e.fix_lat ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1], (array_agg(e.fix_lng ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1],
-                   (array_agg(e.fix_accuracy_m ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1], (array_agg(e.fix_is_mock ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1],
+                   max(e.captured_at) FILTER (WHERE e.kind = 'check_out' AND e.closed_by = 'rep'),
+                   (array_agg(e.fix_lat ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out' AND e.closed_by = 'rep'))[1], (array_agg(e.fix_lng ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out' AND e.closed_by = 'rep'))[1],
+                   (array_agg(e.fix_accuracy_m ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out' AND e.closed_by = 'rep'))[1], (array_agg(e.fix_is_mock ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out' AND e.closed_by = 'rep'))[1],
                    :wm, now()
               FROM app.attendance_event e JOIN app.app_user u ON u.id = e.user_id LEFT JOIN dw.dim_geo g ON g.route_id = e.route_id
               LEFT JOIN LATERAL (SELECT x.role FROM dw.v_dim_user_history x WHERE x.user_id = e.user_id

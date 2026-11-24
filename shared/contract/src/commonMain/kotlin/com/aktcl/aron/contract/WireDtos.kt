@@ -156,6 +156,7 @@ data class BundleUser(
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
     @SerialName("zone_id") val zoneId: Long? = null,
     @SerialName("territory_id") val territoryId: Long? = null,
+    @SerialName("geography") val geography: JsonElement? = null,
     @SerialName("consents") val consents: List<BundleUserConsents>? = null,
 )
 
@@ -187,6 +188,19 @@ data class Route(
     override fun toString(): String = "Route(createdAt=${createdAt}, updatedAt=${updatedAt}, version=${version}, id=${id}, code=***, name=${name}, displayLabel=${displayLabel}, zoneId=${zoneId}, kind=${kind}, visitKind=${visitKind}, visitDaysMask=${visitDaysMask}, sequenceNo=${sequenceNo}, status=${status}, assignees=${assignees})"
 }
 
+/** Working-day numbers of the bundle month for the SR programme screens (contract 1.22.0). */
+@Serializable
+data class RouteCalendar(
+    @SerialName("month") val month: String,
+    @SerialName("working_days") val workingDays: Int,
+    @SerialName("elapsed_working_days_before_today") val elapsedWorkingDaysBeforeToday: Int,
+    @SerialName("remaining_working_days_after_today") val remainingWorkingDaysAfterToday: Int,
+    @SerialName("today_is_working") val todayIsWorking: Boolean,
+    @SerialName("last_month_working_days") val lastMonthWorkingDays: Int,
+    @SerialName("through_date") val throughDate: String,
+    @SerialName("as_of") val asOf: String,
+)
+
 /** Per-route section of the bundle; replaced as a whole when the route is added to the user. */
 @Serializable
 data class RouteSnapshot(
@@ -203,6 +217,13 @@ data class RouteSnapshot(
     @SerialName("targets") val targets: List<JsonElement>,
     @SerialName("achievement_mtd") val achievementMtd: List<JsonElement>,
     @SerialName("day_state") val dayState: RouteDayState,
+    @SerialName("calendar") val calendar: RouteCalendar? = null,
+    @SerialName("kpi") val kpi: JsonElement? = null,
+    @SerialName("star") val star: JsonElement? = null,
+    @SerialName("campaigns") val campaigns: List<JsonElement>? = null,
+    @SerialName("campaigns_truncated") val campaignsTruncated: Boolean? = null,
+    @SerialName("targets_truncated") val targetsTruncated: Boolean? = null,
+    @SerialName("star_truncated") val starTruncated: Boolean? = null,
     @SerialName("sr_user_id") val srUserId: Long? = null,
     @SerialName("sr_name") val srName: String? = null,
 )
@@ -339,6 +360,8 @@ data class GeoFix(
     @SerialName("gnss") val gnss: GnssSummary? = null,
     @SerialName("radio") val radio: JsonObject? = null,
     @SerialName("device") val device: FixDeviceState,
+    /** Contract 1.21.0: anti-spoofing codes found for this fix (hard: mock_flag, mock_app_selected, test_provider). Absent from an older phone: unknown, not clean. */
+    @SerialName("signals") val signals: List<String>? = null,
 )
 
 /** Encode GeoFix with this serializer at the top level (a member of type GeoFix or List<GeoFix> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
@@ -396,6 +419,8 @@ data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
+    /** Contract 1.19.0, meant for a `check_out`: `rep` (also what an absent member means; accepted on a check-in) or `phone` (the phone closed a forgotten day at a later start, one location attempt whose reading is kept on the attendance row only; read as "no check-out"; refused on a check-in). */
+    @SerialName("closed_by") val closedBy: String? = null,
 )
 
 /** One event per SKU per Save (an increment, never an overwrite). qty_entered is negative only for kind adjustment. */
@@ -538,6 +563,14 @@ data class DeviceStatusReportPolicyApplyErrors(
 )
 
 @Serializable
+data class DeviceStatusReportIntegrityEvents(
+    @SerialName("at") val at: String,
+    @SerialName("flags") val flags: List<String>,
+    @SerialName("exempt") val exempt: String,
+    @SerialName("app_version") val appVersion: String? = null,
+)
+
+@Serializable
 data class DeviceStatusReportPrinter(
     @SerialName("bonded_name") val bondedName: String? = null,
     @SerialName("mac_sha256") val macSha256: String? = null,
@@ -573,6 +606,8 @@ data class DeviceStatusReport(
     @SerialName("play_integrity") val playIntegrity: JsonElement? = null,
     @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
     @SerialName("root_hints") val rootHints: List<String>? = null,
+    /** Contract 1.21.0: Developer-options gate onsets since the last acknowledged report, oldest first. */
+    @SerialName("integrity_events") val integrityEvents: List<DeviceStatusReportIntegrityEvents>? = null,
     @SerialName("pending_rows") val pendingRows: Int,
     @SerialName("pending_media") val pendingMedia: Int? = null,
     @SerialName("last_sync_at") val lastSyncAt: String? = null,
@@ -808,6 +843,10 @@ data class RouteDayState(
     @SerialName("acting_user_id") val actingUserId: Long? = null,
     @SerialName("assigned_username") val assignedUsername: String? = null,
     @SerialName("assigned_user_full_name") val assignedUserFullName: String? = null,
+    /** Contract 1.16.0 (supervisor reads only): memos and due collections captured after the Sales Submit and stored before the Final Submit. */
+    @SerialName("late_rows_after_sales_submit") val lateRowsAfterSalesSubmit: Int? = null,
+    /** Contract 1.16.0: `phone` or `server`, whose clock stamped the Sales Submit the late-row count is measured from. */
+    @SerialName("late_rows_anchor") val lateRowsAnchor: String? = null,
 )
 
 /** The server's view of one user and business date. */
@@ -819,6 +858,7 @@ data class ServerTotals(
     @SerialName("money") val money: JsonElement,
 )
 
+/** A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant */
 @Serializable
 data class ResolvedConfigValue(
     @SerialName("key") val key: String,

@@ -30,7 +30,10 @@ RedemptionPayload:
     balance_before_points:
       type: integer
       minimum: 0
-      description: Balance the phone showed (bundle balance minus local unsynced redemptions).
+      description: 'Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it
+        is stored as sent (a display fact; the database refuses a negative value) and is never compared with the
+        ledger, which is the server''s balance; an overdraw is accepted whatever it says. A phone whose balance
+        is already negative sends 0 (clamped).'
     points_total:
       type: integer
       minimum: 1

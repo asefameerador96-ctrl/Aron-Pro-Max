@@ -99,8 +99,16 @@ fun ControlCallHost(
     // tso-manual X4a follow-up (R-W-23): a call whose close the route-day refused (the zone's Final Submit, or the supervisor
     // day's Sales Submit) ended on the phone with no close written; the picker shows why, never a crash
     var callEnded by remember { mutableStateOf<DayRefusal?>(null) }
-    val leaveCall: () -> Unit = { scope.launch { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } }
-    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
+    // D-AGATE-19: a close that cannot be written keeps the call on screen (no crash; the rep taps again), the call is never dropped without its close
+    var leaveFailed by remember { mutableStateOf(false) }
+    val leaveCall: () -> Unit = { scope.launch { try { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { leaveFailed = true } } }
+    if (leaveFailed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { leaveFailed = false }, onDismiss = { leaveFailed = false },
+        )
+    }
+    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }, ofCallsDay = true) }
     // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress whose route-day no longer takes
     // its records ends on the phone at once, before any step is drafted
     LaunchedEffect(open) {
@@ -116,7 +124,11 @@ fun ControlCallHost(
     }
     androidx.activity.compose.BackHandler(onBack = goBack)
     val titleRes = when { joint -> AmoR.string.amo_cp_joint_title; startWithSale -> AmoR.string.amo_cp_sales_title; else -> AmoR.string.amo_cc_title }
-    AmoFrame(stringResource(titleRes), goBack, icon = if (joint) com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call else com.aktcl.aron.core.ui.R.drawable.aron_ic_control_call) {
+    // D-PAR-AMO-05 (screenshot 24): during the sale the printer state sits on the bar (the crossed-out printer when none is connected)
+    AmoFrame(
+        stringResource(titleRes), goBack, icon = if (joint) com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call else com.aktcl.aron.core.ui.R.drawable.aron_ic_control_call,
+        trailing = if (step == CcStep.SALE) ({ com.aktcl.aron.core.printing.ui.PrinterIcon(day.printerManager) }) else null,
+    ) {
         PermissionGate(GatedFeature.SALE, onBack = onBack) {
             val list = days
             when (step) {
@@ -216,11 +228,14 @@ private fun PickStep(
     )
     val tiles = buildList {
         if (joint) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call, AmoR.string.amo_cp_joint_tile, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onJoint))
-        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, { outlet?.let(onSalesTile) }))
+        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, {
+            // D-PAR-AMO-05: the tile is there before a retailer is chosen (21, 22); tapped then, it opens the next empty drop-down
+            if (outlet != null) onSalesTile(outlet) else onPanel(if (route == null) Panel.ROUTE else Panel.OUTLET)
+        }))
         else {
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, onSale))
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_assessment, AmoR.string.amo_cc_menu_assessment, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onAssess))
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_survey, AmoR.string.amo_cc_menu_survey, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SURVEY, onSurvey))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, onSale))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_assess, AmoR.string.amo_cc_menu_assessment, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onAssess))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_survey, AmoR.string.amo_cc_menu_survey, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SURVEY, onSurvey))
             if (showPrice) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_price_compliance, AmoR.string.amo_cc_menu_price, com.aktcl.aron.feature.amo.AmoCallTags.MENU_PRICE, onPrice))
         }
     }
@@ -230,7 +245,8 @@ private fun PickStep(
         enabledOutlet = route != null, locked = callOpen || checking, // L1: no retailer switch while a range check runs
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
-        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) },
+        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) }, belowWhenIdle = salesPath,
+        idleHint = if (joint) stringResource(AmoR.string.amo_cp_route_placeholder) else null, // screenshot 29 right
     )
 }
 
@@ -257,22 +273,42 @@ private fun ManualOverrideStep(day: AmoDay, reason: ForceReason, onStarted: () -
                 val controller = remember {
                     day.forceSaleController(capture) { ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED }
                 }
-                com.aktcl.aron.feature.amo.ManualOverrideContent(
-                    capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } },
-                    onConfirm = {
-                        if (!confirming) {
-                            confirming = true
-                            scope.launch {
-                                try {
-                                    when (val r = runCatching { controller.confirm(reason, decision.outlet) }.getOrDefault(ForceSaleResult.NotAvailable)) {
-                                        is ForceSaleResult.Invalid -> missing = r.missing
-                                        is ForceSaleResult.Started -> onStarted()
-                                        ForceSaleResult.NotAvailable -> onBack()
-                                    }
-                                } finally { confirming = false }
-                            }
+                val confirm: () -> Unit = {
+                    if (!confirming) {
+                        confirming = true
+                        scope.launch {
+                            try {
+                                when (val r = com.aktcl.aron.core.common.orDefaultKeepingCancellation(ForceSaleResult.NotAvailable) { controller.confirm(reason, decision.outlet) }) {
+                                    is ForceSaleResult.Invalid -> missing = r.missing
+                                    is ForceSaleResult.Started -> onStarted()
+                                    ForceSaleResult.NotAvailable -> onBack()
+                                }
+                            } finally { confirming = false }
                         }
-                    },
+                    }
+                }
+                // D-PAR-AMO-02 (screenshot 20): Manual Override opens the camera at once and the menu follows the photo; the page below stays only
+                // as the fallback when the camera was cancelled or the fix failed (retake, then Continue).
+                var autoOpened by rememberSaveable { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    if (!autoOpened && cap.photo == null) { autoOpened = true; com.aktcl.aron.core.common.orNullKeepingCancellation { capture.shutter() } }
+                }
+                // D-PAR-AMO-06: read again on every resume, so the warning clears when Camera was allowed in the phone's Settings and the user came back
+                var cameraDenied by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) }
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+                var autoConfirmed by rememberSaveable { mutableStateOf(false) }
+                LaunchedEffect(cap.complete) { if (cap.complete && !autoConfirmed) { autoConfirmed = true; confirm() } }
+                com.aktcl.aron.feature.amo.ManualOverrideContent(
+                    capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } }, onConfirm = confirm,
+                    waiting = cap.busy || (cap.complete && missing.isEmpty()),
+                    cameraDenied = cameraDenied,
                 )
             }
         }

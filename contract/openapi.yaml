@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.15.0
+  version: 1.24.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -116,6 +116,26 @@ info:
       request file is needed beyond the note in `docs/requests/contract-1.13-loyalty-portal.md`): the 1.13.0 entry above is as it shipped. `listProgrammeVersions` says each
       version is judged on its own scope; `listProgrammeEnrolments` carries the read rules (reach cut, BRAND `403`, `zone_id` outside the reach `403`) that were wrongly
       written on `putProgrammeEnrolments`, which now states its write rules; the list and path reads state their `400` on a bad query or path value.
+    - 1.16.0 (SR manual build, lane sr-server train 2, push B, D-SV2-02 to 07; request file `docs/requests/contract-1.15-sr-server-train2.md`;
+      1.15.0 is the Loyalty lane's), additive only: `Bundle.clusters` (`BundleCluster`: the clusters the SR can name on its own routes) and `Bundle.outlet_sku_stats`
+      (`OutletSkuStat` / `OutletSkuStatItem`: one entry per outlet with previous sale day and, per SKU, previous-day quantity, ADS and SDLW, integer hundredths in BASE units, the phone converts
+      with the SKU's pack_factor), report key `posm-survey`, `RouteDayState.late_rows_after_sales_submit` (memos and due collections captured after the
+      Sales Submit and stored before the Final Submit: counted, never refused) and the config key `cfg.sale.journey_repeat_sale_enabled` (shipped off:
+      while off the server journey never names `repeat_sale`; on, a sold call at an outlet already sold earlier that day is `repeat_sale`, the
+      phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
+      route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
+      `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
+    - 1.23.0 (PROVISIONAL, lane portal-loyalty-api, the portal points adjustment, D-LOY-API-35, and `PendingGiftVerification.units_captured`, D-LOY-API-36; no migration; additive only): three operations under `/v1/admin/programmes/{id}`, all in permission module `loyalty` (no module-map change): `postProgrammeAdjustment` (`POST .../adjustments`: one signed `adjustment` ledger row for an outlet, reason required, optional `expires_on`, idempotent by `request_uuid`), `putProgrammeAdjustments` (`PUT .../adjustments`: a bulk file with `dry_run` true = validate and report, nothing written, then the apply, all-or-nothing, idempotent by `batch_uuid`) and `listProgrammeLedger` (`GET .../ledger`: the ledger rows of the programme with the adjustment reason); a debit below zero needs `allow_overdraw: true` (`409` `would_overdraw` otherwise). New schemas `ProgrammeAdjustmentWrite`, `ProgrammeAdjustmentBatch`, `ProgrammeAdjustmentBatchResult`, `LedgerEntry` and `LedgerPage`. The phone path is unchanged: the bundle's `loyalty[].balance_points` is still the plain sum of the ledger rows, so a posted adjustment is in it from the next bundle. Rules added inside the provisional version (D-LOY-API-38): a bulk file carries at most 2,000 debit rows, allow_overdraw or not (`too_many_debit_rows`), an outlet must be enrolled for every programme kind (`not_enrolled`), and a full shared lock table is `503`.
+    - 1.22.0 (PROVISIONAL, lane portal-loyalty-api, SR programme screens N-1, N-6, N-7, N-9; no migration; additive only): `ProgrammesSection.astha_targets` carries the whole current quarter under the one 1,000-row bound (the current month first) with the new `astha_truncated_months`; `LoyaltyBalance.tier_code`; `AsthaTargetRow.brand_name` and `brand_name_bn` (only for a brand that is not an active product node); `BundleUser.geography` (`BundleGeography`, `BundleGeoName`: the user's own wing, division, territory and zone names, once per bundle); `RedemptionPayload.balance_before_points` is described as informational (the minimum 0 is unchanged).
+    - 1.21.0 (android-integrity, lane android-integrity, D-OWNER-MDM-02, `docs/requests/contract-1.21-android-integrity.md`; additive only): `GeoFix.signals` (anti-spoofing codes of a fix; an empty array means checked and clean, absent means unknown) and `DeviceStatusReport.integrity_events` (developer-options gate onsets); the lab exemption: operations `grantDeviceLabExemption` and `revokeDeviceLabExemption` (`PUT` and `DELETE /v1/admin/devices/{device_id}/lab-exemption`), `Device.lab_exemption` and `Device.lab_exemption_available`, schemas `LabExemption` and `LabExemptionRequest`, and the device-scoped config value `integrity.lab_exemption` (key prefix cfg.) of a full day bundle. The server checks the contents of `signals` and `integrity_events` at ingest (a malformed value is `schema_invalid`).
+    - 1.20.0 (waiting quarantine items, lane portal-loyalty-api, train 118 landing; migration V0204; request file `docs/requests/contract-1.20-loyalty-waiting.md`; additive only, response members only): `QuarantinePage.waiting_count` (the open items that wait for another parent inside the caller's reach, whatever the page and filters) and, on `QuarantineItem`, `waiting`, `waits_for_uuid` and `waits_for_refused`. A child held with a parent that a reviewer accepted, whose other parent is not stored yet, stays open (the phone is told nothing final); the server's own sweep in the API process releases it when that parent is stored, with exactly the override the reviewer's accept carried for it, and a hash-chained audit row by the system actor; if a check of its own then holds it, it becomes an ordinary held item (`waiting` false). No request or phone-visible record change.
+    - 1.19.0 (SR check-out round, lane sr-server SV6, train 117, D-SV2-15; ruling 6 of D-LEAD-PREREQ-03 and `docs/requests/android-gates.md`; request file
+      `docs/requests/contract-1.19-sr-server-checkout.md`; additive only): the `attendance_event` payload gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`;
+      `phone` only on a `check_out`, absent means `rep`; a real check-out of the same day outranks a phone close whatever the arrival order). `phone` is the phone closing a forgotten day at a
+      later start: it is stored and acknowledged `accepted`, but read everywhere as "no check-out" (no check-out time, no hours, AMO `supervisor_day.checked_out_at` not set, never
+      `checkout_too_early`, its fix never a location reading). `CHECKOUT_WITHOUT_SUBMIT` is no longer raised for a user-day with no route captures and is withdrawn (status `dismissed`, evidence
+      `withdrawn_by`) when an accepted Sales Submit for that user-date arrives later (a worker rule, within about 15 minutes); a second worker rule raises it for a check-out whose captures came
+      later. Servers before this version refuse the new member (`schema_invalid`), so no phone sends it before this server runs. (The 3-character memo username patterns are the master-data train's, 1.18.x.)
     - 1.14.0 (SR manual build, lane sr-server train 1, D-SV1-01 to 13; approval requested as D-LEAD-CONTRACT-114-01, gate file
       `docs/requests/contract-1.14-sr-manual.md`; on top of 1.13.1 (the Loyalty portal)), additive only:
       `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitClosePayload.call_photo_uuid`
@@ -132,11 +152,23 @@ info:
       flagged `possible_duplicate` with `possible_duplicate_of`. Not in this version of the train: the bundle `clusters` section, the
       cluster-creation record, `outlet_sku_stats`, the late-row count and the `posm-survey` report key (train 2, same version number, announced
       when they ship).
+    - 1.17.0 (loyalty and Astha, push C of lane portal-loyalty-api, D-LEAD-CONTRACT-117-01, `docs/requests/contract-1.17-loyalty-gift-choice.md`; additive only): `RecordType` gains `gift_choice`
+      (`GiftChoiceRecord`/`GiftChoicePayload`) and `gift_photo` keeps its first-photo-wins rule (the FIRST photo by `captured_at` takes the lock; a later one is stored as a flagged duplicate, never refused or deleted).
+      Outcome codes `gift_locked` and `gift_not_for_tier` are added. `ProgrammesSection` gains `pending_gift_verifications` and the `truncated_sections` values `gift_assignments` and
+      `pending_gift_verifications` (maxItems 5). `LoyaltyBalance` gains the required boolean `overdrawn` (= balance_points < 0, derived, never stored). `cfg.loyalty.negative_balance_policy=reject`
+      is not enforced at ingest (not built) and is refused by config validation until it is. Migrations V0192 to V0194.
     - 1.15.0 (loyalty and Astha, the FIELD side, train 3 of lane portal-loyalty-api, D-LEAD-CONTRACT-115-01, `docs/requests/contract-1.15-loyalty-field.md`; additive only): the bundle
       `programmes` section is filled (an object when a programme is active in the user's reach, else `null`; units, rounding and as-of are in each member's description).
       `AsthaTargetRow` gains `value_target_mtk`, `value_achieved_mtk` (integer milli-taka as strings), `as_of` and `by_pack` (achievement per `pack_factor`, base units;
       target per pack size stays absent until the owner answers). `AsthaTargetWrite` rows gain the optional `value_target_mtk`. Migration V0180 (value target column and
       the upload batch ledger). `Gift` gains `image_asset_id` and `GET /v1/sku-images/{asset_id}` also serves active gifts' pictures (purpose `gift_image`, 300 KB), so no signed URL is in the bundle. `400` is declared on `getLoyaltyBalances` and `listGiftChoices` (bad query). No operation, enum value or other status code is added or removed here; the `gift_choice` record, redemption posting and gift photos are push C.
+    - 1.18.0 (master-data fit, lane masterdata-fit, D-OWNER-MASTERDATA-01 and D-OWNER-PARITY-02, `docs/requests/contract-1.18-masterdata-fit.md`; additive, provisional number: 1.16.0 and 1.17.0 belong to other lanes):
+      the field's real master data is accepted as it is. A route can have NO visit plan: `Route`/`RouteWrite`/`RoutePatch` `visit_kind` gains `none` and `visit_days_mask` may be 0
+      (`none` and 0 go together; never planned, never in target outlets; migration V0195). `importOutlets`: the channel is optional and may be the field's label ("GT Channel"), a bad
+      one is a row error; rows gain `sub_channel` (the Astha tier), `geo_class`, `created_at`, `updated_at`; the request gains `location_confirmed` and `on_row_error`; the report gains
+      warnings (rows that loaded with something to look at). `CodeListKey` gains `cluster_type` (six field values with Bangla labels). Astha tiers are Gold, Diamond, Platinum,
+      Titanium; Silver is inactive (V0199). Rep ids of 3 characters are valid usernames and memo prefixes (V0197). Phones in the field's shapes are accepted on every write and stored
+      in the one national form.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -4437,6 +4469,53 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/devices/{device_id}/lab-exemption:
+    put:
+      tags: [admin-devices]
+      operationId: grantDeviceLabExemption
+      summary: Let ONE phone run with Developer options on for 1 to 14 days (the owner's ADB device walks).
+      description: |
+        D-OWNER-MDM-02. The field apps refuse to run while Developer options, USB debugging or wireless debugging is on. This signs a grant
+        (ECDSA P-256 over the device uuid, the grant time and the expiry, with a server secret that is never stored in the repository) and
+        records it; the phone receives it in its next full day bundle as the device-scoped config value `integrity.lab_exemption` (key prefix cfg., see ResolvedConfigValue),
+        verifies it offline against a public key built into the app, and never widens it beyond "the gate lets this device run with
+        developer options on" (the mock-location refusals still apply). Super Admin and an Admin with the `mdm` write grant only. A new
+        grant replaces the old one. 409 when the server has no signing secret (nothing is recorded). Audited; the audit row never carries the token.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LabExemptionRequest' }
+      responses:
+        '200':
+          description: The device with its lab exemption.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [admin-devices]
+      operationId: revokeDeviceLabExemption
+      summary: Withdraw a phone's lab exemption (idempotent).
+      description: The phone drops the grant with its next full day bundle (a bundle without the value); until then it keeps it up to its expiry. Audited.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      responses:
+        '200':
+          description: The device without a lab exemption.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/admin/devices/{device_id}/directives:
     get:
       tags: [admin-devices]
@@ -5583,11 +5662,14 @@ paths:
     post:
       tags: [admin-outlets]
       operationId: importOutlets
-      summary: Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
+      summary: Bulk create-or-update outlets from a sheet as the field has it (preview with dry_run, commit with a reason).
       description: >
-        A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report;
-        `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409
-        ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+        The field's data is accepted as it is (1.18.0). A channel label of the field ("GT Channel") is mapped; an empty channel comes from the sub-channel, else the row loads as GT with
+        the warning `channel_defaulted`; a channel that names none of the six is the row error `unknown_channel` (never a 400 for the batch). Phones are repaired to the national form,
+        coordinates are rounded to 8 decimals, a tier that does not fit the channel loads with no tier and the warning `sub_channel_mismatch`. `dry_run: true` writes nothing and returns
+        the report; `dry_run: false` needs `change_reason` and, with `on_row_error` `reject_batch` (default), refuses the whole batch on any row error; `skip_rows` writes the good rows and
+        lists the skipped ones. Idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone
+        updates it (never its status; a blank route, pin, phone, address, tier or geo class keeps the stored one).
       requestBody:
         required: true
         content:
@@ -5711,6 +5793,54 @@ paths:
               schema:
                 oneOf:
                   - { $ref: '#/components/schemas/RouteTargetPreview' }
+                  - { $ref: '#/components/schemas/RouteTargetCommitResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /v1/admin/route-kpi-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listRouteKpiTargets
+      summary: One route's KPI targets of a month (memo target and allocated KPI per brand, and the month row).
+      parameters:
+        - { name: route_code, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 40 } }
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'Month as YYYY-MM; default the current Dhaka month.' }
+      responses:
+        '200':
+          description: The route's rows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteKpiTargetList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-targets]
+      operationId: putRouteKpiTargets
+      summary: Validate (dry_run) or commit KPI targets (brand memo targets and allocated KPI, month allocation and CPR), upsert by route, brand and month.
+      description: >-
+        Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is
+        idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never
+        rewrites a past Dhaka month. A member left OUT of a row keeps the stored value (`kpi_alloc_mtk` of a brand row, `cpr_target_bp` and `cpr_alloc_mtk` of a month row; a new row gets 0 or null); an explicit null clears a CPR value. A `campaign_sku_rows` row needs its campaign row (outlet, programme and month) in the same batch or already stored, else `campaign_row_missing`. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is
+        basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteKpiTargetWrite' }
+      responses:
+        '200':
+          description: Preview (dry_run) or commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/RouteKpiTargetPreview' }
                   - { $ref: '#/components/schemas/RouteTargetCommitResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -6379,6 +6509,95 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/programmes/{id}/adjustments:
+    post:
+      tags: [admin-content]
+      operationId: postProgrammeAdjustment
+      summary: Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
+      description: >-
+        From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed
+        non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a
+        required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters.
+        IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount
+        or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's
+        reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers
+        every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only. An outlet with no CURRENT enrolment in the programme (every kind, a campaign programme included) is `400` `not_enrolled`, because the bundle shows a balance only for an enrolled outlet; this is the lead's ruling and the owner may change it; a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid` is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. EVERY debit (a guarded one and one with `allow_overdraw`, single or bulk) takes the ledger job's per-outlet lock and reads the balance in one statement under it, so two concurrent ADMIN debits and a ledger-job pass are serialised: they cannot both pass the guard, and the `overdraw` flag and `balance_before` are decided under the lock; a phone redemption arriving at the same instant is NOT serialised with it (redemptions are field facts and are never refused): the ledger job's next pass and the `overdrawn` flag of the bundle show the result. A credit takes no lock. A debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row. A token of an ADMIN without the `modules` claim is refused (`403`) here.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgrammeAdjustmentWrite' }
+      responses:
+        '201':
+          description: Posted now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerEntry' }
+        '200':
+          description: A repeat of the same request; the stored row, nothing added.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    put:
+      tags: [admin-content]
+      operationId: putProgrammeAdjustments
+      summary: Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
+      description: >-
+        From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With
+        `dry_run: true` the file is validated and the answer reports `valid`, the totals and the row errors (`errors[]`: row index, column, code; the first 200, with `error_count` and `errors_truncated`
+        beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is
+        wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a
+        posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply refuses the whole file with `409`). Only the outlets of DEBIT rows are locked (one statement, in sorted order; `allow_overdraw` or not); a file may carry at most 2,000 debit rows (`400`, pointer `body.rows`, error code `too_many_debit_rows`, already at the dry run: split the file; credit rows are neither locked nor counted). The audit row of a batch lists the rows that went below zero (`overdrawn`: row, outlet_id, balance_before; at most 200) beside `overdrawn_rows`. When the database has no free lock slots the apply is `503` `ERR_SERVICE_UNAVAILABLE` and nothing is written. A replay is judged on the stored rows only.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgrammeAdjustmentBatch' }
+      responses:
+        '200':
+          description: The dry-run report, or the result of the apply.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgrammeAdjustmentBatchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/programmes/{id}/ledger:
+    get:
+      tags: [admin-content]
+      operationId: listProgrammeLedger
+      summary: The points ledger of a programme (newest first), with the reason of each portal adjustment.
+      description: >-
+        From 1.23.0. Ledger rows are outlet data, cut to the caller's server-side reach exactly as `listProgrammeEnrolments`: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and
+        TSO see the rows of the outlets of their zones and routes; a BRAND user is refused `403`. A programme outside the caller's reach is `404`. Optional filters `outlet_id` and `source_type`.
+        `reason` is set on `adjustment` rows only (from their audit row).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - { name: outlet_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: source_type, in: query, required: false, schema: { type: string, pattern: '^[a-z][a-z_]{1,40}$' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of ledger rows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /v1/admin/gifts:
     get:
       tags: [admin-content]
@@ -7334,7 +7553,7 @@ components:
       examples: ['1.0.3+103']
     Username:
       type: string
-      description: Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen, docs/24 s7.5).
+      description: Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{2,31}$` (no hyphen, docs/24 s7.5).
       pattern: '^[A-Za-z][A-Za-z0-9._-]{2,39}$'
       examples: [sr334001]
     PhoneBd:
@@ -7347,7 +7566,7 @@ components:
       description: SHA-256 as 64 lower-case hex characters.
     MemoNo:
       type: string
-      pattern: '^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$'
+      pattern: '^[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}$'
       description: '`<username>-<yyMMdd>-<seq>` composed on the phone (docs/24 s7.5).'
       examples: [sr334001-261005-017]
     TimeOfDay:
@@ -7408,8 +7627,8 @@ components:
         own brands (`brands` on Me). SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
     RecordType:
       type: string
-      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack, content_view, redemption, redemption_line, gift_photo, price_compliance_check, risk_review, activity_log, app_error, sale_abort, consent_accept, support_ticket, support_ticket_event]
-      description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).
+      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack, content_view, redemption, redemption_line, gift_photo, price_compliance_check, risk_review, activity_log, app_error, sale_abort, consent_accept, support_ticket, support_ticket_event, gift_choice]
+      description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18); `gift_choice` from 1.15.0 (the Astha gift an outlet chose, SRM-B-66).
     AckStatus:
       type: string
       enum: [accepted, duplicate, rejected, quarantined]
@@ -7430,7 +7649,7 @@ components:
         resolved, a close review before resolved) or on another user's ticket. `issue_type_unknown` (rejected, not
         retryable): a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its
         business date.
-      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive, after_final_submit, day_final_submitted, ticket_state_invalid, issue_type_unknown]
+      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive, after_final_submit, day_final_submitted, ticket_state_invalid, issue_type_unknown, gift_locked, gift_not_for_tier, cluster_name_exists]
     ProblemCode:
       type: string
       description: |
@@ -7484,7 +7703,7 @@ components:
       enum: [active, closed, merged, archived]
     OutletRequestType:
       type: string
-      enum: [new, close, info, cluster, location, route_add]
+      enum: [new, close, info, cluster, location, route_add, cluster_create]
     OutletRequestStatus:
       type: string
       enum: [pending, verified, approved, rejected, lapsed, discarded]
@@ -7551,6 +7770,10 @@ components:
     AttendanceKind:
       type: string
       enum: [check_in, check_out]
+    AttendanceClosedBy:
+      type: string
+      enum: [rep, phone]
+      description: 'Contract 1.19.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is stored on the attendance row only; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.'
     MediaPurpose:
       type: string
       enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo, outlet_call]
@@ -7575,15 +7798,15 @@ components:
       enum: [open, accepted, accepted_with_fix, discarded]
     CodeListKey:
       type: string
-      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class, ticket_issue_type, ticket_resolution_code, zero_sale_reason, call_photo_skip]
-      description: Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class, ticket_issue_type, ticket_resolution_code, zero_sale_reason, call_photo_skip, cluster_type]
+      description: Business code lists (`cluster_type` from contract 1.18.0, the six cluster types of the field with Bangla labels) (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
     BundleSectionName:
       type: string
       enum: [outlets, open_memos, prices, offers, tasks, team, pending_outlet_requests, programmes, content]
     ReportKey:
       type: string
       description: Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
-      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list, tso-visit-log]
+      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list, tso-visit-log, posm-survey]
 
     # ---------- problem details ----------
     Problem:
@@ -8164,6 +8387,20 @@ components:
           items:
             type: string
             enum: [su_binary, test_keys, ro_debuggable, ro_secure_off, root_app, hook_framework, root_mount, clone_app_installed, secondary_user, foreign_data_dir]
+        integrity_events:
+          type: array
+          maxItems: 50
+          description: |
+            Developer-options gate onsets since the last acknowledged report (contract 1.21.0, D-OWNER-MDM-02): the app did not run while one of these was on. Oldest first. A phone can send the same event again after a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of an event. Optional; absent from an older app.
+          items:
+            type: object
+            required: [at, flags, exempt]
+            additionalProperties: false
+            properties:
+              at: { $ref: '#/components/schemas/Timestamp' }
+              flags: { type: array, maxItems: 3, items: { type: string, enum: [dev_options, adb, adb_wifi] } }
+              exempt: { type: string, enum: [none, debug_build, benchmark_build, lab], description: Why the gate did not block (none = it blocked). }
+              app_version: { $ref: '#/components/schemas/AppVersionString' }
         pending_rows: { type: integer, minimum: 0 }
         pending_media: { type: integer, minimum: 0 }
         last_sync_at:
@@ -8284,6 +8521,16 @@ components:
             - { $ref: '#/components/schemas/RadioEnvironment' }
             - type: 'null'
         device: { $ref: '#/components/schemas/FixDeviceState' }
+        signals:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          description: |
+            Anti-spoofing codes the phone found for this fix (contract 1.21.0, D-OWNER-MDM-02), evidence for the server's risk rules. Optional: a phone built against an older contract sends none, and absent means unknown, not clean.
+            `mock_flag`, `mock_app_selected` and `test_provider` are HARD (the phone refused the geo-validated action; `is_mock` is true for all three, so `is_mock` is the platform flag OR an inferred hard code, and these codes tell them apart). The rest are SOFT and never block alone. Extensible: the server stores a code it does not know.
+          items:
+            type: string
+            enum: [mock_flag, mock_app_selected, test_provider, test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework]
     GnssSummary:
       type: object
       description: GnssStatus (and optional GnssMeasurement) statistics collected only while the fix request was open.
@@ -8738,6 +8985,7 @@ components:
         - { $ref: '#/components/schemas/RedemptionRecord' }
         - { $ref: '#/components/schemas/RedemptionLineRecord' }
         - { $ref: '#/components/schemas/GiftPhotoRecord' }
+        - { $ref: '#/components/schemas/GiftChoiceRecord' }
         - { $ref: '#/components/schemas/PriceComplianceCheckRecord' }
         - { $ref: '#/components/schemas/RiskReviewRecord' }
         - { $ref: '#/components/schemas/ActivityLogRecord' }
@@ -8785,6 +9033,7 @@ components:
           redemption: '#/components/schemas/RedemptionRecord'
           redemption_line: '#/components/schemas/RedemptionLineRecord'
           gift_photo: '#/components/schemas/GiftPhotoRecord'
+          gift_choice: '#/components/schemas/GiftChoiceRecord'
           price_compliance_check: '#/components/schemas/PriceComplianceCheckRecord'
           risk_review: '#/components/schemas/RiskReviewRecord'
           activity_log: '#/components/schemas/ActivityLogRecord'
@@ -8820,6 +9069,16 @@ components:
           properties:
             type: { const: redemption_line }
             payload: { $ref: '#/components/schemas/RedemptionLinePayload' }
+      unevaluatedProperties: false
+    GiftChoiceRecord:
+      description: The Astha gift an outlet chose for a quarter (contract 1.17.0, SRM-B-66). Idempotent by the envelope `client_uuid`.
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: gift_choice }
+            payload: { $ref: '#/components/schemas/GiftChoicePayload' }
       unevaluatedProperties: false
     GiftPhotoRecord:
       allOf:
@@ -8900,6 +9159,7 @@ components:
         kind: { $ref: '#/components/schemas/AttendanceKind' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         address_display: { type: [string, 'null'], maxLength: 300, description: 'Reverse-geocoded text shown on screen; display only, never used for a decision.' }
+        closed_by: { $ref: '#/components/schemas/AttendanceClosedBy', description: 'Contract 1.19.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted; `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time.' }
     DayOpenPayload:
       type: object
       required: [route_ids, online, bundle_valid_for, offline_start]
@@ -8930,6 +9190,7 @@ components:
         dues_outstanding_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
         retailers_with_dues: { type: integer, minimum: 0 }
         stock_slip_printed: { type: boolean }
+        anchor_clock: { type: string, enum: [phone, server], description: "1.16.0, optional: whose clock stamped this record's `captured_at`, the anchor of `late_rows_after_sales_submit`. Phones omit it (their own clock). Only the server writes it: on the online Sales Submit it sets `server` when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours before or more than 5 minutes after the server's receipt time; the business date plays no part). A device record that carries the member is still accepted, but the member is dropped before anything is stored (a device Sales Submit is `phone` by definition). It is stored with the record in the same write, so a retry, a quarantine and its release keep it." }
     DayExceptionPayload:
       type: object
       required: [reason_code, route_ids, from_date, to_date]
@@ -9189,6 +9450,7 @@ components:
         contact_number: { $ref: '#/components/schemas/PhoneBd' }
         address: { type: [string, 'null'], maxLength: 300 }
         cluster_id: { $ref: '#/components/schemas/Id' }
+        cluster_request_uuid: { type: string, format: uuid, description: 'Contract 1.16.0 (new shop requests): the client uuid of the SR''s own pending `cluster_create` request whose cluster this shop belongs to, when the cluster does not exist yet. It must name a `cluster_create` request of the SAME user on a route of the SAME zone as the shop: otherwise (another user''s, another zone''s, another type, voided, or one the server refused) the shop is stored with the link dropped and flagged `cluster_dropped`, never refused; a uuid the server has not seen yet is kept (the cluster request may arrive in a later batch) and judged again at approval. When `cluster_id` is sent too and is usable it WINS: the link is ignored, dropped and flagged. Used at approval when `cluster_id` is absent; the shop is not approved before that cluster request is (409 guard `cluster_request_pending`), and a cluster request that was refused, lapsed or discarded needs the approver''s `cluster_id` (`OutletRequestApproveRequest.cluster_id`).' }
         sub_channel_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         geo_class: { type: [string, 'null'], enum: [Hill, Urban, SemiUrban, Rural, null] }
         lat: { type: number, minimum: -90, maximum: 90 }
@@ -9200,7 +9462,7 @@ components:
       additionalProperties: false
       properties:
         request_type: { $ref: '#/components/schemas/OutletRequestType' }
-        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Null only for request_type new. }
+        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Null only for request_type `new` and `cluster_create` (1.16.0: a cluster request names no outlet and is refused `schema_invalid` when it does).' }
         proposed: { $ref: '#/components/schemas/OutletProposal' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         photo_uuids:
@@ -9583,6 +9845,8 @@ components:
         acting_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         assigned_username: { type: [string, 'null'], maxLength: 64, description: 'Login of the assigned SR, for the supervisor route lists (F-TSO-007).' }
         assigned_user_full_name: { type: [string, 'null'], maxLength: 120, description: 'Full name of the assigned SR, for the supervisor route lists (F-TSO-007).' }
+        late_rows_after_sales_submit: { type: [integer, 'null'], minimum: 0, description: 'Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after the same user''s Sales Submit record (its own `captured_at`, phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead.' }
+        late_rows_anchor: { type: [string, 'null'], enum: [phone, server, null], description: "1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit` is measured from. `phone`: the submit record's own captured_at (a record, or an online submit that carried `captured_at`); `server`: when ANY user's current (newest non-voided) Sales Submit on the route-day is server-stamped (an older client's online submit without `captured_at`, or a phone clock outside the plausibility bound), so the count may be off by clock skew. Null when no route-day Sales Submit is stored." }
     SupervisorDayState:
       type: object
       required: [user_id, business_date, checked_in, sales_submitted]
@@ -9905,6 +10169,24 @@ components:
               section: { $ref: '#/components/schemas/BundleSectionName' }
               pages: { type: integer, minimum: 1, maximum: 1000 }
               rows: { type: integer, minimum: 0 }
+    BundleGeoName:
+      type: object
+      required: [id, code, name, name_bn]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string, maxLength: 40 }
+        name: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+    BundleGeography:
+      type: object
+      required: [wing, division, territory, zone]
+      additionalProperties: false
+      properties:
+        wing: { $ref: '#/components/schemas/BundleGeoName' }
+        division: { $ref: '#/components/schemas/BundleGeoName' }
+        territory: { $ref: '#/components/schemas/BundleGeoName' }
+        zone: { $ref: '#/components/schemas/BundleGeoName' }
     BundleUser:
       type: object
       required: [user_id, username, full_name, role, locale, bind_ordinal, memo_seq_block_size]
@@ -9920,6 +10202,11 @@ components:
         memo_seq_block_size: { type: integer, minimum: 100, maximum: 999 }
         zone_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         territory_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        geography:
+          oneOf:
+            - { $ref: '#/components/schemas/BundleGeography' }
+            - type: 'null'
+          description: From 1.22.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them.
         consents:
           type: array
           maxItems: 50
@@ -9933,6 +10220,10 @@ components:
               policy_version: { type: integer, minimum: 1 }
               accepted_at: { $ref: '#/components/schemas/Timestamp' }
     ResolvedConfigValue:
+      description: |
+        A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant
+        (D-OWNER-MDM-02 iii, 1.21.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
+        without it withdraws the grant.
       type: object
       required: [key, value, scope_type, effective_from, requires_ack]
       additionalProperties: false
@@ -10130,7 +10421,7 @@ components:
         memo_target: { type: integer, minimum: 0 }
     AchievementRow:
       type: object
-      description: Month-to-date achievement known to the server; the phone adds its own unsynced sales on top.
+      description: Month-to-date achievement read from the accepted memos through `through_date`; the figures rule is stated once in `RouteSnapshot` (`as_of` is informational).
       required: [scope_type, scope_id, month, product_level, product_id, achieved_qty_base, memo_count, as_of]
       additionalProperties: false
       properties:
@@ -10140,11 +10431,377 @@ components:
         product_level: { $ref: '#/components/schemas/ProductLevel' }
         product_id: { $ref: '#/components/schemas/Id' }
         achieved_qty_base: { type: integer, format: int64, minimum: 0 }
-        memo_count: { type: integer, minimum: 0 }
+        memo_count: { type: integer, minimum: 0, description: 'Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale lines only. See the figures rule in `RouteSnapshot`.' }
         as_of: { $ref: '#/components/schemas/Timestamp' }
+        through_date:
+          $ref: '#/components/schemas/BusinessDate'
+          description: 'Last Dhaka business date the figure covers: the last CLOSED day when the bundle was built (the bundle date minus one day, or yesterday for a bundle built ahead while today is still open). The bundle date''s own memos are never in a server figure. What the phone shows is stated once, as the figures rule in the description of `RouteSnapshot`. Contract 1.24.0, optional.'
+    RouteCalendar:
+      type: object
+      description: 'Working-day numbers of the bundle month for the route (read at the route''s zone path: the division and wing weekend and the holidays of its levels, as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.24.0.'
+      required: [month, working_days, elapsed_working_days_before_today, remaining_working_days_after_today, today_is_working, last_month_working_days, through_date, as_of]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/Month' }
+        working_days: { type: integer, minimum: 0, maximum: 31, description: Working days of the month. }
+        elapsed_working_days_before_today: { type: integer, minimum: 0, maximum: 31, description: 'Working days of the bundle month from the 1st up to the day before the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February).' }
+        remaining_working_days_after_today: { type: integer, minimum: 0, maximum: 31, description: 'Working days of the bundle month after the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February), to the end of the month. Elapsed + today (1 when working) + remaining = `working_days`.' }
+        today_is_working: { type: boolean, description: 'Whether the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February) is a working day (read from the bundle month''s own calendar).' }
+        last_month_working_days: { type: integer, minimum: 0, maximum: 31, description: 'Working days of last month that have CLOSED at the cut: all of them once `through_date` is past the end of last month, else those up to `through_date` (a bundle built ahead on the last day of the month).' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+    KpiBrandTargetWriteRow:
+      type: object
+      required: [route_code, brand_code, month, memo_target]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        brand_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        memo_target: { type: integer, minimum: 0, maximum: 1000000 }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0, maximum: 100000000000, default: 0 }
+    KpiMonthTargetWriteRow:
+      type: object
+      required: [route_code, month, kpi_alloc_mtk]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0, maximum: 100000000000 }
+        cpr_target_bp: { type: [integer, 'null'], minimum: 0, maximum: 10000 }
+        cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0, maximum: 100000000000 }
+    KpiProgrammeTargetWriteRow:
+      type: object
+      required: [route_code, programme_code, month, target_qty]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        programme_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        target_qty: { $ref: '#/components/schemas/Decimal3' }
+    KpiCampaignTargetWriteRow:
+      type: object
+      required: [outlet_code, programme_code, month, std_target, memo_target]
+      additionalProperties: false
+      properties:
+        outlet_code: { type: string, minLength: 1, maxLength: 40 }
+        programme_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        std_target: { $ref: '#/components/schemas/Decimal3' }
+        memo_target: { type: integer, minimum: 0, maximum: 1000000 }
+    KpiCampaignSkuTargetWriteRow:
+      type: object
+      required: [outlet_code, programme_code, month, sku_code, qty_base]
+      additionalProperties: false
+      properties:
+        outlet_code: { type: string, minLength: 1, maxLength: 40 }
+        programme_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        sku_code: { type: string, minLength: 1, maxLength: 40 }
+        qty_base: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+    RouteKpiTargetWrite:
+      type: object
+      required: [batch_uuid, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        dry_run: { type: boolean }
+        change_reason: { type: string, minLength: 1, maxLength: 500 }
+        brand_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiBrandTargetWriteRow' }
+        month_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiMonthTargetWriteRow' }
+        programme_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiProgrammeTargetWriteRow' }
+        campaign_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiCampaignTargetWriteRow' }
+        campaign_sku_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiCampaignSkuTargetWriteRow' }
+    RouteKpiTargetPreview:
+      type: object
+      required: [batch_uuid, brand_rows, month_rows, programme_rows, campaign_rows, campaign_sku_rows, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        brand_rows: { type: integer, minimum: 0 }
+        month_rows: { type: integer, minimum: 0 }
+        programme_rows: { type: integer, minimum: 0 }
+        campaign_rows: { type: integer, minimum: 0 }
+        campaign_sku_rows: { type: integer, minimum: 0 }
+        errors:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required: [section, row, column, code]
+            additionalProperties: false
+            properties:
+              section: { type: string, enum: [brand_rows, month_rows, programme_rows, campaign_rows, campaign_sku_rows] }
+              row: { type: integer, minimum: 1 }
+              column: { type: string, maxLength: 40 }
+              code: { type: string, maxLength: 40 }
+        errors_truncated: { type: boolean }
+        warnings:
+          type: array
+          maxItems: 1000
+          description: 'Rows that are accepted but probably not what was meant: `campaign_without_skus` (a campaign row with no SKU row in the batch or stored: the app would show STD and memo achieved 0). Optional.'
+          items:
+            type: object
+            required: [section, row, column, code]
+            additionalProperties: false
+            properties:
+              section: { type: string, enum: [brand_rows, month_rows, programme_rows, campaign_rows, campaign_sku_rows] }
+              row: { type: integer, minimum: 1 }
+              column: { type: string, maxLength: 40 }
+              code: { type: string, maxLength: 40 }
+        warnings_truncated: { type: boolean }
+    RouteKpiTargetList:
+      type: object
+      required: [route_code, month, brand_rows, month_row, programme_rows]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        brand_rows:
+          type: array
+          items:
+            type: object
+            required: [brand_code, brand_name, memo_target, kpi_alloc_mtk]
+            additionalProperties: false
+            properties:
+              brand_code: { type: string, maxLength: 40 }
+              brand_name: { type: string, maxLength: 120 }
+              memo_target: { type: integer, minimum: 0 }
+              kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+        programme_rows:
+          type: array
+          items:
+            type: object
+            required: [programme_code, programme_name, target_qty]
+            additionalProperties: false
+            properties:
+              programme_code: { type: string, maxLength: 40 }
+              programme_name: { type: string, maxLength: 120 }
+              target_qty: { $ref: '#/components/schemas/Decimal3' }
+        campaign_rows:
+          type: array
+          maxItems: 500
+          description: 'Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code), so an operator can verify a campaign upload. Contract 1.24.0, optional.'
+          items:
+            type: object
+            required: [outlet_code, programme_code, programme_name, std_target, memo_target]
+            additionalProperties: false
+            properties:
+              outlet_code: { type: string, maxLength: 40 }
+              programme_code: { type: string, maxLength: 40 }
+              programme_name: { type: string, maxLength: 120 }
+              std_target: { $ref: '#/components/schemas/Decimal3' }
+              memo_target: { type: integer, minimum: 0 }
+        campaign_sku_rows:
+          type: array
+          maxItems: 500
+          description: 'SKU targets (base units) of those outlets for the month (at most 500). Contract 1.24.0, optional.'
+          items:
+            type: object
+            required: [outlet_code, programme_code, sku_code, qty_base]
+            additionalProperties: false
+            properties:
+              outlet_code: { type: string, maxLength: 40 }
+              programme_code: { type: string, maxLength: 40 }
+              sku_code: { type: string, maxLength: 40 }
+              qty_base: { type: integer, format: int64, minimum: 0 }
+        month_row:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk]
+              additionalProperties: false
+              properties:
+                kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+                cpr_target_bp: { type: [integer, 'null'], minimum: 0 }
+                cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+    RouteKpi:
+      type: object
+      description: 'Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.24.0.'
+      required: [month, through_date, as_of, allocated_mtk, achieved_mtk, achievement_bp, volume, memo, brands, brands_truncated, categories, cpr]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/Month' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        allocated_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achieved_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achievement_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        volume: { $ref: '#/components/schemas/KpiTotal' }
+        memo: { $ref: '#/components/schemas/KpiTotal' }
+        brands:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/KpiBrand' }
+        brands_truncated: { type: boolean }
+        categories:
+          type: array
+          maxItems: 4
+          items: { $ref: '#/components/schemas/KpiCategory' }
+        cpr:
+          oneOf:
+            - { $ref: '#/components/schemas/KpiCpr' }
+            - { type: 'null' }
+    KpiTotal:
+      type: object
+      description: Target, achievement and percentage of a KPI total (sums of the brand rows).
+      required: [target, achieved, bp]
+      additionalProperties: false
+      properties:
+        target: { type: integer, format: int64, minimum: 0 }
+        achieved: { type: integer, format: int64, minimum: 0 }
+        bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+    KpiBrand:
+      type: object
+      description: One brand row of the KPI screens.
+      required: [brand_id, volume_target, volume_achieved, volume_bp, memo_target, memo_achieved, memo_bp, kpi_alloc_mtk, kpi_today_mtk, by_pack]
+      additionalProperties: false
+      properties:
+        brand_id: { $ref: '#/components/schemas/Id' }
+        volume_target: { type: integer, format: int64, minimum: 0, description: 'Sum of the route targets of the brand SKUs in base units.' }
+        volume_achieved: { type: integer, format: int64, minimum: 0 }
+        volume_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        memo_target: { type: integer, format: int64, minimum: 0 }
+        memo_achieved: { type: integer, format: int64, minimum: 0, description: 'Memos containing the brand, once per memo.' }
+        memo_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+        kpi_today_mtk: { type: [integer, 'null'], format: int64, minimum: 0, description: Null until the owner defines it. }
+        by_pack:
+          type: array
+          maxItems: 20
+          description: 'Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved.'
+          items: { $ref: '#/components/schemas/KpiPackFigure' }
+    KpiCategory:
+      type: object
+      description: 'Volume of a category row (match and lighter).'
+      required: [category_code, volume_target, volume_achieved, volume_bp, by_pack]
+      additionalProperties: false
+      properties:
+        category_code: { type: string, enum: [match, lighter] }
+        volume_target: { type: integer, format: int64, minimum: 0 }
+        volume_achieved: { type: integer, format: int64, minimum: 0 }
+        volume_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        by_pack:
+          type: array
+          maxItems: 20
+          description: 'Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved.'
+          items: { $ref: '#/components/schemas/KpiPackFigure' }
+    KpiPackFigure:
+      type: object
+      required: [pack_factor, target, achieved]
+      additionalProperties: false
+      properties:
+        pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). }
+        target: { type: integer, format: int64, minimum: 0 }
+        achieved: { type: integer, format: int64, minimum: 0 }
+    KpiCpr:
+      type: object
+      description: CPR (call productivity) block; achieved is null until the owner defines the source.
+      required: [target_bp, alloc_mtk, achieved_bp]
+      additionalProperties: false
+      properties:
+        target_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+        alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        achieved_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+    RouteCampaign:
+      type: object
+      description: 'Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Contract 1.24.0.'
+      required: [outlet_id, programme_id, label_en, label_bn, month, through_date, as_of, std, memo, skus]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        programme_id: { $ref: '#/components/schemas/Id' }
+        label_en: { type: string, maxLength: 120 }
+        label_bn: { type: [string, 'null'], maxLength: 120 }
+        month: { $ref: '#/components/schemas/Month' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        std: { $ref: '#/components/schemas/CampaignFigure' }
+        memo: { $ref: '#/components/schemas/CampaignFigure' }
+        skus:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/CampaignSku' }
+    CampaignFigure:
+      type: object
+      required: [target, achieved, remaining]
+      additionalProperties: false
+      properties:
+        target: { type: integer, format: int64, minimum: 0, description: 'STD in base units (the STD target is rounded half up to a whole base unit) or the memo count.' }
+        achieved: { type: integer, format: int64, minimum: 0 }
+        remaining: { type: integer, format: int64, minimum: 0, description: 'max(target - achieved, 0).' }
+    CampaignSku:
+      type: object
+      required: [sku_id, target_qty_base, sold_qty_base]
+      additionalProperties: false
+      properties:
+        sku_id: { $ref: '#/components/schemas/Id' }
+        target_qty_base: { type: integer, format: int64, minimum: 0 }
+        sold_qty_base: { type: integer, format: int64, minimum: 0 }
+    RouteStar:
+      type: object
+      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0.'
+      required: [programme_id, programme_code, name_en, name_bn, month, through_date, as_of, sr_name, sr_code, route_name, lmwd, wd, ewd, target, std, projection, achievement_bp, lms, lmads, pads, growth_bp, status_en, status_bn, achieved_slab, slab_amount_mtk, projected_slab, projected_amount_mtk]
+      additionalProperties: false
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        programme_code: { type: string, maxLength: 40 }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        month: { $ref: '#/components/schemas/Month' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        sr_name: { type: [string, 'null'], maxLength: 120 }
+        sr_code: { type: [string, 'null'], maxLength: 60 }
+        route_name: { type: string, maxLength: 120 }
+        lmwd: { type: integer, minimum: 0, maximum: 31, description: 'Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`.' }
+        wd: { type: integer, minimum: 0, maximum: 31, description: Working days of the month. }
+        ewd: { type: integer, minimum: 0, maximum: 31, description: 'Elapsed working days under the single day-count convention (SkuProgress.dayCounts) of the calendar anchor, `max(through_date + 1, the 1st of the bundle month)`; 0 when the window is empty (the 1st of the month), and the figures that divide by it are then null, never zero.' }
+        target: { $ref: '#/components/schemas/Decimal3' }
+        std: { $ref: '#/components/schemas/Decimal3' }
+        projection: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        achievement_bp: { type: [integer, 'null'], format: int64, minimum: 0, description: Projection over target. }
+        lms: { $ref: '#/components/schemas/Decimal3' }
+        lmads: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        pads: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        growth_bp: { type: [integer, 'null'], format: int64 }
+        status_en: { type: string, maxLength: 120 }
+        status_bn: { type: string, maxLength: 120 }
+        achieved_slab: { type: [string, 'null'], maxLength: 60 }
+        slab_amount_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        projected_slab: { type: [string, 'null'], maxLength: 60 }
+        projected_amount_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
     RouteSnapshot:
       type: object
-      description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
+      description: >-
+        Per-route section of the bundle; replaced as a whole when the route is added to the user.
+        THE FIGURES RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract 1.24.0; the ONE place this rule is stated;
+        D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure of these sections (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business
+        date from the 1st of the bundle `month` up to and including `through_date` (the last CLOSED Dhaka day when the bundle was built: the bundle date minus one day, or yesterday for a bundle built ahead while today is still open), status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo
+        tables. Today's memos are never in a figure, and neither is any day that has not ended when the bundle is built (a bundle built ahead on Thursday for Saturday has `through_date` = Wednesday, not Friday). On the 1st of a month `through_date` is in the previous month while `month` is the new one: the window is empty and every figure is zero; the phone labels it as from the 1st, never as complete through the last day of last month. Working-day counts are anchored on `max(through_date + 1, the 1st of the bundle month)` (for a bundle for Monday 1 February built on Sunday 31 January: `through_date` 30 January, anchor 1 February, so the counts are 0 / true / 23 with a Friday weekend and no holiday). Star's last month (`lms`, `lmwd`, `lmads`) covers the CLOSED days of last month: all of it once `through_date` is past its end; for a bundle built ahead on its last day, `lms` and `lmwd` count only the days up to `through_date`, so `lmads` divides the same days. A working-day declaration (holiday, make-up day, weekend) made between a prefetch and the build on the day changes the counts: the later build wins. DEFINITIONS: quantities
+        (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided
+        line of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the
+        current product tree, for target and figure alike. Campaign figures are the outlet's: every route's memos at the outlet through `through_date`. Another SR's sales at a shared outlet are in the figure; that SR's unsynced and today's memos are not.
+        THE PHONE: the figures are the server's, COMPLETE through `through_date`; the phone shows them with that date. Separately it may show 'today on this phone' = its own live memos dated after `through_date`, computed only from
+        local data and labelled as such, and a count of its memos of earlier days that the server has not confirmed. It never adds unconfirmed earlier-day memos into a figure and never subtracts from a server figure. `as_of` is
+        INFORMATIONAL only (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. Day counts: `calendar.elapsed_working_days_before_today`, `calendar.remaining_working_days_after_today`
+        and `calendar.today_is_working` describe the working days; a zero divisor gives no figure, never zero. Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`,
+        `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.
       required: [route_id, route_snapshot_version, route, assignment_kind, planned_today, target_outlets, outlets, open_memos, sales_plan_sku_ids, targets, achievement_mtd, day_state]
       additionalProperties: false
       properties:
@@ -10176,6 +10833,29 @@ components:
           maxItems: 500
           items: { $ref: '#/components/schemas/AchievementRow' }
         day_state: { $ref: '#/components/schemas/RouteDayState' }
+        calendar:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteCalendar' }
+            - { type: 'null' }
+          description: 'Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.24.0, optional.'
+        kpi:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteKpi' }
+            - { type: 'null' }
+          description: 'Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.24.0, optional.'
+        campaigns:
+          type: [array, 'null']
+          maxItems: 150
+          items: { $ref: '#/components/schemas/RouteCampaign' }
+          description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.'
+        campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional.' }
+        targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional.' }
+        star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional.' }
+        star:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteStar' }
+            - { type: 'null' }
+          description: 'Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.24.0, optional.'
         sr_user_id:
           type: [integer, 'null']
           format: int64
@@ -10316,6 +10996,41 @@ components:
               show_if_key: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
               show_if_bool: { type: [boolean, 'null'] }
               photo: { type: boolean, description: 'The `photo` flag as written; `requires_photo` is true when `photo` is true or the answer type is `photo_only`.' }
+    BundleCluster:
+      type: object
+      description: One cluster as seen on one route of the SR (contract 1.16.0).
+      required: [cluster_id, name, route_id, route_name]
+      additionalProperties: false
+      properties:
+        cluster_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        route_id: { $ref: '#/components/schemas/Id' }
+        route_name: { type: string, maxLength: 120 }
+    OutletSkuStat:
+      type: object
+      description: >-
+        Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet of the SR's own routes that sold in the last 30 calendar days.
+        `previous_day` is the outlet's most recent selling day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing
+        each SKU quantity with the SKU's pack_factor.
+      required: [outlet_id, previous_day, items]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        previous_day: { $ref: '#/components/schemas/BusinessDate' }
+        items:
+          type: array
+          maxItems: 400
+          items: { $ref: '#/components/schemas/OutletSkuStatItem' }
+    OutletSkuStatItem:
+      type: array
+      minItems: 4
+      maxItems: 4
+      description: >-
+        One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw
+        and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per CALENDAR day x 100, in
+        hundredths of a base unit: the quantity sold in the 30 calendar days before the bundle date divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when it is younger), rounded half up: 250 = 2.5 base units per day; the phone shows it as "per day until the next visit"; `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero
+        is written 0. Only SKUs with a sale in the 30-calendar-day window are listed.
+      items: { type: integer, format: int64, minimum: 0 }
     Bundle:
       type: object
       description: The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date.
@@ -10390,6 +11105,18 @@ components:
           type: array
           maxItems: 100
           items: { $ref: '#/components/schemas/TutorialItem' }
+        clusters:
+          type: array
+          maxItems: 600
+          description: 'Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR''s own routes (a live cluster that has an active outlet on the route, or that an approved `cluster_create` request made for the route). Reach is the SR''s routes, taken from the token. At most 600 rows: beyond that the rows are cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it differs from the phone''s snapshot.'
+          items: { $ref: '#/components/schemas/BundleCluster' }
+        outlet_sku_stats:
+          type: array
+          maxItems: 400
+          description: 'Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR''s own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU''s pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day. Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries are cut in outlet id order and `outlet_sku_stats_truncated` is true. ADS elapsed days: 30, or the days since the outlet''s first memo when younger; the first-memo lookback is bounded to 366 days before the bundle date (an outlet with no memo in that window counts 30). Versioned reference data: the bundle version changes when a row does; a delta carries the section whole when it differs from the phone''s snapshot.'
+          items: { $ref: '#/components/schemas/OutletSkuStat' }
+        clusters_truncated: { type: boolean, description: 'Contract 1.16.0: true when the SR holds more than 600 cluster rows and `clusters` was cut. Absent means false.' }
+        outlet_sku_stats_truncated: { type: boolean, description: 'Contract 1.16.0: true when more than 400 outlets have history and `outlet_sku_stats` was cut. Absent means false.' }
         my_outlet_requests:
           type: array
           maxItems: 200
@@ -10478,6 +11205,18 @@ components:
             achievement_mtd: { $ref: '#/components/schemas/SectionDelta' }
             team: { $ref: '#/components/schemas/SectionDelta' }
             pending_outlet_requests: { $ref: '#/components/schemas/SectionDelta' }
+        clusters:
+          type: [array, 'null']
+          maxItems: 600
+          description: 'Contract 1.16.0: the WHOLE `clusters` section when its content differs from the snapshot named by `base_cursor` (replace the phone''s list), null when unchanged.'
+          items: { $ref: '#/components/schemas/BundleCluster' }
+        clusters_truncated: { type: [boolean, 'null'], description: 'Contract 1.16.0: the truncation flag that goes with a carried `clusters`; null with it.' }
+        outlet_sku_stats:
+          type: [array, 'null']
+          maxItems: 400
+          description: 'Contract 1.16.0: the WHOLE `outlet_sku_stats` section when its content differs from the snapshot named by `base_cursor` (a late-synced memo of an earlier day changes it), null when unchanged.'
+          items: { $ref: '#/components/schemas/OutletSkuStat' }
+        outlet_sku_stats_truncated: { type: [boolean, 'null'], description: 'Contract 1.16.0: the truncation flag that goes with a carried `outlet_sku_stats`; null with it.' }
         code_lists:
           type: array
           maxItems: 30
@@ -10664,6 +11403,7 @@ components:
         device_money: { $ref: '#/components/schemas/MoneyTotals' }
         submitted_with_dues: { type: boolean }
         dues_outstanding_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        captured_at: { $ref: '#/components/schemas/Timestamp', description: "1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client) or implausible (more than 6 hours before or more than 5 minutes after the server's receipt time; the business date plays no part, so a back-dated submit with an accurate clock stays `phone`): the server stamps its own time, records it with the Sales Submit record (`anchor_clock = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`." }
     FinalSubmitPreview:
       type: object
       required: [zone_id, business_date, already_submitted, routes]
@@ -11098,6 +11838,7 @@ components:
             - type: 'null'
         rejection_reason: { type: [string, 'null'], maxLength: 500 }
         resulting_outlet_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        resulting_cluster_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Contract 1.16.0: the live cluster an approved `cluster_create` request made; null for every other request.' }
         events:
           type: array
           maxItems: 50
@@ -11138,6 +11879,7 @@ components:
         outlet_code: { type: [string, 'null'], pattern: '^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$', description: For new outlets; generated when null. }
         route_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Required for AMO-created new outlets. }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+        cluster_id: { type: [integer, 'null'], format: int64, minimum: 1, description: "1.16.0, for request_type `new` and `cluster` only (`400 ERR_VALIDATION` pointer `/cluster_id` for any other type). The cluster the approver gives the shop or the outlet: a LIVE cluster of the route's zone (the outlet's zone for `cluster`), recorded in the request's event trail with the approver. REQUIRED exactly when the request carries no usable cluster (the phone dropped it, the shop's cluster request was refused, lapsed or discarded, or the cluster is no longer live): then approval without it answers `409 ERR_CONFLICT` whose guard is `cluster_required`, `cluster_request_refused` or `cluster_request_pending` and whose text says to give `cluster_id`. Optional otherwise; when given it wins over the proposal's cluster. A pending cluster request alone is approved first (or this member is given)." }
     OutletRequestCreateRequest:
       type: object
       description: 'Body of `POST /v1/outlet-requests` (web source, docs/24 s14a R20). `request_uuid` is generated by the browser (UUID v4) when the form opens: the idempotency key and the identity of the request, in the same key space as the `client_uuid` of an app `outlet_change_request` record. `proposed` carries the members the request type requires (docs/24 s12.2).'
@@ -13967,11 +14709,31 @@ components:
             - { $ref: '#/components/schemas/Timestamp' }
             - type: 'null'
         resolution_note: { type: [string, 'null'], maxLength: 500 }
+        waiting:
+          type: boolean
+          description: >-
+            From 1.20.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the
+            first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`,
+            field names and uuids only). The server's own sweep (in the API process) releases it when that parent is stored, with exactly the override a reviewer's accept carried for it and nothing more; a reviewer can accept it meanwhile. If a check of its own then holds it, it becomes an ordinary held item (`waiting` false) with its own `code` and `detail`. The phone is told nothing final for it.
+        waits_for_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+          description: From 1.20.0. The parent a waiting item awaits; null when not waiting.
+        waits_for_refused:
+          type: boolean
+          description: >-
+            From 1.20.0. True when the awaited parent is refused or discarded (refreshed at every pass): the item is not released automatically while the parent stays refused, and discarding it (resolve `discard`) is the way out.
     QuarantinePage:
       type: object
       required: [items, next_cursor]
       additionalProperties: false
       properties:
+        waiting_count:
+          type: integer
+          minimum: 0
+          description: >-
+            From 1.20.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters.
         items:
           type: array
           items: { $ref: '#/components/schemas/QuarantineItem' }
@@ -14113,8 +14875,8 @@ components:
             display_label: { type: [string, 'null'], maxLength: 60, description: 'Printed visit-day text such as "(Sat, Mon, Wed)" or "Daily"; a label, never a key.' }
             zone_id: { $ref: '#/components/schemas/Id' }
             kind: { type: string, enum: [sr, amo] }
-            visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, null] }
-            visit_days_mask: { type: integer, minimum: 1, maximum: 127, description: 'bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21).' }
+            visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, none, null], description: 'none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".' }
+            visit_days_mask: { type: integer, minimum: 0, maximum: 127, description: '0 (1.18.0) = no visit plan (visit_kind none). bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21).' }
             sequence_no: { type: [integer, 'null'], minimum: 1 }
             status: { $ref: '#/components/schemas/ActiveStatus' }
             assignees:
@@ -14140,8 +14902,8 @@ components:
         display_label: { type: [string, 'null'], maxLength: 60 }
         zone_id: { $ref: '#/components/schemas/Id' }
         kind: { type: string, enum: [sr, amo] }
-        visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, null] }
-        visit_days_mask: { type: integer, minimum: 1, maximum: 127 }
+        visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, none, null], description: 'none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".' }
+        visit_days_mask: { type: integer, minimum: 0, maximum: 127, description: '0 only with visit_kind none (no visit plan).' }
         sequence_no: { type: [integer, 'null'], minimum: 1 }
     RoutePatch:
       type: object
@@ -14151,8 +14913,8 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         display_label: { type: [string, 'null'], maxLength: 60 }
         zone_id: { $ref: '#/components/schemas/Id' }
-        visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, null] }
-        visit_days_mask: { type: integer, minimum: 1, maximum: 127 }
+        visit_kind: { type: [string, 'null'], enum: [daily, 3f, 2f, none, null], description: 'none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".' }
+        visit_days_mask: { type: integer, minimum: 0, maximum: 127, description: '0 only with visit_kind none (no visit plan).' }
         sequence_no: { type: [integer, 'null'], minimum: 1 }
         status: { $ref: '#/components/schemas/ActiveStatus' }
         effective_from: { $ref: '#/components/schemas/BusinessDate' }
@@ -15487,6 +16249,30 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/DeviceStatusReport' }
             - type: 'null'
+        lab_exemption:
+          description: The unexpired lab exemption of this phone; absent when there is none. Never carries the signed token.
+          oneOf:
+            - { $ref: '#/components/schemas/LabExemption' }
+            - type: 'null'
+        lab_exemption_available:
+          type: boolean
+          description: True when the server can sign a grant (the signing secret is set); the portal offers the action only then.
+    LabExemption:
+      type: object
+      required: [granted_at, expires_at, granted_by]
+      additionalProperties: false
+      properties:
+        granted_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        granted_by: { $ref: '#/components/schemas/Id' }
+        note: { type: [string, 'null'], maxLength: 300 }
+    LabExemptionRequest:
+      type: object
+      required: [days]
+      additionalProperties: false
+      properties:
+        days: { type: integer, minimum: 1, maximum: 14 }
+        note: { type: [string, 'null'], maxLength: 300, description: Why the phone needs it (for example the walk it is for). }
     DevicePage:
       type: object
       required: [items, next_cursor]
@@ -15813,7 +16599,7 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
-        balance_before_points: { type: integer, minimum: 0, description: Balance the phone showed (bundle balance minus local unsynced redemptions). }
+        balance_before_points: { type: integer, minimum: 0, description: "Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it is stored as sent (a display fact; the database refuses a negative value) and is never compared with the ledger, which is the server's balance; an overdraw is accepted whatever it says. A phone whose balance is already negative sends 0 (clamped)." }
         points_total: { type: integer, minimum: 1, maximum: 100000 }
         cash_points: { type: integer, minimum: 0, maximum: 100000, description: 'Cash-back points (at most cfg.loyalty.cash_max_points).' }
         cash_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
@@ -15834,11 +16620,28 @@ components:
         qty: { type: integer, minimum: 1, maximum: 50 }
         points_each: { type: integer, minimum: 1, maximum: 100000, description: Gift cost in the bundle at capture. }
         points_total: { type: integer, minimum: 1, maximum: 1000000, description: qty x points_each. }
+    GiftChoicePayload:
+      type: object
+      description: |
+        1.17.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+        photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
+        the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
+        `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
+      required: [outlet_id, gift_id, quarter]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        gift_id: { $ref: '#/components/schemas/Id' }
+        quarter: { type: string, pattern: '^[0-9]{4}-Q[1-4]$', description: 'The Astha quarter label (`cfg.astha.quarter_start_month`).' }
+        fix: { $ref: '#/components/schemas/GeoFix' }
     GiftPhotoPayload:
       type: object
       description: |
-        Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
-        or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+        Hand-over photo of a gift: of an Astha gift assignment or of one redeemed campaign gift unit (Gift Verify). Several photos may be sent: the FIRST by `captured_at` (tie: client
+        uuid) is the winner and locks the Astha choice; every other photo is STORED as a flagged duplicate, never refused or deleted (cfg.astha.one_photo_per_outlet is the phone's own
+        count rule). A campaign-unit photo whose redemption is FINAL (refused, voided, or a line of it voided or refused) or that fails the server checks is stored and flagged
+        (`check_flag`: parent_refused, parent_voided, unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach), never the unit's photo; only a redemption that has
+        genuinely not arrived yet answers `parent_missing` (retryable).
       required: [programme_kind, outlet_id, gift_id, photo_uuid, fix]
       additionalProperties: false
       properties:
@@ -16156,6 +16959,98 @@ components:
           maxItems: 20000
           items: { $ref: '#/components/schemas/ProgrammeEnrolment' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    ProgrammeAdjustmentWrite:
+      type: object
+      required: [request_uuid, outlet_id, points, reason]
+      additionalProperties: false
+      description: From 1.23.0.
+      properties:
+        request_uuid: { $ref: '#/components/schemas/Uuid' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        points: { type: integer, minimum: -1000000, maximum: 1000000, description: 'Signed, never 0: a credit is positive, a debit negative.' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+        expires_on: { type: [string, 'null'], format: date, description: 'Last day the credited points count (not before today, Dhaka); null or absent = no expiry.' }
+        allow_overdraw: { type: boolean, default: false, description: 'A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).' }
+    ProgrammeAdjustmentRow:
+      type: object
+      required: [outlet_id, points]
+      additionalProperties: false
+      description: From 1.23.0.
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        points: { type: integer, minimum: -1000000, maximum: 1000000 }
+        expires_on: { type: [string, 'null'], format: date }
+    ProgrammeAdjustmentBatch:
+      type: object
+      required: [batch_uuid, dry_run, change_reason, rows]
+      additionalProperties: false
+      description: From 1.23.0.
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        dry_run: { type: boolean, description: 'true = validate and report, write nothing.' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+        allow_overdraw: { type: boolean, default: false, description: 'As on the single post, for every debit row of the file.' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/ProgrammeAdjustmentRow' }
+    ProgrammeAdjustmentRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 0, description: Zero-based index in `rows`. }
+        column: { type: string, description: 'The member at fault (`outlet_id`, `points`, `expires_on`) or `row`.' }
+        code: { type: string, description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, not_enrolled, in_the_past, debit_has_no_expiry, would_overdraw, too_many_debit_rows, invalid_value ...' }
+        balance_points: { type: integer, format: int64, description: 'With `would_overdraw`: the balance before the file.' }
+    ProgrammeAdjustmentBatchResult:
+      type: object
+      required: [batch_uuid, dry_run, rows, total_points, replayed]
+      additionalProperties: false
+      description: From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries `posted`.
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        dry_run: { type: boolean }
+        rows: { type: integer, minimum: 0 }
+        posted: { type: integer, minimum: 0, description: 'Apply only: ledger rows written now (0 on a replay).' }
+        replayed: { type: boolean, description: 'The batch was posted before (an apply answers it with posted 0; a dry run says so).' }
+        total_points: { type: integer, format: int64, description: 'Sum of the valid rows points.' }
+        valid: { type: boolean, description: 'Dry run only: no row error and the programme can take the batch (or it is a replay).' }
+        outlets: { type: integer, minimum: 0, description: 'Dry run only.' }
+        credit_points: { type: integer, format: int64, minimum: 0, description: 'Dry run only.' }
+        debit_points: { type: integer, format: int64, maximum: 0, description: 'Dry run only (negative or 0).' }
+        programme_status: { type: string, enum: [draft, active, inactive], description: 'Dry run only.' }
+        errors: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ProgrammeAdjustmentRowError' }, description: 'Dry run only: the first 200 row errors.' }
+        error_count: { type: integer, minimum: 0, description: 'Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`).' }
+        errors_truncated: { type: boolean, description: 'Dry run only.' }
+    LedgerEntry:
+      type: object
+      required: [ledger_id, source_type, source_id, outlet_id, programme_id, points, business_date, expires_on, flags, reason, created_at]
+      additionalProperties: false
+      description: From 1.23.0. One row of the append-only points ledger.
+      properties:
+        ledger_id: { type: integer, format: int64 }
+        source_type: { type: string, description: 'adjustment, redemption, redemption_void, expiry, ...' }
+        source_id: { type: string, maxLength: 64, description: 'For an adjustment: the request_uuid, or `<batch_uuid>:<row index>` for a bulk row.' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        programme_id: { $ref: '#/components/schemas/Id' }
+        points: { type: integer }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        expires_on: { type: [string, 'null'], format: date }
+        flags: { type: array, items: { type: string }, description: 'Portal adjustments carry `portal`, and `overdraw` when the debit took the balance below zero (allowed with `allow_overdraw`).' }
+        reason: { type: [string, 'null'], description: 'The audit reason of an adjustment; null on other rows.' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    LedgerPage:
+      type: object
+      required: [programme_id, programme_status, items, next_cursor]
+      additionalProperties: false
+      description: From 1.23.0.
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        programme_status: { type: string, enum: [draft, active, inactive] }
+        items: { type: array, items: { $ref: '#/components/schemas/LedgerEntry' } }
+        next_cursor: { type: [string, 'null'] }
     Gift:
       type: object
       required: [gift_id, programme_id, code, name_en, points_cost, status, version]
@@ -16213,19 +17108,21 @@ components:
           items: { $ref: '#/components/schemas/Gift' }
     LoyaltyBalance:
       type: object
-      required: [outlet_id, programme_id, league_label, balance_points, expiring_points, expiry_date, as_of_date]
+      required: [outlet_id, programme_id, league_label, balance_points, overdrawn, expiring_points, expiry_date, as_of_date]
       additionalProperties: false
       properties:
         outlet_id: { $ref: '#/components/schemas/Id' }
         programme_id: { $ref: '#/components/schemas/Id' }
         league_label: { type: [string, 'null'], maxLength: 40 }
-        balance_points: { type: integer, description: 'The PLAIN SUM of all ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit that was partly redeemed lapses only for what is left of it); before that job has run the balance may still include points past their date. Negative only after a flagged overdraw.' }
-        expiring_points: { type: integer, minimum: 0, description: 'The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped by the balance and never negative; no window. Debits are not matched to credits in this read.' }
+        tier_code: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$', description: "From 1.22.0, additive. The outlet's tier in this programme at the business date (`programme_enrolment.tier_code`, an Astha tier or Superstar slab); null when the enrolment names none. The phone needs it to judge a gift against the tier (`gift.tier_codes`) before the outlet has chosen a gift (a `gift_assignment` row exists only after the first choice)." }
+        balance_points: { type: integer, description: 'Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption is in the figure at once), read in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still include points past their date. A negative balance means the outlet is overdrawn. Transients (the first three are gone after the next ledger-job pass, at most about ten minutes): a debit that synced late with an earlier business date is in the figure before the expiry give-back it causes is posted (the figure is LESS favourable until then); a redemption voided after it was posted keeps its debit until the pass posts the reversal (LESS favourable); and points whose date has passed stay in the figure until the first pass after Dhaka midnight posts their expiry row; and, the fourth, a backdated adjustment whose transaction committed late is found at the latest by the first pass of the next Dhaka day (up to one Dhaka day): until then only the expiry correction it causes is off, while the balance sum is exact (the adjustment row is in the sum as soon as it is committed).' }
+        overdrawn: { type: boolean, description: '1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row.' }
+        expiring_points: { type: integer, minimum: 0, description: 'What the EARLIEST upcoming expiry (`expiry_date`) will take: the credits expiring on that date as the ledger replay leaves them AFTER debits (oldest expiry consumed first) and after unfunded debt has been settled by later credits, capped by the balance and never negative; no window.' }
         expiry_date:
           oneOf:
             - { $ref: '#/components/schemas/BusinessDate' }
             - type: 'null'
-        as_of_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of_date: { $ref: '#/components/schemas/BusinessDate', description: 'DISPLAY ONLY: the business date the figures were read on ("figures include everything the server held when the bundle was built"). It is not a cut: no ledger row is left out because of its date.' }
     LoyaltyBalanceList:
       type: object
       required: [as_of, truncated, items]
@@ -16246,6 +17143,8 @@ components:
         route_id: { $ref: '#/components/schemas/Id' }
         outlet_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         brand_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        brand_name: { type: string, maxLength: 120, description: "From 1.22.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id` is the product-tree node id of the brand level), sent ONLY when that node is not active, i.e. not among the bundle's `products.nodes` (an active brand is named there; a row costs no extra bytes), so the phone never shows an id for an inactive brand." }
+        brand_name_bn: { type: string, maxLength: 120, description: 'From 1.22.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name` when the node has one.' }
         month: { $ref: '#/components/schemas/Month' }
         std_target: { $ref: '#/components/schemas/Decimal3' }
         std_achieved: { $ref: '#/components/schemas/Decimal3' }
@@ -16376,9 +17275,10 @@ components:
         gift_id: { $ref: '#/components/schemas/Id' }
         qty: { type: integer, minimum: 1, maximum: 50 }
         photos_captured: { type: integer, minimum: 0, maximum: 50 }
+        units_captured: { type: array, maxItems: 50, uniqueItems: true, items: { type: integer, minimum: 1, maximum: 50 }, description: 'From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending, at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift, from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count: it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone offers exactly the open units. Same bound and snapshot as the rest of the section.' }
     ProgrammesSection:
       type: object
-      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle''s business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches. `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200) or gift_assignments (2,000) that was cut, and `astha_truncated` the 1,000-row Astha bound.'
+      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle''s business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row''s `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer''s accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic stays the rule for this section (the earlier plan to replace it with a per-uuid server answer, an identity probe, is PARKED, D-LEAD-FIGURES-SIMPLE-01). Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
       required: [programmes, loyalty, gifts, astha_targets, astha_as_of, astha_truncated, truncated_sections, gift_assignments, pending_gift_verifications]
       additionalProperties: false
       properties:
@@ -16394,13 +17294,14 @@ components:
           type: array
           maxItems: 200
           items: { $ref: '#/components/schemas/Gift' }
-        astha_as_of: { $ref: '#/components/schemas/Timestamp', description: '1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes.' }
+        astha_as_of: { $ref: '#/components/schemas/Timestamp', description: '1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the quarter of the business date (before 1.22.0: the month); the Dhaka start of the quarter when there is none. Rows carry no `as_of` in the bundle, to save bytes.' }
         truncated_sections:
           type: array
-          maxItems: 4
-          description: '1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments` was cut at its cap (50, 11,000, 200, 2,000); empty when none. A cut is also logged by the server. The phone shows a notice.'
-          items: { type: string, enum: [programmes, loyalty, gifts, gift_assignments] }
-        astha_truncated: { type: boolean, description: '1.15.0. True when the user''s routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`.' }
+          maxItems: 5
+          description: '1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice.'
+          items: { type: string, enum: [programmes, loyalty, gifts, gift_assignments, pending_gift_verifications] }
+        astha_truncated: { type: boolean, description: '1.15.0. True when the user''s routes had more Astha rows (for the quarter from 1.22.0, before that for the month) than the bound of 1,000 and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. `astha_truncated_months` says which months.' }
+        astha_truncated_months: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/Month' }, description: 'From 1.22.0, additive. The months of the quarter whose rows were cut in whole or in part (empty when `astha_truncated` is false); a month not named here is complete FOR THE OUTLETS ENROLLED TODAY ON TODAY''S ROUTES: a row of a past month is not sent (and the month is not named) when the outlet''s enrolment ended earlier in the quarter or its target row still carries an old route; `listAsthaTargets` has the same route and enrolment filter, so the limit is the same online. A month the bound cut is named even when the cut left it with no row sent.' }
         astha_targets:
           type: array
           maxItems: 1000
@@ -17395,7 +18296,7 @@ components:
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     OutletImportRow:
       type: object
-      required: [name, owner_name, zone_code, cluster, channel, outlet_kind]
+      required: [name, owner_name, zone_code, cluster, outlet_kind]
       additionalProperties: false
       properties:
         code: { type: [string, 'null'], maxLength: 32 }
@@ -17403,13 +18304,17 @@ components:
         owner_name: { type: string, minLength: 2, maxLength: 120 }
         zone_code: { type: string, maxLength: 40 }
         cluster: { type: string, maxLength: 120, description: Cluster name inside the zone. }
-        channel: { type: string, enum: [GT, DCC, Astha, RCC, MT, HoReCa] }
+        channel: { type: [string, 'null'], maxLength: 60, description: 'Since 1.18.0 optional and free text: one of GT, DCC, Astha, RCC, MT, HoReCa or the field''s label ("GT Channel", "Astha Channel", "DCC Channel", "MT Channel"), any case. Empty: derived from sub_channel, else GT with the warning channel_defaulted.' }
         outlet_kind: { type: string, enum: [retail, wholesale] }
         route_code: { type: [string, 'null'], maxLength: 40 }
-        lat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        lat: { type: [number, 'null'], minimum: -90, maximum: 90, description: 'More than 8 decimals are rounded, never rejected.' }
         lng: { type: [number, 'null'], minimum: -180, maximum: 180 }
-        contact_number: { type: [string, 'null'] }
+        contact_number: { type: [string, 'null'], maxLength: 300, description: 'The text as the sheet has it (the portal does not repair it). The server repairs it to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable and its text is kept in the outlet''s source column (warning phone_source_kept, first 60 characters).' }
         address: { type: [string, 'null'], maxLength: 300 }
+        sub_channel: { type: [string, 'null'], maxLength: 40, description: '1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum, Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does not belong to the row''s channel, is unknown or retired (Silver) loads with no tier and a warning.' }
+        geo_class: { type: [string, 'null'], maxLength: 40, description: '1.18.0. Rural, Urban, Semi Urban (stored as SemiUrban) or Hill; unknown is stored empty with a warning.' }
+        created_at: { type: [string, 'null'], maxLength: 40, description: '1.18.0. The field''s Created At text (ISO or yyyy-MM-dd HH:mm:ss, dd/MM/yyyy; without an offset it is Asia/Dhaka). Kept on a new outlet; unreadable or future values keep the import time with a warning.' }
+        updated_at: { type: [string, 'null'], maxLength: 40, description: '1.18.0. The field''s Updated At text, same rules; kept on a new outlet.' }
     OutletImportWrite:
       type: object
       required: [batch_uuid, rows, dry_run]
@@ -17419,6 +18324,17 @@ components:
         rows: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/OutletImportRow' } }
         dry_run: { type: boolean }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+        location_confirmed: { type: boolean, default: false, description: '1.18.0. The owner''s switch at load time: true marks every imported pin inside Bangladesh as confirmed (no first-visit correction); false loads them as the master pin, unconfirmed. A pin outside Bangladesh is never confirmed. A re-run with true confirms pins loaded earlier with false.' }
+        on_row_error: { type: string, enum: [reject_batch, skip_rows], default: reject_batch, description: '1.18.0. reject_batch (the earlier behaviour) refuses the whole commit on any row error; skip_rows writes the good rows and lists the skipped ones.' }
+    OutletImportRowWarning:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      description: A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier, phone_source_kept, tier_source_kept).
+      properties:
+        row: { type: integer, minimum: 1 }
+        column: { type: string }
+        code: { type: string, enum: [phone_unusable, phone_repaired, coordinates_rounded, coordinates_outside_bangladesh, channel_derived, channel_defaulted, sub_channel_mismatch, sub_channel_retired, unknown_sub_channel, astha_without_tier, unknown_geo_class, created_at_unreadable, updated_at_unreadable, phone_source_kept, tier_source_kept, tier_cleared, pin_kept_as_candidate, coordinates_invalid, coordinates_incomplete] }
     OutletImportRowError:
       type: object
       required: [row, column, code]
@@ -17426,7 +18342,7 @@ components:
       properties:
         row: { type: integer, minimum: 1, description: 1-based position in rows. }
         column: { type: string }
-        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged] }
+        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged, unknown_channel, sub_channel_inconsistent] }
     OutletImportPreview:
       type: object
       required: [batch_uuid, rows, creates, updates, by_channel, errors, errors_truncated]
@@ -17436,9 +18352,14 @@ components:
         rows: { type: integer, minimum: 1 }
         creates: { type: integer, minimum: 0 }
         updates: { type: integer, minimum: 0 }
+        unchanged: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Valid rows whose outlet already holds exactly these values; the commit writes nothing for them (no version bump, no audit row).' }
+        skipped: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Rows with a row error: left out by on_row_error skip_rows, else they refuse the commit.' }
         by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: Valid rows per channel. }
         errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' } }
         errors_truncated: { type: boolean }
+        warnings: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowWarning' }, description: '1.18.0.' }
+        warnings_truncated: { type: boolean, description: '1.18.0.' }
+        warnings_by_code: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: '1.18.0. Count of every warning code, informational ones included.' }
     OutletImportResult:
       type: object
       required: [batch_uuid, rows, replayed]
@@ -17447,6 +18368,16 @@ components:
         batch_uuid: { $ref: '#/components/schemas/Uuid' }
         rows: { type: integer, minimum: 1 }
         replayed: { type: boolean }
+        creates: { type: integer, minimum: 0, description: '1.18.0.' }
+        updates: { type: integer, minimum: 0, description: '1.18.0.' }
+        unchanged: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Rows that changed nothing (no write, no version bump, no audit row).' }
+        by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: '1.18.0 (push 1b). Loaded rows per channel. Not on a replay.' }
+        skipped: { type: integer, minimum: 0, description: '1.18.0. Rows left out because of a row error (on_row_error skip_rows).' }
+        errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' }, description: '1.18.0. Only with skip_rows.' }
+        errors_truncated: { type: boolean, description: '1.18.0.' }
+        warnings: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowWarning' }, description: '1.18.0. Not on a replay.' }
+        warnings_truncated: { type: boolean, description: '1.18.0.' }
+        warnings_by_code: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: '1.18.0.' }
     BulkResult:
       type: object
       required: [batch_uuid, updated, unchanged, replayed]

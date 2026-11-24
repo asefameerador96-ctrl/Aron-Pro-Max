@@ -10,6 +10,7 @@ import com.aktcl.aron.core.network.ApiOrigin
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.ClientIdentity
 import com.aktcl.aron.core.network.SyncApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -56,7 +57,8 @@ class BundleDownloaderTest {
     private var deltaAnswer: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
 
     private object Clock : WallClock {
-        override fun nowMs(): Long = 1_791_165_600_000L // 2026-10-05T02:00:00Z = 08:00 in Dhaka
+        @Volatile var now = 1_791_165_600_000L
+        override fun nowMs(): Long = now // 2026-10-05T02:00:00Z = 08:00 in Dhaka
         override fun elapsedRealtimeMs(): Long = 1_000L
     }
 
@@ -95,6 +97,8 @@ class BundleDownloaderTest {
     private fun api(body: String, code: Int = 200) = MockResponse.Builder().code(code).addHeader("X-Aron-Api", "1").addHeader("ETag", "\"2026-10-05:3\"").body(body).build()
 
     @Before fun setUp() {
+        Clock.now = 1_791_165_600_000L // the clock is one shared object: every test starts at the same instant
+        tracking = true
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
@@ -122,10 +126,151 @@ class BundleDownloaderTest {
         runCatching { server.close() }
     }
 
-    private fun downloader(origin: String = server.url("/").toString().trimEnd('/')): BundleDownloader {
+    private var tracking = true // the SR app; the AMO and TSO apps do not track sent-but-unanswered rows
+
+    private fun downloader(origin: String = server.url("/").toString().trimEnd('/'), labGrant: (String?, Long?) -> Unit = { _, _ -> }): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(origin, allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
-        return BundleDownloader(db, SyncApi(client), staging, Clock)
+        return BundleDownloader(db, SyncApi(client), staging, Clock, labGrant, userId = USER, trackUncertain = tracking)
+    }
+
+    /** Contract ACHIEVEMENT RULE, single flight: a sync run in flight when the day request is wanted finishes first, and the request instant is taken after it. */
+    @Test fun aSyncRunInFlightFinishesBeforeTheBundleRequestAndTheRequestInstantFollowsIt() = runBlocking {
+        Clock.now = 1_791_165_600_000L
+        val lock = SyncEngine.userLock(USER)
+        lock.lock() // the sync worker is uploading a batch
+        val job = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { downloader().download() }
+        Thread.sleep(400)
+        assertTrue("no bundle request leaves while the upload runs", requests.isEmpty())
+        Clock.now += 5_000L // the batch is acknowledged at this instant, then the run ends
+        val ackedAt = SyncEngine.iso(Clock.now)
+        Clock.now += 1L
+        lock.unlock()
+        job.join()
+        assertEquals(1, requests.count { it.url.encodedPath == "/v1/sync/bundle" })
+        val requestedAt = db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT)!!
+        assertTrue("the request instant ($requestedAt) is after the ack ($ackedAt)", requestedAt > ackedAt)
+    }
+
+    /** The other order: while the bundle head request is in flight no sync run can start, so no acknowledgement lands inside the request. */
+    @Test fun noSyncRunCanStartWhileTheBundleRequestIsInFlight() = runBlocking {
+        val inRequest = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        bundleBody = { inRequest.countDown(); release.await(10, TimeUnit.SECONDS); fullBundle() }
+        val job = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { downloader().download() }
+        assertTrue(inRequest.await(10, TimeUnit.SECONDS))
+        assertTrue("the user's sync lock is held while the head request is out", SyncEngine.userLock(USER).isLocked)
+        release.countDown()
+        job.join()
+        assertFalse("and released once the head answer is in", SyncEngine.userLock(USER).isLocked)
+    }
+
+    /**
+     * Lost answer (ProgrammesSection ACHIEVEMENT RULE, ruling B1c): a memo sent in an upload whose answer never arrived is recorded as UNCERTAIN when the bundle is
+     * requested (the server may hold it); when it gets its answer ONE full day bundle is asked for, at most once per gap, and the list is renewed by it.
+     */
+    @Test fun aMemoSentButUnansweredIsRecordedAtTheRequestAndEarnsOneRefetchWhenAnswered() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid(); val fresh = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, state: String) = com.aktcl.aron.core.database.entity.OutboxEntity(
+            clientUuid = u, recordType = "memo", familyUuid = u, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = state, createdAt = "t",
+        )
+        db.outboxDao().insert(listOf(row(sent, "in_flight"), row(fresh, "pending"))) // one upload left in flight (answer lost), one never sent
+        val d = downloader()
+        assertEquals(BundleOutcome.APPLIED, d.download().outcome)
+        assertEquals(sent, db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)) // only the one that was SENT
+        val bundles = { requests.count { it.url.encodedPath == "/v1/sync/bundle" } }
+        assertNull("still unanswered: no refetch", d.refreshIfUncertainResolved()); assertEquals(1, bundles())
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now + 1_000L)) // the replay is answered later
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertNotNull("answered: one full refetch", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
+        assertNull("the refetch renewed the list", db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN))
+        assertNull("and nothing waits any more", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
+    }
+
+    /** Rule B of the programme figures (no clock): the memos acknowledged BEFORE the request are recorded by uuid at the request; one acknowledged after it is not in the set. */
+    @Test fun theMemosAcknowledgedBeforeTheRequestAreRecordedByUuidAndALaterAckIsNot() = runBlocking {
+        val before = com.aktcl.aron.core.common.ClientIds.newUuid(); val after = com.aktcl.aron.core.common.ClientIds.newUuid(); val lastMonth = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, date: String, state: String) = com.aktcl.aron.core.database.entity.OutboxEntity(
+            clientUuid = u, recordType = "memo", familyUuid = u, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = state, createdAt = "t",
+        )
+        db.outboxDao().insert(listOf(row(before, "2026-10-03", "pending"), row(after, "2026-10-04", "pending"), row(lastMonth, "2026-06-30", "pending")))
+        db.outboxDao().applyAck(before, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        db.outboxDao().applyAck(lastMonth, "acked", null, 8L, SyncEngine.iso(Clock.now))
+        assertEquals(BundleOutcome.APPLIED, downloader().download().outcome)
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))
+        assertEquals("memos inside the figure window (the quarter at most), acknowledged before the request", setOf(before), set)
+        db.outboxDao().applyAck(after, "acked", null, 9L, SyncEngine.iso(Clock.now + 1_000L)) // acknowledged after R
+        assertEquals(setOf(before), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
+    }
+
+    @Test fun redemptionsVoidsAndProgrammeRecordsAcknowledgedBeforeTheRequestAreInTheOrderToo() = runBlocking {
+        val ids = (1..4).map { com.aktcl.aron.core.common.ClientIds.newUuid() }
+        val types = listOf("redemption", "memo_void", "gift_choice", "visit")
+        db.outboxDao().insert(ids.zip(types).map { (u, t) -> com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = u, recordType = t, familyUuid = u, rank = 0, businessDate = "2026-10-03", payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t") })
+        ids.forEach { db.outboxDao().applyAck(it, "acked", null, 7L, SyncEngine.iso(Clock.now)) }
+        downloader().download()
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))!!
+        assertEquals(ids.take(3).toSet(), set) // a visit is not read by any figure rule
+    }
+
+    @Test fun aMemoQuarantinedWhenTheRequestLeavesIsRecordedAsUnsureEvenIfItIsAcceptedLater() = runBlocking {
+        val q = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = q, recordType = "memo", familyUuid = q, rank = 0, businessDate = "2026-10-03", payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t")))
+        db.outboxDao().applyAck(q, "quarantined", "late_sync", null, SyncEngine.iso(Clock.now))
+        downloader().download()
+        assertEquals(q, db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)) // never added by the phone, whenever the resolution is heard
+    }
+
+    @Test fun aRedemptionAcknowledgedLongBeforeIsStillInTheSetNoDateCutForRecordsThatAreNotMonthly() = runBlocking {
+        val old = com.aktcl.aron.core.common.ClientIds.newUuid(); val oldMemo = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, t: String, date: String) = com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = u, recordType = t, familyUuid = u, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t")
+        db.outboxDao().insert(listOf(row(old, "redemption", "2026-01-05"), row(oldMemo, "memo", "2026-01-05")))
+        db.outboxDao().applyAck(old, "acked", null, 1L, SyncEngine.iso(Clock.now)); db.outboxDao().applyAck(oldMemo, "acked", null, 2L, SyncEngine.iso(Clock.now))
+        downloader().download()
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))!!
+        assertEquals(setOf(old), set) // the redemption (balance) has no date cut; the January memo is outside every figure window
+    }
+
+    @Test fun nothingAcknowledgedYetIsAnEmptySetNotAnUnknownOrder() = runBlocking {
+        downloader().download()
+        assertEquals(emptySet<String>(), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
+        assertNull(ReferenceRepository.decodeAcked(null)); assertNull(ReferenceRepository.decodeAcked("garbage"))
+    }
+
+    @Test fun anAppThatDoesNotTrackRecordsNoOrder() = runBlocking {
+        tracking = false
+        downloader().download()
+        assertNull(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))
+    }
+
+    /** The AMO and TSO apps never pay a second full download of their large bundle for this: nothing is recorded and nothing is refetched. */
+    @Test fun anAppThatDoesNotTrackRecordsNothingAndNeverRefetches() = runBlocking {
+        tracking = false
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        assertNull(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN))
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_UNCERTAIN, sent)); db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        assertNull(d.refreshIfUncertainResolved())
+    }
+
+    /** Only the held bundle of TODAY is refetched (as refreshDelta); on a later Dhaka day the day start brings its own bundle. */
+    @Test fun theRefetchOnlyAppliesToTheHeldBundleOfToday() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        Clock.now += 24L * 3600 * 1000 // the next Dhaka day: the held bundle is yesterday's
+        assertNull(d.refreshIfUncertainResolved())
+    }
+
+    @Test fun theRefetchAfterAnAnswerIsRateLimitedSoAFlappingLinkCannotLoop() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_UNCERTAIN, sent)) // the list is still held
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(BundleDownloader.KEY_UNCERTAIN_REFETCH_AT, Clock.now.toString())) // a refetch just ran
+        assertNull(d.refreshIfUncertainResolved())
     }
 
     private suspend fun assertDayIsInRoom() {
@@ -268,6 +413,52 @@ class BundleDownloaderTest {
 
     private companion object {
         const val USER = 1001L
+    }
+
+    // ---- D-OWNER-MDM-02 iii: the lab grant in a full day bundle (device-scoped `cfg.integrity.lab_exemption`)
+
+    private fun withLabGrant(token: String?, scope: String = "device"): String {
+        val b = Json.parseToJsonElement(fullBundle()).jsonObject
+        val cfg = b["config"]!!.jsonObject
+        val values = JsonArray(cfg["values"]!!.jsonArray + (if (token == null) emptyList() else listOf(Json.parseToJsonElement(
+            """{"key":"cfg.integrity.lab_exemption","value":"$token","scope_type":"$scope","scope_id":7,"effective_from":null,"requires_ack":false}"""))))
+        return JsonObject(b + ("config" to JsonObject(cfg + ("values" to values)))).toString()
+    }
+
+    @Test fun aDayBundleThatCarriesTheGrantHandsItToTheGateAndOneWithoutItWithdraws() = runBlocking {
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
+        bundleBody = { withLabGrant("tok.sig") }
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals(listOf<String?>("tok.sig"), seen)
+        assertEquals("the response's own server time travels with the grant (it is what the phone judges freshness and expiry against)", listOf<Long?>(java.time.Instant.parse("2026-10-05T02:12:44.120Z").toEpochMilli()), times)
+        bundleBody = { withLabGrant(null).replace("2026-10-05:3", "2026-10-05:4") }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals("a full bundle without the value is the server withdrawing it", listOf<String?>("tok.sig", null), seen)
+    }
+
+    @Test fun onlyTheDeviceScopedValueCountsAndOnlyAnAppliedDayBundleSpeaks() = runBlocking {
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
+        bundleBody = { withLabGrant("tok.sig", scope = "global") }
+        downloader(labGrant = { t, st -> seen += t; times += st }).download()
+        assertEquals("a value of another scope is not a grant", listOf<String?>(null), seen)
+        seen.clear()
+        // offline, an older snapshot, a failed or unreadable bundle and a prefetch never grant and never revoke
+        bundleBody = { withLabGrant("tok.sig").replace("2026-10-05:3", "2026-10-05:2") }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.OLDER_IGNORED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        bundleBody = { """{"meta": {"bundle_version": "2026-10-05:9"}}""" }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertEquals(BundleOutcome.FAILED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        bundleBody = {
+            val b = Json.parseToJsonElement(withLabGrant("tok.sig")).jsonObject
+            val meta = JsonObject(b["meta"]!!.jsonObject + mapOf("bundle_version" to JsonPrimitive("2026-10-06:1"), "valid_for_business_date" to JsonPrimitive("2026-10-06"), "is_prefetch" to JsonPrimitive(true)))
+            JsonObject(b + ("meta" to meta) + ("routes" to JsonArray(b["routes"]!!.jsonArray.take(1)))).toString()
+        }
+        assertEquals(BundleOutcome.PREFETCH_STORED, downloader(labGrant = { t, st -> seen += t; times += st }).download("2026-10-06").outcome)
+        server.close()
+        assertEquals(BundleOutcome.OFFLINE, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
+        assertEquals(emptyList<String?>(), seen)
     }
 
     // ---- F-SYS-007: bundle delta refresh
@@ -433,5 +624,18 @@ class BundleDownloaderTest {
         val r = downloader().download(progress = BundleProgress { d, t -> seen += d to t })
         assertTrue(r.outcome != BundleOutcome.APPLIED)
         assertTrue("never complete without an apply: $seen", seen.none { it.first == it.second })
+    }
+
+    /** The AMO and TSO apps keep their own timing: a long upload run (the user's sync lock held) must not delay their bundle head request; the SR app (tracking) does wait (single flight). */
+    @Test fun aLongSyncRunNeverBlocksTheBundleRequestOfAnAppThatDoesNotTrackTheOrder() = runBlocking {
+        tracking = false
+        val lock = SyncEngine.userLock(USER)
+        lock.lock() // a long upload run holds the user's lock
+        try {
+            val r = kotlinx.coroutines.withTimeoutOrNull(5_000) { downloader().download() }
+            assertNotNull("the AMO/TSO bundle fetch finished while the lock was held", r)
+            assertEquals(BundleOutcome.APPLIED, r!!.outcome)
+            assertTrue(lock.isLocked)
+        } finally { lock.unlock() }
     }
 }

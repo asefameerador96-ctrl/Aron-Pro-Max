@@ -37,7 +37,7 @@ data class DataVoidIn(val client_uuid: String, val route_id: Long, val business_
 @Serializable
 data class DataVoidOut(val route_id: Long, val business_date: String, val scope: String, val voided_at: String, val tombstoned_records: Int, val pending_rows_reported: Int?)
 
-class DataVoidDeps(val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class DataVoidDeps(val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM, val dayInputs: com.aktcl.aron.backend.platform.DayInputsChanged? = null)
 
 /** TSO (own scope) and the ops admins (docs/21 matrix `day.void`). */
 private val VOID_ROLES = setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)
@@ -46,6 +46,8 @@ private val VOID_ROLES = setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)
  * Record tables a data void tombstones: every table that carries `route_id`, `business_date`, `client_uuid` and `voided_at`
  * (docs/24 s4.9 rule 5). Those of the web back office are listed in [WEB_TABLES] and are voided when their migration exists.
  */
+// gift_choice is deliberately NOT here (C-R5, D-LOY-API-26): a choice is the outlet's standing pick of its quarterly gift (app.gift_assignment carries the state), not a sale of the route-day; a void of a
+// day's sales must not reset what an outlet chose, and tombstoning the choice rows would not revert the assignment anyway. Redemptions and gift photos of the day are voided as before.
 internal val APP_VOID_TABLES = listOf(
     "attendance_event", "route_day_event", "day_exception", "stock_movement", "visit", "visit_skip", "memo", "memo_line", "memo_discount",
     "qc_entry_line", "print_event", "memo_void", "due_collection", "survey_response", "distribution_check", "distribution_check_line",
@@ -120,12 +122,16 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val voidedUuids = mutableListOf<String>()
         val voidedMemos = mutableListOf<String>()
         for (t in tables) {
+            // Lock order advisory, then rows (V0193): a gift photo's key locks are taken before its rows are updated, so a void and a concurrent photo insert cannot deadlock.
+            if (t == "gift_photo") h.createQuery("SELECT app.gift_photo_lock_keys(:r, :d)").bind("r", req.route_id).bind("d", date).mapTo(Int::class.java).one()
             val uuids = h.createQuery("UPDATE app.$t SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL RETURNING client_uuid").bind("now", now).bind("r", req.route_id).bind("d", date)
                 .map { rs, _ -> rs.getString(1) }.list()
             if (uuids.isNotEmpty()) counts[t] = uuids.size
             voidedUuids += uuids
             if (t == "memo") voidedMemos += uuids
         }
+        // B4: the rows and the Sales Submit anchor of the route-day are tombstoned; its derived late-row count follows, in this transaction.
+        d.dayInputs?.changed(h, listOf(req.route_id), date)
         // An approved dues correction attached to a tombstoned memo would survive the void and leave the balance wrong: refuse the whole void
         // (smallest safe version; reversal through a ledger row is a later row, DECISIONS.md). Read after the tombstoning UPDATE, which waited
         // for any approval holding the memo row, so a concurrent approval is seen (the approval takes FOR SHARE on the memo).

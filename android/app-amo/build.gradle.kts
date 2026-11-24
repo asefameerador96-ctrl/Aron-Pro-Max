@@ -12,6 +12,9 @@ plugins {
 // Without it the app builds and runs with push disabled (FCM only nudges pulls, docs/24 s4.7, s13.6).
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
+    // The benchmark build types have their own application id (".benchmark", D-AINT-05), which the Firebase config has no client for:
+    // push stays off there, exactly as in a build without the file. Release and debug are untouched.
+    tasks.matching { it.name == "processBenchmarkGoogleServices" || it.name == "processBenchmarkProfileGoogleServices" }.configureEach { enabled = false }
 }
 
 // API origin (docs/24 s3.1): scheme and host only, no path; the contract paths start with /v1. Validated here so a wrong
@@ -71,6 +74,9 @@ android {
         // AUD-PERF-04: release code (R8, shrunk) signed with the debug key and profileable, for :android:benchmark only.
         create("benchmark") {
             initWith(getByName("release"))
+            // Exempt from the Developer options gate (root build.gradle.kts), so it must never be able to replace a release install:
+            // its own application id (D-AINT-05). benchmarkProfile inherits it through initWith.
+            applicationIdSuffix = ".benchmark"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             isDebuggable = false
@@ -129,4 +135,14 @@ dependencies {
     // exported test activity would fail AppCoexistenceTest)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
+}
+
+// D-AGATE-29: AmoNavigationCoverageTest and MainActivityEffectKeysTest scan this app's main sources and feature-amo. They read .kt/.xml SOURCE files at run time, which Gradle cannot see, so those files are declared as inputs of every unit test task of this module:
+// the up-to-date check and the build cache can never answer for a changed source file (a structural test that can pass from cache is not a gate).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree("android") {
+            include("app-amo/src/main/**", "feature-amo/src/main/**")
+        },
+    ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
 }

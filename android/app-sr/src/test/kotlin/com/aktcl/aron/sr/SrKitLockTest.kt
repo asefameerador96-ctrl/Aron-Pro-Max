@@ -48,6 +48,9 @@ class SrKitLockTest {
         previousOwn = Thread.currentThread().uncaughtExceptionHandler; Thread.currentThread().uncaughtExceptionHandler = catcher
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         f = SrLockFixture(context, latePolicy = "reject")
+        // D-AGATE-29: the day's clock is pinned to noon Dhaka (06:00Z) of a fixed date, and the fixture's check-in (made on the REAL date at construction) is repeated for it, so no test of this class can
+        // see the business date change when the suite happens to run across Dhaka midnight (18:00:00Z)
+        f.trustAt(java.time.Instant.parse("2026-10-06T06:00:00Z").toEpochMilli()); f.checkIn()
     }
 
     @After fun tearDown() {
@@ -76,6 +79,41 @@ class SrKitLockTest {
         val later = f.openCall(outletId = 50001, seq = 3)
         runBlocking { f.qcLineOn(later) }
         assertEquals(com.aktcl.aron.feature.sale.domain.EditDenied.QcDone, runBlocking { kit.prepareEdit(memo) })
+    }
+
+    // round-2 review: an edit is never let in and then refused at the save: a memo of a day whose sales are submitted is denied up front, before any location reading
+    @Test fun anEditOfAMemoOfASubmittedDayIsDeniedUpFrontNotAtTheSave() {
+        val v = f.openCall()
+        val memo = f.creditMemo(v)
+        val kit = f.day.sale
+        runBlocking { kit.prepare() }
+        f.salesSubmitted()
+        assertEquals(com.aktcl.aron.feature.sale.domain.EditDenied.DayClosed, runBlocking { kit.prepareEdit(memo) })
+    }
+
+    /**
+     * Review N1 (ruling 2 of D-LEAD-PREREQ-03): with the clock really moved past Dhaka midnight, EVERY record of a call still open takes the VISIT's date:
+     * the sale draft (dated when the sale screen opens), the collection (Mark Paid) and the visit close. Before, the close and the collection carried the
+     * clock's date and the draft was dated today.
+     */
+    @Test fun everyRecordOfACallThatCrossesMidnightCarriesTheVisitsDate() {
+        val d0 = f.date
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        val memo = f.creditMemo(v)
+        val drawn = f.memoViewModel()
+        drawn.open(memo)
+        await("Mark Paid is drawn") { drawn.state.value.canMarkPaid }
+        f.trustAt(java.time.LocalDate.parse(d0).plusDays(1).atTime(0, 5).toInstant(java.time.ZoneOffset.ofHours(6)).toEpochMilli())
+        assertEquals("the clock moved", java.time.LocalDate.parse(d0).plusDays(1).toString(), f.day.businessDate())
+        assertEquals("the sale draft is dated with the visit", d0, f.day.sale.saleVisit(v).businessDate)
+        drawn.markPaid()
+        await("the collection is stored") { runBlocking { f.db.captureDao().dueCollectionsOn(d0) }.isNotEmpty() }
+        val due = runBlocking { f.db.captureDao().dueCollectionsOn(d0) }.single()
+        assertEquals("the collection carries the VISIT's date and visit", d0 to v.visitUuid, due.meta.businessDate to due.visitClientUuid)
+        assertTrue("and nothing was dated with the new day", runBlocking { f.db.captureDao().dueCollectionsOn(f.day.businessDate()) }.isEmpty())
+        runBlocking { f.day.sale.prepare(); f.day.sale.closeVisit(VisitOutcomeCode.SOLD) }
+        assertEquals("the visit close carries the VISIT's date", d0, runBlocking { f.db.captureDao().visitClosesOn(d0) }.single().meta.businessDate)
+        assertTrue(runBlocking { f.db.captureDao().visitClosesOn(f.day.businessDate()) }.isEmpty())
     }
 
     private fun collections() = runBlocking { f.db.captureDao().dueCollectionsOn(f.date) }

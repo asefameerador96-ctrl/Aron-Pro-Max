@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 181 | 2986 |
-| `dw` | 75 | 1211 |
+| `app` | 189 | 3097 |
+| `dw` | 81 | 1287 |
 
 ## Index
 
@@ -62,6 +62,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
 | [`app.device_command`](#appdevice_command) | table | backend:mdm | ONLINE | audit | personal | MDM command to one device (lock, unlock, message, locate, reboot, factory reset, apply policy): idempotent by command_id, pushed by FCM and pulled by the DPC; a factory reset needs a second person (D-MDM-01). |
 | [`app.device_directive`](#appdevice_directive) | table | backend:config | ONLINE | ops | none | A signed remote directive sent to a phone, with delivery and acknowledgement times. |
+| [`app.device_lab_exemption`](#appdevice_lab_exemption) | table | backend:analytics | ONLINE | audit | none | The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days. |
 | [`app.device_nonce`](#appdevice_nonce) | table | backend:auth | SERVER | session | none | Single-use server nonce for a Play Integrity request or key attestation. |
 | [`app.device_otp`](#appdevice_otp) | table | backend:auth | ONLINE | session | secret | One-time code a TSO issues to bind a phone to a user, stored as hash and encrypted for display. |
 | [`app.device_policy`](#appdevice_policy) | table | backend:config | SERVER | ops | none | The device policy rendered for a phone at a given policy version, with its hash. |
@@ -89,11 +90,13 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal. |
 | [`app.gift_assignment`](#appgift_assignment) | table | backend:masterdata | ONLINE | transaction | none | An Astha gift chosen for an outlet and quarter, locked by the hand-over photo. |
 | [`app.gift_change`](#appgift_change) | table | backend:masterdata | ONLINE | audit | none | Append-only journal of gift create and update calls from the portal with a snapshot of the first result, so a retried call (same request UUID) is answered with that result. |
+| [`app.gift_choice`](#appgift_choice) | table | backend:sync | OFFLINE | transaction | personal | The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet). |
 | [`app.gift_photo`](#appgift_photo) | table | backend:sync | OFFLINE | transaction | personal | Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit. |
 | [`app.house`](#apphouse) | table | backend:masterdata | ONLINE | master | none | Distribution house that a zone may belong to; it carries no rules in Phase 1. |
 | [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
 | [`app.indent_movement`](#appindent_movement) | table | backend:masterdata | ONLINE | transaction | none | Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty in Phase 1. |
 | [`app.ingest_registry`](#appingest_registry) | partitioned table | backend:sync | SERVER | ops | none | Global register of every device record's client_uuid and payload hash; the uniqueness point for idempotent sync. |
+| [`app.late_row_fact`](#applate_row_fact) | table | backend:sync | ONLINE | ops | none | One row per memo or due collection that was stored while its route-day was Final Submitted (absence = stored while the day was open): written once, never changed (api_rw has no UPDATE or DELETE), so a replay or a recount cannot move a row from one late-row counter to the other. Rows stored before this table existed were reconstructed by the V0191 backfill (best available: received_at inside a [final_submit.submitted_at, reopened_at) window of the zone-day). |
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
 | [`app.master_history_map`](#appmaster_history_map) | table | db | SERVER | master | none | Registry of the master history tables (V0119): the master each one follows, its key column and the audit entities its past was recovered from. |
@@ -111,6 +114,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.offer_version_product`](#appoffer_version_product) | table | backend:masterdata | ONLINE | master | none | Product the offer version applies to, at category, brand, variant or SKU level. |
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
+| [`app.outlet_campaign_sku_target`](#appoutlet_campaign_sku_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page). |
+| [`app.outlet_campaign_target`](#appoutlet_campaign_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month. |
 | [`app.outlet_change_request`](#appoutlet_change_request) | table | backend:masterdata | OFFLINE | transaction | sensitive | A request from the field to add, close, edit, move or relocate an outlet, with proposed data and decision trail. |
 | [`app.outlet_class_history`](#appoutlet_class_history) | table | db | SERVER | master | none | One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, price type and status (route and cluster are in app.outlet_placement_history) (V0119); written by the history trigger on app.outlet, seeded from app.audit_log. |
 | [`app.outlet_location_history`](#appoutlet_location_history) | table | backend:masterdata | SERVER | master | none | Append-only history of every map pin an outlet has had and where it came from. |
@@ -152,12 +157,15 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.role_grant_map`](#approle_grant_map) | table | backend:auth | REFERENCE | master | none | Admin permission granted to each role, carried as the web permission claim. |
 | [`app.route`](#approute) | table | backend:masterdata | ONLINE | master | none | A sales route in a zone with its code, kind, visit days and label. |
 | [`app.route_assignment`](#approute_assignment) | table | backend:masterdata | ONLINE | master | none | Assignment of a user to a route as primary or cover for a date range. |
+| [`app.route_brand_kpi_target`](#approute_brand_kpi_target) | table | backend:admin | ONLINE | master | none | Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05). |
 | [`app.route_day`](#approute_day) | table | backend:sync | SERVER | transaction | none | One row per route and business date holding the day state and submit timestamps; created by the server from assignments. |
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
 | [`app.route_history`](#approute_history) | table | db | SERVER | master | none | One row is a period of a route's kind, visit kind, class and status (its zone is in app.route_zone_history) (V0119); written by the history trigger on app.route, seeded from app.audit_log. |
+| [`app.route_kpi_month`](#approute_kpi_month) | table | backend:admin | ONLINE | master | none | Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row. |
 | [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.route_programme_target`](#approute_programme_target) | table | backend:admin | ONLINE | master | none | Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal. |
 | [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
 | [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period in which a route belonged to a zone; written by triggers on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
@@ -269,15 +277,21 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
 | [`dw.v_offer`](#dwv_offer) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per discount programme (app.offer) with the rule of its current version. The portal exists; the field does not use it yet (memo offer line zero, bundle offers empty). is_effective = status active. |
 | [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
+| [`dw.v_outlet_campaign_sku_target`](#dwv_outlet_campaign_sku_target) | view | worker | SERVER | master | none | Stable view: campaign SKU target per outlet and month in base units (N-3). |
+| [`dw.v_outlet_campaign_target`](#dwv_outlet_campaign_target) | view | worker | SERVER | master | none | Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3). |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
 | [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
 | [`dw.v_programme_version`](#dwv_programme_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme. |
+| [`dw.v_route_brand_kpi_target`](#dwv_route_brand_kpi_target) | view | worker | SERVER | master | none | Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5). |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
+| [`dw.v_route_kpi_month`](#dwv_route_kpi_month) | view | worker | SERVER | master | none | Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5). |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
+| [`dw.v_route_programme_target`](#dwv_route_programme_target) | view | worker | SERVER | master | none | Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
 | [`dw.v_support_ticket`](#dwv_support_ticket) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided. |
+| [`dw.v_survey_response`](#dwv_survey_response) | view | backend:sync | OFFLINE | transaction | personal | Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query), every survey kind: outlet, date, question, answer, photo flag. A text answer is free text and can hold personal data (a phone number): the view is personal and bi_reader reads it without answer_text. The photo itself (a media id) is never in a reuse view. is_effective = not voided. |
 | [`dw.v_task`](#dwv_task) | view | backend:notify | OFFLINE | transaction | none | Stable view: one row per task (TSO Assign Task, AMO or web task) with its type, creator, assignee, outlet, route, due date and status; no title or description. is_effective = not data-voided. |
 | [`dw.v_visit`](#dwv_visit) | view | worker | SERVER | event_fact | none | Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided. |
 | [`dw.v_visit_plan_outlet`](#dwv_visit_plan_outlet) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per outlet of a TSO visit plan (Set Plan) with the plan's date and route and the first Visit Query that completed it. is_effective = neither the outlet row nor its plan is data-voided. |
@@ -584,6 +598,7 @@ One check-in or check-out of a user with its on-demand location fix.
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `address_display` | text | null | personal | Reverse-geocoded address shown for display only; never used for a decision. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `closed_by` | text | not null |  | Who closed a check-out: rep (the rep pressed check-out; every check-in and every record of an older phone) or phone (the phone closed a forgotten day at a later start, with one location attempt whose reading, if any, is kept on this row only: never a geo_fix, never the newest location). A phone close is read everywhere as "no check-out"; a real check-out of the same day outranks it. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1327,6 +1342,25 @@ Keys: `PRIMARY KEY (directive_id)`
 
 References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`
 
+## app.device_lab_exemption
+
+The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days.
+
+`owner: backend:analytics | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `device_id` | bigint | not null |  | The enrolled phone the exemption is for; one row per device (a new grant replaces the row). |
+| `granted_by` | bigint | not null |  | The portal user (Super Admin or an Admin with the mdm module write grant) who granted it. |
+| `granted_at` | timestamp with time zone | not null |  | UTC time the exemption was granted. |
+| `expires_at` | timestamp with time zone | not null |  | UTC time the exemption ends; at most 14 days after granted_at. The signed grant carries the same time, and the phone also caps it. |
+| `note` | text | null |  | Why the phone needs it (for example the walk it is for); free text, at most 300 characters. |
+| `grant_token` | text | null |  | The server-signed grant (ECDSA P-256 over the device uuid, the API host, granted_at and expires_at), signed ONCE when the exemption is granted and stored so the bundle that carries it is the same bytes on every fetch. NULL delivers nothing. Not a secret: it only works on the one phone and environment it names and the phone verifies it with a public key. |
+
+Keys: `PRIMARY KEY (device_id)`
+
+References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`
+
 ## app.device_nonce
 
 Single-use server nonce for a Play Integrity request or key attestation.
@@ -1972,7 +2006,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `fix_age_ms` | bigint | null |  | Age of the fix in milliseconds when the phone used it. |
 | `time_to_fix_ms` | integer | null |  | Milliseconds the phone took to obtain the fix. |
 | `request_priority` | text | null |  | Location request priority the phone used: high_accuracy or balanced. |
-| `is_mock` | boolean | not null |  | True when the location came from a mock location provider (never geo-valid). |
+| `is_mock` | boolean | not null |  | True when the phone treated the fix as mocked: the platform mock flag OR an inferred hard code (a selected mock-location app, a test provider; D-AINT-06). The codes in signals tell the two apart; a fix from a phone older than contract 1.19.0 carries only this flag. A mocked fix is never geo-valid. |
 | `reused` | boolean | not null |  | True when the phone reused a recent fix instead of requesting a new one. |
 | `refresh_count` | smallint | null |  | Number of times the fix was refreshed before it was used. |
 | `gnss` | jsonb | null |  | JSON GNSS summary as received from the phone. |
@@ -1992,6 +2026,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `signals` | text[] | null |  | Anti-spoofing codes the phone found for this fix (contract 1.21.0 GeoFix.signals): hard mock_flag, mock_app_selected, test_provider; soft test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework. NULL = an older phone sent none (unknown, not clean); an empty array = the phone checked and found nothing. |
 
 Keys: `UNIQUE (source_client_uuid, slot, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -2088,6 +2123,51 @@ Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`
 
+## app.gift_choice
+
+The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet).
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Client-generated UUID v4 of the record; the server upserts by it (idempotency key). |
+| `family_uuid` | uuid | not null |  | client_uuid of the family header the record belongs to (equal to client_uuid on a header). |
+| `business_date` | date | not null |  | Asia/Dhaka date of the trusted capture time. |
+| `business_date_device` | date | null |  | Date on the phone's own clock, kept when the server re-dated the row to a trusted business date. |
+| `user_id` | bigint | not null |  | Database id of the user who captured the record, taken from the token and never from the body. |
+| `device_id` | bigint | null |  | Database id of the phone that captured the record, from the token. |
+| `acting_for_user_id` | bigint | null |  | Assignee of the route when the capturing user worked it as a cover substitute. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `captured_at` | timestamp with time zone | not null |  | UTC instant of capture on the phone, from trusted time when an anchor exists. |
+| `captured_elapsed_ms` | bigint | null |  | SystemClock.elapsedRealtime() at capture, in milliseconds since boot. |
+| `boot_count` | integer | null |  | Android boot counter at capture; with captured_elapsed_ms it anchors trusted time. |
+| `clock_offset_ms` | bigint | null |  | Server time minus phone wall clock known at capture, in ms; null if the phone never synced. |
+| `captured_offline` | boolean | not null |  | True when the phone had no connection at capture. |
+| `schema_version` | integer | not null |  | Version of the record payload schema. |
+| `config_version` | bigint | not null |  | Global config version in force for the row (at capture for device records). |
+| `bundle_version` | text | null |  | Version of the day bundle the phone held at capture (<date>:<seq>). |
+| `bundle_stale` | boolean | not null |  | True when the record was captured on a cached bundle older than the business date. |
+| `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
+| `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet) that chose the gift. |
+| `gift_id` | bigint | not null |  | Gift (app.gift) chosen. |
+| `quarter` | text | not null |  | Astha quarter label the choice is for, for example 2026-Q4 (cfg.astha.quarter_start_month). |
+| `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
+| `fix_lat` | double precision | null | personal | Latitude of the user's location fix taken with the record (WGS84 degrees). |
+| `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
+| `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
+| `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed), stamped at insert from the user, outlet and route (V0116). |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.gift_photo
 
 Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit.
@@ -2133,6 +2213,13 @@ Hand-over photo record of a gift, one per Astha assignment or redeemed campaign 
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `is_duplicate` | boolean | not null |  | True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0193). |
+| `flagged_at` | timestamp with time zone | null |  | When the photo was flagged as a duplicate or as failing its checks. |
+| `check_flag` | text | null |  | Why a campaign-unit photo failed the ingest checks (unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach, parent_voided, parent_refused); null when it passed. Such a photo is stored, flagged (is_duplicate) and never the unit's photo. |
+| `server_verdict` | text | null |  | The server re-check of the photo fix against the outlet location (same function as the phone, docs/24 s11.3); the photo is never refused for it. |
+| `server_distance_m` | double precision | null |  | Metres between the photo fix and the outlet location at capture, from the server re-check; null when there was no usable fix or location. |
+| `server_radius_m` | integer | null |  | The geofence radius in metres the server re-check used (the value in force at capture). |
+| `server_checked_at` | timestamp with time zone | null |  | When the server re-check ran; null until it has. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2262,6 +2349,20 @@ Global register of every device record's client_uuid and payload hash; the uniqu
 Keys: `PRIMARY KEY (client_uuid)`
 
 References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.late_row_fact
+
+One row per memo or due collection that was stored while its route-day was Final Submitted (absence = stored while the day was open): written once, never changed (api_rw has no UPDATE or DELETE), so a replay or a recount cannot move a row from one late-row counter to the other. Rows stored before this table existed were reconstructed by the V0191 backfill (best available: received_at inside a [final_submit.submitted_at, reopened_at) window of the zone-day).
+
+`owner: backend:sync | capture: ONLINE | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `client_uuid` | uuid | not null |  | Client uuid of the memo or due collection. |
+| `stored_closed` | boolean | not null |  | Always true: the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final). |
+| `created_at` | timestamp with time zone | not null |  | When the fact was written. |
+
+Keys: `PRIMARY KEY (client_uuid)`
 
 ## app.leave_application
 
@@ -2844,10 +2945,58 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 | `trade_license_enc` | bytea | null | sensitive | Trade licence number, envelope-encrypted like nid_enc. |
 | `pii_key_id` | smallint | null |  | app.pii_key that encrypted this row's *_enc values; null when none is set. |
 | `data_origin` | app.data_origin | not null |  | Origin of the outlet: production (default), pilot, test (for example the owner's test outlets) or seed; stamped onto every capture row at this outlet. |
+| `source_created_at` | timestamp with time zone | null |  | Created At of the outlet in the field's master sheet (the import, D-MD-20); our created_at is when this server wrote the row. Null for outlets not imported. |
+| `source_updated_at` | timestamp with time zone | null |  | Updated At of the outlet in the field's master sheet (the import, D-MD-20); our updated_at is when this server last changed the row. Null for outlets not imported. |
+| `source_contact_number` | text | null | personal | The phone text of the field's sheet when it could not be repaired to 01XXXXXXXXX (contact_number then stays empty); kept so the value is not lost, never sent to a device or shown in a report. |
+| `source_sub_channel` | text | null |  | The tier text of the field's sheet when it was NOT stored in sub_channel_id (it disagreed with the channel, is retired or unknown); kept so the value is not lost. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (merged_into_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (pii_key_id) REFERENCES app.pii_key(key_id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+
+## app.outlet_campaign_sku_target
+
+Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `sku_id` | bigint | not null |  | SKU (app.sku). |
+| `qty_base` | bigint | not null |  | Target quantity in the SKU's base unit (sticks, pieces or dozens). |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id, sku_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
+## app.outlet_campaign_target
+
+Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `std_target` | numeric(16,3) | not null |  | STD target of the month, up to three decimals (base units of the campaign SKUs; owner question Q-H). |
+| `memo_target` | integer | not null |  | Number of memos the outlet should place with the campaign SKUs in the month. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.outlet_change_request
 
@@ -2881,7 +3030,7 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
-| `request_type` | text | not null |  | Kind of request: new, close, info, cluster, location or route_add. |
+| `request_type` | text | not null |  | Kind of request: new, close, info, cluster, location, route_add or cluster_create (a proposed new cluster for the route the SR works; no outlet). |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
 | `proposed` | jsonb | not null | sensitive | JSON outlet proposal (names, contacts, ids, location) as submitted. |
 | `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
@@ -2901,10 +3050,12 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `decision_reason` | text | null |  | Reason given for approving or rejecting the request. |
 | `created_outlet_id` | bigint | null |  | Id of the outlet created when a new-outlet request was approved. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `created_cluster_id` | bigint | null |  | The live cluster an approved cluster_create request made (set once at the approval); null for every other request. |
+| `approved_cluster_id` | bigint | null |  | The cluster the approval of a new-shop or cluster request put the outlet in (set once at the approval); null for other request types and for requests not yet approved. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (verified_by) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (created_outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (verified_by) REFERENCES app.app_user(id)`
 
 ## app.outlet_class_history
 
@@ -2946,7 +3097,7 @@ Append-only history of every map pin an outlet has had and where it came from.
 | `lng` | double precision | null |  | Longitude in WGS84 degrees; null when the basis is placeholder or none. |
 | `accuracy_m` | double precision | null |  | Horizontal accuracy radius of the location fix in metres. |
 | `source` | text | not null |  | Where the row came from; allowed values are listed under constraints. |
-| `basis` | text | not null |  | Location basis from valid_from on: master, provisional, placeholder (no usable pin) or none (pin cleared). |
+| `basis` | text | not null |  | Location basis from valid_from on: master, provisional, placeholder (no usable pin), none, or candidate (a master pin the import did NOT apply because the field had confirmed another; never the pin in force). |
 | `source_client_uuid` | uuid | null |  | Client UUID of the outlet_change_request or visit that supplied the fix for this pin. |
 | `valid_from` | timestamp with time zone | not null |  | First day the row is in effect. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
@@ -3919,8 +4070,8 @@ A sales route in a zone with its code, kind, visit days and label.
 | `display_label` | text | null |  | Text printed for the route; never used as a key. |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). |
-| `visit_days_mask` | smallint | not null |  | Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily. |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned). |
+| `visit_days_mask` | smallint | not null |  | Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily; 0 means no visit plan (visit_kind none), never planned. |
 | `sequence_no` | integer | null |  | Order of the row within its parent or day. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
@@ -3961,6 +4112,28 @@ Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.route_brand_kpi_target
+
+Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `brand_id` | bigint | not null |  | Brand: an app.product_node of level brand (checked by the upload API). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `memo_target` | integer | not null |  | Number of memos containing the brand the route should reach in the month. |
+| `kpi_alloc_mtk` | bigint | not null |  | KPI money allocated to the brand for the month, integer milli-taka. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, brand_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (brand_id) REFERENCES app.product_node(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.route_day
 
 One row per route and business date holding the day state and submit timestamps; created by the server from assignments.
@@ -4000,6 +4173,7 @@ One row per route and business date holding the day state and submit timestamps;
 | `last_bundle_at` | timestamp with time zone | null |  | UTC time of the last full bundle download that carried this route-day (Data Entry Log DOWNLOAD MAX); null before the first. |
 | `bundle_count` | integer | not null |  | Number of full bundle downloads that carried this route-day (Data Entry Log DOWNLOAD count); 304 answers and delta pages are not counted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `late_rows_after_sales_submit` | integer | not null |  | Memos and due collections of the route-day captured after the same user's Sales Submit record (its own captured_at, phone clock against phone clock; the newest non-voided cycle is the anchor, so a second submit can LOWER the count) and not voided and not stored while the day was closed (app.late_row_fact). DERIVED from the stored rows (recounted under the route-day lock whenever a memo, a due collection or a route-day Sales Submit is stored), so it is one number under replay and any arrival order; a memo chain counts once. Rows stored after the Final Submit count under late_rows_after_final instead. Never refused. |
 
 Keys: `UNIQUE (route_id, business_date)`; `PRIMARY KEY (id)`
 
@@ -4054,6 +4228,7 @@ A day_open or day_submit record from a phone or the online Sales Submit.
 | `retailers_with_dues` | integer | null |  | Number of retailers with dues at submit. |
 | `stock_slip_printed` | boolean | null |  | True when the day's stock slip was printed. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `anchor_clock` | text | null |  | day_submit only: whose clock stamped captured_at, the anchor of the late-row count. phone (or null) = the phone's own clock; server = the server stamped it (an online Sales Submit without a phone clock or with an implausible one). Written with the record. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4093,7 +4268,7 @@ One row is a period of a route's kind, visit kind, class and status (its zone is
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | The app.route row. |
 | `kind` | text | not null |  | Kind of the row (as it was in the period). |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned). (as it was in the period). |
 | `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
 | `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
@@ -4104,6 +4279,28 @@ One row is a period of a route's kind, visit kind, class and status (its zone is
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id) ON DELETE CASCADE`
+
+## app.route_kpi_month
+
+Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `kpi_alloc_mtk` | bigint | not null |  | Total KPI money allocated to the route for the month, integer milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points (5000 = 50.00%); null when none is set. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR, integer milli-taka; null when none is set. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.route_monthly_target
 
@@ -4136,8 +4333,8 @@ Planned visit days of a route, effective-dated.
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | Route (app.route) being worked. |
-| `visit_kind` | text | null |  | Visit pattern in force for the period: daily, 3f or 2f. |
-| `visit_days_mask` | smallint | not null |  | Bit mask of planned visit days: bit0 Saturday through bit6 Friday. |
+| `visit_kind` | text | null |  | Visit pattern in force for the period: daily, 3f, 2f or none (no visit plan, mask 0). |
+| `visit_days_mask` | smallint | not null |  | Bit mask of planned visit days: bit0 Saturday through bit6 Friday; 0 means no visit plan (visit_kind none). |
 | `valid_from` | date | not null |  | First day the row is in effect. |
 | `valid_to` | date | null |  | First date the planned days no longer apply; null means open. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
@@ -4146,6 +4343,27 @@ Planned visit days of a route, effective-dated.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
+
+## app.route_programme_target
+
+Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Programme (app.programme). |
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `target_qty` | numeric(16,3) | not null |  | Target in the programme unit (base units divided by programme.rules.unit_divisor), up to three decimals. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.route_target_batch
 
@@ -4812,6 +5030,15 @@ Records held for a human decision with their payload and resolution.
 | `approved_by_user_id` | bigint | null |  | Id of the second user who approved accept_with_fix for data-entry classes. |
 | `resolved_at` | timestamp with time zone | null |  | UTC time the item was resolved. |
 | `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
+| `reopened_at` | timestamp with time zone | null |  | When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never. |
+| `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
+| `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. The whole marker (this column, awaited_uuid, awaited_field, accepted_parent_uuid, waiting_release_code, awaited_refused, waiting_checked_at) is cleared automatically by a trigger when the item is closed, re-opened or changes its code, and a CHECK refuses a marker on a non-open row (D-LOY-API-31); a re-hold with the same status and code keeps it by design. |
+| `awaited_uuid` | uuid | null |  | The parent a waiting item waits for (D-LOY-API-30). |
+| `awaited_field` | text | null |  | The field of the parent a waiting item waits for, e.g. visit_client_uuid (D-LOY-API-31). |
+| `accepted_parent_uuid` | uuid | null |  | The parent whose accept released this child into waiting (D-LOY-API-30). |
+| `waiting_release_code` | text | null |  | The override the reviewer's accept carried for this child at that time: the code of a same-uploader, same-device child; null otherwise (D-LOY-API-30). The automatic release carries exactly this. |
+| `awaited_refused` | boolean | not null |  | The awaited parent is refused or discarded; refreshed at every sweep pass (D-LOY-API-30). |
+| `waiting_checked_at` | timestamp with time zone | null |  | When the sweep last examined this waiting item; the least recently examined go first (D-LOY-API-30). |
 
 Keys: `UNIQUE (client_uuid, payload_sha256)`; `UNIQUE (resolution_uuid)`; `PRIMARY KEY (id)`
 
@@ -5270,7 +5497,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time the row was tombstoned (admin data void, or a paper web_entry visit superseded by the phone's visit for the same memo); write-once, the row is never deleted, voided visits never count. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
-| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is app.route.visit_kind. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `opened_at` | timestamp with time zone | not null |  | UTC time the visit was opened on the phone. |
 | `sequence_no` | integer | not null |  | Order of the row within its parent or day. |
@@ -5893,7 +6120,7 @@ Route-level geography dimension flattened through zone, territory, division and 
 | `route_code` | text | not null |  | Code of the route. |
 | `route_name` | text | not null |  | Name of the route. |
 | `route_kind` | text | not null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `zone_name` | text | not null |  | Name of the zone. |
 | `territory_id` | bigint | not null |  | Territory (app.territory). |
@@ -5924,7 +6151,7 @@ One row is a version of geo valid over [valid_from, valid_to) (SCD2): dated by t
 | `route_code` | text | not null |  | Code of the route. |
 | `route_name` | text | not null |  | Name of the route. |
 | `route_kind` | text | not null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period). |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `zone_name` | text | not null |  | Name of the zone. |
 | `territory_id` | bigint | not null |  | Territory (app.territory). |
@@ -6367,7 +6594,7 @@ One row per visit with device and server verdicts, distances, the outlet base an
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
-| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind. |
 | `opened_at` | timestamp with time zone | not null |  | UTC time the visit was opened. |
 | `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
 | `outcome_code` | text | null |  | Outcome of the visit or check; allowed values are listed under constraints. |
@@ -6580,7 +6807,7 @@ Stable view (contract for BI and other products): KPIs, money and day state per 
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `route_code` | text | null |  | Route code. |
 | `route_name` | text | null |  | Route name. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `zone_name` | text | null |  | Zone name. |
 | `territory_id` | bigint | null |  | Territory (app.territory). |
@@ -6717,7 +6944,7 @@ Stable view: the current route and geography dimension (dw.dim_geo; versions in 
 | `route_code` | text | null |  | Code of the route. |
 | `route_name` | text | null |  | Name of the route. |
 | `route_kind` | text | null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `route_class` | text | null |  | Route class copied from app.route.route_class (normal, manual, dummy_br, dummy_institutional). |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `zone_name` | text | null |  | Name of the zone. |
@@ -6749,7 +6976,7 @@ Stable view: a route's place in the geography (zone, house, territory, division,
 | `division_id` | bigint | null |  | Division of the territory in the period. |
 | `wing_id` | bigint | null |  | Wing of the division in the period. |
 | `route_kind` | text | null |  | Route kind (sr, amo) in the period. |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period). |
 | `route_class` | text | null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
 | `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the route existed). |
@@ -7185,6 +7412,49 @@ Stable view: one row per immutable offer version with its rule, validity, reward
 | `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active offer. |
 
+## dw.v_outlet_campaign_sku_target
+
+Stable view: campaign SKU target per outlet and month in base units (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `sku_code` | text | null |  | SKU code. |
+| `qty_base` | bigint | null |  | Target quantity in the SKU base unit. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
+## dw.v_outlet_campaign_target
+
+Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `std_target` | numeric(16,3) | null |  | STD target of the month, three decimals. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_outlet_masked
 
 Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107).
@@ -7284,6 +7554,26 @@ Stable view: one row per immutable programme version with its window, rules, tie
 | `data_origin` | app.data_origin | null |  | Always production: programmes carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active programme. |
 
+## dw.v_route_brand_kpi_target
+
+Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `brand_id` | bigint | null |  | Brand (app.product_node). |
+| `brand_code` | text | null |  | Brand code; null when the brand has none. |
+| `brand_name` | text | null |  | Brand English name. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_day
 
 Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true.
@@ -7331,6 +7621,7 @@ Stable view: one row per route and business date (dw.agg_daily_route) with the z
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `late_rows_after_final` | integer | null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
+| `late_rows_after_sales_submit` | integer | null |  | Memos and due collections of the route-day captured after the same user's Sales Submit record (its own captured_at) and stored while the zone-day was open; derived from the stored rows, one number under replay and any arrival order. After the Final Submit a late row counts under late_rows_after_final instead. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
@@ -7354,6 +7645,24 @@ Stable view: active memos, outlets sold to, gross and net per route, business da
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the memos behind the row. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_route_kpi_month
+
+Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_monthly_target
 
 Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01).
@@ -7374,6 +7683,24 @@ Stable view: route x SKU monthly targets in base units with the month's working 
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
 | `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_route_programme_target
+
+Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `programme_id` | bigint | null |  | Programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `target_qty` | numeric(16,3) | null |  | Target in the programme unit, three decimals. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
 
 ## dw.v_stock_movement
 
@@ -7428,6 +7755,36 @@ Stable view: one row per support ticket with its current status, priority and li
 | `data_origin` | app.data_origin | null |  | Origin of the ticket (app.support_ticket.data_origin, stamped at capture). |
 | `is_effective` | boolean | null |  | True when the ticket is not data-voided (voided_at is null). |
 
+## dw.v_survey_response
+
+Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query), every survey kind: outlet, date, question, answer, photo flag. A text answer is free text and can hold personal data (a phone number): the view is personal and bi_reader reads it without answer_text. The photo itself (a media id) is never in a reuse view. is_effective = not voided.
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Business date (Asia/Dhaka) of the answer. |
+| `response_uuid` | uuid | null |  | Client uuid of the answer record (idempotency key). |
+| `visit_client_uuid` | uuid | null |  | The visit the survey was taken on. |
+| `user_id` | bigint | null |  | The user who took the survey (from the token). |
+| `route_id` | bigint | null |  | Route of the record; null when none. |
+| `zone_id` | bigint | null |  | Zone of the route; null when the record has no route. |
+| `outlet_id` | bigint | null |  | Outlet of the visit; null when the visit row is not known. |
+| `survey_id` | bigint | null |  | Survey definition (app.survey.id). |
+| `survey_kind` | text | null |  | posm, amo_survey or tso_visit_query. |
+| `survey_version` | integer | null |  | Version of the survey the question belongs to. |
+| `question_id` | bigint | null |  | Question id inside the survey version. |
+| `question_label_en` | text | null |  | English label of the question in that version; null when the version no longer holds it. |
+| `answer_type` | text | null |  | bool, num, option, text or photo_only. |
+| `answer_bool` | boolean | null |  | The answer of a bool question; null otherwise. |
+| `answer_num` | numeric | null |  | The answer of a num question; null otherwise. |
+| `answer_option_code` | text | null |  | The chosen option code of an option question; null otherwise. |
+| `answer_text` | text | null | personal | The answer of a text question (free text, may hold a phone number); null otherwise. Not granted to bi_reader. |
+| `photo_taken` | boolean | null |  | True when the answer carries a photo (the media id is not exposed). |
+| `captured_at` | timestamp with time zone | null |  | When the phone captured the answer (UTC instant). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, test, ...). |
+| `is_effective` | boolean | null |  | True unless an admin voided the row. |
+
 ## dw.v_task
 
 Stable view: one row per task (TSO Assign Task, AMO or web task) with its type, creator, assignee, outlet, route, due date and status; no title or description. is_effective = not data-voided.
@@ -7463,7 +7820,7 @@ Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distan
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind. |
 | `opened_at` | timestamp with time zone | null |  | UTC time the visit was opened. |
 | `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
 | `outcome_code` | text | null |  | Outcome of the visit or check; allowed values are listed under constraints. |

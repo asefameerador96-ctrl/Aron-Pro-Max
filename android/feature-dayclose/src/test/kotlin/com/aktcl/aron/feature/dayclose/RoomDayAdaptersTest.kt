@@ -65,7 +65,7 @@ class RoomDayAdaptersTest {
     /** D-NIGHT-DAYCLOSE-01 (b): the refused rows are listed from the phone's own outbox, with memo number, outlet, reason and outcome. */
     @Test fun rejectedRowsAreListedFromTheAckRegistry() = runTest {
         db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",
-            "{\"memo_no_duplicate\": {\"bn\": \"এই মেমো নম্বর আগেই ব্যবহার হয়েছে\", \"en\": \"This memo number was already used\"}}")))
+            "{\"memo_no_duplicate\": {\"bn\": \"এই মেমো নম্বর আগেই ব্যবহার হয়েছে\", \"en\": \"This memo number was already used\"}, \"price_invalid\": {\"bn\": \"দাম মেলেনি\", \"en\": \"The price did not match\"}}")))
         sell(due = 0)
         val source = RoomDaySource(db)
         assertTrue(source.rejectedRows("2026-10-05").isEmpty())
@@ -77,19 +77,164 @@ class RoomDayAdaptersTest {
         db.outboxDao().applyAck(line.clientUuid, "rejected", "price_invalid", null, "2026-10-05T05:00:00.000Z")
         db.outboxDao().applyAck(visit.clientUuid, "pending", "resync", null, "2026-10-05T05:00:00.000Z")
         // the phone's own markers on queued rows (resync, digest_resend) are not rejections
-        assertEquals(2, source.rejectedRows("2026-10-05").size)
+        // the memo and its refused line are ONE entry (a family), led by the parent
+        source.rejectedRows("2026-10-05").single().let { assertEquals("memo", it.recordType); assertEquals(2, it.familySize) }
         db.outboxDao().applyAck(visit.clientUuid, "pending", "scope_stale", null, "2026-10-05T05:00:00.000Z")
         val listed = source.rejectedRows("2026-10-05").associateBy { it.recordType }
-        assertEquals(3, listed.size)
+        assertEquals("the family is one entry; the visit's resync-marker row is its own", 2, listed.size)
         listed.getValue("memo").let {
-            assertEquals(RejectedOutcome.STORED_FLAGGED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
-            assertEquals("এই মেমো নম্বর আগেই ব্যবহার হয়েছে", it.reasonBn); assertEquals("This memo number was already used", it.reasonEn)
+            // round-2 review (family outcome hides a rejected child): the memo is stored and flagged but its LINE was dropped, so the entry says the
+            // not-stored thing (tell the TSO) and names the line's reason, never "stored and flagged" alone
+            assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
+            assertEquals("price_invalid", it.code)
+            assertEquals("দাম মেলেনি", it.reasonBn); assertEquals("The price did not match", it.reasonEn)
         }
-        listed.getValue("memo_line").let {
-            assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("price_invalid", it.code); assertEquals(null, it.reasonEn)
-            assertEquals("sr334001-261005-001", it.memoNo) // through its parent memo
-        }
+        // the refused line is inside the memo's family, and is still counted
+        assertEquals(2, listed.getValue("memo").familySize)
         assertEquals(RejectedOutcome.RETRY, listed.getValue("visit").outcome)
+    }
+
+    /**
+     * D-AGATE-15 (T5): REAL parentage, not rank. The visit and the memo are accepted, a survey answer of the same visit (a rank-1 SIBLING of the memo) is refused for good, and
+     * a memo line the phone gave up on. The line's ancestors (memo, visit) are fine, so it can be sent again: the entry says Send again and the SQL re-queues it.
+     * A refused MEMO (its real parent) still withholds it.
+     */
+    @Test fun aRefusedSiblingNeverWithholdsSendAgainButARefusedParentDoes() = runTest {
+        sell(due = 0)
+        val visitUuid = db.captureDao().visitsOn("2026-10-05").single().clientUuid
+        repo.recordSurveyResponse(com.aktcl.aron.core.database.entity.SurveyResponseEntity(ClientIds.newUuid(), meta(), visitUuid, 1, 1, 1, "bool", true))
+        val rows = db.outboxDao().nextPending(100)
+        val visit = rows.first { it.recordType == "visit" }; val memo = rows.first { it.recordType == "memo" }
+        val line = rows.first { it.recordType == "memo_line" }; val survey = rows.first { it.recordType == "survey_response" }
+        db.outboxDao().applyAck(visit.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(memo.clientUuid, "acked", null, 2, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(survey.clientUuid, "rejected", "schema_invalid", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(line.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        val source = RoomDaySource(db)
+        val entries = source.rejectedRows("2026-10-05")
+        val lineEntry = entries.single { it.code == "retry_exhausted" }
+        assertEquals("the survey is a sibling: the line can be sent again", RejectedOutcome.PHONE_GAVE_UP, lineEntry.outcome)
+        assertTrue(lineEntry.canSendAgain)
+        assertEquals("and the SQL really re-queues it", 1, db.outboxDao().requeueRetryExhausted(line.clientUuid))
+    }
+
+    /** D-AGATE-15 (T5): the line's REAL parent (its memo) refused for good withholds Send again, in the reader and in the SQL. */
+    @Test fun aRefusedRealParentOfAnExhaustedLineWithholdsSendAgain() = runTest {
+        sell(due = 0)
+        val rows = db.outboxDao().nextPending(100)
+        val visit = rows.first { it.recordType == "visit" }; val memo = rows.first { it.recordType == "memo" }; val line = rows.first { it.recordType == "memo_line" }
+        db.outboxDao().applyAck(visit.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(memo.clientUuid, "rejected", "price_invalid", null, "2026-10-05T05:10:00.000Z")
+        db.outboxDao().applyAck(line.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:10:00.000Z")
+        assertEquals(0, db.outboxDao().requeueRetryExhausted(line.clientUuid))
+        assertFalse(RoomDaySource(db).rejectedRows("2026-10-05").any { it.canSendAgain })
+    }
+
+    /**
+     * D-AGATE-18 (B2): a memo PRINT (rank 3, its parent is its memo by `memo_client_uuid`) is not held back by a refused survey of the same visit; only its memo refused for good withholds it.
+     */
+    @Test fun aMemoPrintIsNotWithheldByARefusedSiblingButIsByItsRefusedMemo() = runTest {
+        sell(due = 0)
+        val visitUuid = db.captureDao().visitsOn("2026-10-05").single().clientUuid
+        repo.recordSurveyResponse(com.aktcl.aron.core.database.entity.SurveyResponseEntity(ClientIds.newUuid(), meta(), visitUuid, 1, 1, 1, "bool", true))
+        val memoUuid = db.captureDao().memosOn("2026-10-05").single().clientUuid
+        val pe = com.aktcl.aron.core.database.entity.PrintEventEntity(ClientIds.newUuid(), meta(), "memo", memoUuid, null, 1, "printed", true, 1, "RPP02N", 1L)
+        db.printDao().insertEvent(pe)
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.record.RecordMapping.printEvent(pe, visitUuid, 3, kotlinx.serialization.json.buildJsonObject {}, "2026-10-05T04:40:00.000Z")))
+        val rows = db.outboxDao().nextPending(100)
+        val visit = rows.first { it.recordType == "visit" }; val memo = rows.first { it.recordType == "memo" }; val survey = rows.first { it.recordType == "survey_response" }
+        db.outboxDao().applyAck(visit.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(memo.clientUuid, "acked", null, 2, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(survey.clientUuid, "rejected", "schema_invalid", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(pe.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        val entry = RoomDaySource(db).rejectedRows("2026-10-05").single { it.code == "retry_exhausted" }
+        assertEquals("the survey is a sibling of the print: it can be sent again", RejectedOutcome.PHONE_GAVE_UP, entry.outcome); assertTrue(entry.canSendAgain)
+        assertEquals("and the SQL really re-queues it", 1, db.outboxDao().requeueRetryExhausted(pe.clientUuid))
+        // its REAL parent, the memo, refused for good, withholds it
+        db.outboxDao().applyAck(pe.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'price_invalid' WHERE client_uuid = '${memo.clientUuid}'")
+        assertEquals(0, db.outboxDao().requeueRetryExhausted(pe.clientUuid))
+        assertFalse(RoomDaySource(db).rejectedRows("2026-10-05").any { it.canSendAgain })
+    }
+
+    /**
+     * D-AGATE-18 (B2): an AMO rank-2 record whose parent is named only in its payload (a distribution line's check) is not withheld by a refused rank-1 SIBLING (a call assessment); the parent
+     * is stored at capture (`outbox.parent_uuid`), and only the check itself refused for good withholds the line. The same for an assessment answer.
+     */
+    @Test fun anAmoLineIsNotWithheldByARefusedSiblingButIsByItsRefusedCheck() = runTest {
+        sell(due = 0)
+        val visitUuid = db.captureDao().visitsOn("2026-10-05").single().clientUuid
+        val amo = com.aktcl.aron.core.database.record.AmoPayloads
+        val check = ClientIds.newUuid(); val line = ClientIds.newUuid(); val assessment = ClientIds.newUuid()
+        repo.recordAmo(com.aktcl.aron.core.database.entity.AmoRecordEntity(check, meta(), "distribution_check", visitUuid, 1, amo.distributionCheck(visitUuid, true, null).toString()))
+        repo.recordAmo(com.aktcl.aron.core.database.entity.AmoRecordEntity(line, meta(), "distribution_check_line", visitUuid, 2, amo.distributionLine(check, 7, true, false).toString()))
+        repo.recordAmo(com.aktcl.aron.core.database.entity.AmoRecordEntity(assessment, meta(), "call_assessment", visitUuid, 1, amo.callAssessment("joint_call", visitUuid, 1, 1, 5, 10, 20).toString()))
+        assertEquals("the parent is stored at capture", check, db.outboxDao().byClientUuid(line)!!.parentUuid)
+        val rows = db.outboxDao().nextPending(100)
+        listOf("visit", "memo", "distribution_check").forEach { t -> db.outboxDao().applyAck(rows.first { it.recordType == t }.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z") }
+        db.outboxDao().applyAck(assessment, "rejected", "schema_invalid", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(line, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        val entry = RoomDaySource(db).rejectedRows("2026-10-05").single { it.code == "retry_exhausted" }
+        assertEquals(RejectedOutcome.PHONE_GAVE_UP, entry.outcome); assertTrue(entry.canSendAgain)
+        assertEquals(1, db.outboxDao().requeueRetryExhausted(line))
+        db.outboxDao().applyAck(line, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'schema_invalid' WHERE client_uuid = '$check'")
+        assertEquals("its refused check withholds it", 0, db.outboxDao().requeueRetryExhausted(line))
+        assertFalse(RoomDaySource(db).rejectedRows("2026-10-05").any { it.canSendAgain })
+    }
+
+    /**
+     * D-AGATE-19 (step-5 low 8): a parent in ANOTHER family still withholds Send again. A memo REPRINTED after its route-day was submitted is a rank-0 print_event in its OWN family
+     * (RoomPrintLedger), and a due collection is its own family too: when the memo they name was refused for good they could only answer parent_missing, in the reader and in the SQL guard.
+     */
+    @Test fun aParentInAnotherFamilyWithholdsSendAgainOfAReprintAndOfADueCollection() = runTest {
+        sell(due = 84_000)
+        val memoRow = db.captureDao().memosOn("2026-10-05").single()
+        val memoUuid = memoRow.clientUuid
+        val reprint = com.aktcl.aron.core.database.entity.PrintEventEntity(ClientIds.newUuid(), meta(), "memo", memoUuid, null, 2, "printed", true, 1, "RPP02N", 1L)
+        db.printDao().insertEvent(reprint)
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.record.RecordMapping.printEvent(reprint, reprint.clientUuid, 0, kotlinx.serialization.json.buildJsonObject {}, "2026-10-05T04:50:00.000Z")))
+        val due = com.aktcl.aron.core.database.entity.DueCollectionEntity(ClientIds.newUuid(), meta(), memoRow.outletId, memoUuid, memoRow.memoNo, "2026-10-05", 10_000, false, 84_000)
+        repo.recordDueCollection(due)
+        val rows = db.outboxDao().nextPending(100)
+        val memo = rows.first { it.recordType == "memo" }
+        db.outboxDao().applyAck(memo.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(reprint.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(due.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        assertTrue("memo stored: both can be sent again", RoomDaySource(db).rejectedRows("2026-10-05").all { it.canSendAgain })
+        assertEquals(1, db.outboxDao().requeueRetryExhausted(reprint.clientUuid)); assertEquals(1, db.outboxDao().requeueRetryExhausted(due.clientUuid))
+        db.outboxDao().applyAck(reprint.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        db.outboxDao().applyAck(due.clientUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:20:00.000Z")
+        // the memo they depend on is refused for good (a different family from both)
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'price_invalid' WHERE client_uuid = '${memo.clientUuid}'")
+        assertEquals("the reprint is withheld", 0, db.outboxDao().requeueRetryExhausted(reprint.clientUuid))
+        assertEquals("the due collection is withheld", 0, db.outboxDao().requeueRetryExhausted(due.clientUuid))
+        val entries = RoomDaySource(db).rejectedRows("2026-10-05")
+        assertTrue("and the screen offers no Send again for them", entries.filter { it.code == "retry_exhausted" }.none { it.canSendAgain })
+    }
+
+    /**
+     * Lead follow-up item 5: the server's TypeRules give `memo` the parents `visit_client_uuid` and `supersedes_client_uuid`, so an EDIT whose superseded memo was refused for good can only answer
+     * `parent_missing`: Send again is withheld (and offered when that memo is stored). Through the real recordSale of an edit, the real DAO and reader.
+     */
+    @Test fun anEditWhoseSupersededMemoWasRefusedIsWithheldFromSendAgainButNotWhenItIsStored() = runTest {
+        sell(due = 0)
+        val old = db.captureDao().memosOn("2026-10-05").single()
+        val fixId = ClientIds.newUuid(); val editUuid = ClientIds.newUuid()
+        val fix = GeoFixEntity(fixId, editUuid, "memo_edit", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordSale(SaleCapture(
+            old.copy(clientUuid = editUuid, memoNo = "sr334001-261005-002", supersedesClientUuid = old.clientUuid, editReasonCode = "wrong_sku", editFixClientUuid = fixId),
+            listOf(MemoLineEntity(ClientIds.newUuid(), meta(), editUuid, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)), editFix = fix,
+        ))
+        val rows = db.outboxDao().nextPending(100)
+        val oldRow = rows.first { it.clientUuid == old.clientUuid }
+        db.outboxDao().applyAck(oldRow.clientUuid, "acked", null, 1, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(editUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:00:00.000Z")
+        assertEquals("the original is stored: the edit can be sent again", 1, db.outboxDao().requeueRetryExhausted(editUuid))
+        db.outboxDao().applyAck(editUuid, "rejected", "retry_exhausted", null, "2026-10-05T05:10:00.000Z")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected', last_code = 'price_invalid' WHERE client_uuid = '${oldRow.clientUuid}'")
+        assertEquals("the memo it supersedes was refused: parent_missing for ever, withheld", 0, db.outboxDao().requeueRetryExhausted(editUuid))
+        assertTrue(RoomDaySource(db).rejectedRows("2026-10-05").filter { it.code == "retry_exhausted" }.none { it.canSendAgain })
     }
 
     /** Contract 1.9 row 4: the digest adds this phone's received counts and the server's rows this install does not hold. */

@@ -34,6 +34,7 @@ import java.util.TimeZone
 
 /** Test tags of the login screen (Robolectric and instrumented UI tests). */
 object LoginTags {
+    const val HEADER = "login_amo_header"
     const val USERNAME = "login_username"
     const val PASSWORD = "login_password"
     const val SUBMIT = "login_submit"

@@ -288,7 +288,7 @@ class WireDtosDriftTest {
     fun everyRequestedSchemaHasADto() {
         val requested = listOf(
             "LoginRequest", "LoginResponse", "UserSummary", "ScopeSummary", "NodeRef", "LoginDevice", "RefreshRequest", "TokenPair",
-            "LogoutRequest", "BundleMeta", "BundleUser", "Route", "RouteSnapshot", "BundleOutlet", "Sku", "SkuPrice", "OpenMemo",
+            "LogoutRequest", "BundleMeta", "BundleUser", "Route", "RouteSnapshot", "RouteCalendar", "BundleOutlet", "Sku", "SkuPrice", "OpenMemo",
             "RecordEnvelope", "GeoFix", "FixDeviceState", "GnssSummary", "DeviceGeoVerdict", "AttendanceEventPayload",
             "StockMovementPayload", "VisitPayload", "VisitClosePayload", "MemoPayload", "MemoLinePayload", "MemoDiscountPayload",
             "QcLinePayload", "PlayIntegrityUnavailable", "ChangePasswordRequest", "DeviceStatusReport", "EnrolDeviceRequest", "Me", "DeviceOtp",
@@ -346,7 +346,7 @@ internal object WireDtoNames {
         "RefreshRequest" to serializer<RefreshRequest>(), "TokenPair" to serializer<TokenPair>(),
         "LogoutRequest" to serializer<LogoutRequest>(), "BundleMeta" to serializer<BundleMeta>(),
         "BundleUser" to serializer<BundleUser>(), "Route" to serializer<Route>(),
-        "RouteSnapshot" to serializer<RouteSnapshot>(), "BundleOutlet" to serializer<BundleOutlet>(),
+        "RouteSnapshot" to serializer<RouteSnapshot>(), "RouteCalendar" to serializer<RouteCalendar>(), "BundleOutlet" to serializer<BundleOutlet>(),
         "Sku" to serializer<Sku>(), "SkuPrice" to serializer<SkuPrice>(), "OpenMemo" to serializer<OpenMemo>(),
         "RecordEnvelope" to serializer<RecordEnvelope>(), "GeoFix" to serializer<GeoFix>(),
         "FixDeviceState" to serializer<FixDeviceState>(), "GnssSummary" to serializer<GnssSummary>(),

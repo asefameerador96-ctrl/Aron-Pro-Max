@@ -409,6 +409,11 @@ class ManualIngestTest {
         assertTrue(diff.errors.any { it.pointer == "/payload/due_mtk" }, diff.errors.toString())
         assertEquals("open", str("SELECT status FROM app.sync_quarantine WHERE id = $otherItem"))
 
+        // B7 (lows): the held copies (the phone memo, its children and the cash) differ from what the phone sent; the release keeps the registry hash of the record AS SENT,
+        // so the as-sent resend below answers duplicate for every one of them (not payload_conflict).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            for (r in phone + cash) h.execute("UPDATE app.sync_quarantine SET payload = jsonb_set(payload, '{captured_elapsed_ms}', '1'::jsonb) WHERE client_uuid = CAST(? AS uuid) AND status = 'open'", (r["client_uuid"] as JsonPrimitive).content)
+        }
         val m = ingest.matchBackfill(item, admin, "same printed memo, checked with the TSO")
         assertEquals(paperUuid, m.paperMemoUuid)
         assertEquals(emptyList(), m.keptOpen)

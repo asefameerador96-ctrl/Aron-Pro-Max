@@ -41,6 +41,9 @@ export const OPS = {
   "config.rollback": { method: "POST", path: "/v1/admin/config/versions/{version}/rollback", roles: ADMINS, reason: "reason" },
   // F-ADM-009 / F-ADM-048 devices: suspend, revoke, reactivate (revoke blocks sync, never local capture)
   "device.state": { method: "POST", path: "/v1/admin/devices/{device_id}/state", roles: SUPPORT_UP, reason: "reason" },
+  // D-OWNER-MDM-02 iii lab exemption: lets ONE phone run with Developer options on for 1 to 14 days (the ADB device walks); Super Admin and an Admin with the mdm write grant; audited
+  "device.lab-exemption.grant": { method: "PUT", path: "/v1/admin/devices/{device_id}/lab-exemption", roles: ADMINS, reason: null },
+  "device.lab-exemption.revoke": { method: "DELETE", path: "/v1/admin/devices/{device_id}/lab-exemption", roles: ADMINS, reason: null, noBody: true },
   // remote directives carry no reason member in the contract; they never change data (docs/24 s10)
   "device.directive": { method: "POST", path: "/v1/admin/devices/{device_id}/directives", roles: SUPPORT_UP, reason: null },
   // F-ADM-078 replace-device wizard
@@ -84,6 +87,9 @@ export const OPS = {
   // Wave 4 route monthly targets (D-TARGET-MIN-01): preview (dry run, no reason, writes nothing) then commit; idempotent by batch_uuid. REQUEST: docs/requests/backend-admin-route-targets.md
   "route-targets.validate": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: null },
   "route-targets.commit": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: "change_reason" },
+  // KPI targets of the SR programme screens (contract 1.22.0, D-TKPI): one section per request; same preview-then-commit contract as the route targets.
+  "kpi-targets.validate": { method: "PUT", path: "/v1/admin/route-kpi-targets", roles: ADMINS, reason: null },
+  "kpi-targets.commit": { method: "PUT", path: "/v1/admin/route-kpi-targets", roles: ADMINS, reason: "change_reason" },
   // Wave 4 outlet import (docs/34 s2: channel mandatory): preview, then commit. REQUEST: docs/requests/backend-admin-outlet-import.md
   "outlet-import.validate": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: null },
   "outlet-import.commit": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: "change_reason" },

@@ -14,7 +14,7 @@
     <string name="out_no_outlet_location">This shop has no saved location.</string>
     <string name="out_mocked">A mock location was detected. A sale at this shop is not allowed from a mock location.</string>
     <string name="out_mocked_warn">A mock location was detected. This is recorded.</string>
-    <string name="out_blocked_mock">This sale cannot be made because of a mock location.</string>
+    <string name="out_blocked_mock">This sale cannot be made: a fake location was detected. Turn off and uninstall any fake-GPS app, then go back and open the outlet again. If it keeps happening, tell your TSO.</string>
     <string name="out_mocked_refresh">Mock location found. Turn it off, then Refresh.</string>
     <string name="out_location_denied">Precise location is not allowed. Allow location for ARON to continue.</string>
     <string name="out_location_off">Location is off. Turn it on to start selling.</string>
@@ -23,6 +23,8 @@
     <string name="out_force_sale">Force Sale</string>
     <string name="out_commit_failed">The visit could not be saved. Try again.</string>
     <string name="out_commit_locked">Your TSO has done the Final Submit for this route today. New calls cannot start.</string>
+    <string name="out_commit_not_checked_in">The call was not started because you are not checked in for this day. Open Attendance and check in, then start the call again.</string>
+    <string name="out_commit_checked_out">The call was not started because you have already checked out for this day.</string>
     <string name="out_commit_day_submitted">Today\'s sales are already submitted, so a new call cannot start. If you must sell more today, ask the office to reopen the day.</string>
     <string name="out_retry">Try again</string>
     <string name="out_map">Map</string>
@@ -103,6 +105,8 @@
     <string name="out_owner">Owner: %1$s</string>
     <string name="out_last_visit">Last visit %1$s</string>
     <string name="out_in_range">You are within the outlet\'s range.</string>
+    <string name="out_force_sale_open">This call was opened as a force sale, not inside the outlet\'s range.</string>
+    <string name="out_geo_unknown">This call\'s location was not confirmed.</string>
     <string name="out_distance_line">About %1$s m away · limit %2$s m</string>
     <string name="out_refresh_left_line">Refreshes left: %1$s</string>
     <string name="out_no_refresh_left">No more refreshes</string>

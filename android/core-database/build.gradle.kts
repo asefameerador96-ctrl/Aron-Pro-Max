@@ -53,3 +53,22 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 }
+
+// D-AGATE-29: EveryWriterIsGatedTest scans the writers of core-database, core-sync and the three apps. They read .kt/.xml SOURCE files at run time, which Gradle cannot see, so those files are declared as inputs of every unit test task of this module:
+// the up-to-date check and the build cache can never answer for a changed source file (a structural test that can pass from cache is not a gate).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree("android") {
+            include("*/src/main/**") // EveryWriterIsGatedTest.discovered() walks EVERY android module's main sources
+        },
+    ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+// D-AGATE-31: tests that read files OUTSIDE the android tree: the backend's IngestService.kt (CaptureRepositoryDayLockTest, LatePolicyLockTest) and the contract (ContractYaml, via the aron.openapi property).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.layout.projectDirectory) {
+            include("backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/IngestService.kt", "contract/openapi.yaml")
+        },
+    ).withPropertyName("externalSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}

@@ -1,0 +1,59 @@
+RouteCalendar:
+  type: object
+  description: 'Working-day numbers of the bundle month for the route (read at the route''s zone path: the division
+    and wing weekend and the holidays of its levels, as data). From these the phone derives ADS, TADS, PADS and
+    RADS. Contract 1.24.0.'
+  required:
+  - month
+  - working_days
+  - elapsed_working_days_before_today
+  - remaining_working_days_after_today
+  - today_is_working
+  - last_month_working_days
+  - through_date
+  - as_of
+  additionalProperties: false
+  properties:
+    month:
+      $ref: '#/components/schemas/Month'
+    working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of the month.
+    elapsed_working_days_before_today:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: 'Working days of the bundle month from the 1st up to the day before the ANCHOR day: the day after
+        `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date;
+        for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date`
+        Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date`
+        30 January and the anchor is 1 February).'
+    remaining_working_days_after_today:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: 'Working days of the bundle month after the ANCHOR day: the day after `through_date`, but never
+        before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead
+        it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and
+        the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30
+        January and the anchor is 1 February), to the end of the month. Elapsed + today (1 when working) + remaining
+        = `working_days`.'
+    today_is_working:
+      type: boolean
+      description: 'Whether the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle
+        month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g.
+        a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle
+        for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February)
+        is a working day (read from the bundle month''s own calendar).'
+    last_month_working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: 'Working days of last month that have CLOSED at the cut: all of them once `through_date` is past
+        the end of last month, else those up to `through_date` (a bundle built ahead on the last day of the month).'
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'

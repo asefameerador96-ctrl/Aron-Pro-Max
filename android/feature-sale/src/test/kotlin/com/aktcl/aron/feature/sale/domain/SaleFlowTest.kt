@@ -39,7 +39,9 @@ class SaleFlowTest {
     private fun flow(store: DraftStore) = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer())
     private suspend fun visit(): SaleVisit {
         val u = ClientIds.newUuid(); val (v, f) = Fx.visit(u)
-        CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }.recordVisitOpen(v, f)
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        repo.recordVisitOpen(v, f)
+        Fx.seedStock(repo)
         return SaleVisit(u, 50001, 10231, Fx.DATE, "outlet")
     }
 
@@ -52,6 +54,38 @@ class SaleFlowTest {
         assertEquals(20, relaunched.state.value.review!!.lines.single().qtyBase)
     }
 
+    /** D-AGATE-19: the rep's notice is stored BEFORE the draft goes, only when something is really there, and a failing notice never keeps the draft (a kill between the two can only tell, never drop in silence). */
+    @Test fun theNoticeIsStoredBeforeTheDraftIsDroppedAndOnlyWhenSomethingIsThere() = runTest {
+        val store = MemStore(); val v = visit(); val f = flow(store); f.start(v)
+        var told = 0; var draftWasThereWhenTold = false
+        assertEquals("an empty draft: nothing to drop, nothing told", false, f.dropUnsavedDraft(v.visitUuid) { told++ })
+        assertEquals(0, told)
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(true, f.dropUnsavedDraft(v.visitUuid) { told++; draftWasThereWhenTold = store.load(v.visitUuid) != null })
+        assertEquals(1, told); assertEquals("the draft was still stored when the notice was written", true, draftWasThereWhenTold)
+        assertNull("and it is gone afterwards", store.load(v.visitUuid))
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals("a notice that cannot be stored does not keep the draft", true, f.dropUnsavedDraft(v.visitUuid) { error("disk full") })
+        assertNull(store.load(v.visitUuid))
+    }
+
+    /** Lead item 6: a SALE draft file left behind for a call the phone already closed (a kill between the close and the drop) is never loaded into a later memo EDIT of that visit. */
+    @Test fun aLeftoverSaleDraftOfAClosedCallIsNotLoadedIntoALaterEdit() = runTest {
+        val store = MemStore(); val v = visit()
+        val first = flow(store); first.start(v); first.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(1, store.load(v.visitUuid)!!.lines.size)
+        // the call is closed; the process died before the drop; later an edit of a memo of that visit starts
+        val later = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer(), isCallClosed = { true })
+        later.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals("the edit starts clean", 0, later.state.value.draft!!.lines.size)
+        assertEquals(0, store.load(v.visitUuid)!!.lines.size)
+        // a draft of a call that is NOT closed is still resumed by an edit start (nothing else changed)
+        val open = flow(store); open.start(v); open.setQuantity(100, 5, QtyUnit.STICK)
+        val resumed = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer(), isCallClosed = { false })
+        resumed.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals(1, resumed.state.value.draft!!.lines.size)
+    }
+
     @Test fun commitIsRememberedSoADoubleTapWritesOneMemo() = runTest {
         val store = MemStore(); val v = visit(); val f = flow(store); f.start(v)
         f.setQuantity(100, 5, QtyUnit.STICK)
@@ -59,6 +93,65 @@ class SaleFlowTest {
         assertSame(r1, r2); assertEquals(1, seq)
         assertNull(store.load(v.visitUuid))
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { f.setQuantity(100, 6, QtyUnit.STICK) } }
+    }
+
+    /**
+     * D-AGATE-22 (item 3): a Save that landed in Room while its coroutine was cancelled before the screen state was set; the call is closed in between. The retry finds the memo
+     * in Room by the draft's own memo UUID and returns it (no second memo, no "nothing was saved").
+     */
+    @Test fun aRetryAfterACancelledSaveReturnsTheStoredMemoEvenWhenTheCallWasClosedInBetween() = runTest {
+        val store = MemStore(); val v = visit()
+        var closed = false
+        val f = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer(), isCallClosed = { closed })
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK)
+        val s = f.state.value
+        val landed = committer().commit(s.draft!!, s.catalog, null, emptyMap()) // the Save reached Room; the flow never heard of it
+        assertEquals(1, seq)
+        closed = true // the phone (or the rep) closed the call in the gap
+        val again = f.commit()
+        assertEquals(landed.memoUuid, again.memoUuid); assertEquals(landed.memoNo, again.memoNo)
+        assertEquals("no second memo was written", 1, seq)
+        assertNull("the draft is gone", store.load(v.visitUuid))
+        assertEquals(again, f.state.value.committed)
+    }
+
+    /** D-AGATE-25 (lead low 7): the stored memo comes back, and when the draft was changed after the unheard Save the state SAYS the later changes were not saved. */
+    @Test fun aReplayAfterAnUnheardSaveSaysWhenTheDraftWasChangedMeanwhile() = runTest {
+        val store = MemStore(); val v = visit()
+        val changed = flow(store); changed.start(v); changed.setQuantity(100, 5, QtyUnit.STICK)
+        val s = changed.state.value
+        val landed = committer().commit(s.draft!!, s.catalog, null, emptyMap()) // the Save reached Room; the flow never heard of it
+        changed.setQuantity(100, 6, QtyUnit.STICK) // the rep kept editing
+        val back = changed.commit()
+        assertEquals(landed.memoNo, back.memoNo)
+        assertEquals(true, changed.state.value.laterChangesNotSaved)
+        // the same replay with the draft as it was: nothing to say
+        val store2 = MemStore(); val v2 = visit()
+        val same = flow(store2); same.start(v2); same.setQuantity(100, 5, QtyUnit.STICK)
+        val s2 = same.state.value
+        committer().commit(s2.draft!!, s2.catalog, null, emptyMap())
+        same.commit()
+        assertEquals(false, same.state.value.laterChangesNotSaved)
+    }
+
+    /** D-AGATE-26: the replay notice compares LINES: two SKUs at the same price with their quantities swapped leave both totals as they were, and the later change is still said not to be saved. */
+    @Test fun aReplayWithSwappedQuantitiesAndEqualTotalsStillSaysTheChangeWasNotSaved() = runTest {
+        val a = Fx.maxr.copy(drp = null); val b = Fx.maxr.copy(skuId = 107, code = "MAXR10B", name = "MaxR B", drp = null)
+        val custom = listOf(a, b).associateBy { it.skuId }
+        val store = MemStore()
+        val u = ClientIds.newUuid(); val (vis, fx) = Fx.visit(u)
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        repo.recordVisitOpen(vis, fx); Fx.seedStock(repo, catalog = custom)
+        val v = SaleVisit(u, 50001, 10231, Fx.DATE, "outlet")
+        val f = SaleFlow(store, { _, _ -> custom.values.toList() }, committer())
+        f.start(v); f.setQuantity(100, 5, QtyUnit.STICK); f.setQuantity(107, 3, QtyUnit.STICK)
+        val s = f.state.value
+        val landed = committer().commit(s.draft!!, s.catalog, null, emptyMap()) // stored: 5 of A, 3 of B; the flow never heard of it
+        f.setQuantity(100, 3, QtyUnit.STICK); f.setQuantity(107, 5, QtyUnit.STICK) // the rep swapped them
+        assertEquals("the totals are the same", landed.netMtk, f.state.value.review!!.totals.netMtk)
+        val back = f.commit()
+        assertEquals(landed.memoNo, back.memoNo)
+        assertEquals("the lines differ although the totals do not", true, f.state.value.laterChangesNotSaved)
     }
 
     @Test fun aBlockedVisitCannotSellAndNothingIsCreated() = runTest {

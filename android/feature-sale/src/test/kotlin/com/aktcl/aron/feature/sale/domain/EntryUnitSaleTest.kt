@@ -30,9 +30,9 @@ class EntryUnitSaleTest {
 
     // the bundle rows: base_per_pack and entry_unit_default come from the SKU master; nothing below hardcodes 10, 20 or 25 in the app
     private val c10 = SaleSku(1, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 400)
-    private val c20 = SaleSku(2, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack")
-    private val box = SaleSku(3, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", entryUnitDefault = "pack")
-    private val doz = SaleSku(4, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01", entryUnitDefault = "dozen")
+    private val c20 = SaleSku(2, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 400)
+    private val box = SaleSku(3, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 250)
+    private val doz = SaleSku(4, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01", entryUnitDefault = "dozen", stockBase = 60)
     private val catalog = listOf(c10, c20, box, doz).associateBy { it.skuId }
 
     @Before fun setUp() = runTest {
@@ -42,6 +42,7 @@ class EntryUnitSaleTest {
         visitUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
         val (v, f) = Fx.visit(visitUuid)
         repo.recordVisitOpen(v, f)
+        Fx.seedStock(repo, catalog)
     }
     @After fun tearDown() = db.close()
 
@@ -85,9 +86,14 @@ class EntryUnitSaleTest {
         assertEquals(5L, packets.qtyEntered); assertEquals(70L, packets.qtyBase)
     }
 
-    @Test fun stockWarningComparesBaseUnits() {
+    // D-AGATE-01 (was "the stock warning compares base units"): the stock STOP compares base units and blocks the save
+    @Test fun theStockStopComparesBaseUnits() {
         val d = SaleDraftOps.setQuantity(Fx.draft(visitUuid), 1, 41, QtyUnit.PACK) // 41 x 10 = 410 sticks against 400 in stock
-        assertTrue(SaleReviewCalculator.review(d, catalog).lines.single().exceedsStock)
+        val r = SaleReviewCalculator.review(d, catalog)
+        assertTrue(r.lines.single().exceedsStock)
+        assertFalse(r.canCommit)
+        val p = r.problems.filterIsInstance<ReviewProblem.OverStock>().single()
+        assertEquals(410L, p.requestedBase); assertEquals(400L, p.heldBase); assertEquals(40L, p.heldEntry); assertEquals("packet", p.unitKey)
     }
 }
 

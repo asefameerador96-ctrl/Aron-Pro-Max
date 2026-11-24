@@ -76,6 +76,7 @@ import com.aktcl.aron.backend.masterdata.BackfillMatcher
 import com.aktcl.aron.backend.masterdata.backfillMatchRoutes
 import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
 import com.aktcl.aron.backend.masterdata.RouteTargetDeps
+import com.aktcl.aron.backend.masterdata.routeKpiTargetRoutes
 import com.aktcl.aron.backend.masterdata.routeTargetRoutes
 import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
@@ -174,7 +175,15 @@ class Wiring(
     val securityEvents: com.aktcl.aron.backend.platform.SecurityEvents = com.aktcl.aron.backend.platform.SecurityEvents.LOG,
     /** Closed on stop before the pools: flushes the queued security events. */
     val securityStore: AutoCloseable? = null,
+    /** The waiting-item sweep (D-LOY-API-28), built with the API role's ingest service; null in tests that build a Wiring by hand. It is STARTED only by [startBackgroundJobs] (Main's API role). */
+    val waitingSweep: com.aktcl.aron.backend.sync.WaitingChildSweepJob? = null,
 ) {
+    /** Starts the background jobs that live in the API process. Called by Main for the API role only (never by the migrate or worker role, never by [production] itself, so tests start nothing). */
+    fun startBackgroundJobs() { waitingSweep?.start() }
+
+    /** Stops them cleanly (called when the server stops, before the pools close). */
+    fun stopBackgroundJobs() { waitingSweep?.stop() }
+
     companion object {
         /**
          * The ingest extension point (docs/24 s4.2): type-specific checks and side effects of device records, one line
@@ -191,6 +200,15 @@ class Wiring(
             com.aktcl.aron.backend.masterdata.LeaveApplicationHandler(), // tso-manual B3: leave on sync judged as POST /v1/leave (D-TSO-MAN-33)
             com.aktcl.aron.backend.masterdata.FeedbackChecks(), // tso-manual B3: feedback precheck shared with POST /v1/feedback (D-TSO-MAN-36)
             com.aktcl.aron.backend.sync.VisitPlanRecords(), // tso-manual B3: Set Plan records (SP-03)
+        )
+
+        /** THE ingest service with every production record handler: the API builds it, and the waiting-item sweep (D-LOY-API-30) is built from it too and runs in the API process, so a released child runs the very handlers of its first delivery. */
+        fun ingestService(
+            db: Database, config: com.aktcl.aron.backend.platform.ServerConfig, reach: com.aktcl.aron.backend.platform.ReachResolver, clock: AronClock, generation: () -> String,
+            push: com.aktcl.aron.backend.notify.PushNotifier, extraRecordHandlers: List<RecordHandler> = emptyList(),
+        ): IngestService = IngestService(
+            db, config, reach, clock, generation,
+            RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.GiftChoiceRecords(reach, config) + com.aktcl.aron.backend.sync.GiftPhotoRecords(reach, config) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers),
         )
 
         /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -234,11 +252,19 @@ class Wiring(
                 runCatching { com.aktcl.aron.backend.notify.GooglePlayIntegrityDecoder(sa) }
                     .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
             }
-            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
+            // D-OWNER-MDM-02 iii: the lab-grant signing key is the secret ARON_LAB_GRANT_KEY (Settings.labGrantKey, PKCS#8 base64): never logged or stored; unset or unreadable = no lab exemption can be granted (409).
+            // The audience of a lab grant is the host of the public API URL (the host the phones of this environment talk to); one key pair per environment, see the runbook.
+            val labAudience = runCatching { java.net.URI(enrolment.apiBaseUrl).host?.lowercase() }.getOrNull().orEmpty()
+            val labExemptions = com.aktcl.aron.backend.analytics.devices.LabExemptionService(db, com.aktcl.aron.backend.analytics.devices.LabGrantSigner(s.labGrantKey?.reveal()), labAudience, clock)
+            if (s.labGrantKey != null && labExemptions.unavailableReason != null) org.slf4j.LoggerFactory.getLogger("aron.wiring").warn("lab exemptions are off: " + labExemptions.unavailableReason)   // the reason only, never the key
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder, lab = labExemptions), reach, guard, clock)
             // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
             var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
-            val acceptor = com.aktcl.aron.backend.analytics.QuarantineAcceptor { id, fix, resolver, why ->
-                (ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")).acceptQuarantined(id, fix, resolver, why)
+            val acceptor = object : com.aktcl.aron.backend.analytics.QuarantineAcceptor {
+                private fun ingest() = ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")
+                override fun accept(quarantineId: Long, fixedRecord: kotlinx.serialization.json.JsonObject?, resolver: Long, reason: String) = ingest().acceptQuarantined(quarantineId, fixedRecord, resolver, reason)
+                // C-R3: a gift photo held with a record a reviewer discards is stored and flagged, not left in review for ever
+                override fun discarded(quarantineId: Long, resolver: Long) = ingest().followDiscardedParent(quarantineId, resolver)
             }
             val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
@@ -320,7 +346,7 @@ class Wiring(
             // locked under quarantine unlocks with the change, and a quarantine set after the close locks it.
             val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push), clock)
             configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, ingestService(db, config, reach, clock, generation::current, push, extraRecordHandlers), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
@@ -343,7 +369,7 @@ class Wiring(
                 dashboardRoutes(dashboards)
                 nationalDashboardRoutes(national)
                 appTeamRoutes(team)
-                amoTeamRoutes(team, AmoTeamReads(db, clock))
+                amoTeamRoutes(team, AmoTeamReads(db, clock) { config.bool("cfg.sale.journey_repeat_sale_enabled") })
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)
@@ -362,10 +388,11 @@ class Wiring(
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
-                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
+                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock, com.aktcl.aron.backend.platform.DayInputsChanged { h, routes, date -> com.aktcl.aron.backend.sync.DayStates.recountLateAfterSubmit(h, routes, date) }))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
                 routeTargetRoutes(RouteTargetDeps(db, guard, clock))
+                routeKpiTargetRoutes(RouteTargetDeps(db, guard, clock))
                 backfillMatchRoutes(BackfillMatchDeps(db, reach, guard, sync.ingest?.let { svc ->
                     BackfillMatcher { qid, resolver, why ->
                         val m = svc.matchBackfill(qid, resolver, why)
@@ -405,7 +432,7 @@ class Wiring(
                 com.aktcl.aron.backend.analytics.TargetAchievementDeps(com.aktcl.aron.backend.analytics.TargetAchievementService(db, config, clock), reach, guard, clock).install(this)   // tso-manual B2
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
-                securityEvents = securityEvents, securityStore = securityStore)
+                securityEvents = securityEvents, securityStore = securityStore, waitingSweep = com.aktcl.aron.backend.sync.WaitingChildSweepJob(sync.ingest!!, config))
         }
     }
 }

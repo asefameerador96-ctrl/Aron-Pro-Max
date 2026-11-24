@@ -1,0 +1,32 @@
+KpiMonthTargetWriteRow:
+  type: object
+  required:
+  - route_code
+  - month
+  - kpi_alloc_mtk
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    kpi_alloc_mtk:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 100000000000
+    cpr_target_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 10000
+    cpr_alloc_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      maximum: 100000000000

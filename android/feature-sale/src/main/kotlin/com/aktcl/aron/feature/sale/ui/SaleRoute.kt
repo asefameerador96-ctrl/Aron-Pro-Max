@@ -11,7 +11,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.feature.sale.R
+import com.aktcl.aron.feature.sale.domain.SaleNotice
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
@@ -42,6 +51,10 @@ fun SaleRoute(
     quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
+    /** The way from the "add today's stock first" banner to the Stock screen; null shows the banner without the button. */
+    onOpenStock: (() -> Unit)? = null,
+    /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
+    entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false, creditAsDialog: Boolean = false, totalsQuantity: Boolean = false,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -51,11 +64,20 @@ fun SaleRoute(
     val review = ui.review
     val skus = ui.catalog.values.toList()
     HoldPrinter(printer, assist = printerAssist)
+    // QC submitted: the sale cannot change, so the entry and slide lists are never shown again (after a rotation or a relaunch the stage is back on Entry): Review opens instead
+    val locked = draft?.qcCompleted == true
+    val shown = if (locked && (stage == SaleStage.Entry || stage == SaleStage.Slide)) SaleStage.Review else stage
     Column(modifier.fillMaxSize()) {
+        ui.notice?.let { n ->
+            AronBanner(
+                stringResource(when (n) { SaleNotice.Locked -> R.string.qc_locked; SaleNotice.QcDropped -> R.string.qc_dropped_notice; SaleNotice.Refused -> R.string.sale_change_refused }),
+                Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S).testTag(SaleTags.NOTICE), kind = BannerKind.Info,
+            )
+        }
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // forward: Entry to Review, and Review into a sub-screen (Credit, QC, Slide); back: a sub-screen returning to Review
-            AronScreenTransition(stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
+            AronScreenTransition(if (quantityPopup && shown == SaleStage.Credit) SaleStage.Review else shown, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
                 when (s) {
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,
@@ -66,10 +88,10 @@ fun SaleRoute(
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
-                        quantityPopup = quantityPopup, skuStats = skuStats,
+                        quantityPopup = quantityPopup, skuStats = skuStats, onOpenStock = onOpenStock,
                         onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
-                        onPreviousSales = onPreviousSales, historyLabel = historyLabel,
+                        onPreviousSales = onPreviousSales, historyLabel = historyLabel, headerCard = entryHeaderCard, amoSkuCard = amoSkuCard,
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
@@ -81,12 +103,12 @@ fun SaleRoute(
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { qcOnlyStarted = false; vm.completeQc(); stage = SaleStage.Review },
                         onCancel = { if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review } }, // Cancel discards what was typed since the screen opened
-                        collapsible = draft?.lines.isNullOrEmpty(),
+                        collapsible = draft?.lines.isNullOrEmpty(), twoStep = quantityPopup, // the SR's two steps (manual 25, 26); the AMO keeps the one-scroll screen
                     )
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },
                         // closing the credit prompt without confirming turns credit off (screens-sr s8)
-                        onCancel = { vm.setPaid(null); stage = SaleStage.Review },
+                        onCancel = { vm.setPaid(null); stage = SaleStage.Review }, asDialog = creditAsDialog,
                     )
                     SaleStage.Review -> if (review != null) {
                         ReviewScreen(
@@ -94,12 +116,27 @@ fun SaleRoute(
                             onCreditToggle = { on -> if (on) stage = SaleStage.Credit else vm.setPaid(null) },
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
-                            onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
+                            onSlide = if (!locked && skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
+                            printLaterCard = printLaterCard, totalsQuantity = totalsQuantity,
                         )
                     }
                 }
             }
         }
     }
-    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished)
+    // the SR's partial payment is a box over the Review (manual 27), not a screen of its own: the same amount rules and the same setPaid
+    if (quantityPopup && stage == SaleStage.Credit && review != null) {
+        CreditDialog(review, { vm.setPaid(it); stage = SaleStage.Review }, onCancel = { vm.setPaid(null); stage = SaleStage.Review })
+    }
+    // a save the transaction refused is worded with the SAME problem texts the review uses (SKU, held figure, unit; or "already edited")
+    val refusalText = ui.refusal.takeIf { it.isNotEmpty() }?.map { problemText(it) }?.joinToString("\n\n")
+    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, refusalText, manual = quantityPopup)
+    // D-AGATE-25: the Save had already been stored; changes made after it are not in the memo
+    var laterShown by androidx.compose.runtime.saveable.rememberSaveable(ui.committed?.memoUuid) { mutableStateOf(true) } // survives a rotation: a dialog the rep closed does not come back
+    if (ui.laterChangesNotSaved && laterShown) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(R.string.review_later_title), stringResource(R.string.review_later_body), stringResource(R.string.sale_yes_ok),
+            onConfirm = { laterShown = false }, onDismiss = { laterShown = false },
+        )
+    }
 }

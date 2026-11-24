@@ -50,16 +50,15 @@ sealed interface SaveOutcome {
 
 /**
  * Stock load logic (F-SR-014), pure and offline: the screen takes a stepped or typed Issue per SKU; Save posts only the
- * entered increment (never an overwrite), and a re-save of identical values inside the guard window is refused so a
- * double tap or a retry cannot load the same stock twice. Quantities are in the SKU's own unit (docs/24 s7).
+ * entered increment (never an overwrite). A double tap cannot load the same stock twice: the second tap meets the Save still in
+ * flight, and a retry of a failed commit reuses the SAME client UUIDs, which the repository stores once. The old 5-minute
+ * same-values refusal is gone (D-AGATE-01): with the stock gate a second real issue of the same quantity is a legitimate top-up.
+ * Quantities are in the SKU's own unit (docs/24 s7).
  */
 class StockLoad(
     private val skus: List<SkuEntity>,
     loadedBaseBySku: Map<Long, Long>,
-    private val guardWindowMs: Long = DEFAULT_GUARD_MS,
     private val newUuid: () -> String = ClientIds::newUuid,
-    /** Survives a kill and relaunch (the last saved signature and time); production: SharedPreferences. */
-    private val guardStore: GuardStore = GuardStore.InMemory(),
     /** `cfg.stock.max_issue_qty`: a soft ceiling, warn and allow. */
     val softCeiling: Long = DEFAULT_SOFT_CEILING,
     /**
@@ -67,23 +66,16 @@ class StockLoad(
      * never enters a Save. Null = the host has no on-hand figure and the screen says "total load" instead of "stock".
      */
     currentBaseBySku: Map<Long, Long>? = null,
+    /** D-AGATE-07: the attempt's UUIDs survive a process kill; with [businessDate] a re-entry after a relaunch cannot double an issue that landed. */
+    private val attemptStore: StockAttemptStore = NoStockAttemptStore,
+    private val businessDate: String = "",
 ) {
-    /** Last saved signature and instant. */
-    interface GuardStore {
-        fun load(): Pair<String, Long>?
-        fun save(signature: String, atMs: Long)
-        class InMemory : GuardStore {
-            private var v: Pair<String, Long>? = null
-            override fun load() = v
-            override fun save(signature: String, atMs: Long) { v = signature to atMs }
-        }
-    }
-
     private val loaded = loadedBaseBySku.toMutableMap()
     private val current = currentBaseBySku?.toMutableMap()
     private val entered = linkedMapOf<Long, Long>()
     private var inFlightSignature: String? = null
-    private var priorGuard: Pair<String, Long>? = null
+    /** The client UUID of each (SKU, quantity) of the Save in progress: a retry of the same Save posts the same UUIDs, a changed quantity a new one. */
+    private val attemptUuids = HashMap<String, String>().also { it.putAll(attemptStore.load(businessDate)) }
 
     val rows: List<StockRow>
         get() = skus.filter { it.status == "active" }.sortedBy { it.sort }
@@ -109,45 +101,43 @@ class StockLoad(
         if (entered.isEmpty()) return SaveOutcome.Refused(SaveRefusal.NOTHING_ENTERED)
         val sig = entered.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" }
         if (sig == inFlightSignature) return SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD) // double tap before commit
-        guardStore.load()?.let { (s, at) -> if (s == sig && nowMs - at in 0 until guardWindowMs) return SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD) }
         inFlightSignature = sig
-        // The guard is written BEFORE the commit: a kill between the commit and `committed` must not leave an empty guard that lets the same increments post twice.
-        priorGuard = guardStore.load()
-        guardStore.save(sig, nowMs)
         val movements = entered.entries.map { (id, qty) ->
             val sku = skus.first { it.skuId == id }
             val spec = StockUnits.of(sku)
             StockMovementEntity(
-                clientUuid = newUuid(), meta = meta, kind = "issue", skuId = id, qtyEntered = qty,
+                clientUuid = attemptUuids.getOrPut("$id=$qty", newUuid), meta = meta, kind = "issue", skuId = id, qtyEntered = qty,
                 unitEntered = spec.unit.wire, packFactor = sku.basePerPack.coerceAtLeast(1), qtyBase = spec.toBase(qty),
                 slipPrinted = slipPrinted,
             )
         }
+        attemptStore.save(meta.businessDate, attemptUuids.toMap()) // labelled with the date the MOVEMENTS carry (a Save across midnight and a kill still matches the relaunched day); before the commit: a kill between the commit and the screen's answer still leaves the key
         return SaveOutcome.Saved(movements)
     }
 
     /** Call when the committer failed: the same values may be saved again. */
     fun commitFailed() {
+        // the same values may go again, with the same client UUIDs (the repository stores a UUID once)
         inFlightSignature = null
-        // Give back the guard written at save time: a failed commit is not a save, so the same values may go again.
-        priorGuard?.let { guardStore.save(it.first, it.second) } ?: guardStore.save("", 0L)
-        priorGuard = null
     }
 
-    /** Call after the committer succeeded: folds the increment into today's loaded totals and starts the guard window. */
-    fun committed(saved: SaveOutcome.Saved, nowMs: Long) {
-        saved.movements.forEach {
+    /**
+     * Call after the committer succeeded: folds the increment into today's loaded totals. [alreadyStored] are movements the repository
+     * already held before this Save (the same UUID from an attempt that landed before a kill): they are in the loaded figure already and
+     * are not added a second time.
+     */
+    fun committed(saved: SaveOutcome.Saved, nowMs: Long, alreadyStored: Set<String> = emptySet()) {
+        saved.movements.filter { it.clientUuid !in alreadyStored }.forEach {
             loaded[it.skuId] = (loaded[it.skuId] ?: 0L) + it.qtyBase
             current?.let { c -> c[it.skuId] = (c[it.skuId] ?: 0L) + it.qtyBase }
         }
-        guardStore.save(entered.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" }, nowMs)
         inFlightSignature = null
+        attemptUuids.clear() // a later Save, even of the same quantities, is a new issue
+        attemptStore.clear()
         entered.clear()
     }
 
     companion object {
-        /** `cfg.stock.resave_guard_window_min` = 5 (docs/24). */
-        const val DEFAULT_GUARD_MS = 300_000L
         const val DEFAULT_SOFT_CEILING = 20_000L
         const val MAX_ENTRY = 100_000L
     }

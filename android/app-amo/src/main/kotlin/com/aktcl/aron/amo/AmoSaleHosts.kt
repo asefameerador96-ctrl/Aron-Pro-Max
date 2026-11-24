@@ -95,6 +95,8 @@ fun AmoSaleHost(
                     vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
                     retailerLabel = header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) },
                     outletLines = listOfNotNull(header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeLine, clusterLine), // heading = "name (code-phone-cluster)" as screenshot 25
+                    // D-PAR-AMO-07: the old header card (route, retailer) and the print-later info card; the SR screens keep their defaults
+                    entryHeaderCard = header?.let { h -> { com.aktcl.aron.feature.amo.AmoSaleHeaderCard(h.route, com.aktcl.aron.core.ui.localizedDigits(h.pill)) } }, printLaterCard = true, amoSkuCard = true, creditAsDialog = true, totalsQuantity = true,
                     onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
                 )
             }
@@ -136,6 +138,14 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
                     outletName = memoHeader.first?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeName = memoHeader.second, dashedDueBox = true, // screenshots 42, 43
+                    // screenshot 42 (D-PAR-AMO-12): the info card, the shop card with the section and retailer, the ramp table head, Print and Edit side by side
+                    detailBanner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true, gradientHeader = true,
+                    headerCard = {
+                        com.aktcl.aron.feature.amo.AmoSaleHeaderCard(
+                            memoHeader.second, memoHeader.first?.let { com.aktcl.aron.core.ui.localizedDigits(it) } ?: sel.memo.memoNo,
+                            routeLabel = stringResource(AmoR.string.amo_memo_hdr_section), padded = false,
+                        )
+                    },
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong()))
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
@@ -176,7 +186,7 @@ fun AmoSummaryHost(day: AmoDay) {
     val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty), printWhenEmpty = true) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty), printWhenEmpty = true, salesBlock = true) }
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -185,7 +195,7 @@ fun AmoSummaryHost(day: AmoDay) {
 
 /** Sales Submit with the reconciliation table and the Sync data button (F-SR-034/035). */
 @Composable
-fun AmoSubmitHost(day: AmoDay) {
+fun AmoSubmitHost(day: AmoDay, onSupport: (() -> Unit)? = null) {
     // a call in progress must be closed first: its records belong before the day's last record
     val openCall by day.visitSession.current.collectAsState()
     if (openCall != null) {
@@ -210,7 +220,8 @@ fun AmoSubmitHost(day: AmoDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
-        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, // D-NIGHT-DAYCLOSE-01; row 66
+        seen = st.seen, rejectedReadFailed = st.rejectedReadFailed, onMarkUnseen = vm::markUnseen, onSupport = onSupport, refusedNotShown = st.refusedNotShown, onShowMore = vm::showMoreRefused,  onRetryRead = vm::refresh, onMarkSeen = vm::markSeen, onSendAgain = vm::sendAgain, outbox = st.outbox, // D-AGATE-04
+        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, blueSubmit = true, // D-NIGHT-DAYCLOSE-01; row 66
     )
 }
 
@@ -222,6 +233,8 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     var checked by remember(memoUuid) { mutableStateOf(false) }
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
+    // the visit's sale is QC-locked: the edit does not open and the rep is told why (never a silent return)
+    var editLocked by remember(memoUuid) { mutableStateOf(false) }
     // tso-manual X4a (R-W-11): an edit on a route closed by Final Submit is not started (no fix is taken) and says why;
     // one the lock refuses at the save shows the same text, nothing stored or printed. Follow-up (R-W-23): the same with
     // the submit text after the supervisor day's Sales Submit.
@@ -240,7 +253,11 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
         !checked -> AmoEmptyState(stringResource(AmoR.string.amo_edit_checking))
         denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
         else -> {
-            LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }
+            LaunchedEffect(r) { if (kit.beginEdit(memoUuid, r)) ready = true else editLocked = true }
+            if (editLocked) com.aktcl.aron.core.ui.aron.AronDialog(
+                stringResource(com.aktcl.aron.feature.sale.R.string.qc_title), stringResource(com.aktcl.aron.feature.sale.R.string.qc_locked),
+                stringResource(android.R.string.ok), onConfirm = { onDone() }, onDismiss = { onDone() },
+            )
             if (ready) {
                 val vm = viewModel(key = "edit-" + memoUuid) { kit.newSaleViewModel() }
                 Column(Modifier.fillMaxSize()) {
@@ -288,6 +305,7 @@ fun AmoStockHost(day: AmoDay) {
         },
         // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03); never after the lock (R-W-22).
         onPrint = if (unprinted && printable && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
+        srParity = true, // the purple count badge on every packshot: the packs issued on the row (screenshot 41, D-PAR-SR1-05; D-PAR-AMO-11)
     )
     }
     refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
@@ -302,7 +320,7 @@ fun PreviousSalesHost(day: AmoDay, outletId: Long) {
     var label by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(outletId) { label = com.aktcl.aron.core.common.orNullKeepingCancellation { day.callHeader().first } }
     LaunchedEffect(outletId, date) { history = null; history = day.saleHistory(outletId, date) }
-    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onShift = { date = com.aktcl.aron.feature.amo.PreviousSales.shift(date, it, today) }, outletLabel = label)
+    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onPick = { date = it }, outletLabel = label)
 }
 
 /**

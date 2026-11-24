@@ -131,7 +131,7 @@
     <string name="set_printer">প্রিন্টার পরীক্ষা</string>
     <string name="hm_tile_astha">আস্থা</string>
     <string name="hm_tile_loyalty_point">লয়্যালটি পয়েন্ট</string>
-    <string name="hm_tile_match_program">Match Program</string>
+    <string name="hm_tile_match_program">ম্যাচ প্রোগ্রাম</string>
     <string name="hm_soon_title">শীঘ্রই আসছে</string>
     <string name="hm_soon_body">এই স্ক্রিনটি পরবর্তী আপডেটে আসছে। আজকের কাজে কোনো সমস্যা হবে না।</string>
     <string name="hm_soon_back">হোমে ফিরুন</string>
@@ -156,4 +156,5 @@
     <string name="set_submit_warning_anyway">তবুও লগ আউট</string>
     <string name="set_config_current_title">কনফিগারেশন হালনাগাদ করা আছে</string>
     <string name="set_config_current_message">এই ফোনে সর্বশেষ কনফিগারেশন আগে থেকেই আছে।</string>
+    <string name="hm_tile_locked">বন্ধ: আগে হাজিরা দিন।</string>
 </resources>

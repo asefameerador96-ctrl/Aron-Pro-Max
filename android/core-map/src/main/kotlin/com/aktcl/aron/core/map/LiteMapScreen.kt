@@ -49,6 +49,7 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MapsComposeExperimentalApi
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,6 +110,8 @@ fun LiteMapScreen(
     compass: Boolean = false,
     myLocation: Boolean = false,
     focusId: String? = null,
+    /** Where the cached map image is read and decoded; production keeps IO. Tests pass `Dispatchers.Unconfined` so nothing leaves the test thread (D-CI-E2E-02). */
+    imageDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     val mode = mapModeOf(online, settings, keyPresent, points)
     if (mode == MapMode.LIVE && interactive) {
@@ -142,7 +145,7 @@ fun LiteMapScreen(
             MapMode.OFFLINE -> {
                 // Disk read and decode off the main thread; the list shows at once and the image follows.
                 val image by produceState<Bitmap?>(null, cacheKey, cache) {
-                    value = withContext(Dispatchers.IO) { cache?.get(cacheKey)?.let { f -> runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() } }
+                    value = withContext(imageDispatcher) { cache?.get(cacheKey)?.let { f -> runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() } }
                 }
                 image?.let { Image(it.asImageBitmap(), stringResource(R.string.map_last_seen_image), Modifier.fillMaxWidth().height(MAP_HEIGHT).testTag(LiteMapTags.SNAPSHOT), contentScale = ContentScale.Crop) }
                 AronBanner(stringResource(R.string.map_offline), Modifier.testTag(LiteMapTags.BANNER), BannerKind.Warning)

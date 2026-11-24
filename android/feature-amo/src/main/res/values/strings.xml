@@ -47,7 +47,7 @@
     <string name="amo_pc_off">Differs from the list price by %1$s ৳</string>
     <string name="amo_pc_invalid">Enter a price like 125 or 125.5</string>
     <string name="amo_edit_checking">Checking that you are at the shop…</string>
-    <string name="amo_sale_history">Sale history of this shop</string>
+    <string name="amo_sale_history">Sale History</string>
     <string name="amo_rec_visit">Outlet</string>
     <string name="amo_rec_memo">Sale</string>
     <string name="amo_rec_stock_movement">Stock</string>
@@ -94,7 +94,7 @@
     <string name="amo_verify_f_mobile">Mobile</string>
     <string name="amo_verify_f_address">Address</string>
     <string name="amo_verify_f_reason">Closing reason</string>
-    <string name="amo_verify_f_sub_channel">Sub-channel</string>
+    <string name="amo_verify_f_sub_channel">Sub-Channel</string>
     <string name="amo_verify_flag_remote">The SR was not at the outlet</string>
     <string name="amo_verify_flag_home">The SR was at home</string>
     <string name="amo_verify_flag_accuracy">The location was not accurate</string>
@@ -132,6 +132,7 @@
     <string name="amo_leaf_team_location">Team Location</string>
     <string name="amo_leaf_team_performance">Team Performance</string>
     <string name="amo_leaf_task_delegation">Task Delegation</string>
+    <string name="amo_leaf_campaign_enrollment">Campaign Enrollment</string>
     <string name="amo_leaf_live_dashboard">Live Dashboard</string>
     <string name="amo_leaf_sr_stock">SR Stock</string>
     <string name="amo_verify_sep">" · "</string>
@@ -264,6 +265,8 @@
     <string name="amo_verify_change">Outlet info-change verification</string>
     <string name="amo_ops_section">Shop operations</string>
     <string name="amo_mo_note">Take the outlet photo. Its location goes for approval as a request to correct the outlet\'s position.</string>
+    <string name="amo_mo_waiting">Please wait…</string>
+    <string name="amo_mo_camera_denied">Camera permission is off, so the outlet photo cannot be taken. Allow Camera for this app in the phone\'s settings, then tap Take shop photo.</string>
     <string name="amo_mo_continue">Continue</string>
     <string name="amo_success_title">Success</string>
     <string name="amo_summary_title">Sales summary</string>
@@ -271,4 +274,5 @@
     <string name="amo_ok">OK</string>
     <string name="amo_field_invalid">Check this value</string>
     <string name="amo_verify_loading">Loading details…</string>
+    <string name="amo_gate_day_submitted">The sales of the day of this call are already submitted. The call is ended on the phone.</string>
 </resources>

@@ -33,13 +33,32 @@ export interface Parsed {
   rows: unknown[];
   sheetRows: number[];
   issues: SheetIssue[];
+  /** Notes that do not stop the load (an unusable pin left out of the row). */
+  notes?: SheetIssue[];
 }
+
+/** Problems of the whole sheet: skip_rows cannot help (there is nothing good to load). */
+const SHEET_LEVEL = new Set(["missing_header", "too_many_rows", "no_rows"]);
 export interface PreviewBase {
-  rows: number;
+  /** Row count of the one-array uploads; the KPI preview counts per section instead. */
+  rows?: number;
   replaces?: number;
   errors: SheetIssue[];
   /** True when the server lists only the first errors (1000). */
   errors_truncated?: boolean;
+  /** Notes that do not stop the load (outlet import): repaired phones, derived channels, pins outside Bangladesh. */
+  warnings?: SheetIssue[];
+  warnings_truncated?: boolean;
+  warnings_by_code?: Record<string, number>;
+}
+
+/** A checkbox of the import form that adds a member to the request body when ticked. */
+export interface ImportFlag {
+  member: string;
+  value: unknown;
+  labelKey: MessageKey;
+  /** True when a ticked box lets rows with errors through (they are skipped), so the commit stays available. */
+  skipsBadRows?: boolean;
 }
 
 export interface SheetImportConfig<P extends PreviewBase> {
@@ -52,6 +71,8 @@ export interface SheetImportConfig<P extends PreviewBase> {
   templateFile: string;
   /** Hint listing the sheet's columns. */
   columnsText: string;
+  /** Body member that carries the rows (default `rows`; the KPI targets use one array per section). */
+  rowsMember?: string;
   columnLabel: (column: string) => string;
   /** Message key of a problem code (`rt.problem.<code>`); a code without a message shows the generic text. */
   problemKey: (code: string) => string;
@@ -59,6 +80,11 @@ export interface SheetImportConfig<P extends PreviewBase> {
   memberColumn?: (member: string) => string;
   summaryText: (p: P, number: (n: number) => string) => string;
   committedKey: MessageKey;
+  flags?: ImportFlag[];
+  /** Message key of a warning code (`oi.warning.<code>`); a code without a message shows the code. */
+  warningKey?: (code: string) => string;
+  /** Shown after a commit that skipped rows ({n}). */
+  skippedKey?: MessageKey;
 }
 
 export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportConfig<P> }) {
@@ -74,6 +100,7 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
   const [refused, setRefused] = useState<SheetIssue[]>([]);
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [inputKey, setInputKey] = useState(0);
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
 
   function reset() {
     setParsed(null);
@@ -113,10 +140,15 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
     URL.revokeObjectURL(a.href);
   }
 
-  const body = (dry: boolean) => ({ batch_uuid: batch, rows: parsed!.rows, dry_run: dry });
+  const flagBody = Object.fromEntries((cfg.flags ?? []).filter((f) => ticked[f.member]).map((f) => [f.member, f.value]));
+  const skipOn = (cfg.flags ?? []).some((f) => f.skipsBadRows && ticked[f.member]);
+  const body = (dry: boolean) => ({ batch_uuid: batch, [cfg.rowsMember ?? "rows"]: parsed!.rows, dry_run: dry, ...flagBody });
+  // (7) push 1b: with "skip rows" ticked, rows the browser already found bad are left out (and listed) and the good rows still load.
+  const clientSkipped = parsed ? new Set(parsed.issues.filter((i) => !SHEET_LEVEL.has(i.code)).map((i) => i.row)).size : 0;
+  const blocked = !parsed || parsed.rows.length === 0 || (parsed.issues.length > 0 && !(skipOn && parsed.issues.every((i) => !SHEET_LEVEL.has(i.code))));
 
   async function check() {
-    if (!parsed || parsed.issues.length || parsed.rows.length === 0) return;
+    if (blocked) return;
     setBusy(true);
     setBanner(null);
     const r = await callOp(cfg.validateOp, body(true));
@@ -129,7 +161,7 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
   }
 
   async function commit() {
-    if (!parsed || !preview || preview.errors.length) return;
+    if (!parsed || !preview || (preview.errors.length && !skipOn)) return;
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) return setReasonError(t("admin.reason.too_short"));
     setReasonError(undefined);
     setBusy(true);
@@ -137,8 +169,10 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
     const r = await callOp(cfg.commitOp, body(false), reason.trim());
     setBusy(false);
     if (r.ok) {
-      const d = r.data as { rows?: number; replayed?: boolean } | null;
-      setBanner({ ok: true, text: d?.replayed ? t("rt.replayed") : t(cfg.committedKey, { rows: d?.rows ?? parsed.rows.length }) });
+      const d = r.data as { rows?: number; replayed?: boolean; skipped?: number } | null;
+      const nSkipped = (d?.skipped ?? 0) + (skipOn ? clientSkipped : 0);
+      const skipped = cfg.skippedKey && nSkipped > 0 ? ` ${t(cfg.skippedKey, { n: number(nSkipped) })}` : "";
+      setBanner({ ok: true, text: d?.replayed ? t("rt.replayed") : t(cfg.committedKey, { rows: d?.rows ?? parsed.rows.length }) + skipped });
       reset();
       router.refresh();
     } else {
@@ -153,6 +187,11 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
     return t((key in en ? key : "rt.problem.generic") as MessageKey);
   };
   const colText = (c: string) => cfg.columnLabel(c) ?? c; // a column the catalogue does not know shows as the server named it
+  const warningTotal = preview?.warnings_by_code ? Object.values(preview.warnings_by_code).reduce((a, b) => a + b, 0) : (preview?.warnings?.length ?? 0);
+  const warnText = (code: string) => {
+    const key = cfg.warningKey?.(code);
+    return key && key in en ? t(key as MessageKey) : code;
+  };
   const sheetRowOf = (n: number) => parsed?.sheetRows[n - 1] ?? n;
   const serverIssues = [...(preview?.errors ?? []), ...refused];
 
@@ -166,6 +205,16 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
         <button type="button" data-testid={`${cfg.tid}-template`} onClick={() => void downloadTemplate()} className="min-h-11 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100">{t("rt.template")}</button>
       </div>
       <p className="text-xs text-slate-600">{cfg.columnsText}</p>
+      {cfg.flags?.length ? (
+        <div className="space-y-1" data-testid={`${cfg.tid}-flags`}>
+          {cfg.flags.map((f) => (
+            <label key={f.member} className="flex min-h-11 items-center gap-2 text-sm">
+              <input type="checkbox" data-testid={`${cfg.tid}-flag-${f.member}`} checked={!!ticked[f.member]} onChange={(e) => { setTicked({ ...ticked, [f.member]: e.target.checked }); setPreview(null); setRefused([]); }} className="h-4 w-4" />
+              <span>{t(f.labelKey)}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       {fileError ? <p role="alert" data-testid={`${cfg.tid}-file-error`} className="rounded bg-red-50 p-3 text-sm text-red-800">{fileError}</p> : null}
 
       {parsed && parsed.issues.length > 0 ? (
@@ -186,9 +235,10 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
         </section>
       ) : null}
 
-      {parsed && parsed.issues.length === 0 ? (
+      {parsed && !blocked ? (
         <section className="space-y-3" data-testid={`${cfg.tid}-read-ok`}>
           <p role="status" className="text-sm font-medium text-green-800">{t("rt.read_ok", { rows: parsed.rows.length })}</p>
+          {parsed.notes?.length ? <p data-testid={`${cfg.tid}-notes`} className="text-sm text-amber-900">{t("oi.notes", { n: number(parsed.notes.length) })}</p> : null}
           {!preview ? (
             <button type="button" data-testid={`${cfg.tid}-check`} disabled={busy} onClick={() => void check()} className="min-h-11 rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{busy ? t("rt.checking") : t("rt.check")}</button>
           ) : null}
@@ -199,9 +249,26 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
         <section className="space-y-3" data-testid={`${cfg.tid}-preview`}>
           <p data-testid={`${cfg.tid}-summary`} className="text-sm font-medium">{cfg.summaryText(preview, number)}</p>
           {(preview.replaces ?? 0) > 0 ? <p data-testid={`${cfg.tid}-replaces`} className="text-sm text-amber-800">{t("rt.replaces", { n: number(preview.replaces ?? 0) })}</p> : null}
+          {(preview.warnings?.length ?? 0) > 0 ? (
+            <div data-testid={`${cfg.tid}-warnings`} className="space-y-1">
+              <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{t("oi.warnings_title", { n: number(warningTotal) })}</p>
+              {preview.warnings_by_code ? (
+                <ul className="list-disc pl-5 text-sm" data-testid={`${cfg.tid}-warning-counts`}>
+                  {Object.entries(preview.warnings_by_code).map(([code, n]) => <li key={code}>{warnText(code)}: {number(n)}</li>)}
+                </ul>
+              ) : null}
+              <details className="text-sm">
+                <summary className="cursor-pointer">{t("oi.warnings_list")}</summary>
+                <ul className="list-disc pl-5">
+                  {preview.warnings!.slice(0, SHOWN).map((w, k) => <li key={k}>{t("rt.col.row")} {number(sheetRowOf(w.row))} · {colText(w.column)} · {warnText(w.code)}</li>)}
+                </ul>
+                {preview.warnings_truncated ? <p className="text-slate-600">{t("oi.warnings_truncated")}</p> : null}
+              </details>
+            </div>
+          ) : null}
           {serverIssues.length > 0 ? (
             <div data-testid={`${cfg.tid}-server-issues`} className="space-y-2">
-              <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{t("rt.server_issues", { n: number(serverIssues.length) })}</p>
+              <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{t(skipOn ? "oi.skip_note" : "rt.server_issues", { n: number(serverIssues.length) })}</p>
               <ul className="list-disc pl-5 text-sm">
                 {serverIssues.slice(0, SHOWN).map((e, k) => (
                   <li key={k}>{t("rt.col.row")} {number(sheetRowOf(e.row))} · {colText(e.column)} · {issueText(e)}</li>
@@ -209,12 +276,13 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
               </ul>
               {preview?.errors_truncated ? <p data-testid={`${cfg.tid}-truncated`} className="text-sm text-slate-600">{t("rt.errors_truncated")}</p> : null}
             </div>
-          ) : (
+          ) : null}
+          {serverIssues.length === 0 || skipOn ? (
             <>
               <ReasonField value={reason} onChange={setReason} error={reasonError} />
               <button type="button" data-testid={`${cfg.tid}-commit`} disabled={busy} onClick={() => void commit()} className="min-h-11 rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("rt.commit")}</button>
             </>
-          )}
+          ) : null}
           <button type="button" onClick={reset} className="min-h-11 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100">{t("rt.reset")}</button>
         </section>
       ) : null}

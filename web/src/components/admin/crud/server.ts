@@ -35,7 +35,12 @@ const REF_PAGE = 500;
 const REF_MAX_PAGES = 20; // 10,000 rows: more than any reference table of the fleet
 
 /** Options of a `ref` field or filter: every row of the referenced table (follows the cursor), `failed` when the list call failed. */
-export async function loadRefOptionsChecked(ref: RefMeta, token: string): Promise<{ options: RefOption[]; failed: boolean }> {
+export async function loadRefOptionsChecked(
+  ref: RefMeta,
+  token: string,
+  /** Picker mode (a create or edit form): a code-list item flagged `attrs.retired` (Silver, V0199) is hidden, except the values in `keep` (what the record holds now). A list shows every item so that a retired value keeps its label. */
+  pick?: { hideRetired: boolean; keep?: readonly string[] },
+): Promise<{ options: RefOption[]; failed: boolean }> {
   const valueKey = ref.value ?? "id";
   const labelKeys = ref.label ?? ["name"];
   const options: RefOption[] = [];
@@ -47,7 +52,11 @@ export async function loadRefOptionsChecked(ref: RefMeta, token: string): Promis
     if (all.length === 0) return { options, failed: true };
     const today = businessDate();
     // valid_to is the exclusive end like every effective-dated range: an item ending today or earlier is retired.
-    const items = all.filter((i) => typeof i.valid_to !== "string" || i.valid_to > today).sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
+    const retired = (i: Record<string, unknown>) => (i.attrs as { retired?: unknown } | null | undefined)?.retired === true;
+    const items = all
+      .filter((i) => typeof i.valid_to !== "string" || i.valid_to > today)
+      .filter((i) => !(pick?.hideRetired && retired(i) && !(pick.keep ?? []).includes(String(i[valueKey]))))
+      .sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
     for (const row of items) options.push({ value: String(row[valueKey]), label: (ref.label ?? ["label_en"]).map((k) => String(row[k] ?? "")).filter(Boolean).join(" · ") });
     return { options, failed: false };
   }

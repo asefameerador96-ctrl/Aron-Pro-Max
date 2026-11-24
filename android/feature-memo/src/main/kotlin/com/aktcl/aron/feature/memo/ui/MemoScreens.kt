@@ -127,8 +127,8 @@ internal fun dhakaTime(iso: String): String {
 }
 
 /** The least widths of the dense table columns on a 328 dp content width (screens-sr s9: SKU, quantity, price); a wider number grows its column and the name gives way. */
-private val QtyColumn = 84.dp
-private val PriceColumn = 96.dp
+internal val QtyColumn = 84.dp
+internal val PriceColumn = 96.dp
 
 /** From `fontScale.vertical` the dense tables reflow: the name on its own line, the numbers on the next (screens-sr s0: numbers never wrap or clip). */
 @Composable
@@ -246,6 +246,10 @@ fun MemoDetailView(
     /** SRM-B-20: the vendor's "marked as paid" modal (green tick, text, ওকে) stays until [onPaidDialogOk]. */
     paidDialog: Boolean = false,
     onPaidDialogOk: () -> Unit = {},
+    /** AMO (screenshot 42): the shop-icon card with the section and retailer replaces the title lines; null keeps the SR and TSO header. */
+    headerCard: (@Composable () -> Unit)? = null,
+    /** AMO (screenshot 42): the lines table's head is the blue-to-indigo ramp of the look (white words hold 7:1 on both ends); false keeps the flat head. */
+    gradientHeader: Boolean = false,
 ) {
     val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
@@ -256,9 +260,11 @@ fun MemoDetailView(
         if (detailBanner != null) AronInfoCard(detailBanner, trailing = printerBadge)
         if (switcher != null) MemoSwitcherBar(switcher)
         // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
+        headerCard?.invoke()
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                if (routeName != null) {
+                if (headerCard != null) Unit
+                else if (routeName != null) {
                     Text(stringResource(R.string.memo_route_label) + " " + routeName, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2)
                     Text(stringResource(R.string.memo_retailer_label) + " " + (outletName ?: memo.memoNo), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
                 } else Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
@@ -273,7 +279,7 @@ fun MemoDetailView(
                 val names = detail.items.associate { it.skuId to skuName(it.skuId) }
                 if (letterFilter) LetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
                 val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
-                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
+                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price), gradient = gradientHeader)
                 shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
                 // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
                 // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
@@ -430,11 +436,12 @@ internal fun CardDivider() {
  * from it the heads sit at the end of one line and every row stacks its numbers under the name ([tablesStacked]).
  */
 @Composable
-internal fun TableHeader(name: String, qty: String, value: String) {
+internal fun TableHeader(name: String, qty: String, value: String, gradient: Boolean = false) {
     val look = LocalAronLook.current
     val stacked = tablesStacked()
+    val ramp = if (gradient && look.panelTop != null) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(look.panelTop!!, look.panelBottom ?: look.panelTop!!)) else null
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(look.tableHeader).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(if (ramp != null) Modifier.background(ramp) else Modifier.background(look.tableHeader)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
         Text(name, style = MaterialTheme.typography.labelMedium, color = Color.White, modifier = Modifier.weight(1f))
@@ -541,6 +548,8 @@ fun SummaryScreen(
     emptyText: String? = null,
     /** The AMO prints an empty day too (screenshot 45 shows Print enabled; zero rows, zero totals); the SR keeps it off. */
     printWhenEmpty: Boolean = false,
+    /** The AMO's closing block (screenshot 45, manual p46): the green "Total sales" tab over a charcoal-headed Value table with Total, Discount (-) and Grand total, above Print. */
+    salesBlock: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
@@ -597,6 +606,7 @@ fun SummaryScreen(
                     }
                 }
             }
+            if (salesBlock) SummarySalesBlock(summary)
             printButton()
             if (empty && !printWhenEmpty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
@@ -613,7 +623,7 @@ fun SummaryScreen(
                     SummaryTable(
                         headers = listOf(
                             stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
-                            stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
+                            stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after).let { if (salesBlock) it.replace(' ', '\n') else it }, stringResource(R.string.summary_col_return), // the AMO's two-word head takes two lines so it cannot run into its neighbour at 360 dp
                         ),
                         rows = summary.skus.map { r ->
                             SummaryRow(
@@ -624,20 +634,57 @@ fun SummaryScreen(
                                 ),
                             )
                         },
-                        weights = SummaryColumns.shares,
+                        weights = if (salesBlock) SummaryColumns.amoShares else SummaryColumns.shares,
                     )
                 }
-                SummaryDock(summary, categoryLabel) { categoryUnit(it) }
+                SummaryDock(summary, categoryLabel, salesBlock) { categoryUnit(it) }
             }
+            if (salesBlock) SummarySalesBlock(summary)
             printButton()
+        }
+    }
+}
+
+/**
+ * The AMO's "Total sales" block (screenshot 45): a green tab, a charcoal head with the one Value column, then Total, Discount "(-) n" and the grey Grand total row.
+ * Figures sit on solid surfaces: the green tab and the red discount hold 7:1 (SummarySalesBlockContrastTest); the programme discount is zero while docs/27 defers it.
+ */
+@Composable
+private fun SummarySalesBlock(summary: DaySummary) {
+    val look = LocalAronLook.current
+    val green = look.primaryStart ?: look.purple
+    val red = look.stopFill ?: look.red
+    val pad = PaddingValues(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M)
+    Column(Modifier.fillMaxWidth().testTag("summary_sales_block")) {
+        Box(Modifier.clip(RoundedCornerShape(topStart = AronLook.CardRadius, topEnd = AronLook.CardRadius)).background(green).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S)) {
+            Text(stringResource(R.string.summary_block_title), style = MaterialTheme.typography.titleSmall, color = Color.White)
+        }
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topEnd = AronLook.CardRadius, bottomStart = AronLook.CardRadius, bottomEnd = AronLook.CardRadius))) {
+            Text(
+                stringResource(R.string.summary_col_value), style = MaterialTheme.typography.labelLarge, color = Color.White, textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth().background(look.tableHeader).padding(pad),
+            )
+            Row(Modifier.fillMaxWidth().background(look.card).padding(pad)) {
+                Text(stringResource(R.string.summary_block_total), color = look.ink, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(amount(summary.grossMtk), color = look.ink, style = MaterialTheme.typography.bodyMedium)
+            }
+            // D-PAR-AMO-16: the row holds offer + DRP + QC deductions (`discountAndOthersMtk`), so it carries the SR dock's own words "discount and others (-)"; gross minus this row is the grand total exactly
+            Row(Modifier.fillMaxWidth().background(look.card).padding(pad)) {
+                Text(stringResource(R.string.summary_discount_and_others), color = red, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.summary_block_minus, amount(kotlin.math.abs(summary.discountAndOthersMtk))), color = red, style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(Modifier.fillMaxWidth().background(look.rowAlt).padding(pad)) {
+                Text(stringResource(R.string.summary_block_grand), color = look.ink, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(amount(summary.grandTotalMtk), color = look.ink, style = MaterialTheme.typography.titleSmall)
+            }
         }
     }
 }
 
 /** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
 @Composable
-private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitOf: @Composable (CategorySummaryRow) -> String) {
-    val weights = SummaryColumns.shares
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, amoColumns: Boolean, unitOf: @Composable (CategorySummaryRow) -> String) {
+    val weights = if (amoColumns) SummaryColumns.amoShares else SummaryColumns.shares
     val look = LocalAronLook.current
     val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {

@@ -18,7 +18,7 @@ object BreadcrumbWiring {
      */
     fun settings(
         configEnabled: () -> Boolean, configIntervalMin: () -> Int, mdmMode: () -> String?, mdmIntervalMin: () -> Int?,
-        /** `ACCESS_BACKGROUND_LOCATION` is held (the DPC grants it only while its policy allows breadcrumbs, D-GEO-BG-01). */
+        /** `ACCESS_BACKGROUND_LOCATION` is held (the rep grants it in the system dialog; there is no device-owner grant since D-OWNER-MDM-02). */
         backgroundGranted: () -> Boolean = { true },
     ): () -> BreadcrumbSettings = {
         val base = BreadcrumbSettings(enabled = configEnabled(), intervalMin = configIntervalMin())
@@ -43,6 +43,7 @@ object BreadcrumbWiring {
         gnssJson = fix.gnssJson, deviceOwner = fix.device.deviceOwner, devOptionsEnabled = fix.device.devOptionsEnabled,
         adbEnabled = fix.device.adbEnabled, autoTimeEnabled = fix.device.autoTimeEnabled, mockAppPresent = fix.device.mockAppPresent,
         integrityRef = fix.device.integrityRef,
+        signalsJson = fix.signals?.joinToString(",", "[", "]") { "\"$it\"" },
     )
 
     /**

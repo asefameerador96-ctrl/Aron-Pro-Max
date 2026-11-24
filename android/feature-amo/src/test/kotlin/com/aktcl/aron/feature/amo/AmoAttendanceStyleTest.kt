@@ -102,12 +102,12 @@ class AmoAttendanceStyleTest {
         compose.onNodeWithText("Already Checked-Out").assertIsDisplayed()
     }
 
-    @Test fun theBanglaLocaleNeverShowsTheVendorsEnglishAlreadyBoxes() {
+    // D-PAR-AMO-20 (lead's ruling 2026-11-18, D-OWNER-PARITY-02): the old app prints these two boxes in English in the Bangla app (screenshot 16 right), so both languages show the vendor's words
+    @Test fun theBanglaLocaleShowsTheVendorsExactEnglishAlreadyBoxes() {
         val done = checkedIn.copy(checkedOutAt = "2026-11-06T11:30:00.000Z", checkOutEnabled = false)
         show(AppLanguage.BN, done)
-        compose.onNodeWithText("ইতিমধ্যে চেক ইন করা হয়েছে").assertIsDisplayed()
-        compose.onNodeWithText("ইতিমধ্যে চেক আউট করা হয়েছে").assertIsDisplayed()
-        compose.onNodeWithText("Already Checked-In").assertDoesNotExist()
+        compose.onNodeWithText("Already Checked-In").assertIsDisplayed()
+        compose.onNodeWithText("Already Checked-Out").assertIsDisplayed()
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextMatching(re: Regex): Int =

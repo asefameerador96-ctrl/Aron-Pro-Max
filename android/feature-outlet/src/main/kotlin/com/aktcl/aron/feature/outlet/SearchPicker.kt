@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronField
 
@@ -68,54 +71,71 @@ fun SearchPickerField(
     val look = LocalAronLook.current
     var open by rememberSaveable(tag) { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
-    Row(
-        modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(shape).background(look.card)
-            .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
-            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
-        verticalAlignment = Alignment.CenterVertically,
+    // the old SR's form field (manual 42, 43): a white card, the label above, and the choice in a purple-outlined box with the caret
+    val edge = if (isError) look.red else look.purple
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(look.card).padding(AronTokens.Space.L),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
-        Text(
-            selected?.label ?: title, Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else if (isError) look.red else look.inkMuted,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
-        Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.inkMuted)
+        // with nothing chosen the box repeats the label as its grey hint, so the label above is for the eye only (one spoken text, as before)
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = if (selected == null) Modifier.clearAndSetSemantics { } else Modifier)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(RoundedCornerShape(8.dp)).border(1.5.dp, edge, RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
+                .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selected?.label ?: title, Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else look.inkMuted,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.ink)
+        }
     }
     if (open) PickerDialog(title, searchHint, items, emptyText, onDismiss = { open = false }, onPick = { open = false; onPick(it) })
 }
 
 @Composable
 private fun PickerDialog(title: String, searchHint: String, items: List<PickItem>, emptyText: String?, onDismiss: () -> Unit, onPick: (PickItem) -> Unit) {
-    val look = LocalAronLook.current
     var query by rememberSaveable { mutableStateOf("") }
-    val shown = remember(items, query) { filterPickItems(items, query) }
     val clear = stringResource(R.string.out_pick_clear)
     val none = emptyText ?: stringResource(R.string.out_pick_none) // read outside the dialog window (its context may not carry the app language)
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFFEBE5F0)).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = look.ink)
-            AronField(
-                query, { query = it }, searchHint, Modifier.fillMaxWidth(), fieldModifier = Modifier.testTag(SearchPickerTags.DIALOG_SEARCH),
-                trailing = if (query.isNotEmpty()) ({
-                    Box(Modifier.clickable(role = Role.Button) { query = "" }.semantics { contentDescription = clear }.testTag(SearchPickerTags.DIALOG_CLEAR).padding(8.dp)) {
-                        Icon(AronIcons.Close, contentDescription = null, tint = look.inkMuted)
-                    }
-                }) else null,
-            )
-            if (shown.isEmpty()) {
-                Text(none, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, modifier = Modifier.padding(vertical = AronTokens.Space.M))
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().testTag(SearchPickerTags.DIALOG_LIST)) {
-                    items(shown, key = { it.key }) { it0 ->
-                        Text(
-                            it0.label,
-                            Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clickable(role = Role.Button) { onPick(it0) }.padding(vertical = 12.dp, horizontal = 4.dp).testTag(SearchPickerTags.item(it0.key)),
-                            style = MaterialTheme.typography.bodyLarge, color = look.ink,
-                        )
-                    }
+    Dialog(onDismissRequest = onDismiss) { PickerSheet(title, searchHint, items, query, { query = it }, none, clear, onPick) }
+}
+
+/**
+ * The inside of the picker's dialog (manual 43): the title, the search box with its clear cross, and the list (or [none]). Stateless, so the golden can record it without a
+ * dialog window (a focused text field in a window keeps the test clock from idling); the dialog above only holds [query].
+ */
+@Composable
+fun PickerSheet(title: String, searchHint: String, items: List<PickItem>, query: String, onQuery: (String) -> Unit, none: String, clear: String, onPick: (PickItem) -> Unit) {
+    val look = LocalAronLook.current
+    val colors = com.aktcl.aron.core.ui.LocalAronColors.current
+    val shown = remember(items, query) { filterPickItems(items, query) }
+    Column(
+        Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(if (colors.sunlight) colors.surfaceSolid else AronLook.LavenderPanel).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, color = look.ink)
+        AronField(
+            query, onQuery, searchHint, Modifier.fillMaxWidth(), fieldModifier = Modifier.testTag(SearchPickerTags.DIALOG_SEARCH),
+            trailing = if (query.isNotEmpty()) ({
+                Box(Modifier.clickable(role = Role.Button) { onQuery("") }.semantics { contentDescription = clear }.testTag(SearchPickerTags.DIALOG_CLEAR).padding(8.dp)) {
+                    Icon(AronIcons.Close, contentDescription = null, tint = look.inkMuted)
+                }
+            }) else null,
+        )
+        if (shown.isEmpty()) {
+            Text(none, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, modifier = Modifier.padding(vertical = AronTokens.Space.M))
+        } else {
+            LazyColumn(Modifier.fillMaxWidth().testTag(SearchPickerTags.DIALOG_LIST)) {
+                items(shown, key = { it.key }) { it0 ->
+                    Text(
+                        it0.label,
+                        Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clickable(role = Role.Button) { onPick(it0) }.padding(vertical = 12.dp, horizontal = 4.dp).testTag(SearchPickerTags.item(it0.key)),
+                        style = MaterialTheme.typography.bodyLarge, color = look.ink,
+                    )
                 }
             }
         }

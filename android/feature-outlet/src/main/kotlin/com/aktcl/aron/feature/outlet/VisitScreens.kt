@@ -286,7 +286,7 @@ private fun GeoCard(kind: GeoKind, headline: String, lines: List<String>, modifi
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Size.Icon))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                Text(headline, style = MaterialTheme.typography.titleSmall, color = ink)
+                if (headline.isNotBlank()) Text(headline, style = MaterialTheme.typography.titleSmall, color = ink)
                 lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = ink) }
             }
         }
@@ -336,6 +336,8 @@ fun VisitCheckContent(
 ) {
     val c = LocalAronColors.current
     val startLabel = stringResource(R.string.out_start_call)
+    // the old SR's out-of-range page exists only inside the SR app (LocalSrManualLook); the AMO control call passes geoPanel too and keeps its verdict card and bottom bar
+    val srLayout = geoPanel && com.aktcl.aron.core.ui.LocalSrManualLook.current
     Column(modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
@@ -343,6 +345,10 @@ fun VisitCheckContent(
         ) {
             val visitOutlet = (state as? VisitUiState.NeedsDecision)?.outlet ?: (state as? VisitUiState.CommitFailed)?.outlet
             if (outlet != null || visitOutlet != null) OutletCardView(outlet, visitOutlet)
+            // a clean in-range call: the question and its হ্যাঁ / না come first (manual 19) and the verdict and map card follow, so the
+            // fix panel never pushes the question off the first screen; a force sale or a doubtful verdict stays above it
+            val questionFirst = callQuestion != null && state is VisitUiState.Open && state.visit.cleanGeoSale
+            if (questionFirst) CallQuestionBlock(callQuestion!!, onStartCall)
             when (state) {
                 VisitUiState.Idle -> Unit
                 VisitUiState.ReadingFix -> GeoCard(GeoKind.Reading, stringResource(R.string.out_reading_fix), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
@@ -372,7 +378,18 @@ fun VisitCheckContent(
                         }
                     }
                     val kind = if (state.result.verdict == GeoVerdict.IN_RANGE) GeoKind.InRange else GeoKind.Warning
-                    GeoCard(kind, headline, lines, Modifier.testTag(OutletTags.MESSAGE)) {
+                    // the SR page of the manual (30): the red triangle and the sentence, then ফোর্স সেল and রিফ্রেশ on the page (no bottom bar);
+                    // the distance, the refresh count and the map follow below as the supporting card
+                    if (srLayout) {
+                        Column(Modifier.fillMaxWidth().padding(top = AronTokens.Space.S).testTag(OutletTags.MESSAGE), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                            Icon(AronIcons.Warning, contentDescription = null, tint = c.danger, modifier = Modifier.size(40.dp))
+                            Text(headline, color = c.accentOnContainer, fontSize = 18.sp, textAlign = TextAlign.Center)
+                        }
+                        SrOutOfRangeButtons(state, texts?.forceLabel, onForceSale, onRefresh, onBack)
+                    }
+                    val info0 = VisitGeoInfo.of(state.outlet, state.result.verdict, state.result.distanceM, state.phoneLat, state.phoneLng)
+                    val hasDetail = !srLayout || lines.isNotEmpty() || info0?.hasFix == true || onMap != null
+                    if (hasDetail) GeoCard(kind, if (srLayout) lines.firstOrNull().orEmpty() else headline, if (srLayout) lines.drop(1) else lines, if (srLayout) Modifier else Modifier.testTag(OutletTags.MESSAGE)) {
                         val info = VisitGeoInfo.of(state.outlet, state.result.verdict, state.result.distanceM, state.phoneLat, state.phoneLng)
                         if (geoPanel && info != null && info.hasFix) VisitGeoPanel(info, mapSlot = mapSlot, onOpenMaps = onMap)
                         else if (info != null && info.hasFix) {
@@ -389,17 +406,22 @@ fun VisitCheckContent(
                 )
                 is VisitUiState.CommitFailed -> GeoCard(
                     GeoKind.Danger,
-                    stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.STORAGE -> R.string.out_commit_failed }),
+                    stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.NOT_CHECKED_IN -> R.string.out_commit_not_checked_in; CommitFailure.CHECKED_OUT -> R.string.out_commit_checked_out; CommitFailure.STORAGE -> R.string.out_commit_failed }),
                     emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.Open -> GeoCard(
-                    // after a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never "in range" over "outside"
-                    if (geo == null || geo.inRange) GeoKind.InRange else GeoKind.Warning,
+                    // After a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never
+                    // "in range" over "outside". With no fix in memory (a call restored after a relaunch) it follows the
+                    // VISIT'S OWN stored row, so a force sale can never be shown as a clean geo sale (device walk, force state).
+                    if (state.visit.cleanGeoSale && (geo == null || geo.inRange)) GeoKind.InRange else GeoKind.Warning,
                     stringResource(
-                        when (geo?.verdict) {
-                            GeoVerdict.OUT_OF_RANGE -> R.string.out_out_of_range
-                            GeoVerdict.ACCURACY_TOO_LOW -> R.string.out_accuracy_low
-                            GeoVerdict.MOCKED -> R.string.out_mocked
-                            else -> R.string.out_in_range
+                        when {
+                            !state.visit.cleanGeoSale && state.visit.forceReasonCode != null -> R.string.out_force_sale_open
+                            geo?.verdict == GeoVerdict.OUT_OF_RANGE || (geo == null && state.visit.verdict == GeoVerdict.OUT_OF_RANGE) -> R.string.out_out_of_range
+                            geo?.verdict == GeoVerdict.ACCURACY_TOO_LOW || (geo == null && state.visit.verdict == GeoVerdict.ACCURACY_TOO_LOW) -> R.string.out_accuracy_low
+                            geo?.verdict == GeoVerdict.MOCKED || (geo == null && state.visit.verdict == GeoVerdict.MOCKED) -> R.string.out_mocked
+                            geo == null && state.visit.verdict == GeoVerdict.NO_OUTLET_LOCATION -> R.string.out_no_outlet_location
+                            state.visit.cleanGeoSale -> R.string.out_in_range
+                            else -> R.string.out_geo_unknown
                         },
                     ),
                     emptyList(), Modifier.testTag(OutletTags.MESSAGE),
@@ -407,7 +429,7 @@ fun VisitCheckContent(
                     if (geo != null) VisitGeoPanel(geo, mapSlot = mapSlot, onOpenMaps = onMap)
                 }
             }
-            if (callQuestion != null && state is VisitUiState.Open) CallQuestionBlock(callQuestion, onStartCall)
+            if (callQuestion != null && state is VisitUiState.Open && !questionFirst) CallQuestionBlock(callQuestion, onStartCall)
             if (callQuestion == null && (onPreviousSales != null || onNoSale != null || (state is VisitUiState.Open && onBack != null)) || callQuestion != null && (onNoSale != null || (state is VisitUiState.Open && onBack != null))) {
                 // the two text buttons share a line when both fit (English) and wrap one under the other otherwise (Bangla on 360 dp)
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
@@ -421,7 +443,7 @@ fun VisitCheckContent(
         // the bar by verdict (screens-sr s6 table)
         when (state) {
             VisitUiState.ReadingFix -> OutletBar(BarAction(startLabel, {}, enabled = false), reason = stringResource(R.string.out_reason_wait_fix))
-            is VisitUiState.NeedsDecision -> {
+            is VisitUiState.NeedsDecision -> if (!srLayout) {
                 val force = BarAction(texts?.forceLabel ?: stringResource(R.string.out_force_sale), onForceSale, OutletTags.FORCE)
                 when {
                     // outlet has no coordinates: the primary is Force Sale (screens-sr s6 table); a refresh changes nothing
@@ -440,6 +462,32 @@ fun VisitCheckContent(
             is VisitUiState.CommitFailed -> if (state.failure == CommitFailure.STORAGE) OutletBar(BarAction(stringResource(R.string.out_retry_short), onRetry, OutletTags.RETRY, icon = AronIcons.Refresh))
             is VisitUiState.Open -> if (callQuestion != null) CallCartBar(callQuestion.onProceedBlocked) else if (onStartCall != null) OutletBar(BarAction(startLabel, onStartCall, icon = AronIcons.ArrowForward))
             VisitUiState.Idle -> Unit
+        }
+    }
+}
+
+/** The two buttons of the old SR's out-of-range page (manual 30): ফোর্স সেল (the gradient primary, once the flow allows it) and রিফ্রেশ (charcoal, with the refreshes left). */
+@Composable
+private fun SrOutOfRangeButtons(state: VisitUiState.NeedsDecision, forceLabel: String?, onForceSale: () -> Unit, onRefresh: () -> Unit, onBack: (() -> Unit)?) {
+    val c = LocalAronColors.current
+    val noCoordinates = state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        if (state.forceSaleAvailable) {
+            com.aktcl.aron.core.ui.aron.AronPrimaryButton(forceLabel ?: stringResource(R.string.out_force_sale), onForceSale, Modifier.fillMaxWidth().testTag(OutletTags.FORCE))
+        }
+        if (!noCoordinates) {
+            if (state.refreshLeft) {
+                com.aktcl.aron.core.ui.aron.AronDarkButton(
+                    stringResource(R.string.out_refresh_n, localizedNumber((state.refreshMax - state.refreshCount).toLong())), onRefresh, Modifier.fillMaxWidth().testTag(OutletTags.REFRESH),
+                )
+            } else if (!state.forceSaleAvailable) {
+                com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.out_refresh), {}, Modifier.fillMaxWidth(), enabled = false)
+                Text(stringResource(R.string.out_no_refresh_left), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            }
+        }
+        // nothing to force and nothing to refresh (an outlet with no location and no force sale yet): the page still offers a way out. No "no sale" here: the visit is not open yet, so nothing could be closed
+        if (!state.forceSaleAvailable && noCoordinates) {
+            if (onBack != null) com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.out_go_back), onBack, Modifier.fillMaxWidth())
         }
     }
 }
@@ -564,7 +612,7 @@ private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
     val look = LocalAronLook.current
     val c = LocalAronColors.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET), readOnly = true) }
+        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET), readOnly = true, softCorners = true) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             OutlineChip(stringResource(R.string.out_sale_history_btn), AronIcons.Clock, c.accentContainer, c.accentOnContainer, q.onSaleHistory, Modifier.weight(1f).testTag(CallQuestionTags.HISTORY))
             OutlineChip(stringResource(R.string.out_today_target_btn), AronIcons.Target, c.successContainer, c.successOnContainer, q.onTodayTarget, Modifier.weight(1f).testTag(CallQuestionTags.TARGET))
@@ -576,7 +624,7 @@ private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
         com.aktcl.aron.core.ui.aron.AronPrimaryButton(
             stringResource(R.string.out_call_yes), { onYes?.invoke() }, Modifier.fillMaxWidth().testTag(CallQuestionTags.YES), enabled = onYes != null,
         )
-        com.aktcl.aron.core.ui.aron.AronSecondaryButton(stringResource(R.string.out_call_no), q.onNo, Modifier.fillMaxWidth().testTag(CallQuestionTags.NO))
+        com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.out_call_no), q.onNo, Modifier.fillMaxWidth().testTag(CallQuestionTags.NO))
     }
 }
 

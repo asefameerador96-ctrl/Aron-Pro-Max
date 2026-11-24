@@ -21,12 +21,31 @@ object Fx {
     const val DATE = "2026-10-05"
     val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10), allowLoose = true)
     val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25, allowLoose = true)
-    val match = SaleSku(105, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01")
-    val odd = SaleSku(106, "ODD", "cigarette", "Odd", null, "stick", 20, 7_935, 1, "2026-09-01", allowLoose = true)
+    val match = SaleSku(105, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01", stockBase = 60)
+    val odd = SaleSku(106, "ODD", "cigarette", "Odd", null, "stick", 20, 7_935, 1, "2026-09-01", stockBase = 400, allowLoose = true)
     val catalog = listOf(maxr, aster, match, odd).associateBy { it.skuId }
 
     fun draft(visit: String = ClientIds.newUuid()) =
         SaleDraft(visitUuid = visit, outletId = 50001, routeId = 10231, businessDate = DATE, memoUuid = ClientIds.newUuid())
+
+    /**
+     * Seeds today's stock so the gate of D-OWNER-PREREQ-01 rule 2 is satisfied: one `issue` movement per SKU for exactly the
+     * [SaleSku.stockBase] the catalog shows, so the in-transaction re-check sees the same figure the review did.
+     */
+    suspend fun seedStock(
+        repo: com.aktcl.aron.core.database.repo.CaptureRepository,
+        catalog: Map<Long, SaleSku> = this.catalog,
+        date: String = DATE,
+    ) {
+        val rows = catalog.values.filter { it.stockBase > 0 }.map { sku ->
+            com.aktcl.aron.core.database.entity.StockMovementEntity(
+                clientUuid = ClientIds.newUuid(), meta = meta().copy(businessDate = date), kind = "issue", skuId = sku.skuId,
+                qtyEntered = sku.stockBase / sku.entry.factor, unitEntered = sku.entry.unit.wire, packFactor = sku.entry.factor,
+                qtyBase = sku.stockBase, slipPrinted = false,
+            )
+        }
+        if (rows.isNotEmpty()) repo.recordStock(rows)
+    }
 
     fun meta() = CaptureMeta(DATE, "2026-10-05T04:31:07.120Z", 9_120_331, 41, -1_250, true, 10231, null, "2026-10-05:3", false, 318)
 

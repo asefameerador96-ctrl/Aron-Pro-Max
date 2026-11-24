@@ -21,9 +21,15 @@ enum class EditReason(val wire: String) {
 sealed interface EditDenied {
     /** Edit works only inside the outlet geofence: the SR must be at the shop (the server re-checks the new fix). */
     data object OutsideGeofence : EditDenied
+    /** A fake location was detected on the fix taken for the edit (the hard refusal of D-OWNER-MDM-02): not an out-of-range case. */
+    data object MockLocation : EditDenied
     data object QcDone : EditDenied
     data object AlreadySuperseded : EditDenied
     data object NoLiveMemo : EditDenied
+    /** D-OWNER-PREREQ-01 rule 1: an edit writes a memo, so it needs today's open check-in. */
+    data object NotCheckedIn : EditDenied
+    /** The memo's own day is closed for writes (a Sales Submit stands, or the Final Submit locked it): the edit would be refused at the save, so it is not let in. */
+    data object DayClosed : EditDenied
 }
 
 object EditGate {
@@ -37,8 +43,9 @@ object EditGate {
      * Whether a memo may be edited now (F-SR-033): inside the geofence with a fresh fix, before QC at the outlet, and only the
      * live memo of the chain (an already superseded memo is never edited again).
      */
-    fun check(inGeofenceNow: Boolean, qcCompleted: Boolean, memoIsLive: Boolean, memoExists: Boolean = true): EditDenied? = when {
+    fun check(inGeofenceNow: Boolean, qcCompleted: Boolean, memoIsLive: Boolean, memoExists: Boolean = true, checkedIn: Boolean = true): EditDenied? = when {
         !memoExists -> EditDenied.NoLiveMemo
+        !checkedIn -> EditDenied.NotCheckedIn
         !memoIsLive -> EditDenied.AlreadySuperseded
         qcCompleted -> EditDenied.QcDone
         !inGeofenceNow -> EditDenied.OutsideGeofence

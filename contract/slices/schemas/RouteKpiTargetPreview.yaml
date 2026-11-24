@@ -1,0 +1,94 @@
+RouteKpiTargetPreview:
+  type: object
+  required:
+  - batch_uuid
+  - brand_rows
+  - month_rows
+  - programme_rows
+  - campaign_rows
+  - campaign_sku_rows
+  - errors
+  - errors_truncated
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    brand_rows:
+      type: integer
+      minimum: 0
+    month_rows:
+      type: integer
+      minimum: 0
+    programme_rows:
+      type: integer
+      minimum: 0
+    campaign_rows:
+      type: integer
+      minimum: 0
+    campaign_sku_rows:
+      type: integer
+      minimum: 0
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        type: object
+        required:
+        - section
+        - row
+        - column
+        - code
+        additionalProperties: false
+        properties:
+          section:
+            type: string
+            enum:
+            - brand_rows
+            - month_rows
+            - programme_rows
+            - campaign_rows
+            - campaign_sku_rows
+          row:
+            type: integer
+            minimum: 1
+          column:
+            type: string
+            maxLength: 40
+          code:
+            type: string
+            maxLength: 40
+    errors_truncated:
+      type: boolean
+    warnings:
+      type: array
+      maxItems: 1000
+      description: 'Rows that are accepted but probably not what was meant: `campaign_without_skus` (a campaign
+        row with no SKU row in the batch or stored: the app would show STD and memo achieved 0). Optional.'
+      items:
+        type: object
+        required:
+        - section
+        - row
+        - column
+        - code
+        additionalProperties: false
+        properties:
+          section:
+            type: string
+            enum:
+            - brand_rows
+            - month_rows
+            - programme_rows
+            - campaign_rows
+            - campaign_sku_rows
+          row:
+            type: integer
+            minimum: 1
+          column:
+            type: string
+            maxLength: 40
+          code:
+            type: string
+            maxLength: 40
+    warnings_truncated:
+      type: boolean

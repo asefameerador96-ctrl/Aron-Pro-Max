@@ -10,7 +10,7 @@ import com.aktcl.aron.core.common.WallClock
 
 /**
  * Finds installed apps that can act as a mock-location provider: non-system packages other than this app that request
- * `ACCESS_MOCK_LOCATION`. Needs `QUERY_ALL_PACKAGES` (declared by this module; the apps are installed outside Play).
+ * `ACCESS_MOCK_LOCATION`. Sees only the packages declared in this module's manifest `<queries>` (no QUERY_ALL_PACKAGES since D-OWNER-MDM-02).
  */
 class MockAppScanner(context: Context) {
     private val app = context.applicationContext

@@ -17,10 +17,10 @@
     <string name="amo_out_f_shop">দোকানের নাম</string>
     <string name="amo_out_f_owner">দোকানের মালিকের নাম</string>
     <string name="amo_out_f_mobile">মোবাইল নম্বর</string>
-    <string name="amo_out_sub_channel">সাব-চ্যানেল</string>
-    <string name="amo_out_pick_sub_channel">সাব-চ্যানেল নির্বাচন করুন</string>
-    <string name="amo_out_geo_class">জিও ক্লাসিফিকেশন</string>
-    <string name="amo_out_pick_geo_class">জিও ক্লাসিফিকেশন নির্বাচন করুন</string>
+    <string name="amo_out_sub_channel">Sub-Channel</string>
+    <string name="amo_out_pick_sub_channel">Select Sub-Channel</string>
+    <string name="amo_out_geo_class">Geo Classification</string>
+    <string name="amo_out_pick_geo_class">Select Geo Classification</string>
     <string name="amo_out_all">সব</string>
     <string name="amo_out_saved">ডেটা সফলভাবে সংরক্ষিত হয়েছে।</string>
     <string name="amo_out_updated">ডেটা সফলভাবে আপডেট হয়েছে।</string>

@@ -37,6 +37,22 @@ data class OutboxEntity(
     @ColumnInfo(name = "server_id") val serverId: Long? = null,
     /** F-SYS-072: the record's ES256 `sig`, made once when its batch is first assembled and sent unchanged on every retry. */
     @ColumnInfo(name = "sig") val sig: String? = null,
+    /**
+     * D-AGATE-04: the `message_key` of the last `RecordAck` (contract `RecordAck.message_key`), kept beside [lastCode] so the
+     * Sales Submit list can name the server's own reason when the bundle has no text for the code. Never shown raw to the rep.
+     */
+    @ColumnInfo(name = "last_message_key") val lastMessageKey: String? = null,
+    /**
+     * D-AGATE-04: when the rep marked this refused record as seen. It leaves the banner count and the main list; the ROW AND
+     * ITS PAYLOAD STAY, and it is still listed under the records already seen. Null while it has not been seen.
+     */
+    @ColumnInfo(name = "seen_at") val seenAt: String? = null,
+    /**
+     * D-AGATE-18 (B2): the uuid of the record this one depends on where that is NOT the family's visit and not a domain column the reader can join (the AMO's
+     * `distribution_check_line` names its check, `call_assessment_answer` its assessment). Stored at capture, so Send again and the reader judge by the real parent and never by rank.
+     * Null for every other row (and for rows of an older version: no parent known means no ancestor can hold them back).
+     */
+    @ColumnInfo(name = "parent_uuid") val parentUuid: String? = null,
 )
 
 /** Outbox row states (docs/24 s4.5, s4.6). */

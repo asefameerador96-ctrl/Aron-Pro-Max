@@ -23,6 +23,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.contract.MediaPurpose
 import com.aktcl.aron.contract.OutletRequestType
 import com.aktcl.aron.contract.RecordType
+import com.aktcl.aron.core.database.record.ProgrammePayloads
 import com.aktcl.aron.core.database.record.RecordMapping
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -47,12 +48,29 @@ data class SaleCapture(
  */
 class CaptureRepository(
     private val db: AronDatabase,
+    /**
+     * D-OWNER-PREREQ-01 rule 1: when true (the SR and AMO day objects, the only places that write operational records) every operational
+     * write is refused inside its transaction without a check-in on the record's business date, and after the check-out
+     * ([AttendanceGate]). The repositories built for breadcrumbs, device status, media meta and the day-submit read leave it off: they
+     * write exempt records only. It comes BEFORE [nowIso] so the trailing-lambda form `CaptureRepository(db) { now }` keeps meaning the clock.
+     */
+    private val requireCheckIn: Boolean = false,
     private val nowIso: () -> String = { ISO_MILLIS.format(Instant.now()) },
 ) {
     private val capture = db.captureDao()
     private val outbox = db.outboxDao()
 
+    /** Why an operational write on [businessDate] would be refused by the check-in gate, or null. Pure read from stored attendance. */
+    suspend fun attendanceRefusal(businessDate: String): AttendanceRefusal? = AttendanceGate.refusal(capture, businessDate)
+
+    /** Inside the caller's transaction: refuses the write when [requireCheckIn] and the date has no open check-in. */
+    private suspend fun requireCheckedIn(businessDate: String) {
+        if (!requireCheckIn) return
+        AttendanceGate.refusal(capture, businessDate)?.let { throw AttendanceRefusedException(it, businessDate) }
+    }
+
     suspend fun recordAttendance(event: AttendanceEventEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
@@ -82,11 +100,14 @@ class CaptureRepository(
      * the lock, as on the server. A Sales Submit does not refuse stock (D-X4a-13: the server accepts it and the phone always did).
      */
     suspend fun recordStock(movements: List<StockMovementEntity>) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         require(movements.isNotEmpty()) { "nothing to save" }
         requireUuids(*movements.map { it.clientUuid }.toTypedArray())
         db.withTransaction {
-            val fresh = movements.filterNot { purged(it.clientUuid) } // a purged movement replayed is not captured again
+            // a purged movement replayed is not captured again; one already stored (a retry of the same Save) is stored once
+            val fresh = movements.filterNot { purged(it.clientUuid) || capture.stockMovement(it.clientUuid) != null }
             if (fresh.isEmpty()) return@withTransaction emptyList()
+            fresh.map { it.meta.businessDate }.distinct().forEach { requireCheckedIn(it) }
             fresh.map { it.meta }.distinct().forEach { requireNotFinal(it, STOCK_MOVEMENT) }
             capture.insertStock(fresh)
             val at = nowIso()
@@ -95,9 +116,11 @@ class CaptureRepository(
     }
 
     suspend fun recordVisitOpen(visit: VisitEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(visit.clientUuid)) return@withTransaction emptyList()
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
+        requireCheckedIn(visit.meta.businessDate) // rule 1: a call cannot open without today's check-in
         requireOpenRouteDay(visit.meta, "visit") // tso-manual X4a (R-W-11): the call opens a locked type
         requireFixOf(fix, visit.clientUuid, visit.fixClientUuid)
         capture.insertFix(fix)
@@ -109,7 +132,8 @@ class CaptureRepository(
      * Saves a memo with everything that belongs to it. Outbox order inside the transaction follows the family ranks
      * (memo, then lines and discounts, then QC lines), so the batch carries parents before children (s4.2).
      */
-    suspend fun recordSale(sale: SaleCapture) {
+    suspend fun recordSale(sale: SaleCapture, enforceStock: Boolean = false) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         val m = sale.memo
         require(sale.lines.all { it.memoClientUuid == m.clientUuid }) { "every line must belong to the memo" }
         require(sale.discounts.all { it.memoClientUuid == m.clientUuid }) { "every discount line must belong to the memo" }
@@ -133,7 +157,15 @@ class CaptureRepository(
         }
         db.withTransaction {
             if (purged(m.clientUuid)) return@withTransaction emptyList()
-            requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
+            // a replay of a memo already saved is not a NEW write: the gates (check-in, route-day) judge new writes only, so a retry after the day closed
+            // behaves exactly as it always did (the insert below aborts without writing), never as a new refusal (round-3 low)
+            val replay = capture.memo(m.clientUuid) != null
+            if (!replay) {
+                requireCheckedIn(m.meta.businessDate) // rule 1
+                requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
+                requireEditTargetLive(m)
+            }
+            if (enforceStock && !replay) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {
@@ -155,30 +187,58 @@ class CaptureRepository(
         }
     }
 
-    suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
+    /** An edit replaces ONE memo: a target another edit already superseded is refused (the rep opens the latest version), never stacked on. */
+    private suspend fun requireEditTargetLive(m: MemoEntity) {
+        val target = m.supersedesClientUuid ?: return
+        if (capture.memosOn(m.meta.businessDate).any { it.supersedesClientUuid == target && it.clientUuid != m.clientUuid }) throw EditTargetSupersededException(target)
+    }
+
+    /**
+     * Rule 2 (stock gate): the memo's lines plus its reward packs may not exceed the stock held, read from the rows stored NOW
+     * (inside the caller's transaction when it has one). An edit gets the superseded memo's quantity back. No stock row = zero.
+     */
+    private suspend fun requireStockHeld(sale: SaleCapture) {
+        val m = sale.memo
+        val requested = StockHeld.requested(sale.lines, sale.discounts)
+        if (requested.isEmpty()) return
+        val held = StockHeld.read(capture, m.meta.businessDate, ignoring = m.supersedesClientUuid)
+        val short = StockHeld.shortages(requested, held)
+        if (short.isNotEmpty()) throw OverStockException(short, m.meta.businessDate)
+    }
+
+    suspend fun recordVisitClose(close: VisitCloseEntity, phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList()) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
         requireOpenRouteDay(close.meta, "visit_close") // tso-manual X4a (R-W-11)
         checkNotNull(capture.visit(close.visitClientUuid)) { "visit_close without its visit" }
         capture.insertVisitClose(close)
-        outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
+        val rows = outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
+        // D-AGATE-18: "the phone ended it" is stored with the close it describes, in the same transaction (local only)
+        phoneMarks.forEach { capture.insertPhoneMark(it) }
+        rows
     }
 
     /**
      * A sale numbered on this phone (F-SYS-027): the number is reserved in its own committed step, then the sale is written
      * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
      */
-    suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+    suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering, enforceStock: Boolean = false): String {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
         capture.memo(sale.memo.clientUuid)?.memoNo?.let { return it }
         // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale);
         // follow-up (R-W-23): nor does one a standing Sales Submit refuses (the same route-day check, before the reserve)
+        requireCheckedIn(sale.memo.meta.businessDate) // a sale without a check-in takes no memo number either
         requireOpenRouteDay(sale.memo.meta, "memo")
+        requireEditTargetLive(sale.memo) // an edit of an already replaced memo takes no number either
+        // an over-stock sale takes no memo number either (checked again inside the saving transaction)
+        if (enforceStock) requireStockHeld(sale)
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
-        recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
+        recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)), enforceStock)
         return memoNo
     }
 
@@ -187,7 +247,7 @@ class CaptureRepository(
      * route-day check: no Final Submit lock and no standing Sales Submit (route-day or the AMO's supervisor day) closes its
      * route-day; a routeless collection is never checked. The memo screen draws Mark Paid only then. Pure reads, no write.
      */
-    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = dayRefusal(meta, DUE_COLLECTION) == null
+    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = dayRefusal(meta, DUE_COLLECTION) == null && (!requireCheckIn || AttendanceGate.refusal(capture, meta.businessDate) == null)
 
     /**
      * tso-manual X4a (R-W-23): why a capture of [recordType] with [meta] would be refused by this repository's route-day check,
@@ -199,6 +259,12 @@ class CaptureRepository(
      * in force at this repository's trusted now locks ([FinalSubmitLock.lockApplies]: quarantine or reject); under
      * accept_and_flag (the default) a final route-day answers as an open one, and SALES_SUBMIT is unchanged.
      */
+    /**
+     * True when a Sales Submit of [meta]'s route-day STANDS (D-LEAD-PREREQ-03 ruling 4): asked without a record type, so the zone's Final Submit
+     * lock is not consulted and cannot hide a standing submit. The check-out's automatic submit skips such a route-day.
+     */
+    suspend fun submitStandsFor(meta: CaptureMeta): Boolean = RouteDayLock.refusal(db, meta, null, nowIso()) == DayRefusal.SALES_SUBMIT
+
     suspend fun dayRefusal(meta: CaptureMeta, recordType: String): DayRefusal? = when {
         recordType == STOCK_MOVEMENT -> DayRefusal.FINAL_SUBMIT.takeIf { FinalSubmitLock.refuses(db, meta, STOCK_MOVEMENT, nowIso()) }
         recordType == DUE_COLLECTION && meta.routeId == null -> null
@@ -207,6 +273,7 @@ class CaptureRepository(
 
     /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
     suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requireUuids(due.clientUuid, due.againstMemoClientUuid)
         due.visitClientUuid?.let { requireUuids(it); requireRoute(due.meta) }
         require(due.amountMtk >= 10) { "amount_mtk is at least 10" }
@@ -217,6 +284,7 @@ class CaptureRepository(
         db.withTransaction {
             if (purged(due.clientUuid)) return@withTransaction emptyList()
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
+            requireCheckedIn(due.meta.businessDate) // rule 1: collecting a due is operational
             if (due.meta.routeId != null) requireOpenRouteDay(due.meta, DUE_COLLECTION) // tso-manual X4a (R-W-11): Mark Paid
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
             capture.insertDueCollection(due)
@@ -229,6 +297,7 @@ class CaptureRepository(
      * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
      */
     suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(record.clientUuid) || (record.familyUuid != record.clientUuid && purged(record.familyUuid))) return@withTransaction false // a child of a purged family is stale too
         requireUuids(record.clientUuid, record.familyUuid)
         require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
@@ -248,18 +317,73 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        // D-AGATE-25: an audit record of a visit (its family) is refused once the call has its close: the close classified the call without it. A replay (above) still answers false.
+        if (!own && capture.visitCloseCount(record.familyUuid) > 0) throw CallAlreadyClosedException(record.familyUuid)
+        requireCheckedIn(record.meta.businessDate) // rule 1: every AMO record is operational
         requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
         outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
         true
     }
 
+    /**
+     * The write gates of a programme record (check-in, open route-day) WITHOUT writing anything, for a caller that must do a side effect first (claiming a photo): throws the same
+     * exceptions [recordProgramme] would. Inside one transaction so it sees one state.
+     */
+    suspend fun requireProgrammeWriteOpen(meta: CaptureMeta, recordType: String) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
+        requireRoute(meta)
+        requireCheckedIn(meta.businessDate)
+        requireOpenRouteDay(meta, recordType)
+    }
+
+    /**
+     * The SR programme records (lane android-sr-programmes): `redemption` with its `redemption_line` rows, or one `gift_choice`, in ONE
+     * transaction, all or nothing. They share the generic `amo_record` store and the outbox (no schema change; a dedicated table is a Room 12
+     * item). Idempotent by client UUID: a replay of the same parent writes nothing and returns false, so a double tap, a retry after a kill
+     * and relaunch, or a duplicate upload never makes a second redemption. Family and rank follow docs/24 s4.3: parent self rank 0, lines
+     * rank 1 under the redemption. The open-route-day guard is the same one every operational write uses.
+     */
+    suspend fun recordProgramme(records: List<com.aktcl.aron.core.database.entity.AmoRecordEntity>): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
+        require(records.isNotEmpty()) { "no records" }
+        val parent = records.first()
+        if (purged(parent.clientUuid)) return@withTransaction false
+        requireUuids(*records.flatMap { listOf(it.clientUuid, it.familyUuid) }.toTypedArray())
+        require(parent.recordType in PROGRAMME_PARENT_TYPES && parent.familyUuid == parent.clientUuid && parent.rank == 0) { "the first programme record is a parent (redemption, gift_choice or gift_photo), own family, rank 0" }
+        val lines = records.drop(1)
+        require(lines.all { it.recordType == "redemption_line" && it.rank == 1 && it.familyUuid == parent.clientUuid }) { "children are redemption_line rank 1 of the redemption" }
+        require(parent.recordType == "redemption" || lines.isEmpty()) { "a gift_choice has no children" }
+        val parsed = records.map { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull()
+            require(o != null) { "the payload is a JSON object" }
+            ProgrammePayloads.problem(r.recordType, o)?.let { throw IllegalArgumentException(it) }
+            o
+        }
+        if (parent.recordType == "redemption") {
+            val pay = parsed.first()
+            fun n(o: JsonObject, k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+            require(n(pay, "line_count") == lines.size.toLong()) { "line_count must equal the number of lines" }
+            require(n(pay, "points_total") == n(pay, "cash_points") + parsed.drop(1).sumOf { n(it, "points_total") }) { "points_total = cash_points + the lines" }
+            require(lines.all { (Json.parseToJsonElement(it.payloadJson) as JsonObject)["redemption_client_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } == parent.clientUuid }) { "a line names its redemption" }
+        }
+        requireRoute(parent.meta)
+        if (capture.amoRecordCount(parent.clientUuid) > 0) return@withTransaction false
+        requireCheckedIn(parent.meta.businessDate) // rule 1: a redemption or a gift choice is operational, no check-in no write (a replay of a saved one above is not a new write)
+        requireOpenRouteDay(parent.meta, parent.recordType)
+        records.forEach { capture.insertAmoRecord(it) }
+        outbox.insert(records.map { RecordMapping.amoRecord(it, nowIso()) })
+        true
+    }
+
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(skip.clientUuid)) return@withTransaction emptyList()
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
         require(REASON_CODE.matches(skip.reasonCode)) { "reason_code must match ${REASON_CODE.pattern}" }
+        requireCheckedIn(skip.meta.businessDate)
         requireOpenRouteDay(skip.meta, "visit_skip") // tso-manual X4a (R-W-11)
         capture.insertVisitSkip(skip)
         outbox.insert(listOf(RecordMapping.visitSkip(skip, nowIso())))
@@ -271,6 +395,7 @@ class CaptureRepository(
      * SR calls only: AMO and TSO visits never carry content (and no points are earned from it here; loyalty is deferred).
      */
     suspend fun recordContentView(view: com.aktcl.aron.core.database.entity.ContentViewEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(view.clientUuid)) return@withTransaction false
         requireUuids(view.clientUuid, view.visitClientUuid)
         requireRoute(view.meta)
@@ -279,6 +404,7 @@ class CaptureRepository(
         require(view.sequenceNo in 1..20) { "sequence_no is 1..20" }
         require(view.contentVersion >= 1) { "content_version is at least 1" }
         require(view.durationMs == null || view.durationMs in 0..3_600_000L) { "duration_ms is 0..3600000" }
+        requireCheckedIn(view.meta.businessDate)
         requireOpenRouteDay(view.meta)
         requireSrCall(view.visitClientUuid)
         if (capture.contentViewsOf(view.visitClientUuid).any { it.contentId == view.contentId }) return@withTransaction false
@@ -293,6 +419,7 @@ class CaptureRepository(
      * answer carries the photo's media uuid, any other may carry one. SR calls and AMO control calls; no points ledger (docs/27).
      */
     suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(answer.clientUuid)) return@withTransaction emptyList()
         requireUuids(answer.clientUuid, answer.visitClientUuid)
         answer.photoUuid?.let { requireUuids(it) }
@@ -309,8 +436,10 @@ class CaptureRepository(
         answer.answerOptionCode?.let { require(REASON_CODE.matches(it)) { "answer_option_code must match ${REASON_CODE.pattern}" } }
         answer.answerText?.let { require(it.length <= 1000) { "answer_text is at most 1000 characters" } }
         answer.answerNum?.let { require(it.isFinite()) { "answer_num is a finite number" } }
+        requireCheckedIn(answer.meta.businessDate)
         requireOpenRouteDay(answer.meta)
         requireSurveyVisit(answer.visitClientUuid)
+        if (capture.visitCloseCount(answer.visitClientUuid) > 0) throw CallAlreadyClosedException(answer.visitClientUuid) // D-AGATE-25
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }
@@ -335,7 +464,13 @@ class CaptureRepository(
      * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
      */
     suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
-        if (purged(submit.clientUuid)) return@withTransaction emptyList()
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
+        writeDaySubmit(submit)
+    }
+
+    /** The body of [recordDaySubmit], inside the caller's transaction (also used by [recordCheckOut]). Returns the outbox seq(s) written. */
+    private suspend fun writeDaySubmit(submit: DaySubmitEntity): List<Long> {
+        if (purged(submit.clientUuid)) return emptyList()
         requireUuids(submit.clientUuid)
         require(submit.scope in setOf("route_day", "supervisor_day")) { "scope is route_day or supervisor_day" }
         if (submit.scope == "route_day") requireRoute(submit.meta)
@@ -347,8 +482,61 @@ class CaptureRepository(
         }
         requireOpenRouteDay(submit.meta)
         capture.insertDaySubmit(submit)
-        outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
+        return outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
     }
+
+    /**
+     * D-AGATE-06 (owner rule 3): the check-out writes the day's Sales Submit(s) and itself in ONE local transaction, offline: the submits
+     * [buildSubmits] returns (one per route-day with captures that has none standing; built INSIDE the transaction, so their counts and
+     * `pending_count` are the true ones at that moment) get the lower outbox seq, then the fix, the `check_out` event and its outbox row.
+     * A kill at any point leaves all of it or nothing. [event] must be a `check_out` of a business date that has an open check-in; that
+     * date is the DAY OF THE OPEN CHECK-IN, also when this runs after midnight, and the submits carry it too. Idempotent on [event]'s uuid.
+     * The outbox holds the submit until every earlier record of the date is final and the check-out until the submit is (see
+     * [OutboxDao.nextSendable]), so the server never sees the day's own records as late.
+     */
+    suspend fun recordCheckOut(
+        event: AttendanceEventEntity, fix: GeoFixEntity,
+        phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+        /** D-AGATE-22 (item 6): runs FIRST inside the transaction; the rep's check-out passes a read of the open work (it throws to refuse, nothing is written), the phone's own close none. */
+        guard: (suspend () -> Unit)? = null,
+        buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
+    ) = db.withTransaction {
+        // Developer options gate FIRST (independent of, and before, the check-in gate: a rep who is not checked in still sees the developer-options block first; D-OWNER-MDM-02).
+        com.aktcl.aron.core.common.ActionGate.requireOpen()
+        if (purged(event.clientUuid)) return@withTransaction emptyList()
+        require(event.kind == "check_out") { "recordCheckOut writes a check_out" }
+        guard?.invoke()
+        requireUuids(event.clientUuid, fix.clientUuid)
+        requireFixOf(fix, event.clientUuid, event.fixClientUuid)
+        val date = event.meta.businessDate
+        val events = capture.attendanceOn(date)
+        check(events.any { it.kind == "check_in" } && events.none { it.kind == "check_out" }) { "a check-out needs an open check-in on $date" }
+        val submits = buildSubmits(date)
+        require(submits.all { it.meta.businessDate == date }) { "a day's submits carry the day of the open check-in" }
+        // one figure for every submit of this check-out: the rows that were waiting BEFORE it, not the submits it is writing (round-3 low)
+        val pendingBefore = outbox.unsentOn(date)
+        submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
+        capture.insertFix(fix)
+        capture.insertAttendance(event)
+        // D-AGATE-22 (item 1): closed_by says WHO closed, read from the phone's own DAY_CLOSED mark written in this same transaction (never from comparing times)
+        val byPhone = phoneMarks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED && it.businessDate == date }
+        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso(), closedByPhone = byPhone)))
+        phoneMarks.forEach { capture.insertPhoneMark(it) } // D-AGATE-18: the phone closed this day: marker and check-out commit together
+        rows
+    }
+
+    /** D-AGATE-26: the stored lines of a memo (a read, for the sale replay notice). */
+    suspend fun memoLines(memoUuid: String): List<com.aktcl.aron.core.database.entity.MemoLineEntity> = capture.linesOf(memoUuid)
+
+    /** The local "ended by the phone" markers not yet shown to the rep (D-AGATE-18), oldest first. */
+    suspend fun phoneMarks(): List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = capture.phoneMarks()
+    /** Stores one marker on its own (an unsaved draft or edit that was really dropped: the draft is a file, so there is no Room write to share a transaction with). */
+    suspend fun addPhoneMark(mark: com.aktcl.aron.core.database.entity.PhoneMarkEntity) = capture.insertPhoneMark(mark)
+    /** The rep has been shown the notice: the markers he was shown (ids up to [upToId]) go; a marker written meanwhile stays for the next notice. */
+    suspend fun clearPhoneMarks(upToId: Long) = capture.clearPhoneMarks(upToId)
+
+    /** The business dates with a check-in and no check-out (see [CaptureDao.openAttendanceDates]), oldest first. */
+    suspend fun openAttendanceDates(): List<String> = capture.openAttendanceDates()
 
     /**
      * A cluster the SR created on the phone, with the GEO fix of the creation, in ONE transaction (SRM-B-44). Idempotent by the client uuid:
@@ -356,9 +544,11 @@ class CaptureRepository(
      * LOCAL ONLY: no outbox row until the contract has the cluster-creation record. Returns true when the cluster is on the phone.
      */
     suspend fun recordClusterCreate(c: com.aktcl.aron.core.database.entity.ClusterCreateEntity, fix: GeoFixEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction true
         if (purged(c.clientUuid)) return@withTransaction false
         requireUuids(c.clientUuid, fix.clientUuid)
+        requireCheckedIn(c.businessDate)
         requireFixOf(fix, c.clientUuid, c.fixClientUuid)
         capture.insertFix(fix)
         capture.insertClusterCreate(c) > 0L
@@ -366,8 +556,10 @@ class CaptureRepository(
 
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
         requireUuids(request.clientUuid, fix.clientUuid)
+        requireCheckedIn(request.meta.businessDate)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
         require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
         val photos = Json.decodeFromString(ListSerializer(String.serializer()), request.photoUuidsJson)
@@ -385,14 +577,17 @@ class CaptureRepository(
      * change information and its cluster change). Each one is idempotent on replay, as [recordOutletRequest].
      */
     suspend fun recordOutletRequests(requests: List<Pair<OutletChangeRequestEntity, GeoFixEntity>>) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requests.forEach { (r, f) -> recordOutletRequest(r, f) }
     }
 
     /** Resolves a task: the local task turns `completed` and its `task_event` is queued, in one transaction. */
     suspend fun resolveTask(event: TaskEventEntity, resolvedAt: String) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate (D-OWNER-MDM-02): a task result is a new record
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, event.taskUuid)
         require(event.event == "resolved") { "resolveTask writes a resolved event" }
+        requireCheckedIn(event.meta.businessDate)
         check(db.referenceDao().completeTask(event.taskUuid, resolvedAt) == 1) { "task ${event.taskUuid} is not on this phone" }
         capture.insertTaskEvent(event)
         outbox.insert(listOf(RecordMapping.taskEvent(event, nowIso())))
@@ -482,6 +677,7 @@ class CaptureRepository(
             "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
             "risk_review", "outlet_request_verification", "task",
         )
+        val PROGRAMME_PARENT_TYPES = setOf("redemption", "gift_choice", "gift_photo")
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 

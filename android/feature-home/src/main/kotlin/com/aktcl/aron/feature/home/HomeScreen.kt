@@ -98,6 +98,8 @@ object HomeScreenTags {
     const val DAY_DONE = "hm_day_done"
     const val KPI = "hm_kpi"
     const val STOCK = "hm_stock"
+    /** The lock drawn on an operational tile while the day has no open check-in. */
+    const val LOCK = "hm_tile_lock"
     const val MONEY = "hm_money"
     const val DISCOUNT = "hm_money_discount"
     const val QC = "hm_money_qc"
@@ -375,11 +377,14 @@ private fun KpiTile(label: String, value: String, modifier: Modifier) {
         modifier.heightIn(min = 84.dp).clip(shape).background(look.card).border(1.dp, if (look.sunlight) look.purple else KpiOutline, shape).padding(horizontal = 4.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        // one line that shrinks from 26 sp down to 12 sp before it would clip (a 5-digit stick count must stay whole)
-        Text(
-            value, color = look.ink, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
-            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 26.sp, stepSize = 1.sp),
-        )
+        // one line that shrinks from 26 sp down to 12 sp before it would clip (a 5-digit stick count must stay whole); centred in the room
+        // above the label, so a box stretched to the height of the taller stock boxes in its row keeps the figure balanced (D-PAR-SR1-07)
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                value, color = look.ink, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 26.sp, stepSize = 1.sp),
+            )
+        }
         Text(label, color = look.tileLabel, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
     }
 }
@@ -433,11 +438,15 @@ private fun PanelRow(label: String, value: String, color: Color, sp: Int, bold: 
  * The second panel (sr/home-2-kpis.webp): total discount, DRP discount and total QC in three columns, a rule, `সর্ব মোট` (the
  * gross) very large and `মোট টাকা` (the net payable) large, each with a glued ৳. Discount cells show 0.00 while docs/27 defers.
  */
+/** The second money panel's ramp (D-PAR-SR1-07): both ends hold 7:1 against the white key figures (the net `মোট টাকা` sits at the end). */
+internal val DiscountPanelStart = Color(0xFF5C3060)
+internal val DiscountPanelEnd = Color(0xFF764678)
+
 @Composable
 private fun DiscountPanel(m: HomeMoneyLines) {
     val look = LocalAronLook.current
     val white = look.onBar
-    val brush = if (look.sunlight) SolidColor(look.purple) else Brush.verticalGradient(listOf(Color(0xFF6A3F6E), Color(0xFFA06FA1)))
+    val brush = if (look.sunlight) SolidColor(look.purple) else Brush.verticalGradient(listOf(DiscountPanelStart, DiscountPanelEnd))
     Column(
         Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).clip(RoundedCornerShape(16.dp)).background(brush).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -467,11 +476,20 @@ private fun HomeBanner(text: String, kind: BannerKind, modifier: Modifier = Modi
 private fun HomeTileItem(rt: ResolvedTile, freshness: BundleFreshness, dock: HomeDock?, modifier: Modifier, onTile: (HomeTile) -> Unit) {
     val needsSelling = rt.tile in SELLING_TILES
     val open = rt.badge?.let { stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(it.toLong())) }
-    AronTile(
+    @Composable fun tile(m: Modifier) = AronTile(
         label = tileLabel(rt.tile), icon = painterResource(tilePainterRes(rt.tile)), onClick = { onTile(rt.tile) }, badge = rt.badge ?: 0,
         badgeDescription = open,
-        modifier = modifier.testTag(HomeScreenTags.tile(rt.tile)), enabled = !(needsSelling && !freshness.canSell),
+        modifier = m.testTag(HomeScreenTags.tile(rt.tile)), enabled = !(needsSelling && !freshness.canSell),
     )
+    if (!rt.locked) { tile(modifier); return }
+    // check-in gate: the tile still opens (it leads to check-in), the lock says why before the press
+    androidx.compose.foundation.layout.Box(modifier) {
+        tile(Modifier.fillMaxWidth())
+        androidx.compose.material3.Icon(
+            com.aktcl.aron.core.ui.AronIcons.Lock, contentDescription = stringResource(R.string.hm_tile_locked), tint = LocalAronLook.current.purple,
+            modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(16.dp).testTag(HomeScreenTags.LOCK),
+        )
+    }
 }
 
 /** The redrawn reference icon of each tile (`core-ui` drawables `aron_ic_*`, PARITY-SPEC s2.11). */

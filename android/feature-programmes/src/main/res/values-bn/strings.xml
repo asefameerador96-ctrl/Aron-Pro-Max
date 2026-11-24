@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pg_astha_title">আস্থা</string>
+    <string name="pg_astha_tile_target">টার্গেট</string>
+    <string name="pg_astha_tile_gift">গিফট নির্বাচন।</string>
+    <string name="pg_tab_route">রুটের তথ্য</string>
+    <string name="pg_tab_shop">দোকান ভিত্তিক তথ্য</string>
+    <string name="pg_pick_year">বছর নির্বাচন করুন</string>
+    <string name="pg_pick_quarter">কোয়ার্টার নির্বাচন করুন</string>
+    <string name="pg_pick_month">মাস নির্বাচন করুন</string>
+    <string name="pg_year">বছর</string>
+    <string name="pg_quarter">কোয়ার্টার</string>
+    <string name="pg_sub_std">এসটিডি টার্গেট</string>
+    <string name="pg_sub_memo">মেমো টার্গেট</string>
+    <string name="pg_col_brand">ব্র্যান্ড</string>
+    <string name="pg_col_target">টার্গেট</string>
+    <string name="pg_col_achieved">অর্জন</string>
+    <string name="pg_col_remaining">বাকি</string>
+    <string name="pg_col_pct">%</string>
+    <string name="pg_volume">(Volume)</string>
+    <string name="pg_value">(Value)</string>
+    <string name="pg_all_brand">All Brand</string>
+    <string name="pg_no_data">তথ্য পাওয়া যায়নি</string>
+    <string name="pg_not_downloaded">এই মাসের তথ্য এখনো এই ফোনে নেই। একবার ইন্টারনেটে যুক্ত হলে নামবে।</string>
+    <string name="pg_month_loading">এই মাসের তথ্য আনা হচ্ছে…</string>
+    <string name="pg_month_failed">এই মাসের তথ্য আনা যায়নি। সংযোগ ভালো হলে আবার চেষ্টা করুন।</string>
+    <string name="pg_retry">আবার চেষ্টা করুন</string>
+    <plurals name="pg_order_unknown">
+        <item quantity="one">এই ফোনের নিশ্চিত হওয়া %1$sটি মেমো পরের সম্পূর্ণ ডাউনলোডের আগে এই হিসাবে নেই।</item>
+        <item quantity="other">এই ফোনের নিশ্চিত হওয়া %1$sটি মেমো পরের সম্পূর্ণ ডাউনলোডের আগে এই হিসাবে নেই।</item>
+    </plurals>
+    <string name="pg_quarter_unknown">কোয়ার্টার শুরুর মাস এই ফোনে জানা নেই, তাই ফোনে থাকা মাসগুলো যেমন আছে তেমন দেখানো হচ্ছে।</string>
+    <string name="pg_as_of_open">ডেটা: %1$s; তখনো মাসটি শেষ হয়নি</string>
+    <plurals name="pg_held_review">
+        <item quantity="one">এই ফোনের %1$sটি মেমো সার্ভারে পর্যালোচনার জন্য আটকে আছে এবং এই হিসাবে নেই।</item>
+        <item quantity="other">এই ফোনের %1$sটি মেমো সার্ভারে পর্যালোচনার জন্য আটকে আছে এবং এই হিসাবে নেই।</item>
+    </plurals>
+    <string name="pg_as_of_unsettled">ডেটা: %1$s; তখন এই মাসের কিছু মেমো নিশ্চিত হয়নি</string>
+    <string name="pg_held_points">পর্যালোচনার জন্য আটকে আছে: %1$s</string>
+    <string name="pg_unconfirmed_points">এখনো নিশ্চিত হয়নি: %1$s</string>
+    <string name="pg_gift_held">সার্ভারে পর্যালোচনার জন্য আটকে আছে: %1$s</string>
+    <string name="pg_gift_quarter_unknown">কোয়ার্টার শুরুর মাস এই ফোনে জানা নেই, তাই এখনো উপহার বাছাই বা ছবি তোলা যাবে না। একবার ইন্টারনেটে যুক্ত হয়ে নামিয়ে নিন।</string>
+    <string name="pg_no_programme">আপনার রুটে কোনো আস্থা কর্মসূচি চালু নেই।</string>
+    <string name="pg_as_of">ডেটা: %1$s</string>
+    <string name="pg_truncated">এই ফোনে শুধু প্রথম সারিগুলো আছে। বাকিটা দেখতে ওয়াই-ফাইয়ে সিঙ্ক করুন।</string>
+    <string name="pg_load_failed">এই ফোন থেকে আস্থার তথ্য পড়া যায়নি।</string>
+    <string name="pg_pack_packets">%1$s, প্রতি প্যাকে %2$s: %3$s প্যাকেট</string>
+    <string name="pg_pack_packets_loose">%1$s, প্রতি প্যাকে %2$s: %3$s প্যাকেট + %4$s স্টিক</string>
+    <string name="pg_pack_dozens">%1$s: %2$s ডজন</string>
+    <string name="pg_pack_unknown">%1$s: %2$s (মূল একক)</string>
+    <string name="pg_pack_boxes">%1$s, প্রতি বক্সে %2$s: %3$s বক্স</string>
+    <string name="pg_pack_boxes_loose">%1$s, প্রতি বক্সে %2$s: %3$s বক্স + %4$s পিস</string>
+    <string name="pg_back">পিছনে</string>
+    <string name="pg_all_shops">সব দোকান</string>
+    <string name="pg_search_hint">নাম, কোড বা ফোন দিয়ে খুঁজুন</string>
+    <string name="pg_no_shops">এই ফোনে কোনো আস্থা দোকান নেই।</string>
+    <string name="pg_no_match">আপনার খোঁজের সাথে কোনো দোকান মেলেনি।</string>
+    <string name="pg_shop_name">খুচরা বিক্রেতার নাম</string>
+    <string name="pg_shop_owner">মালিকের নাম</string>
+    <string name="pg_shop_contact">যোগাযোগ</string>
+    <string name="pg_shop_sub">Sub-Channel</string>
+    <string name="pg_loyalty_redeem">রিডিম্পশন</string>
+    <string name="pg_loyalty_points">পয়েন্ট</string>
+    <string name="pg_loyalty_none">আপনার রুটে কোনো লয়্যালটি কর্মসূচি চালু নেই।</string>
+    <string name="pg_loyalty_no_outlets">এই ফোনে আপনার কোনো দোকানের লয়্যালটি পয়েন্ট নেই।</string>
+    <string name="pg_loyalty_pick_outlet">খুচরা বিক্রেতা নির্বাচন করুন</string>
+    <string name="pg_loyalty_manage">খুচরা বিক্রেতার গিফট রিকুইজিশন ও রিডিম্পশন পরিচালনা করুন।</string>
+    <string name="pg_loyalty_overdrawn">ব্যালেন্স শূন্যের নিচে (ওভারড্র)</string>
+    <string name="pg_loyalty_expiring">মেয়াদ শেষ হচ্ছে এমন পয়েন্ট:</string>
+    <string name="pg_loyalty_expiry">মেয়াদ শেষের তারিখ:</string>
+    <string name="pg_pts">পয়েন্ট</string>
+    <string name="pg_all">সব</string>
+    <string name="pg_remaining">%1$s বাকি</string>
+    <string name="pg_no_gifts">এই কর্মসূচিতে রিডিম করার মতো কোনো গিফট নেই।</string>
+    <string name="pg_confirm_redemption">রিডিম্পশন নিশ্চিত করুন</string>
+    <string name="pg_confirm_title">রিডিম্পশন নিশ্চিত করুন</string>
+    <string name="pg_confirm_text">এই আইটেমগুলোর রিডিম্পশন নিশ্চিত করবেন? পয়েন্ট কাটা হবে।</string>
+    <string name="pg_confirm_yes">নিশ্চিত করুন</string>
+    <string name="pg_confirm_no">বাতিল</string>
+    <string name="pg_redeem_saved">রিডিম্পশন এই ফোনে সংরক্ষিত হয়েছে; সিঙ্ক হলে পয়েন্ট কাটা হবে।</string>
+    <string name="pg_redeem_failed">রিডিম্পশন সংরক্ষণ করা যায়নি। কিছু কাটা হয়নি। আবার চেষ্টা করুন।</string>
+    <string name="pg_cashback_waiting">নগদ ক্যাশব্যাক: মালিকের নিয়মের অপেক্ষায়। এখনো রিডিম করা যাবে না।</string>
+    <string name="pg_redeem_conflict">আগের সংরক্ষণের পর এই ঝুড়ি বদলেছে। কিছু কাটা হয়নি। আইটেম দেখে আবার নিশ্চিত করুন।</string>
+    <string name="pg_gift_conflict">আগের সংরক্ষণের পর এই নির্বাচন বদলেছে। আবার নির্বাচন করুন।</string>
+    <string name="pg_day_submitted">এই রুট-দিন ইতিমধ্যে জমা হয়েছে। এটি আর বদলানো যাবে না।</string>
+    <string name="pg_check_in_first">আগে চেক-ইন করুন। কিছু সংরক্ষণ করা হয়নি।</string>
+    <string name="pg_ok">ওকে</string>
+    <string name="pg_shop_code">খুচরা বিক্রেতার কোড</string>
+    <string name="pg_gift_route">রুট</string>
+    <string name="pg_gift_cluster">ক্লাস্টার</string>
+    <string name="pg_gift_pick">একটি গিফট নির্বাচন করুন।</string>
+    <string name="pg_gift_submit">সাবমিট</string>
+    <string name="pg_gift_locked">হস্তান্তরের ছবির পর গিফট বদ্ধ: %1$s</string>
+    <string name="pg_gift_on_phone">এই ফোনে নির্বাচিত, এখনো পাঠানো হয়নি: %1$s</string>
+    <string name="pg_gift_refused">সার্ভার এই নির্বাচন নেয়নি: %1$s। আবার নির্বাচন করুন।</string>
+    <string name="pg_gift_sent">সার্ভারে পাঠানো হয়েছে: %1$s</string>
+    <string name="pg_gift_unconfirmed_other">পাঠানো হয়েছে, এখনো নিশ্চিত হয়নি: %1$s। সার্ভারে এখনো আছে: %2$s। এভাবে থাকলে বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় খুঁজে "আবার পাঠান" চাপুন।</string>
+    <string name="pg_gift_unconfirmed">পাঠানো হয়েছে, এখনো নিশ্চিত হয়নি: %1$s। এভাবে থাকলে বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় খুঁজে "আবার পাঠান" চাপুন।</string>
+    <string name="pg_gift_tier_unknown">সার্ভার এখনও এই দোকানের ক্যাটাগরি পাঠায়নি, তাই উপহার দেখানো যাচ্ছে না।</string>
+    <string name="pg_gift_chosen">নির্বাচিত গিফট: %1$s</string>
+    <string name="pg_gift_none_for_tier">এই দোকানের ক্যাটাগরির জন্য কোনো গিফট নেই।</string>
+    <string name="pg_gift_saved">গিফট নির্বাচন এই ফোনে সংরক্ষিত হয়েছে। পরের সিঙ্কে যাবে।</string>
+    <string name="pg_gift_failed">গিফট নির্বাচন সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+    <string-array name="pg_months_short">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string-array name="pg_quarters">
+        <item>Q-1 (Jan-Mar)</item>
+        <item>Q-2 (Apr-Jun)</item>
+        <item>Q-3 (Jul-Sep)</item>
+        <item>Q-4 (Oct-Dec)</item>
+    </string-array>
+    <string name="pg_photo_astha">আস্থা</string>
+    <string name="pg_photo_campaign">ক্যাম্পেইন</string>
+    <string name="pg_photo_need_gift">এই দোকানের জন্য এখনও কোনো উপহার নেই। উপহার নির্বাচনে উপহার বেছে একবার সিঙ্ক করুন, তারপর ছবি তুলুন।</string>
+    <string name="pg_photo_already">হস্তান্তরের ছবি আগেই তোলা হয়েছে: %1$s</string>
+    <string name="pg_photo_on_phone">ছবি এই ফোনে সংরক্ষিত, পরের সিঙ্কে যাবে: %1$s</string>
+    <string name="pg_photo_submit">জমা দিন</string>
+    <string name="pg_photo_checking">জিওফেন্সিং পরীক্ষা করা হচ্ছে</string>
+    <string name="pg_photo_saved">ছবি এই ফোনে সংরক্ষিত হয়েছে। সংকুচিত হয়ে, আগে ওয়াই-ফাইয়ে আপলোড হবে।</string>
+    <string name="pg_photo_failed">ছবি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+    <plurals name="pg_awaiting_memos">
+        <item quantity="one">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</item>
+        <item quantity="other">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</item>
+    </plurals>
+    <plurals name="pg_awaiting_redemptions">
+        <item quantity="one">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
+        <item quantity="other">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</item>
+    </plurals>
+    <plurals name="pg_given_up_redemptions">
+        <item quantity="one">%1$sটি রিডিম্পশন পাঠানো হয়েছে কিন্তু নিশ্চিত হয়নি, আর এই ফোন পাঠানো বন্ধ করেছে। বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় এটি খুঁজে "আবার পাঠান" চাপুন।</item>
+        <item quantity="other">%1$sটি রিডিম্পশন পাঠানো হয়েছে কিন্তু নিশ্চিত হয়নি, আর এই ফোন পাঠানো বন্ধ করেছে। বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় এগুলো খুঁজে "আবার পাঠান" চাপুন।</item>
+    </plurals>
+    <string name="pg_photo_locked">সার্ভার এই উপহারটি লক করেছে, ছবির প্রয়োজন নেই: %1$s</string>
+    <string name="pg_campaign_none">ছবির অপেক্ষায় কোনো রিডিম করা ক্যাম্পেইন উপহার নেই।</string>
+    <string name="pg_campaign_progress">%2$sটির মধ্যে %1$sটি ছবি তোলা হয়েছে</string>
+    <string name="pg_campaign_unit">ইউনিট %1$s</string>
+    <string name="pg_cashback_waiting_rate">ক্যাশ-ব্যাক (প্রতি পয়েন্টে %1$s): মালিকের নিয়মের অপেক্ষায়। এখনও রিডিম করা যাবে না।</string>
+    <string name="pg_shop_wing">উইং</string>
+    <string name="pg_shop_division">ডিভিশন</string>
+    <string name="pg_shop_territory">টেরিটরি</string>
+    <string name="pg_shop_zone">জোন</string>
+    <string name="pg_pack_base">%1$s: %2$s %3$s</string>
+</resources>

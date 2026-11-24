@@ -38,7 +38,29 @@ data class Bundle(
     val programmes: JsonObject?,
     val content: List<JsonObject>,
     val tutorials: List<JsonObject>,
+    /** Contract 1.16.0 (SRM-B-35/40, part B): the clusters a new shop or an outlet change may name, per route of the SR. SR only; empty for other roles. */
+    val clusters: List<BundleCluster> = emptyList(),
+    /** Contract 1.16.0 (SRM-A-29): previous sale day, ADS and SDLW per outlet (one entry each) with its SKUs, integer hundredths in BASE units. SR only. */
+    val outlet_sku_stats: List<OutletSkuStat> = emptyList(),
+    /** True when the SR holds more than 600 cluster rows and the list was cut (in route, name, id order). */
+    val clusters_truncated: Boolean = false,
+    /** True when more than 400 outlets have history and the list was cut (in outlet id order). */
+    val outlet_sku_stats_truncated: Boolean = false,
 )
+
+/** One cluster as seen on one route of the SR (`route_id` is a route of the bundle's own routes). */
+@Serializable
+data class BundleCluster(val cluster_id: Long, val name: String, val route_id: Long, val route_name: String)
+
+/**
+ * Sales history of one outlet in BASE units (sticks / pieces; the phone converts to packets with each SKU's pack_factor), one compact entry per outlet (contract 1.16.0).
+ * [previous_day] is the outlet's most recent selling day before the bundle date within the last 30 calendar days. Each of [items] is the POSITIONAL integer quadruple
+ * `[sku_delta, prev, ads, sdlw]`: items ascend by SKU id and `sku_delta` is the SKU id of the first item and, in every later item, the DIFFERENCE from the previous item's SKU id; `prev` = base-unit quantity of the SKU on previous_day; `ads` = quantity sold in the
+ * 30 calendar days before the bundle date x 100 / the elapsed calendar days of that window (30, or the days since the outlet's first selling memo), integer hundredths of a base unit, rounded half up; `sdlw` = base-unit quantity on the same weekday last week (bundle date minus 7). A zero is written 0.
+ * Positional arrays keep the section inside its budget on the 2 GB phones (docs/04).
+ */
+@Serializable
+data class OutletSkuStat(val outlet_id: Long, val previous_day: String, val items: List<List<Long>>)
 
 @Serializable
 data class PagedSection(val section: String, val pages: Int, val rows: Int)
@@ -70,9 +92,17 @@ data class BundleUser(
     val memo_seq_block_size: Int,
     val zone_id: Long?,
     val territory_id: Long?,
+    /** Contract 1.22.0 (N-9): the names of the user's OWN zone, territory, division and wing, once per bundle (the Astha shop-wise card shows them); null when the user has no zone. */
+    val geography: BundleGeography? = null,
     /** Policy versions the user accepted (F-SYS-075): the phone seeds its consent flag and does not ask again. */
     val consents: List<BundleConsent> = emptyList(),
 )
+
+@Serializable
+data class BundleGeoName(val id: Long, val code: String, val name: String, val name_bn: String?)
+
+@Serializable
+data class BundleGeography(val wing: BundleGeoName, val division: BundleGeoName, val territory: BundleGeoName, val zone: BundleGeoName)
 
 @Serializable
 data class BundleConsent(val policy_key: String, val policy_version: Int, val accepted_at: String)
@@ -243,6 +273,18 @@ data class RouteDayStateDto(
 )
 
 @Serializable
+data class RouteCalendarDto(
+    val month: String,
+    val working_days: Int,
+    val elapsed_working_days_before_today: Int,
+    val remaining_working_days_after_today: Int,
+    val today_is_working: Boolean,
+    val last_month_working_days: Int,
+    val through_date: String,
+    val as_of: String,
+)
+
+@Serializable
 data class RouteSnapshot(
     val route_id: Long,
     val route_snapshot_version: Int,
@@ -254,11 +296,25 @@ data class RouteSnapshot(
     val outlets: List<BundleOutlet>,
     val open_memos: List<OpenMemo>,
     val sales_plan_sku_ids: List<Long>,
-    /** Deferred (docs/27): empty. */
+    /** N-2 (contract 1.22.0): the route's per-SKU monthly targets; empty in zone-wide (AMO, TSO) bundles. */
     val targets: List<JsonObject>,
-    /** Achievement against deferred targets (docs/27): empty. */
+    /** N-2: server month-to-date achievement through `through_date` (never today); empty in zone-wide bundles. */
     val achievement_mtd: List<JsonObject>,
     val day_state: RouteDayStateDto,
+    /** N-2 (contract 1.22.0, optional): working-day numbers; absent in zone-wide bundles. */
+    val calendar: RouteCalendarDto? = null,
+    /** N-5 (contract 1.22.0, optional): brand-wise KPI; absent in zone-wide bundles. */
+    val kpi: JsonObject? = null,
+    /** N-8 (contract 1.22.0, optional): Match Box Lifting Star snapshot; absent when the route has no target for an active superstar programme. */
+    val star: JsonObject? = null,
+    /** N-3 (contract 1.22.0, optional): outlets of the route in an active campaign with target and achievement; absent when none. */
+    val campaigns: List<JsonObject>? = null,
+    /** True only when campaign outlets (over 150) or an outlet's campaign SKUs (over 20) were cut; absent otherwise (never silent). */
+    val campaigns_truncated: Boolean? = null,
+    /** True only when `targets` or `achievement_mtd` had more than 500 rows and were cut (never silent); absent otherwise. */
+    val targets_truncated: Boolean? = null,
+    /** True only when the route had more than one active superstar programme with a target and only the lowest id is in `star`; absent otherwise. */
+    val star_truncated: Boolean? = null,
     /**
      * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
      * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent

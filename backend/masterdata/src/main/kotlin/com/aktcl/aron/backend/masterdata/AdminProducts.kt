@@ -467,6 +467,7 @@ internal fun auditObj(vararg pairs: Pair<String, Any?>): JsonObject = buildJsonO
             null -> put(k, JsonNull)
             is Number -> put(k, v)
             is Boolean -> put(k, v)
+            is kotlinx.serialization.json.JsonElement -> put(k, v)      // a structured value (the bulk adjustment's overdrawn rows) stays structured
             else -> put(k, v.toString())
         }
     }

@@ -213,6 +213,33 @@ class DayStateTest {
         assertEquals(before, after, "no route-day changed")
     }
 
+    /**
+     * Contract 1.19.0 (D-SV2-15): an AMO check-out the phone made for a forgotten day (`closed_by = phone`) never sets `supervisor_day.checked_out_at`
+     * (nor creates a supervisor-day on its own); the rep's own check-out does, and an older phone's (member absent) is the rep's.
+     */
+    @Test
+    fun anAmoPhoneCloseLeavesTheSupervisorDayWithoutACheckOutTime() {
+        val amo = count("SELECT id FROM app.app_user WHERE role = 'AMO' ORDER BY id LIMIT 1")
+        val up = Uploader(amo, Role.AMO, 1, 0, devPhone, null)
+        val job = RouteDayPlanningJob(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), clock)
+        fun store(vararg members: Pair<String, String>) = fresh.db.jdbi.useTransaction<Exception> { h ->
+            val touched = DayStates.Touched()
+            val rec = env("attendance_event", null, buildJsonObject { members.forEach { (k, v) -> put(k, v) } })
+            DayStates.afterStored(h, rec["type"]!!.jsonPrimitive.content, rec, rec["payload"]!!.jsonObject, up, now.get(), job, touched)
+            DayStates.afterBatch(h, amo, touched, now.get())
+        }
+        fun out() = count("SELECT count(*) FROM app.supervisor_day WHERE user_id = $amo AND business_date = DATE '$day' AND checked_out_at IS NOT NULL")
+        store("kind" to "check_in")
+        store("kind" to "check_out", "closed_by" to "phone")
+        assertEquals(1, count("SELECT count(*) FROM app.supervisor_day WHERE user_id = $amo AND business_date = DATE '$day' AND checked_in_at IS NOT NULL"))
+        assertEquals(0, out(), "a phone close is no check-out")
+        store("kind" to "check_out", "closed_by" to "rep")
+        assertEquals(1, out(), "the rep's own check-out sets it")
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.supervisor_day SET checked_out_at = NULL WHERE user_id = $amo AND business_date = DATE '$day'") }
+        store("kind" to "check_out") // an older phone: the member is absent, which means the rep
+        assertEquals(1, out())
+    }
+
     /** F-AMO-039: an AMO's visit, sale-day records and submit on an SR's route never change that route's day (so its Login and Submit % stay the SR's). */
     @Test
     fun anAmoVisitOnAnSrRouteLeavesTheRouteDayAlone() {

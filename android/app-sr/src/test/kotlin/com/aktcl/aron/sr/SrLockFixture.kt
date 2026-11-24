@@ -48,6 +48,13 @@ import org.junit.Assert.assertTrue
 import java.io.File
 
 /**
+ * D-AGATE-30: the pinned start of every lock fixture: 05:00 Dhaka (2026-10-05T23:00:00Z) of 2026-10-06. EARLY in the day on purpose: the trusted clock adopts a far jump only when it is
+ * closer to the phone's wall clock (which is after this date) than its estimate, so tests that move the clock FORWARD (10:00, 17:00, the next day) work and a start later than the times a
+ * test anchors would make the clock refuse to go back. Never the real clock.
+ */
+internal const val FIXTURE_NOON_MS = 1791241200000L
+
+/**
  * tso-manual X4a (fix round, checker medium "wiring"): a real [SrDay], and so the real [SrSaleKit] with the wiring the
  * screens use, on an in-memory database. Nothing reaches the network: the session's API origin is never called, the
  * location source answers at the outlet (counted, and [duringFix] runs while the fix is read, so a test can land the lock
@@ -62,6 +69,10 @@ internal class SrLockFixture(
     context: Context, latePolicy: String?, checkoutMinutes: Int? = null,
     /** A transport factory for a SAVED printer (the printer assist tests); null: no printer is saved, as before. */
     printerTransports: com.aktcl.aron.core.printing.bt.PrinterTransportFactory? = null,
+    /** The production start has run (resumeDay's first result is in, so Attendance is usable); false keeps the day in its first-moment state (D-AGATE-18). */
+    private val settled: Boolean = true,
+    /** D-AGATE-30: the fixture's clock (trusted time) at construction; default a PINNED instant, 05:00 Dhaka of 2026-10-06, never the real clock, so no test takes its business date from the wall clock. */
+    clockMs: Long = FIXTURE_NOON_MS,
 ) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
@@ -95,7 +106,7 @@ internal class SrLockFixture(
                 fixReads++
                 duringFix()
                 return SourceResult.Located(
-                    RawLocation(LAT, LNG, 8.0, provider = "fused", timeMs = System.currentTimeMillis(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
+                    RawLocation(LAT, LNG, 8.0, provider = "fused", timeMs = components.trustedClock.nowMs(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
                 )
             }
         },
@@ -111,6 +122,7 @@ internal class SrLockFixture(
 
     val day = SrDay(7L, context, db, components, SyncScheduler.None, fixManager, printerManager, "sr", memoNumbering = MemoNumbering("sr334001", 0, 500), parentJob = work.dayJob, checkoutMinutes = checkoutMinutes?.let { m -> { m } })
         .also { it.routeId = route } // reload() would read it from the bundle
+    init { if (settled) day.attendance.settle() }
 
     val date: String get() = day.businessDate()
 
@@ -135,7 +147,22 @@ internal class SrLockFixture(
         )))
     }
 
-    init { setLatePolicy(latePolicy) }
+    /**
+     * D-OWNER-PREREQ-01 rule 1: the day's check-in, stored through the production writer. Every fixture day starts checked in, as a rep working
+     * a day has; a test of the check-in gate itself builds its own repository or calls [checkOut] / uses [startCheckedIn] = false.
+     */
+    fun checkIn() = runBlocking {
+        val u = ClientIds.newUuid()
+        val f = GeoFixEntity(
+            ClientIds.newUuid(), u, "attendance_in", "ok", LAT, LNG, 8.0, provider = "fused", fixTime = day.iso(day.currentMs()), fixElapsedRealtimeMs = 900, fixAgeMs = 10,
+            timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0, deviceOwner = true, devOptionsEnabled = false,
+            adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false,
+        )
+        day.capture.recordAttendance(com.aktcl.aron.core.database.entity.AttendanceEventEntity(u, day.metaProvider.meta(0L).copy(routeId = null), "check_in", f.clientUuid, null), f)
+        day.refreshDayGate()
+    }
+
+    init { trustAt(clockMs); setLatePolicy(latePolicy); checkIn() }
 
     fun meta(routeId: Long = route): CaptureMeta = day.metaProvider.meta(routeId)
 

@@ -3,32 +3,14 @@ package com.aktcl.aron.sr
 import android.graphics.BitmapFactory
 import android.widget.VideoView
 import androidx.compose.foundation.Image
-import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.aron.barBrush
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.border
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -37,14 +19,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.aktcl.aron.core.database.entity.ContentItemEntity
 import com.aktcl.aron.core.database.entity.SurveyEntity
 import com.aktcl.aron.core.database.entity.SurveyQuestionEntity
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronConfirmDialog
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.feature.outlet.AnswerType
 import com.aktcl.aron.feature.outlet.ContentOutcome
+import com.aktcl.aron.feature.outlet.ContentStepView
+import com.aktcl.aron.feature.outlet.SurveyRowUi
+import com.aktcl.aron.feature.outlet.SurveyStepView
+import com.aktcl.aron.feature.outlet.SurveyTexts
 import com.aktcl.aron.feature.outlet.PosmSurvey
 import com.aktcl.aron.feature.outlet.SurveyAnswer
 import com.aktcl.aron.feature.outlet.SurveyQuestion
@@ -109,43 +89,30 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
     }
     // SRM-B-05 (shot 35 left): a gradient title band ("AV" or "KV"), the item centred, a full-width gradient "× বন্ধ করুন" at the bottom
     val close = { finish(if (item.kind == "av") ContentOutcome.SKIPPED_USER else ContentOutcome.VIEWED) }
-    Column(Modifier.fillMaxSize()) {
-        ContentBand(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv))
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            if (item.kind == "av") {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoPath(f.absolutePath)
-                            setOnCompletionListener { finish(ContentOutcome.VIEWED) }
-                            setOnErrorListener { _, _, _ -> finish(ContentOutcome.SKIPPED_MISSING); true }
-                            start()
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+    ContentStepView(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv), stringResource(R.string.sr_content_close_x), close,
+        pictureDescription = stringResource(if (item.kind == "av") R.string.sr_content_av_desc else R.string.sr_content_kv_desc)) {
+        if (item.kind == "av") {
+            AndroidView(
+                factory = { ctx ->
+                    VideoView(ctx).apply {
+                        setVideoPath(f.absolutePath)
+                        setOnCompletionListener { finish(ContentOutcome.VIEWED) }
+                        setOnErrorListener { _, _, _ -> finish(ContentOutcome.SKIPPED_MISSING); true }
+                        start()
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            val bitmap = remember(f.absolutePath) { runCatching { BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() }.getOrNull() }
+            if (bitmap == null) {
+                LaunchedEffect(f.absolutePath) { finish(ContentOutcome.SKIPPED_MISSING) }
             } else {
-                val bitmap = remember(f.absolutePath) { runCatching { BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() }.getOrNull() }
-                if (bitmap == null) {
-                    LaunchedEffect(f.absolutePath) { finish(ContentOutcome.SKIPPED_MISSING) }
-                } else {
-                    Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                }
+                Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             }
         }
-        // the SR can always close an item; closing an AV early counts as skipped by the user.
-        AronPrimaryButton(stringResource(R.string.sr_content_close_x), close, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
     }
-}
-
-/** The red-to-purple title band of a content or survey step (shots 35): in the kit's bar brush, no status-bar inset (the frame's bar is above). */
-@Composable
-internal fun ContentBand(title: String) {
-    val look = com.aktcl.aron.core.ui.LocalAronLook.current
-    Box(
-        Modifier.fillMaxWidth().background(look.barBrush()).heightIn(min = 48.dp).padding(horizontal = AronTokens.Space.L),
-        contentAlignment = androidx.compose.ui.Alignment.Center,
-    ) { Text(title, style = MaterialTheme.typography.titleMedium, color = look.onBar, modifier = Modifier.semantics { heading() }) }
+    // the SR can always close an item; closing an AV early counts as skipped by the user.
 }
 
 private const val SEP = "\u0001"
@@ -186,6 +153,7 @@ private fun SurveyStep(
     var answers by androidx.compose.runtime.saveable.rememberSaveable(visitUuid, stateSaver = AnswersSaver) { mutableStateOf<Map<String, SurveyAnswer>>(emptyMap()) }
     var confirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var attendanceWhy by remember { mutableStateOf<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(null) }
     val visible = PosmSurvey.visible(defs, answers).map { it.key }.toSet()
     fun takePhoto(key: String) {
         val uuid = com.aktcl.aron.core.common.ClientIds.newUuid()
@@ -205,70 +173,50 @@ private fun SurveyStep(
         // a sub-question whose parent is unsupported can never be shown: it takes no number
         SurveyNumbering.of(ok.filter { it.first.showIfKey == null || it.first.showIfKey in keys }.map { it.first.key to it.first.showIfKey })
     }
-    Column(Modifier.fillMaxSize()) {
-        ContentBand(stringResource(R.string.sr_survey_title))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            (if (bn) survey.titleBn ?: survey.titleEn else survey.titleEn ?: survey.titleBn)?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = look.red) }
-            // the reference's info card (X3): starred questions must be answered
-            if (shown.any { it.first.required }) AronBanner(stringResource(R.string.sr_survey_required_info), kind = BannerKind.Info)
-            shown.forEach { (q, label) ->
-                val no = numbers[q.key].orEmpty()
-                Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
-                        append(no); if (q.required) withStyle(androidx.compose.ui.text.SpanStyle(color = look.red)) { append("*") }
-                        append(" "); append(label)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                val cur = answers[q.key]
-                if (q.answerType == AnswerType.BOOL) {
-                    var open by remember(q.key) { mutableStateOf(false) }
-                    Box(Modifier.fillMaxWidth()) {
-                        androidx.compose.foundation.layout.Row(
-                            Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, look.inkMuted, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .clickable(role = androidx.compose.ui.semantics.Role.DropdownList) { open = true }.padding(horizontal = AronTokens.Space.M),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.sr_survey_answer) + " " + (cur?.bool?.let { stringResource(if (it) R.string.sr_yes else R.string.sr_no) } ?: stringResource(R.string.sr_survey_pick)),
-                                style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
-                            )
-                            Text(stringResource(R.string.sr_glyph_dropdown), color = look.inkMuted)
-                        }
-                        androidx.compose.material3.DropdownMenu(open, { open = false }) {
-                            listOf(true to R.string.sr_yes, false to R.string.sr_no).forEach { (v, res) ->
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text(stringResource(res)) },
-                                    onClick = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = v)); open = false },
-                                )
-                            }
-                        }
-                    }
-                }
-                if (q.requiresPhoto) {
-                    val taken = cur?.photoUuid != null
-                    AronSecondaryButton(stringResource(if (taken) R.string.sr_survey_photo_retake else R.string.sr_survey_photo), { takePhoto(q.key) }, Modifier.fillMaxWidth())
-                    if (taken) Text(stringResource(R.string.sr_survey_photo_taken), style = MaterialTheme.typography.labelLarge)
-                }
-            }
-            // The sale is never blocked: if the survey cannot be completed (no camera, no light) the SR can go on to the sale without saving it.
-            AronSecondaryButton(stringResource(R.string.sr_survey_skip), { if (!saving) onDone() }, Modifier.fillMaxWidth())
-        }
-        AronPrimaryButton(stringResource(R.string.sr_survey_submit), { confirm = true }, Modifier.fillMaxWidth().padding(AronTokens.Space.L), enabled = !saving && PosmSurvey.canSubmit(defs, answers))
+    val yes = stringResource(R.string.sr_yes); val no = stringResource(R.string.sr_no)
+    val texts = SurveyTexts(
+        bandTitle = stringResource(R.string.sr_survey_title), answerWord = stringResource(R.string.sr_survey_answer), pickHint = stringResource(R.string.sr_survey_pick), yes = yes, no = no,
+        requiredInfo = stringResource(R.string.sr_survey_required_info), photo = stringResource(R.string.sr_survey_photo), photoRetake = stringResource(R.string.sr_survey_photo_retake),
+        photoTaken = stringResource(R.string.sr_survey_photo_taken), skip = stringResource(R.string.sr_survey_skip), submit = stringResource(R.string.sr_survey_submit),
+    )
+    val rowsUi = shown.map { (q, label) ->
+        val cur = answers[q.key]
+        SurveyRowUi(
+            q.key, numbers[q.key].orEmpty(), q.required, label, q.answerType == AnswerType.BOOL, cur?.bool?.let { if (it) yes else no },
+            q.requiresPhoto, cur?.photoUuid != null,
+        )
+    }
+    SurveyStepView(
+        title = (if (bn) survey.titleBn ?: survey.titleEn else survey.titleEn ?: survey.titleBn), texts = texts, rows = rowsUi, submitEnabled = !saving && PosmSurvey.canSubmit(defs, answers),
+        onPick = { key, v -> answers = answers + (key to (answers[key] ?: SurveyAnswer()).copy(bool = v)) },
+        onPhoto = ::takePhoto, onSkip = { if (!saving) onDone() }, onSubmit = { confirm = true },
+    )
+    attendanceWhy?.let { why ->
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(R.string.sr_survey_title),
+            stringResource(when (why) {
+                com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> com.aktcl.aron.feature.sale.R.string.review_problem_checked_out
+                com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> com.aktcl.aron.feature.sale.R.string.review_problem_earlier_call_open
+                else -> com.aktcl.aron.feature.sale.R.string.review_problem_not_checked_in
+            }),
+            stringResource(R.string.sr_ok), onConfirm = { attendanceWhy = null }, onDismiss = { attendanceWhy = null },
+        )
     }
     if (confirm) {
-        AronConfirmDialog(
-            stringResource(R.string.sr_survey_title), stringResource(R.string.sr_survey_confirm), stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
-            onConfirm = {
+        com.aktcl.aron.feature.outlet.SurveyConfirmDialog(
+            stringResource(R.string.sr_survey_confirm), stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
+            onYes = {
                 confirm = false; saving = true
                 scope.launch {
                     // X4a fix round (R-W-23): a Save the route-day refused is worded by the call's host (nothing stored); any other
                     // failure goes on to the sale as before
-                    val why = day.saveSurveyRefusal(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers))
-                    if (why != null) onRefused(why) else onDone()
+                    val result = day.saveSurveyResult(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers))
+                    // D-LEAD-PREREQ-04 ruling 5: answers the check-in gate refused are NOT stored and never reported as saved: the rep is told and stays on the survey
+                    if (result.attendance != null) { attendanceWhy = result.attendance; saving = false }
+                    else if (result.dayRefusal != null) onRefused(result.dayRefusal) else onDone()
                 }
             },
-            onDismiss = { confirm = false },
+            onNo = { confirm = false },
         )
     }
 }

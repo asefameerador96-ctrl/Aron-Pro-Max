@@ -2,7 +2,7 @@
 <resources>
     <string name="amo_cp_route_placeholder">একটি রুট সিলেক্ট করুন</string>
     <string name="amo_cp_outlet_placeholder">রিটেইলার নির্বাচন করুন</string>
-    <string name="amo_cp_all">সব</string>
+    <string name="amo_cp_all">All</string>
     <string name="amo_cp_live">LIVE</string>
     <string name="amo_cp_out_of_range">AMO এবং রিটেইলার রেঞ্জের মধ্যে নেই।</string>
     <string name="amo_cp_override">ম্যানুয়াল ওভাররাইড</string>
@@ -26,7 +26,7 @@
     <string name="amo_jc_screen_title">এসআর কল অ্যাসেসমেন্ট</string>
     <string name="amo_jc_intro1">SR নিম্নলিখিত পদক্ষেপগুলি কীভাবে সম্পন্ন করেছে তা মূল্যায়ন করুন।</string>
     <string name="amo_jc_intro2">মূল্যায়নের ক্ষেত্রে, ১ হল সর্বনিম্ন স্তর এবং ৫ হল সর্বোচ্চ স্তর।</string>
-    <string name="amo_jc_low">নিম্ন</string>
+    <string name="amo_jc_low">Low</string>
     <string name="amo_jc_high">উচ্চ</string>
     <string name="amo_jc_section_other">অন্যান্য</string>
     <string name="amo_review_route">রুট: %1$s</string>

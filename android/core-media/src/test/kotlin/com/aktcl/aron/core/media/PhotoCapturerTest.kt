@@ -118,4 +118,29 @@ class PhotoCapturerTest {
         try { store().photoFile("../../etc/passwd"); fail() } catch (_: IllegalArgumentException) { }
         try { store().photoFile("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee".uppercase()); fail() } catch (_: IllegalArgumentException) { }
     }
+
+    @Test fun aLeftoverClaimOfACancelledSaveNeverUploadsBesideTheRetakeOfTheSameRecord() = runTest {
+        val s = store(); val c = capturer(s)
+        c.capture(u1); c.capture(u2)
+        c.attach(u1, ref, stamp) // the first save was cancelled (or the process killed) after the claim and before the record committed: nothing released it
+        val b = c.attachExclusive(u2, ref, stamp) // the retake commits under the same fixed record uuid
+        assertEquals(MediaState.ATTACHED, b.state)
+        assertEquals(MediaState.CAPTURED, s.get(u1)!!.state); assertNull(s.get(u1)!!.ref)
+        assertEquals(listOf(u2), s.all().filter { it.state == MediaState.ATTACHED && it.ref == ref }.map { it.mediaUuid }) // exactly one photo can upload for the record
+    }
+
+    @Test fun anExclusiveClaimLeavesPhotosOfOtherRecordsAndUploadedPhotosAlone() = runTest {
+        val s = store(); val c = capturer(s)
+        c.capture(u1); c.capture(u2)
+        val other = ref.copy(refClientUuid = "55555555-5555-4555-8555-555555555555")
+        c.attach(u1, other, stamp)
+        c.attachExclusive(u2, ref, stamp)
+        assertEquals(MediaState.ATTACHED, s.get(u1)!!.state); assertEquals(other, s.get(u1)!!.ref)
+    }
+
+    @Test fun anExclusiveClaimIsIdempotentForTheSamePhoto() = runTest {
+        val c = capturer(); c.capture(u1)
+        val a = c.attachExclusive(u1, ref, stamp)
+        assertEquals(a, c.attachExclusive(u1, ref, stamp))
+    }
 }

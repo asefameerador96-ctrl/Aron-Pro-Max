@@ -44,7 +44,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.printing.R
 import com.aktcl.aron.core.ui.AronNoButton
+import com.aktcl.aron.core.ui.AronManualDialog
 import com.aktcl.aron.core.ui.AronYesButton
+import com.aktcl.aron.core.ui.ManualDialogKind
 import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
 import com.aktcl.aron.core.printing.bt.PrintFailure
 import com.aktcl.aron.core.printing.bt.PrinterManager
@@ -211,26 +213,52 @@ fun PrinterPickerDialog(manager: PrinterManager, onDismiss: () -> Unit) {
  * once after the saved message, with whether paper was confirmed.
  */
 @Composable
-fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit) {
+fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit, saveFailedMessage: String? = null, manual: Boolean = false) {
     val step by flow.step.collectAsState()
-    var finished by remember(flow) { mutableStateOf(false) }
-    when (val s = step) {
+    SaveAndPrintStepDialog(
+        step, manual, saveFailedMessage,
+        onSaveAnswer = { scope.launch { flow.onSaveAnswer(it) } }, onPrintAnswer = { scope.launch { flow.onPrintAnswer(it) } },
+        onReadableAnswer = { scope.launch { flow.onReadableAnswer(it) } }, onRetry = { scope.launch { flow.onRetry() } },
+        onLater = { flow.onLater() }, onDismissSaveFailed = { flow.onDismissSaveFailed() }, onFinished = onFinished, key = flow,
+    )
+}
+
+/** The dialog of one [SaveAndPrint.Step], with its answers as lambdas (the screen's scope owns them): what [SaveAndPrintDialogs] draws, and what the goldens record. */
+@Composable
+fun SaveAndPrintStepDialog(
+    s: SaveAndPrint.Step, manual: Boolean, saveFailedMessage: String?,
+    onSaveAnswer: (Boolean) -> Unit, onPrintAnswer: (Boolean) -> Unit, onReadableAnswer: (Boolean) -> Unit, onRetry: () -> Unit,
+    onLater: () -> Unit, onDismissSaveFailed: () -> Unit, onFinished: (printed: Boolean) -> Unit, key: Any = Unit,
+) {
+    var finished by remember(key) { mutableStateOf(false) }
+    when (s) {
         SaveAndPrint.Step.Idle -> Unit
-        SaveAndPrint.Step.SaveFailed -> Info(R.string.ui_sale_save_failed) { flow.onDismissSaveFailed() }
-        SaveAndPrint.Step.AskSave -> YesNo(R.string.sale_confirm_title, R.string.sale_confirm_text, { scope.launch { flow.onSaveAnswer(it) } })
+        // a save the transaction REFUSED for a reason the rep can act on (stock moved, the memo was already edited) says that reason, not "try again"
+        SaveAndPrint.Step.SaveFailed -> if (saveFailedMessage != null) {
+            if (manual) AronManualDialog(ManualDialogKind.Warning, null, saveFailedMessage, stringResource(R.string.dialog_ok), { onDismissSaveFailed() }, onDismiss = { onDismissSaveFailed() })
+            else AlertDialog(
+                onDismissRequest = { onDismissSaveFailed() },
+                text = { Text(saveFailedMessage) },
+                confirmButton = { AronYesButton(stringResource(R.string.dialog_ok), { onDismissSaveFailed() }) },
+            )
+        } else Info(R.string.ui_sale_save_failed, null, manual) { onDismissSaveFailed() }
+        SaveAndPrint.Step.AskSave -> YesNo(R.string.sale_confirm_title, R.string.sale_confirm_text, onSaveAnswer, manual, ManualDialogKind.Warning)
         SaveAndPrint.Step.Saving -> Busy(R.string.ui_print_saving)
-        SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, { scope.launch { flow.onPrintAnswer(it) } })
+        SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, onPrintAnswer, manual, ManualDialogKind.Info)
         SaveAndPrint.Step.Printing -> Busy(R.string.printer_printing)
-        is SaveAndPrint.Step.PrintFailed -> AlertDialog(
+        is SaveAndPrint.Step.PrintFailed -> if (manual) AronManualDialog(
+            ManualDialogKind.Warning, stringResource(R.string.ui_print_failed), stringResource(PrintFailureText.of(s.reason)), stringResource(R.string.ui_print_retry), { onRetry() },
+            dismissLabel = stringResource(R.string.ui_print_later), onDismiss = { onLater() }, dismissable = false,
+        ) else AlertDialog(
             onDismissRequest = {},
             text = { Text(stringResource(R.string.ui_print_failed) + "\n\n" + stringResource(PrintFailureText.of(s.reason))) },
-            confirmButton = { TextButton(onClick = { scope.launch { flow.onRetry() } }) { Text(stringResource(R.string.ui_print_retry)) } },
-            dismissButton = { TextButton(onClick = { flow.onLater() }) { Text(stringResource(R.string.ui_print_later)) } },
+            confirmButton = { TextButton(onClick = { onRetry() }) { Text(stringResource(R.string.ui_print_retry)) } },
+            dismissButton = { TextButton(onClick = { onLater() }) { Text(stringResource(R.string.ui_print_later)) } },
         )
-        SaveAndPrint.Step.LimitReached -> Info(R.string.ui_print_limit_reached) { flow.onLater() }
-        SaveAndPrint.Step.TooLong -> Info(R.string.ui_print_too_long) { flow.onLater() }
-        SaveAndPrint.Step.AskReadable -> YesNo(null, R.string.ui_print_readable_question, { scope.launch { flow.onReadableAnswer(it) } })
-        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved, R.string.dialog_success) { if (!finished) { finished = true; onFinished(s.printed) } }
+        SaveAndPrint.Step.LimitReached -> Info(R.string.ui_print_limit_reached, null, manual) { onLater() }
+        SaveAndPrint.Step.TooLong -> Info(R.string.ui_print_too_long, null, manual) { onLater() }
+        SaveAndPrint.Step.AskReadable -> YesNo(null, R.string.ui_print_readable_question, onReadableAnswer, manual, ManualDialogKind.Info)
+        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved, R.string.dialog_success, manual) { if (!finished) { finished = true; onFinished(s.printed) } }
     }
 }
 
@@ -268,7 +296,15 @@ object PrintFailureText {
 }
 
 @Composable
-private fun YesNo(@StringRes title: Int?, @StringRes text: Int, answer: (Boolean) -> Unit) {
+private fun YesNo(@StringRes title: Int?, @StringRes text: Int, answer: (Boolean) -> Unit, manual: Boolean = false, kind: ManualDialogKind = ManualDialogKind.Info) {
+    if (manual) {
+        // the old SR's box (manual 28): with a title the title is the blue sentence and the text the black line; without one the text is the blue question
+        AronManualDialog(
+            kind, stringResource(title ?: text), title?.let { stringResource(text) }, stringResource(R.string.dialog_yes), { answer(true) },
+            dismissLabel = stringResource(R.string.dialog_no), onDismiss = { answer(false) }, dismissable = false,
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = {},
         title = title?.let { { Text(stringResource(it)) } },
@@ -279,10 +315,19 @@ private fun YesNo(@StringRes title: Int?, @StringRes text: Int, answer: (Boolean
 }
 
 @Composable
-private fun Info(@StringRes text: Int, ok: () -> Unit) = Info(text, null, ok)
+private fun Info(@StringRes text: Int, ok: () -> Unit) = Info(text, null, false, ok)
 
 @Composable
-private fun Info(@StringRes text: Int, @StringRes title: Int?, ok: () -> Unit) {
+private fun Info(@StringRes text: Int, @StringRes title: Int?, manual: Boolean, ok: () -> Unit) {
+    if (manual) {
+        // manual 29: the green tick, "সফল" in blue, the sentence, ওকে; a failure or limit message has no title and keeps the warning triangle
+        AronManualDialog(
+            if (title != null) ManualDialogKind.Success else ManualDialogKind.Warning,
+            title?.let { stringResource(it) }, stringResource(text), stringResource(R.string.dialog_ok), ok,
+            onDismiss = ok, // Back or a tap outside is OK, as the plain box was (Done still fires onFinished once)
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = ok,
         title = title?.let { { Text(stringResource(it)) } },

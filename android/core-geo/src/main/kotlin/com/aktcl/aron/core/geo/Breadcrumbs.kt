@@ -179,7 +179,7 @@ class MemoryBreadcrumbStateStore : BreadcrumbStateStore {
 }
 
 /**
- * The MDM location sampling policy (D-MDM-01; `DeviceOwnerPolicy.mdmApplier?.locationMode()` / `locationIntervalMin()`) over the
+ * The location sampling mode (`off`, `interval`, `on_demand`; once the MDM policy of D-MDM-01, no device owner reads it any more: the bundle setting `cfg.geo.breadcrumbs_enabled` decides, D-OWNER-MDM-02) over the
  * configured breadcrumb settings. `off` stops breadcrumbs, `interval` turns them on at the policy's interval (5..120 min, the same
  * clamp as the config), `on_demand` (and a missing or unknown mode) leaves the configuration alone. It never changes the fix a sale or
  * a check-in takes: geo-validation does not depend on this policy.

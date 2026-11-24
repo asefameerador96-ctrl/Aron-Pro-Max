@@ -451,6 +451,8 @@ object AronLook {
         targetTop = hex(0x0B4EA2), targetBottom = hex(0x0B4EA2),
         primaryStart = hex(0x00642F), primaryEnd = hex(0x00642F), stopFill = hex(0xB0001C), choiceFill = hex(0x0B4EA2),
         roundBack = true, targetCard = hex(0x0B5A8C), panelTop = hex(0x0B4EA2), panelBottom = hex(0x3A1E99),
+        // R-PAR-AMO-06 (D-PAR-SR1-08): the small column words on the blue end of the ramp hold 7:1 (was 0xE6DDF7 at 6.1:1; 0xF5F0FD measures 7.15:1 on the blue end, the 0xF1EBFB the request suggested only 6.86:1)
+        onPanelMuted = hex(0xF5F0FD),
     )
 
     /** The AMO look in Sunlight: [Sunlight] (solid white bars, black ink) with the deep green, red and navy fills and the round back arrow. */
@@ -462,6 +464,10 @@ object AronLook {
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
     val CardRadius: Dp = 12.dp
     val ButtonRadius: Dp = 8.dp
+    /** The charcoal button fill of the old SR (manual 19 "না", 30 "রিফ্রেশ"); white on it is above 10:1. */
+    val DarkButtonFill: Color = hex(0x3A3A3A)
+    /** The lavender of the old SR's boxes and panels (quantity pop-up, partial payment, today's target, Sale History total band); ink on it is 7:1 (CreditDialogContrastTest). */
+    val LavenderPanel: Color = hex(0xEDE7F6)
     val StepRadius: Dp = 8.dp
     val Step: Dp = 36.dp
     val Touch: Dp = 48.dp

@@ -61,6 +61,12 @@ enum class CommitFailure {
     /** The rep's own Sales Submit stands for the route-day: the submit text. */
     DAY_SUBMITTED,
 
+    /** D-LEAD-PREREQ-04 ruling 4: the check-in gate refused (no check-in on the call's date): the card says to check in, never the generic failure. */
+    NOT_CHECKED_IN,
+
+    /** The date is already checked out: the card says so. */
+    CHECKED_OUT,
+
     /** Any other failure (storage, a constraint): nothing was stored, try again. */
     STORAGE,
 }
@@ -76,7 +82,17 @@ data class OpenVisit(
     val photoValidated: Boolean,
     val forceReasonCode: String?,
     val openedAtIso: String,
-)
+) {
+    /**
+     * True only for a call the phone's own geofence passed (D-OWNER/device walk D-force): a force sale, a manual override or a
+     * restored call of one is NEVER a clean geo sale, whatever a later screen has in memory. Every visit decides this again
+     * from its own row, so an earlier force sale at the outlet cannot make this one look clean (docs/05).
+     */
+    val cleanGeoSale: Boolean get() = geoValidated && forceReasonCode == null && geoAction == GeoAction.SALE_ALLOWED.wire
+
+    /** The stored verdict of this visit, for a screen with no fix in memory (a call restored after a relaunch). */
+    val verdict: GeoVerdict? get() = GeoVerdict.entries.firstOrNull { it.wire == geoVerdict }
+}
 
 /** The one place that holds the visit in progress; sale, review, QC and dues screens read it and never open a visit. */
 class VisitSession {
@@ -193,7 +209,7 @@ class VisitFlow(
         if (fix.status == "permission_denied" || fix.status == "location_off") {
             return VisitUiState.LocationBlocked(fix.status).also { ui.value = it }
         }
-        val policy = settings().policyBase.copy(refreshCount = refreshCount)
+        val policy = settings().policyBase.copy(refreshCount = refreshCount).refusingSpoofedFixes()
         val result = GeoVerdicts.verdict(
             fix = FixInput(fix.isOk, fix.lat ?: Double.NaN, fix.lng ?: Double.NaN, fix.accuracyM, fix.isMock),
             outlet = OutletGeo(o.locationUsable, o.lat ?: Double.NaN, o.lng ?: Double.NaN),
@@ -290,7 +306,9 @@ class VisitFlow(
 
     companion object {
         /** The words for [t]: the zone lock, the rep's own submit, or a plain storage failure. */
-        fun commitFailureOf(t: Throwable): CommitFailure = when (com.aktcl.aron.core.database.repo.DayRefusal.of(t)) {
+        fun commitFailureOf(t: Throwable): CommitFailure = if (t is com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            if (t.why == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) CommitFailure.CHECKED_OUT else CommitFailure.NOT_CHECKED_IN
+        } else when (com.aktcl.aron.core.database.repo.DayRefusal.of(t)) {
             com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT -> CommitFailure.LOCKED
             com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT -> CommitFailure.DAY_SUBMITTED
             null -> CommitFailure.STORAGE

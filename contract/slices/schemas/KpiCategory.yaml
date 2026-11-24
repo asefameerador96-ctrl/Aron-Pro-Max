@@ -1,0 +1,38 @@
+KpiCategory:
+  type: object
+  description: Volume of a category row (match and lighter).
+  required:
+  - category_code
+  - volume_target
+  - volume_achieved
+  - volume_bp
+  - by_pack
+  additionalProperties: false
+  properties:
+    category_code:
+      type: string
+      enum:
+      - match
+      - lighter
+    volume_target:
+      type: integer
+      format: int64
+      minimum: 0
+    volume_achieved:
+      type: integer
+      format: int64
+      minimum: 0
+    volume_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    by_pack:
+      type: array
+      maxItems: 20
+      description: Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor,
+        only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule
+        5). The entries add up to volume_target and volume_achieved.
+      items:
+        $ref: '#/components/schemas/KpiPackFigure'

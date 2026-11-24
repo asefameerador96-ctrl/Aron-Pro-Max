@@ -98,7 +98,7 @@ object GigoReport : ReportHandler {
         listOf(
             col("business_date", "Date", "date"), col("username", "SR", "string"), col("route_code", "Route", "string"), col("check_in_at", "Check in", "timestamp"),
             col("check_out_at", "Check out", "timestamp"), col("hours", "Hours", "decimal", unit = "h"), col("check_in_fix", "Check-in fix", "string"), col("check_out_fix", "Check-out fix", "string"),
-            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true),
+            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true), col("check_out_note", "Check-out note", "string"),
         ),
         listOf("period", "geo"),
     )
@@ -112,11 +112,13 @@ object GigoReport : ReportHandler {
                            THEN e.business_date - 1 ELSE e.business_date END AS day
             FROM app.attendance_event e WHERE e.voided_at IS NULL AND e.business_date BETWEEN CAST(:from AS date) - 1 AND CAST(:to AS date) + 1)
         SELECT ev.day AS business_date, u.username, (array_agg(g.route_code ORDER BY ev.captured_at) FILTER (WHERE g.route_code IS NOT NULL))[1] AS route_code,
-               min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in') AS check_in_at, max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') AS check_out_at,
-               round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
+               min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in') AS check_in_at, max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') AS check_out_at,
+               round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
                (array_agg(ev.fix_status ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS check_in_fix,
-               (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out'))[1] AS check_out_fix,
-               bool_or(coalesce(ev.fix_is_mock, false)) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address
+               (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep'))[1] AS check_out_fix,
+               coalesce(bool_or(coalesce(ev.fix_is_mock, false)) FILTER (WHERE ev.closed_by = 'rep'), false) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address,
+               CASE WHEN bool_or(ev.kind = 'check_out' AND ev.closed_by = 'phone') AND NOT bool_or(ev.kind = 'check_out' AND ev.closed_by = 'rep')
+                    THEN 'no check-out (closed by the phone)' END AS check_out_note
           FROM ev JOIN app.app_user u ON u.id = ev.user_id LEFT JOIN dw.dim_geo g ON g.route_id = ev.route_id
          WHERE ev.day BETWEEN :from AND :to
          GROUP BY ev.day, u.id, u.username
@@ -486,6 +488,42 @@ object TsoVisitLogReport : ReportHandler {
                               ORDER BY t.captured_at, t.id LIMIT 1) tk ON true
          WHERE po.voided_at IS NULL AND p.voided_at IS NULL AND ${ctx.dateClause("p.plan_date")}
            AND ${ctx.zoneClause("coalesce(r.zone_id, o.zone_id)")} AND ${ctx.routeClause("coalesce(pr.route_id, -1)")}
+        """,
+    )
+}
+
+/**
+ * `posm-survey` (SRM-B-08, contract 1.16.0): the answers of the POSM survey (and the other surveys) per outlet, read from the reuse view
+ * `dw.v_survey_response`. Scope is the report context's (zone and route clauses on the view's own columns, token reach only); the photo is a flag, the media id
+ * is never in the view. Voided answers are left out. The report lists EVERY survey kind (posm, amo_survey, tso_visit_query: the `Survey` column says which), under the key the owner asked for.
+ * A text answer is free text and can hold a phone number: the view is personal and bi_reader does not read `answer_text` (V0191); this report, behind its own role and scope checks, is where the text is read.
+ */
+object PosmSurveyReport : ReportHandler {
+    override val definition = definition(
+        "posm-survey", "Survey Answers (every survey kind)", "field_force", "survey answer",
+        listOf(
+            col("business_date", "Date", "date", bn = "তারিখ"), col("zone_name", "Zone", "string", bn = "জোন"), col("route_code", "Route", "string", bn = "রুট"),
+            col("outlet_code", "Outlet code", "string", bn = "আউটলেট কোড"), col("outlet_name", "Outlet", "string", bn = "আউটলেট"), col("username", "SR", "string", bn = "এসআর"),
+            col("survey_kind", "Survey", "string", bn = "জরিপ"), col("question", "Question", "string", bn = "প্রশ্ন"), col("answer", "Answer", "string", bn = "উত্তর"),
+            col("photo_taken", "Photo", "bool", bn = "ছবি"),
+        ),
+        listOf("period", "geo"),
+        bn = "জরিপের উত্তর (সব ধরনের জরিপ)",
+    )
+
+    override fun spec(ctx: ReportContext) = SqlSpec(
+        """
+        SELECT sv.business_date, z.name AS zone_name, r.code AS route_code, o.code AS outlet_code, o.name AS outlet_name, u.username, sv.survey_kind,
+               coalesce(sv.question_label_en, '#' || sv.question_id) AS question,
+               coalesce(sv.answer_text, sv.answer_option_code, CASE sv.answer_bool WHEN true THEN 'yes' WHEN false THEN 'no' END, sv.answer_num::text) AS answer,
+               sv.photo_taken
+          FROM dw.v_survey_response sv
+          JOIN app.app_user u ON u.id = sv.user_id
+          LEFT JOIN app.outlet o ON o.id = sv.outlet_id
+          LEFT JOIN app.route r ON r.id = sv.route_id
+          LEFT JOIN app.zone z ON z.id = coalesce(sv.zone_id, o.zone_id)
+         WHERE sv.is_effective AND ${ctx.dateClause("sv.business_date")}
+           AND ${ctx.zoneClause("coalesce(sv.zone_id, o.zone_id)")} AND ${ctx.routeClause("coalesce(sv.route_id, -1)")}
         """,
     )
 }

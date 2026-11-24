@@ -760,20 +760,780 @@ class Workflows(unittest.TestCase):
         self.assertIn("set -uo pipefail", sh)
 
     def test_diagnose_reads_the_worker_console_log_and_keeps_statements_out(self):
-        # D-OPS-DIAGNOSE-WORKER-01: the worker app's console log (severity and job-run lines, cut at 200 characters, no
-        # SQL/parameter/secret words) and the anchored statement exclusion on the server-log query.
+        # D-OPS-DIAGNOSE-WORKER-01, now under the default-deny shape (D-OPS-DIAGNOSE-API-06): the worker's console is read through the shared structured query (level, logger,
+        # exception class, SQLSTATE, ms, a fixed label such as the job-run lines); the anchored statement exclusion stays on the PostgreSQL server-log query.
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
-        i = sh.index("console log of $WORKER_APP in the window")
-        w = sh[i:sh.index('section "worker app $WORKER_APP"')]
-        self.assertIn("ContainerAppConsoleLogs_CL", w)
-        self.assertIn("where app == '$WORKER_APP'", w)
-        self.assertIn("substring(text, 0, 200)", w)
-        self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
-        self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
-        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
-        pg = sh[sh.index("PostgreSQLLogs'"):sh.index("section \"Log Analytics: console log of $WORKER_APP")]
+        self.assertIn('console_section "$WORKER_APP" "$WORKER_APP"', sh)
+        c = sh[sh.index("KQL_CONSOLE="):sh.index("console_section() {")]
+        self.assertIn("ContainerAppConsoleLogs_CL", c)
+        self.assertIn("parse_json(line)", c, "the JSON console line is parsed, not printed raw")
+        self.assertIn("bundle|lapsed", c, "job-run lines (bundle pre-generation, outlet request lapse) get a fixed label")
+        self.assertIn("gettype(j) == 'dictionary'", c, "a JSON line with no message never falls back to the raw JSON")
+        self.assertNotIn("substring(", c, "the whole text is fetched, redacted and only then cut in the shell")
+        cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
+        self.assertIn("where app == '$app'", cs)
+        pg = sh[sh.index("PostgreSQLLogs'"):sh.index('console_section "$WORKER_APP" "$WORKER_APP"')]
         self.assertIn("where not(msg matches regex @'-LOG:\\s+(execute|statement|parse|bind)')", pg,
                       "anchored: a statement record is dropped even when log_statement is turned on")
+
+    def test_diagnose_reads_the_api_console_and_preflight_with_redaction(self):
+        # D-OPS-DIAGNOSE-API-06 (round 5): DEFAULT-DENY for free text. Every query projects named structured columns only unless include_messages is true;
+        # the message passes the redactor in strict mode; request lines stay out of the cap; redact before cut; every section redacted.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
+        self.assertIn('API_APP="${5:-ca-aron-dev-api}"', sh)
+        self.assertIn('INCLUDE_MESSAGES=false; _args=()', sh)
+        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP" | tee', w)
+        self.assertIn("API_APP: ${{ inputs.api_app }}", w)
+        # Round 6 (lead ruling A): the workflow has NO message input at all; message mode is a flag of the script for a private terminal, refused under GITHUB_ACTIONS.
+        for needle in ("include_messages", "include-messages", "INCLUDE_MESSAGES", "inputs.include"):
+            self.assertNotIn(needle, w.split("name: ops-diagnose")[1], f"the workflow must not carry {needle}")
+        self.assertIn('[ "$_x" = "--include-messages" ]', sh)
+        self.assertIn('[ -n "${GITHUB_ACTIONS:-}" ]', sh)
+        self.assertNotIn('INCLUDE_MESSAGES="${', sh, "message mode is not an argument or an environment value")
+        self.assertIn('console_section "$API_APP" "$API_APP"', sh)
+        cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
+        self.assertIn("where not(lg startswith 'aron.request')", cs, "request lines cannot push start-up lines and errors out of the cap")
+        self.assertIn("top 150 by TimeGenerated desc", cs)
+        # The default branch projects the structured columns and never msg/line/st; the message column exists only in the include_messages branch.
+        default_q = cs[cs.index("else\n    echo \"(columns:"):]
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what\"", default_q)
+        for col in (", msg", ", line", ", st"):
+            self.assertNotIn(col, default_q.split("qc=")[0], f"the default query must not project {col.strip(', ')}")
+        msg_q = cs[:cs.index("else\n    echo \"(columns:")]
+        self.assertIn("project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg", msg_q)
+        self.assertIn("$KQL_HELD", msg_q); self.assertIn("| held_note", msg_q)
+        self.assertIn("extend held = msg matches regex", sh)
+        self.assertNotIn("where not(line matches regex", cs, "no exclusion on the raw JSON line")
+        c = sh[sh.index("KQL_CONSOLE="):sh.index("KQL_HELD=")]
+        self.assertIn("gettype(j) == 'dictionary'", c); self.assertIn("(no message)", c)
+        self.assertIn("replace_regex(", c, "one row is one line")
+        self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed label")
+        self.assertIn("pre-flight: nothing to do", c)
+        self.assertIn("exc = coalesce(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
+        self.assertIn("cause = coalesce(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
+        self.assertNotIn("nullif", c, "nullif is not a KQL function")
+        # The other sections: system log, job console, PG log, pre-flight: structured by default, text only with include_messages.
+        for needle in ("project TimeGenerated, who, typ, reason, exitcode | take 200", "project TimeGenerated, exec, lvl, what, sqlstate, script | take 400",
+                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, what\"", "project TimeGenerated, typ, reason, exitcode\""):
+            self.assertIn(needle, sh, needle)
+        pre = sh[sh.index('section "Log Analytics: migrate job pre-flight lines'):sh.index('section "worker app $WORKER_APP"')]
+        self.assertIn("what startswith 'pre-flight'", pre)
+        dflt = pre[pre.index("  else\n"):pre.index("  fi\n")]
+        self.assertIn("project TimeGenerated, exec, what\"", dflt)
+        self.assertNotIn("msg", dflt.replace("--analytics-query", ""), "the default pre-flight query prints the label, not the message")
+        # Redact before cut: no query output is cut before it is redacted, and every query result goes through la()/show/showm.
+        self.assertNotRegex(sh, r"\| cut -c1-\d+\s*\|\s*redact", "cut before redact")
+        for line in sh.splitlines():
+            if "az monitor log-analytics query" in line and not line.lstrip().startswith("#") and "-o tsv" in line:
+                self.assertTrue("| showm " in line or "| show " in line or "| held_note" in line or "out=\"$(" in line or "LA_OUT=\"$(az monitor log-analytics query" in line, line)
+        code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("substring(", code.replace("substring(sha256", ""), "no KQL substring before redaction")
+        self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
+        self.assertNotIn("substr($0", code, "no byte-based awk cut")
+        self.assertIn("exec > >(redact)", sh, "everything printed, the older sections too, passes the net")
+        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app"):
+            self.assertIn('valid ' + name + ' ', sh, name)
+        self.assertLess(w.index("Validate the inputs"), w.index("azure/login@"), "inputs are validated before the Azure login")
+        self.assertIn("set -o pipefail", w)
+        self.assertIn("grep -q '^diagnose: done (read-only)$' diagnose.txt", w, "a dead filter or an early stop turns the step red")
+        self.assertIn("free-text names", sh.lower().replace("FREE-TEXT", "free-text"), "the comment says honestly what is not caught")
+        self.assertIn("messages are OFF by default in a public log", sh)
+
+    def test_diagnose_runs_with_a_stub_az_in_both_modes(self):
+        # Runs the whole script against a fake `az`: default mode never sends a message column to the query; message mode does, behind the strict filter, and still ends with the final line.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+if [ "$1 $2 $3" = "monitor log-analytics workspace" ]; then echo ws-id; exit 0; fi
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; cols=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; --query) cols="$2";; esac; shift; done
+  printf '%s\n---\n' "$q" >> "$STUB_LOG"
+  case "$cols" in "[0].[held, shown]") printf '2\t9\n';; "[0].[plain, total]") printf '3\t40\n';; "[0].dropped") printf '2\n';;
+    *) printf 'T0\tERROR\tcom.x.Y\tjava.lang.IllegalStateException\t\t57014\t\tunhandled error\nT1\tINFO\taron.sync\tsession abc123def456 opened for 01712345678\n';; esac; exit 0; fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            for mode in ("false", "true"):
+                open(log, "w").close()
+                env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}
+                flag = ["--include-messages"] if mode == "true" else []
+                r = subprocess.run(["bash", script, *flag, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "caj-aron-dev-migrate", "ca-aron-dev-worker", "ca-aron-dev-api"], capture_output=True, text=True, env=env)
+                self.assertEqual(0, r.returncode, r.stderr)
+                self.assertTrue(r.stdout.rstrip().endswith("diagnose: done (read-only)"), r.stdout[-200:])
+                self.assertIn(f"include_messages={mode}", r.stdout)
+                self.assertNotIn("01712345678", r.stdout)
+                queries = open(log).read()
+                if mode == "false":
+                    self.assertIn("(2 record(s) dropped: unknown log line prefix shape)", r.stdout, "the KQL path prints the count of records of an unknown prefix shape")
+                    self.assertNotRegex(queries, r"project [^\n|]*\bmsg\b")
+                    self.assertNotRegex(queries, r"project [^\n|]*\btxt\b")
+                    self.assertNotRegex(queries, r"project [^\n|]*\bline\b")
+                else:
+                    self.assertRegex(queries, r"project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg")
+                    self.assertIn("[redacted-line]", r.stdout, "strict mode replaced the line that still holds a key-like word and a mixed value")
+                    self.assertIn("unhandled error", r.stdout)
+            # Message mode is refused under GitHub Actions (a public job log), before any query: with GITHUB_ACTIONS set the flag exits 2 and nothing is sent to Azure.
+            open(log, "w").close()
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x", "GITHUB_ACTIONS": "true"}
+            r = subprocess.run(["bash", script, "--include-messages", "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(2, r.returncode, r.stdout + r.stderr)
+            self.assertIn("refused under GitHub Actions", r.stderr)
+            self.assertEqual("", open(log).read(), "no query was sent")
+            self.assertEqual("", r.stdout.strip(), "nothing was printed")
+            # Without the flag the same environment runs (the default mode is what the workflow uses).
+            r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_diagnose_redaction_behaviour(self):
+        # D-OPS-DIAGNOSE-API-01: pipe sample lines through the real net (diagnose.sh --redact) and assert nothing sensitive survives.
+        import subprocess
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run_note(text):
+            return subprocess.run(["bash", script, "--held-note"], input=text, capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"}).stdout
+        def run(text, width=None):
+            cmd = ["bash", script, "--redact"] + ([str(width)] if width else [])
+            return subprocess.run(cmd, input=text, capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"}).stdout
+        phones = ["01712345678", "017-1234-5678", "017 1234 5678", "+880 1712 345678", "+8801712345678", "880-1712-345678", "1712345678",
+                  "tel01712345678x", "ph:01712345678", "\u09e6\u09e7\u09ed\u09e7\u09e8\u09e9\u09ea\u09eb\u09ec\u09ed\u09ee"]
+        for ph in phones:
+            out = run(f"outlet call from {ph} done\n")
+            self.assertIn("[phone]", out, f"phone form not caught: {ph!r} -> {out!r}")
+            self.assertFalse(any(c.isdigit() for c in out.replace("[phone]", "")), f"digits survive: {ph!r} -> {out!r}")
+        cases = {
+            "rahim.uddin@example.com": "@", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sigvalue123": "eyJ", "Authorization: Bearer abcDEF123.xyz-789": "abcDEF123",
+            "user_name=rahim99": "rahim99", '"full_name":"Abu Zafar"': "Abu", "password=hunter2xyz": "hunter2xyz", "otp=123456": "123456", "OTP is 654321": "654321",
+            "pin: 4321": "4321", "Cookie: session=abcd1234efgh": "abcd1234", "Set-Cookie: sid=zzTop9988; Path=/": "zzTop9988",
+            "jdbc:postgresql://db.host:5432/aron?user=app&password=pw0rd": "pw0rd", "Server=db;User Id=appuser;Password=s3cr3tpw": "s3cr3tpw",
+            "AccountKey=QUJDREVGR0g=": "QUJDREVGR0g", "SharedAccessSignature=sv=2021&sig=abcdef": "abcdef",
+            "client 203.0.113.77 and 2001:db8::1 and 2001:0db8:85a3:0000:0000:8a2e:0370:7334": "203.0.113.77",
+            "device 123e4567-e89b-12d3-a456-426614174000": "123e4567",
+        }
+        for text, secret in cases.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        self.assertIn("[ip]", run("2001:db8::1\n"))
+        more = {
+            "access_token=" "abc123def": "abc123def", "refreshToken: " "abc123def": "abc123def", "otp_code=" "123456": "123456", "client_secret=" "zzTopSecret": "zzTopSecret",
+            "sessionid=" "abc123def": "abc123def", "pass=" "hunter22": "hunter22", "Instrumentation" "Key=" "abcabc111": "abcabc111", "sessionKey=" "abc123def": "abc123def",
+            'password="a b c d"': "b c", "'secret': 'two words'": "two words", "the password is <hunter22>": "hunter22", "the password is &lt;hunter22&gt;": "hunter22",
+            "otp sent, please enter 481516 now": "481516", "your pin 4821 was used": "4821", "SAS sig=abcdef123456": "abcdef123456",
+            "call (017) 1234-5678": "1234", "call 017.1234.5678": "1234", "call 017_1234_5678": "1234", "call 017/1234/5678": "1234", "call [+880] 1712345678": "1712345678",
+            "call 0 1 7 1 2 3 4 5 6 7 8": "7 8", "\u0660\u0661\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668": "\u0667",
+            "dev 123e4567e89b12d3a456426614174000": "123e4567e89b",
+        }
+        for text, secret in more.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # What the operator needs stays readable: a request id still matches across lines (a stable short hash), shas, versions, epoch seconds.
+        a, b = run("req 123e4567-e89b-12d3-a456-426614174000 start\nreq 123e4567-e89b-12d3-a456-426614174000 end\nreq 123e4567-e89b-12d3-a456-426614174999 other\n").splitlines()[:3], None
+        import re as _re
+        ids = [_re.search(r"\[uuid:([0-9a-f]{8})\]", x).group(1) for x in a]
+        self.assertEqual(ids[0], ids[1], "the same request id gives the same text")
+        self.assertNotEqual(ids[0], ids[2])
+        sha = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d"
+        for line in (f"build {sha} started", f"commit={sha}", f"health ok {sha}", "version 1.20.3.4 ready", "build 1.20.3.4", "exp=1731234567 iat=1731230000"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        self.assertNotIn(sha, run(f"token blob {sha}\n"), "a 40-hex run with no build/commit/sha context is still redacted")
+        # B2: a Bangla line cut in the middle of a character, and bytes that are not UTF-8 at all, never kill the filter: every later line still appears.
+        bangla = "\u09ac\u09be\u0982\u09b2\u09be " * 30
+        text = bangla + "\nafter-1\n"
+        out = run(text, 37)
+        self.assertEqual(2, len(out.splitlines()), out)
+        self.assertTrue(out.splitlines()[0].startswith("\u09ac"), out)
+        self.assertEqual(37, len(out.splitlines()[0]), "the cut counts characters, not bytes")
+        raw = b"ok-1\n" + "\u09ac\u09be".encode()[:4] + b"\xe0\xa6 broken\nok-3 01712345678\n\xff\xfe tail\nok-5\n"
+        r = subprocess.run(["bash", script, "--redact", "20"], input=raw, capture_output=True, env={"PATH": "/usr/bin:/bin"})
+        self.assertEqual(0, r.returncode, r.stderr)
+        lines = r.stdout.decode("utf-8").splitlines()
+        self.assertEqual(5, len(lines), lines)
+        self.assertEqual("ok-1", lines[0]); self.assertEqual("ok-5", lines[4]); self.assertNotIn("1712", lines[2])
+        # B1: the held-back count reads the two numbers whatever az prints (tab, newline, capitalised or not).
+        for sample in ("3\t12\n", "3\n12\n", "3 12", "3,12"):
+            self.assertEqual("(3 line(s) held back by the secret-word exclusion, 12 not held; the list above is capped at the newest 150)\n", run_note(sample), sample)
+        self.assertEqual("(held-back count unavailable)\n", run_note("True\tFalse\n"))
+        self.assertEqual("(held-back count unavailable)\n", run_note(""))
+        # Ordinary diagnostics text survives: a timestamp, a level, a class name, a count.
+        keep = "2026-11-18T09:54:57Z ERROR aron.sync waiting-item sweep failed: 3 rows, SQLState 57014 at 09:54:57"
+        self.assertEqual(keep + "\n", run(keep + "\n"))
+        # A line cut at the boundary: redact first, so a number that straddles the cut leaves no fragment behind.
+        line = "x" * 190 + " 01712345678 trailing\n"
+        out = run(line, 200)
+        self.assertNotRegex(out, r"0171|1712|12345", out)
+        # Bad inputs are refused before any az call (az is not on the PATH here).
+        for bad in (["x'y", "2026-11-18T09:00:00Z"], ["2026-11-18T09:00:00Z", "2026-11-18T09:00:00Z'"], ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "a b"],
+                    ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "UPPER"], ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "ok", "ok", "x;y"]):
+            r = subprocess.run(["bash", script] + bad, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-aron-dev"})
+            self.assertEqual(2, r.returncode, (bad, r.stdout, r.stderr))
+
+    def test_diagnose_redaction_is_linear_and_reads_well(self):
+        # Review of f16963bd: bounded patterns (no quadratic blow-up on an unbroken run), more key and value shapes, less over-redaction, a per-run salt, CRLF, the fail-closed notice.
+        import subprocess, time, re as _re
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        env0 = {"PATH": "/usr/bin:/bin"}
+        def run(text, extra=None, width=None):
+            e = dict(env0); e.update(extra or {})
+            cmd = ["bash", script, "--redact"] + ([str(width)] if width else [])
+            return subprocess.run(cmd, input=text.encode(), capture_output=True, env=e, check=True).stdout.decode("utf-8")
+        # (1) 100 KB unbroken runs finish in seconds (they took 30+ s per 16 KB before the prefixes were bounded).
+        n = 100000
+        for name, blob in {"letters": "a" * n, "hex": "0123456789abcdef" * (n // 16), "digits": "1" * n, "alnum then at": "a1" * (n // 2) + "@",
+                           "dots": "a." * (n // 2), "key at the end": "x" * n + "tok" + "en", "camel": "aKey" * (n // 4), "spaces": " " * n, "digit space": "1 " * (n // 2),
+                           "unclosed quote": 'pass' + 'word="' + "a" * n, "braces": "tok" + "en={" * (n // 8)}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n"); dt = time.time() - t0
+            self.assertLess(dt, 20, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+        # (2) more shapes
+        more = {"otpCode=" "481516": "481516", "pinCode: " "4821": "4821", "authCode=" "zz11aa": "zz11aa", "keyValue=" "hello22": "hello22",
+                'raw json \\"pass' 'word\\":\\"two words\\" done': "two words", 'pass' 'word="never closed here': "never closed", "tok" 'en={"a":{"b":"nested22"},"c":1} after': "nested22",
+                "pass" "word=ab;cd,ef gh": "cd", "pass" "word=ab;cd,ef gh x": "gh", "secret" ": [1,2,3]": "1,2,3"}
+        for text, secret in more.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # (3) reading is not hurt: a number 13..19 before a date, durations on a verification line, 0.0.0.0, an image reference with a 40-hex tag
+        sha = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d"
+        for line in ("call 17 2026-11-18 ok", "verification took 18400 ms and then 1500 retries", "listen 0.0.0.0:8080 and 127.0.0.1", f"image acr.azurecr.io/aron/api:{sha} ready",
+                     "image acr.azurecr.io/aron/api@sha256:" + "ab12" * 16 + " pulled"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        self.assertNotIn("481516", run("verification code 481516 sent\n"))
+        self.assertIn("[ip]", run("client 203.0.113.9\n"))
+        # (5) the UUID tag: stable within a run (same salt), different across runs (random salt), different for another id
+        u1, u2 = "123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174999"
+        def tag(text, extra=None): return _re.findall(r"\[uuid:([0-9a-f]{8})\]", run(text, extra))
+        t = tag(f"a {u1}\nb {u1}\nc {u2}\n", {"REDACT_SALT": "salt-one"})
+        self.assertEqual(t[0], t[1]); self.assertNotEqual(t[0], t[2])
+        self.assertEqual(t, tag(f"a {u1}\nb {u1}\nc {u2}\n", {"REDACT_SALT": "salt-one"}), "same salt, same tags")
+        self.assertNotEqual(t[0], tag(f"a {u1}\n", {"REDACT_SALT": "salt-two"})[0], "another salt, another tag")
+        self.assertNotEqual(tag(f"a {u1}\n")[0], tag(f"a {u1}\n")[0], "no salt given: every run draws its own")
+        # (6) CRLF, an empty line, and the fail-closed notice (a line the scrubber cannot process is replaced, never printed raw; later lines still come)
+        self.assertEqual("one\n\ntwo [phone]\n", run("one\r\n\r\ntwo 01712345678\r\n"))
+        self.assertEqual("\n\n", run("\n\n"))
+        self.assertEqual("", run(""))
+        self.assertEqual("no newline at the end", run("no newline at the end"))
+        out = run("before\nBOOM-MARKER pretend-secret\nafter 01712345678\n", {"REDACT_SELFTEST_DIE": "BOOM-MARKER"})
+        self.assertEqual("before\n[line withheld: redaction filter error]\nafter [phone]\n", out)
+        self.assertNotIn("pretend-secret", out)
+
+    def test_diagnose_redaction_wide_gaps_and_bounds(self):
+        # Third re-check of ops-diagnose: the bounded patterns must still catch wide gaps, long names, long local parts, wide separators and far-away OTP keywords.
+        import subprocess, time
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text):
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True).stdout.decode("utf-8")
+        # (1) up to 40 spaces or tabs around = and :
+        gaps = {"api" "_key" + "\t" * 4 + "= valueone": "valueone", "api" "_key" + "\t" * 4 + ":\t\t" + "valueone": "valueone", "name" + " " * 5 + ":" + " " * 5 + "Rahimuddin": "Rahimuddin",
+                "pass" "word" + " " * 30 + "=" + " " * 30 + "valueone": "valueone", "to" "ken" + " " * 40 + ":" + " " * 40 + "valueone": "valueone", 'sec' 'ret' + " " * 12 + "=" + " " * 12 + '"two words"': "two words",
+                "otpCode" + " " * 20 + "=" + " " * 20 + "481516": "481516", "user_" "name" + "\t" * 6 + "=" + "\t" * 6 + "rahim": "rahim"}
+        for text, secret in gaps.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # (2) a key name of up to 128 characters before or after the stem, up to 8 segments, a 128-character e-mail local part, phone separators of up to 6 characters
+        long_keys = {"x" * 100 + "tok" "en=valueone": "valueone", "pass" "word" + "y" * 100 + "=valueone": "valueone", "a_b_c_d_e_f_g_pass" "word=valueone": "valueone",
+                     "a_b_c_d_e_f_g_key=valueone": "valueone", "aa" * 60 + "_pin=valueone": "valueone", "key_a_b_c_d_e_f_g=valueone": "valueone",
+                     "a" * 120 + "Key=valueone": "valueone", "pinCode" + "z" * 100 + "=valueone": "valueone"}
+        for text, secret in long_keys.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text[:40]!r}... -> {out[:60]!r}")
+        mail = "a" * 120 + "@example.org"
+        self.assertEqual("mail [email] sent\n", run(f"mail {mail} sent\n"))
+        for phone in ("017 ---- 1234 ---- 5678", "017  /  1234  /  5678", "+88 ( 017 ) 1234 - 5678", "0 1 7  -  1 2 3 4  -  5 6 7 8"):
+            out = run(f"call {phone} done\n")
+            self.assertEqual("call [phone] done\n", out, f"{phone!r} -> {out!r}")
+        # (3) OTP digits up to 60 characters from the keyword; a duration or a count with a unit is never touched
+        self.assertNotIn("481516", run("otp sent to the handset, please enter the code 481516 now\n"))
+        self.assertNotIn("481516", run("your code " + "x" * 50 + " 481516 otp\n"))
+        self.assertNotIn("481516", run("481516 " + "x" * 50 + " verification\n"))
+        keep = "verification " + "x" * 30 + " took 18400 ms, 1500 retries and 20000 bytes"
+        self.assertEqual(keep + "\n", run(keep + "\n"))
+        # (4) a 40- or 64-hex is kept only after the WHOLE words image/digest/commit/build, or in an image reference on a fixed registry host (ACR, ghcr.io, docker.io, mcr.microsoft.com)
+        h40, h64 = "4a3b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d", "ab12" * 16
+        for line in (f"image acr1234.azurecr.io/aron/api:{h40} ready", f"pulled acr1234.azurecr.io:5000/aron/api@sha256:{h64}", f"ghcr.io/aron/api:{h40}", f"docker.io/a/b@sha256:{h64}",
+                     f"mcr.microsoft.com/a/b:{h40}", f"digest {h64} ok", f"digest sha256:{h64}", f"commit {h40}", f"build {h40}", f"image {h40}"):
+            self.assertEqual(line + "\n", run(line + "\n"), line)
+        for line in (f"path a/b:{h40}", f"x/y/z:{h40}", f"value {h40}", f"cache a/b@{h64}", f"localhost/aron/api:{h40}", f"acr.example.io/aron/api:{h40}", f"evil.example.io/a/b:{h40}",
+                     f"sha256:{h64}", f"x-signature: sha256={h64}", f"signature sha256={h64}", f"sha1 {h40}", f"revision {h40}", f"gitsha {h40}", f"builder {h40}", f"imagex {h40}"):
+            out = run(line + "\n")
+            self.assertNotIn(h40, out, line); self.assertNotIn(h64, out, line)
+        # still linear with the wider bounds
+        n = 100000
+        for name, blob in {"letters": "a" * n, "segments": "a_" * (n // 2), "dots": "a." * (n // 2), "email": "a" * n + "@", "tabs after key": "api" "_key" + "\t" * n, "otp far": "otp " + "x" * n}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n"); dt = time.time() - t0
+            self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+
+    def test_diagnose_round5_forms_and_strict_mode(self):
+        # Round 5 of the review: OTP joined to a key name, Authorization with any scheme, command-line / tab / XML / URL-encoded / YAML forms, more stems, repeated-stem speed,
+        # and the STRICT line check of message mode.
+        import subprocess, time
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text, strict=False):
+            env = {"PATH": "/usr/bin:/bin"}
+            if strict: env["REDACT_STRICT"] = "1"
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env=env, check=True).stdout.decode("utf-8")
+        forms = {"sms_code=" "481516": "481516", "verificationCode=" "481516": "481516", "verifyCode: " "481516": "481516", "SmsCode: " "481516": "481516",
+                 '{"verification_code":"' "481516" '"}': "481516", "code=" "481516": "481516", "login_code=" "481516": "481516", "confirmationCode=" "481516": "481516",
+                 "Authorization: Token " "abcDEF123xyz": "abcDEF123xyz", "Authorization: ApiKey " "abcDEF123xyz": "abcDEF123xyz", "Authorization: Digest username=x, nonce=abc": "nonce=abc",
+                 "authorization: SharedAccessSignature sr=x&sig=y": "sig=y", '"authorization":"Token two words"': "two words",
+                 "curl --pass" "word hunter22": "hunter22", "run -p " "hunter22": "hunter22", "tool --token " "abcdef": "abcdef", "pass" "word" + "\t" + "hunter22": "hunter22",
+                 "<pass" "word>hunter22</pass" "word>": "hunter22", '<apiToken what="x">hunter22</apiToken>': "hunter22",
+                 "x?api_key" "%3D" "hunter22&y=1": "hunter22", "{%22pass" "word%22%3A%22hunter22%22}": "hunter22", "pass" "word" "%3D" "hunter22": "hunter22",
+                 "hmac=" "abcd1234": "abcd1234", "signature=" "abcd1234": "abcd1234", "nonce=" "abcd1234": "abcd1234", "salt=" "abcd1234": "abcd1234"}
+        for text, secret in forms.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        # a YAML block value on the next line(s) after a secret key that ends its line; the line after the block is untouched
+        yaml = "db:\n  pass" "word:\n    hunter22 more\n    lines\nnext: ok\n"
+        out = run(yaml)
+        self.assertNotIn("hunter22", out); self.assertNotIn("lines", out); self.assertIn("next: ok", out)
+        self.assertEqual("[redacted-line]", run("secret: |\n  hunter22\n").splitlines()[1])
+        # ordinary codes stay readable
+        for keep in ("error code=17 status_code=500", "exit code: 1", "SQLState 57014 elapsed 1500 ms"):
+            self.assertEqual(keep + "\n", run(keep + "\n"), keep)
+        # STRICT mode (message mode): a key-like word followed by a 6+ character value with letters and digits replaces the whole line; timestamps, durations, versions stay
+        for bad in ("session opened for user a1a1a1a1", "tok" "en issued x1x1x1x1", "handset=b1b1b1b1 pairing done", "client c1c1c1c1c1 accepted"):
+            self.assertEqual("[redacted-line]\n", run(bad + "\n", strict=True), bad)
+            self.assertNotEqual("[redacted-line]\n", run(bad + "\n"), "only message mode replaces whole lines: " + bad)
+        for ok in ("2026-11-18T10:26:02Z ERROR aron.sync waiting-item sweep failed", "took 18400ms at 2026-11-18T10:26:02Z", "build 1.20.3.4 started", "pre-flight: nothing to do (checks: V0191-cluster-names=clean)",
+                   "waiting-item sweep enabled (interval 60 s, batch 50)", "[uuid:ab12cd34] start", "unhandled error"):
+            self.assertEqual(ok + "\n", run(ok + "\n", strict=True), ok)
+        # repeated stems stay fast (the key patterns start at the stem, with no variable-length prefix)
+        n = 100000
+        for name, blob in {"password": "pass" "word" * (n // 8), "token": "tok" "en" * (n // 5), "secret": "secret" * (n // 6), "key=": "key=" * (n // 4), "camel": "aKey" * (n // 4),
+                           "yaml": "pass" "word:\n" * (n // 10), "strict mix": "key a1b2c3 " * (n // 11)}.items():
+            t0 = time.time(); out = run(blob + "\nlast\n", strict=(name == "strict mix")); dt = time.time() - t0
+            self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
+            self.assertTrue(out.endswith("last\n"), name)
+
+    def test_diagnose_flyway_labels_are_lossless_fixed_words_and_digits(self):
+        # Round 6 (lead ruling B): the migration proof must survive the default mode. The KQL `what` case is evaluated here in Python on the VERBATIM Flyway and app lines
+        # (quoted in docs/status/usage.md and the train 121 console); each label is fixed words plus extracted digits only, never the description or the schema name.
+        import json, re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        block = sh[sh.index("| extend what = case("):sh.index("         '-')\n")]
+        branches = []
+        for line in block.splitlines()[1:]:
+            line = line.strip()
+            m = _re.match(r"^msg (?:startswith '([^']*)'|matches regex @'([^']*)'), (.*),$", line)
+            self.assertTrue(m, f"unparsed branch: {line[:100]}")
+            branches.append((m.group(1), m.group(2), m.group(3)))
+        def label(msg):
+            for starts, rx, val in branches:
+                if (starts is not None and msg.startswith(starts)) or (rx is not None and _re.search(rx, msg)):
+                    if val.startswith("'") and "strcat" not in val:
+                        return val.strip("'")
+                    out = ""
+                    for t in _re.finditer(r"coalesce\(extract\(@'([^']*)', 1, msg\), '([^']*)'\)|tostring\(extract_all\(@'([^']*)', msg\)\)|'([^']*)'", val[len("strcat("):-1]):
+                        if t.group(1) is not None:
+                            mm = _re.search(t.group(1), msg); out += mm.group(1) if mm else t.group(2)
+                        elif t.group(3) is not None:
+                            out += json.dumps(_re.findall(t.group(3), msg), separators=(",", ":"))
+                        else:
+                            out += t.group(4)
+                    return out
+            return "-"
+        cases = {
+            'Current version of schema "public": 0204': "flyway current version 0204",
+            'Migrating schema "public" to version "0205 - geo fix signals"': "flyway migrating to 0205",
+            'Migrating schema "public" to version "0208 - device lab exemption api delete"': "flyway migrating to 0208",
+            'Successfully applied 4 migrations to schema "public", now at version v0208 (execution time 00:01.234s)': "flyway applied 4 now at 0208",
+            'Schema "public" is up to date. No migration necessary.': "flyway up to date",
+            'Successfully validated 186 migrations (execution time 00:00.321s)': "flyway validated 186",
+            'Creating Schema History table "public"."flyway_schema_history" ...': "flyway created schema history",
+            'migrate: 4 migration(s) applied': "migrate: 4 applied",
+            'pre-flight: nothing to do (checks: V0191-cluster-names=clean, V0199-titanium-tier=not pending)': 'pre-flight nothing to do ["V0191-cluster-names=clean","V0199-titanium-tier=not pending"]',
+            'waiting-item sweep enabled (interval 60 s, batch 200)': "sweep enabled, interval 60 s, batch 200",
+            'waiting-item sweep disabled by ARON_WAITING_SWEEP=off; it re-reads the switch at every pass': "sweep disabled by ARON_WAITING_SWEEP=off",
+            "user rahim logged in from 01712345678": "-",
+        }
+        for msg, want in cases.items():
+            self.assertEqual(want, label(msg), msg)
+        for leaked in ("geo fix", "public", "device lab", "rahim", "execution time"):
+            self.assertFalse(any(leaked in label(m) for m in cases), leaked)
+        # Round 7: the failure label, the script and SQLSTATE read from the message PLUS the throwable text, \b around ms, case-sensitive SQLSTATE, identifier shape checks.
+        ms_rx = _re.search(r"ms = coalesce\(extract\(@'([^']*)', 1, msg\)", sh).group(1)
+        sql_rx = _re.search(r"sqlstate = coalesce\(extract\(@'([^']*)', 1, mst\)", sh).group(1)
+        script_rx = _re.search(r"script = coalesce\(extract\(@'([^']*)', 1, mst\)", sh).group(1)
+        fail = _re.search(r"iff\(mst matches regex @'([^']*)', strcat\('flyway FAILED at ', coalesce\(extract\(@'([^']*)', 1, mst\)", sh)
+        shape = _re.search(r"lg matches regex @'([^']*)'", sh).group(1)
+        lvl_shape = _re.search(r"lvl matches regex @'([^']*)'", sh).group(1)
+        def ex(rx, t):
+            m = _re.search(rx, t); return m.group(1) if m else ""
+        self.assertEqual("", ex(ms_rx, "482913 msg")); self.assertEqual("18400", ex(ms_rx, "took 18400 ms")); self.assertEqual("5", ex(ms_rx, "waited 5ms."))
+        self.assertEqual("23505", ex(sql_rx, "sqlstate=23505")); self.assertEqual("42P01", ex(sql_rx, "----- SQL State  : 42P01")); self.assertEqual("57014", ex(sql_rx, "SQLState 57014"))
+        self.assertEqual("", ex(sql_rx, "sql state: 23505 and sqlstate=ab123"), "case-sensitive: lower-case words and a lower-case value do not match")
+        msg1 = "migrate failed"; st1 = "org.flywaydb.core.api.FlywayException: Migration V0209__attendance_closed_by_comment.sql failed ----- SQL State  : 42P01"
+        mst1 = msg1 + " " + st1
+        self.assertTrue(_re.search(fail.group(1), mst1)); self.assertEqual("0209", _re.search(fail.group(2), mst1).group(1))
+        self.assertEqual("V0209__attendance_closed_by_comment", ex(script_rx, mst1)); self.assertEqual("42P01", ex(sql_rx, mst1))
+        self.assertTrue(_re.search(fail.group(1), "Migration V0205__geo_fix_signals.sql failed"))
+        self.assertFalse(_re.search(fail.group(1), "Migration V0205__geo_fix_signals.sql applied"))
+        for ok in ("aron.sync", "com.aktcl.aron.backend.sync.IngestService", "com.x.Y$Inner", "org.postgresql.util.PSQLException"):
+            self.assertTrue(_re.match(shape, ok), ok)
+        for bad in ("Rahim Uddin", "user 01712345678", "x" * 170, "a b", "name=abu"):
+            self.assertFalse(_re.match(shape, bad), bad)
+        self.assertTrue(_re.match(lvl_shape, "ERROR")); self.assertTrue(_re.match(lvl_shape, "(plain)")); self.assertFalse(_re.match(lvl_shape, "Rahim"))
+        # Pre-flight ACTION lines (review of 531cf508): MigrationPreflight.report writes "preflight <id>: ..." and "preflight <id> (dev): ..." (no hyphen); only the nothing-to-do line has one. The strings are READ FROM
+        # THE KOTLIN SOURCE so they cannot drift; every report string must get a label that starts with "pre-flight", and the failure text of PreflightFailed ("pre-flight <id> failed ...") is labelled FAILED.
+        kt = (ROOT / "backend" / "platform" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "platform" / "MigrationPreflight.kt").read_text(encoding="utf-8")
+        reports = _re.findall(r'report\("([^"]*)"\)', kt)
+        self.assertGreaterEqual(len(reports), 4, reports)
+        def fill(t):
+            t = t.replace("${check.id}", "V0191-cluster-names")
+            return _re.sub(r"\$\{[^}]*\}|\$[A-Za-z_]+", "x 3", t)
+        for tpl in reports:
+            msg = fill(tpl)
+            lab = label(msg)
+            self.assertTrue(lab.startswith("pre-flight line V0191-cluster-names"), f"{msg!r} -> {lab!r}")
+            self.assertNotIn("x 3", lab)
+        self.assertEqual("pre-flight line V0191-cluster-names", label("preflight V0191-cluster-names (dev): 2 clusters; repairing the test data"))
+        self.assertTrue(label("pre-flight: nothing to do (checks: V0191-cluster-names=clean)").startswith("pre-flight nothing to do"))
+        thrown = _re.findall(r'PreflightFailed\("(pre-flight \$\{check\.id\}[^"]*)"', kt)
+        self.assertGreaterEqual(len(thrown), 2)
+        pf_fail = _re.search(r"iff\(mst matches regex @'(pre-flight V[^']*)', strcat\('pre-flight FAILED ', coalesce\(extract\(@'([^']*)', 1, mst\)", sh)
+        self.assertTrue(pf_fail)
+        for tpl in thrown:
+            t = fill(tpl) + " rest"
+            self.assertTrue(_re.search(pf_fail.group(1), "migrate failed " + t), t)
+            self.assertEqual("V0191-cluster-names", _re.search(pf_fail.group(2), "migrate failed " + t).group(1))
+        # An INFO line with a label is never dropped by the row filter (what != '-' is one of the three conditions).
+        self.assertIn("what != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
+        self.assertIn("where what != '-' or lvl in", sh)
+
+    def test_diagnose_round6_message_mode_and_lows(self):
+        import subprocess
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text):
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True).stdout.decode("utf-8")
+        # the two cheap rules: URL user-info for any scheme, bare `code` + 4..8 digits, and the Bangla words for OTP / code / PIN
+        for text, secret in {"redis://:" "s3cretpw@cache.example.net:6379/0": "s3cretpw", "https://bob:" "hunter22@host/x": "hunter22", "amqp://u:p%40ss@h": "p%40ss", "mongodb+srv://u:" "pw1x@c.example.net/d": "pw1x",
+                             "your code is 481516 ok": "481516", "code 481516": "481516", "code: 481516": "481516",
+                             "\u0986\u09aa\u09a8\u09be\u09b0 \u0993\u099f\u09bf\u09aa\u09bf \u0995\u09cb\u09a1 \u09ea\u09ee\u09e7\u09eb\u09e7\u09ec": "481516",
+                             "\u0995\u09cb\u09a1: 481516": "481516", "\u09aa\u09bf\u09a8 4821 \u09ac\u09cd\u09af\u09ac\u09b9\u09be\u09b0": "4821"}.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        for keep in ("error code 17 and exit code: 1 elapsed 1500 ms", "status code 500"):
+            self.assertEqual(keep + "\n", run(keep + "\n"), keep)
+        # a TAB is a column separator on a TSV row: a logger column ending in a key stem must not eat the next column; a config-style line with one tab still redacts
+        self.assertEqual("T0\tapi_logger_key\t481516\tnext\tcol\n", run("T0\tapi_logger_key\t481516\tnext\tcol\n"))
+        self.assertEqual("api" "_key\t\t\t\t= [redacted]\n", run("api" "_key\t\t\t\t= valueone\n"))
+        self.assertIn("[redacted]", run("pass" "word\thunter22\n"))
+        self.assertNotIn("hunter22", run("pass" "word\thunter22\n"))
+        # structured exception class first, the exit code as a digit column, the PostgreSQL head, the diagnostic settings without resource ids
+        self.assertIn("coalesce(tostring(j.throwable.className), tostring(j.exception.className)", sh)
+        self.assertIn("exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')", sh)
+        self.assertIn("'[text]'", sh); self.assertIn("head = iff(isempty(sev), ''", sh)
+        self.assertIn('--query "(value || @)[].logs[].[category || categoryGroup, enabled]" -o tsv', sh)
+        self.assertNotIn("diagnostic-settings list --resource \"$sid\" -o json", sh)
+        # the no-op assertion of the stub test is gone
+        t = (ROOT / "infra" / "tests" / "check_infra.py").read_text(encoding="utf-8")
+        self.assertNotIn("queries.split(" + chr(34) + "replace_regex(tostring", t, "the no-op assertion is gone")
+
+    def test_diagnose_downloaded_postgres_log_prints_no_free_text(self):
+        # Round 7: the DOWNLOADED server-log path (live because logfiles.download_enable is on) gets the same head logic as the KQL head: only LOG/ERROR/FATAL/PANIC records, a fixed phrase,
+        # the letters before the first colon, else [text], and only the duration figure of a slow statement. A made-up file goes through a stub az (the path had no test at all).
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        pglog = "\n".join([
+            "2026-11-18 09:30:01.123 UTC-690b-ERROR:  could not deliver to outlet Abu Zafar Store at House 12 Road 5 Gulshan",
+            "2026-11-18 09:30:02.000 UTC-690b-DETAIL:  Key (name)=(Abu Zafar) already exists.",
+            "2026-11-18 09:31:00.000 UTC-690b-LOG:  checkpoint complete: wrote 10 buffers (0.1%); name Rahim",
+            "2026-11-18 09:32:00.000 UTC-690b-FATAL:  terminating connection due to administrator command",
+            "2026-11-18 09:33:00.000 UTC-690b-LOG:  duration: 123456.789 ms  statement: SELECT * FROM outlet WHERE name = 'Abu Zafar'",
+            "2026-11-18 09:34:00.000 UTC-690b-WARNING:  could not open file for Rahim",
+            "2026-11-18 09:35:00.000 UTC-690b-PANIC:  could not write to file: No space left",
+            "2026-11-18 09:35:30.000 UTC-690b-ERROR:  Rahim Uddin of Gulshan: could not find outlet",
+            "2026-11-18 09:35:40.000 UTC-690b-ERROR:  could not " + " " * 100000 + "x",
+            "2026-11-18 08:00:00.000 UTC-690b-ERROR:  could not deliver to outlet Before The Window",
+            "2026-11-18 09:36:00.000 UTC-690b-LOG:  database system is ready to accept connections",
+            "2026-11-18 09:39:00.000 odd prefix shape: could not parse for Rahim",
+            ""])
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); src = os.path.join(d, "src.log")
+            open(src, "w").write(pglog)
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3 $4" in
+  "postgres flexible-server list "*) echo psql-aron-test; exit 0;;
+  "postgres flexible-server show "*) echo /subscriptions/s/resourceGroups/r/providers/x; exit 0;;
+  "postgres flexible-server server-logs list") if [ "${STUB_PG_FAIL:-}" = list ]; then echo "PLATFORM-TEXT-LIST Rahim" >&2; exit 3; fi; echo pg.log; exit 0;;
+  "postgres flexible-server server-logs download") if [ "${STUB_PG_FAIL:-}" = download ]; then echo "PLATFORM-TEXT-DOWNLOAD Rahim" >&2; exit 4; fi; cp "$STUB_PGLOG" ./pg.log; exit 0;;
+  "containerapp revision list "*) printf 'ca-aron-dev-worker--rev1\t1\tRunning\n'; exit 0;;
+  "containerapp show "*) printf '{"running": "Running"}\n'; exit 0;;
+esac
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_PGLOG": src, "AZURE_RESOURCE_GROUP": "rg-x"}
+            win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            import time as _time
+            t0 = _time.time()
+            r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env=env)
+            self.assertLess(_time.time() - t0, 20, "a 100 KB whitespace record stays within the linear-time bound")
+            self.assertEqual(0, r.returncode, r.stderr)
+            self.assertIn("ca-aron-dev-worker--rev1", r.stdout, "the revision list of the worker app is printed")
+            sect = r.stdout[r.stdout.index("== PostgreSQL server log files"):]
+            sect = sect[:sect.index("\n== Log Analytics")]
+            self.assertEqual(["2026-11-18 09:30:01.123 UTC ERROR [text]", "2026-11-18 09:31:00.000 UTC LOG checkpoint complete", "2026-11-18 09:32:00.000 UTC FATAL terminating connection due to administrator command",
+                              "2026-11-18 09:33:00.000 UTC LOG duration 123456.789 ms", "2026-11-18 09:35:00.000 UTC PANIC could not write to file",
+                              "2026-11-18 09:35:30.000 UTC ERROR [text]", "2026-11-18 09:35:40.000 UTC ERROR [text]", "2026-11-18 09:36:00.000 UTC LOG database system is ready to accept connections"],
+                             [l for l in sect.splitlines() if l.startswith("2026-")], sect)
+            self.assertIn("(1 record(s) dropped: unknown log line prefix shape)", sect, "a record of an unknown log_line_prefix shape is counted, not printed")
+            self.assertNotIn("odd prefix", sect)
+            for leaked in ("Abu", "Zafar", "Gulshan", "Rahim", "SELECT", "outlet", "House", "Before The Window", "WARNING", "DETAIL"):
+                self.assertNotIn(leaked, sect, leaked)
+            # The platform's error text is never printed on the failure paths: the exit code only.
+            for mode, rc in (("list", 3), ("download", 4)):
+                r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**env, "STUB_PG_FAIL": mode})
+                self.assertEqual(1, r.returncode, "a failed section turns the run red: " + r.stderr)
+                self.assertNotIn("PLATFORM-TEXT", r.stdout + r.stderr); self.assertNotIn("Rahim", r.stdout)
+                self.assertIn(f"exit code {rc}", r.stdout)
+                self.assertIn("diagnose: 1 section(s) FAILED", r.stdout); self.assertTrue(r.stdout.rstrip().endswith("diagnose: done (read-only)"))
+            # Private message mode: the text is printed behind the redactor, but SQL text after `statement:` or `execute <name>:` is dropped.
+            open(src, "a").write("2026-11-18 09:37:00.000 UTC-690b-LOG:  execute S_1: SELECT secret_col FROM t WHERE note = 'could not pay Zed'\n")
+            r = subprocess.run(["bash", script, "--include-messages", *win], capture_output=True, text=True, env=env)
+            self.assertEqual(0, r.returncode, r.stderr)
+            self.assertNotIn("SELECT", r.stdout); self.assertNotIn("secret_col", r.stdout); self.assertNotIn("Zed", r.stdout)
+            self.assertIn("statement: [sql]", r.stdout); self.assertIn("execute S_1: [sql]", r.stdout)
+
+    def test_diagnose_postgres_heads_are_an_allow_list_in_both_places(self):
+        # Round 8 (lead ruling): no open "letters before the first colon" rule anywhere; the KQL head and pglog_head use the one PG_HEADS list, the KQL extract is anchored to the record's own severity
+        # marker at the start, and the count of records of an unknown log_line_prefix shape is printed on both paths.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("[A-Za-z][A-Za-z ]{2,60}", code, "the open letters rule is gone")
+        self.assertNotIn("(.*?)", code[code.index("pglog_head() {"):code.index("held_note() {")], "no lazy trailing-whitespace capture")
+        self.assertIn("${PG_HEADS}", code); self.assertIn("$ENV{PG_HEADS}", code); self.assertIn("export PG_HEADS", code)
+        self.assertIn("extract(@'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]{8,12} ?UTC[^ ]{0,40}?-(LOG|ERROR|FATAL|PANIC):', 1, msg)", code)
+        self.assertIn("summarize dropped = countif(isempty(sev))", code)
+        self.assertIn("record(s) dropped: unknown log line prefix shape", code)
+        self.assertIn("substr($l, 0, 400)", code, "every record is cut before any matching")
+        import re as _re
+        heads = _re.search(r"^PG_HEADS='([^']*)'", sh, _re.M).group(1)
+        rx = _re.compile("^(?:" + heads + ")")
+        for ok in ("checkpoint starting: time", "checkpoint complete: wrote 3 buffers", "database system is ready to accept connections", "terminating connection due to administrator command",
+                   "could not receive data from client: Connection reset by peer", "connection authorized: user=x", "disconnection: session time", "deadlock detected", "canceling statement due to statement timeout",
+                   "out of memory", "could not extend file", "recovery restart point at 0/1", "duplicate key value violates unique constraint \"x_pkey\""):
+            self.assertTrue(rx.match(ok), ok)
+        for free in ("Rahim Uddin of Gulshan: could not find outlet", "outlet Abu Zafar not found", "could not deliver to outlet", "role rahim does not exist", "SELECT 1"):
+            self.assertFalse(rx.match(free), free)
+        self.assertNotIn("'", heads); self.assertNotIn('"', heads); self.assertNotIn("$", heads)
+
+    def test_diagnose_pg_heads_are_literals_only(self):
+        # Round 9 (lead ruling): every PG_HEADS alternative is a LITERAL phrase (no character class, no quantifier, no digit pattern; only the alternation bar and non-capturing groups of literals)
+        # and the printed head equals the matched literal. Enforced mechanically here, plus the negative cases the lead named.
+        import re as _re, subprocess
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        heads = _re.search(r"^PG_HEADS='([^']*)'", sh, _re.M).group(1)
+        self.assertEqual(heads.count("(?:"), heads.count(")"), "balanced non-capturing groups")
+        stripped = heads.replace("(?:", "").replace(")", "").replace("|", "")
+        self.assertRegex(stripped, r"^[A-Za-z ,/\-]+$", "only literal text remains once the group tokens and bars are removed: no class, quantifier, digit or metacharacter")
+        for bad in ("[", "]", "{", "}", "*", "+", "\\", "^", "$", ".", "?"):
+            self.assertNotIn(bad, stripped)
+        def expand(expr):  # alternation with non-capturing groups of literals -> the list of literals
+            m = _re.search(r"\(\?:([^()]*)\)", expr)
+            if not m: return expr.split("|") if "|" in expr else [expr]
+            out = []
+            for alt in m.group(1).split("|"):
+                out += expand(expr[:m.start()] + alt + expr[m.end():])
+            return out
+        literals = []
+        for top in _re.split(r"\|(?![^(]*\))", heads):
+            literals += expand(top)
+        self.assertGreater(len(literals), 50); self.assertEqual(len(literals), len(set(literals)), "no duplicate literal")
+        pre = "2026-11-18 09:30:00.000 UTC-690b-LOG:  "
+        def heads_of(msgs):
+            text = "\n".join(pre + m for m in msgs) + "\n"
+            sel = "sed -n \"/^PG_HEADS=/p;/^SIGNAL_LABEL=/p;/^export PG_HEADS/p\" " + script
+            fn = "sed -n '/^pglog_head() {/,/^}/p' " + script
+            out = subprocess.run(["bash", "-c", f'eval "$({sel})"; export PG_HEADS; eval "$({fn})"; pglog_head'], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True)
+            self.assertEqual(b"", out.stderr, out.stderr)
+            return [l.split(" UTC LOG ", 1)[1] for l in out.stdout.decode().splitlines()]
+        # the printed head equals the matched literal (a literal followed by free words prints the literal only)
+        self.assertEqual(literals, heads_of([l + " rahim uddin of gulshan road twelve" for l in literals]))
+        self.assertEqual(literals, heads_of([l for l in literals]))
+        # negative cases: free words after "due to", digits after "server process", the real signal shape
+        out = heads_of(["terminating connection due to rahim uddin of gulshan road twelve", "terminating autovacuum process due to rahim", "could not serialize access due to rahim uddin",
+                        "server process 4242 foo", "server process (PID 1234) was terminated by signal 9: Killed", "redo done at 0/1A2B", "redo starts at 0/1A2B", "Rahim Uddin of Gulshan: could not find outlet"])
+        self.assertEqual(["terminating connection", "terminating autovacuum process", "could not serialize access", "server process", "server process was terminated by signal", "redo done", "redo starts", "[text]"], out)
+        for line in out:
+            self.assertNotRegex(line, r"[0-9]|rahim|gulshan", line)
+        # invalid UTF-8 bytes: no perl warning on stderr (heads_of asserts an empty stderr), the record still prints
+        text = (pre + "checkpoint complete \xff\xfe bad").encode("latin-1") + b"\n"
+        r = subprocess.run(["bash", "-c", 'eval "$(sed -n \'/^PG_HEADS=/p;/^SIGNAL_LABEL=/p;/^export PG_HEADS/p\' %s)"; export PG_HEADS; eval "$(sed -n \'/^pglog_head() {/,/^}/p\' %s)"; pglog_head' % (script, script)], input=text, capture_output=True, env={"PATH": "/usr/bin:/bin"})
+        self.assertEqual(b"", r.stderr); self.assertIn(b"checkpoint complete", r.stdout)
+        # the KQL path has the same list and the fixed signal label, and no digit pattern in the printed value
+        self.assertIn("'${SIGNAL_LABEL}'", sh)
+
+    def test_diagnose_failed_sections_are_red_and_print_no_query(self):
+        # Live run 44341474466: four console queries failed (BadArgumentError, `kind` is reserved in KQL) and the job was green. A failed query is counted; only the section title, the error code and the parser
+        # position are printed (never the query text or the platform's message); "diagnose: N section(s) FAILED" comes before the final line; the exit code is non-zero. Workspace and diagnostic settings lines.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in
+  "monitor log-analytics workspace") echo ws-id; exit 0;;
+  "postgres flexible-server list") echo psql-aron-test; exit 0;;
+  "postgres flexible-server show") echo /subscriptions/s/x; exit 0;;
+  "monitor diagnostic-settings list") printf 'PostgreSQLLogs\tTrue\nallLogs\tFalse\n'; exit 0;;
+esac
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; esac; shift; done
+  printf '%s\n---\n' "$q" >> "$STUB_LOG"
+  case "$q" in
+    *"where app == 'ca-aron-dev-api'"*) echo "(BadArgumentError) Query could not be parsed at 'kind' on line [17,15] SECRET-QUERY-DETAIL" >&2; exit 1;;
+    *"where exec startswith 'caj-aron-dev-migrate'"*) echo "(SemanticError) A semantic error occurred" >&2; exit 1;;
+  esac
+  printf 'T0\tERROR\tcom.x.Y\n'; exit 0
+fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}
+            r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(1, r.returncode, r.stdout[-300:] + r.stderr)
+            out = r.stdout
+            self.assertIn("workspace: found", out)
+            self.assertIn("PostgreSQLLogs\tTrue", out); self.assertNotIn("None", out)
+            self.assertRegex(out, r"\(query failed: Log Analytics: console log of ca-aron-dev-api in the window[^\n]*, BadArgumentError, parser position \[17,15\], exit code 1\)")
+            self.assertRegex(out, r"\(query failed: Log Analytics: console log of job executions[^\n]*, SemanticError, exit code 1\)")
+            for leaked in ("SECRET-QUERY-DETAIL", "TimeGenerated", "--analytics-query", "extend", "ContainerAppConsoleLogs", "kind"):
+                self.assertNotIn(leaked, out + r.stderr, leaked)
+            self.assertNotIn("command failed: az", out)
+            lines = out.rstrip().splitlines()
+            self.assertEqual("diagnose: done (read-only)", lines[-1])
+            self.assertRegex(lines[-2], r"^diagnose: [0-9]+ section\(s\) FAILED$")
+            self.assertGreaterEqual(int(lines[-2].split()[1]), 3, "the API console, the job console and the pre-flight query failed")
+
+    def _diagnose_queries(self):
+        """Every KQL query the script sends (captured through a stub az; default and --include-messages mode)."""
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        out = []
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in "monitor log-analytics workspace") echo ws-id; exit 0;; esac
+if [ "$1 $2" = "monitor log-analytics" ]; then
+  q=""; while [ $# -gt 0 ]; do case "$1" in --analytics-query) q="$2";; esac; shift; done
+  printf '%s\n\x1e\n' "$q" >> "$STUB_LOG"; printf 'x\n'; exit 0
+fi
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            for flag in ([], ["--include-messages"]):
+                open(log, "w").close()
+                subprocess.run(["bash", script, *flag, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env={"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}, check=True)
+                out += [q for q in open(log).read().split("\n\x1e\n") if q.strip()]
+        self.assertGreaterEqual(len(out), 18)
+        return out
+
+    @staticmethod
+    def _kql_lists():
+        import re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        reserved = {w.strip().lower() for line in _re.findall(r"^# KQL_RESERVED: (.*)$", sh, _re.M) for w in line.split(",") if w.strip()}
+        funcs = dict(_re.findall(r"^# KQL_FUNCTION (\S+)\s+(https://\S+)", sh, _re.M))
+        return reserved, funcs
+
+    @staticmethod
+    def _kql_literals():
+        import re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        return dict(_re.findall(r"^# KQL_LITERAL (\S+)\s+(https://\S+)", sh, _re.M))
+
+    @staticmethod
+    def _kql_strip(q):
+        import re as _re
+        return _re.sub(r"@'[^']*'|'[^']*'", "''", q)
+
+    def test_diagnose_list_failures_are_failures_and_disabled_download_is_not(self):
+        # Review of a17b9f7f: a failed workspace list or server list is a FAILED section (not "none"); server-logs list failing only because log download is disabled (logfiles.download_enable = off) is not red.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in
+  "monitor log-analytics workspace") if [ "${STUB_FAIL:-}" = ws ]; then echo "platform text" >&2; exit 5; fi; echo ws-id; exit 0;;
+  "postgres flexible-server list") if [ "${STUB_FAIL:-}" = server ]; then echo "platform text" >&2; exit 6; fi; echo psql-aron-test; exit 0;;
+  "postgres flexible-server server-logs") if [ "$4" = list ]; then echo "platform text" >&2; exit 7; fi; exit 0;;
+  "postgres flexible-server parameter") if [ "${STUB_DL:-}" = off ]; then echo Off; else echo on; fi; exit 0;;
+esac
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            base = {"PATH": d + ":/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-x"}
+            win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            def run(**kw): return subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**base, **kw})
+            r = run(STUB_FAIL="ws", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("workspace: LIST FAILED (exit code 5)", r.stdout); self.assertNotIn("platform text", r.stdout + r.stderr); self.assertIn("1 section(s) FAILED", r.stdout)
+            r = run(STUB_FAIL="server", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("PostgreSQL server list FAILED, exit code 6", r.stdout); self.assertNotIn("no psql-aron", r.stdout)
+            r = run(STUB_DL="off")   # log download disabled: the list fails with the documented reason, the run stays green
+            self.assertEqual(0, r.returncode, r.stdout[-400:]); self.assertIn("logfiles.download_enable = off; not a failure", r.stdout); self.assertNotIn("FAILED", r.stdout)
+            r = run(STUB_DL="on")    # the same failure with download enabled is a real failure
+            self.assertEqual(1, r.returncode); self.assertIn("server-logs list failed, exit code 7", r.stdout)
+
+    def test_diagnose_kql_uses_no_reserved_word_as_a_column(self):
+        # Live run 44341474466: `kind` is a reserved word in KQL and cannot be an extend target ("Query could not be parsed at 'kind'"). The KQL cannot be executed in CI; this is a STATIC scan of every query the
+        # script sends, not a parse proof. ONE list (the KQL_RESERVED comment lines in the script): no assignment target, project item or bare identifier may be on it, and an operator word (count, by, in, order,
+        # top, take, ...) is only allowed in its operator position: after the contexts of the real operators are removed no such word may remain.
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertTrue({"kind", "type", "step", "policy", "externaldata", "count", "by", "in", "order", "top", "take", "true", "false", "null", "nulls", "mv", "ingestion_time", "query_parameters",
+                         "tabular", "external_data", "getschema", "consume", "fork", "relaxed", "simple", "wildcard", "isfuzzy"} <= reserved)
+        self.assertFalse([w for w in reserved if "-" in w], "hyphenated operators can never match the token regex: they are not in the list")
+        allowed_ctx = [r"(?<=\s)(?:asc|desc)(?=\s*(?:\||$|\)))", r"\|\s*order\s+by\b", r"\|\s*top\s+[0-9]+\s+by\b", r"\|\s*take\s+[0-9]+\b", r"\|\s*(?:where|extend|project|summarize)\b", r"^\s*union\s+isfuzzy\s*=\s*true\b",
+                       r"\bin\s*\(", r"\bbetween\s*\(", r"\bnot\s*\(", r"(?<=\s)(?:and|or)(?=\s)", r"\bmatches\s+regex\b", r"(?<=[\s!])(?:startswith|contains|has)(?=\s)",
+                       r"\bcount\s*\(", r"\bcountif\s*\("]
+        for q in self._diagnose_queries():
+            bare = self._kql_strip(q)
+            targets = _re.findall(r"(?:extend|summarize|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?![=~])", bare)
+            targets += [t.strip() for clause in _re.findall(r"project\s+([^|\n]*)", bare) for t in clause.split(",") if t.strip()]
+            for t in [_re.split(r"\s*=", t)[0].strip() for t in targets]:
+                self.assertNotIn(t.lower(), reserved, f"reserved word used as a column name: {t!r} in\n{q[:400]}")
+            rest = bare
+            for ctx in allowed_ctx:
+                rest = _re.sub(ctx, " ", rest, flags=_re.M)
+            for tok in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest):
+                if tok.lower() in reserved and tok.lower() not in ("isfuzzy",):
+                    self.fail(f"reserved or operator word {tok!r} outside its operator position in\n{q[:400]}")
+
+    def test_diagnose_kql_calls_only_listed_functions(self):
+        # Review of a17b9f7f: `nullif()` is not a KQL function and every console query would have failed with a semantic error. ALLOW-LIST: any identifier followed by "(" in any query must be a function listed
+        # in the script (KQL_FUNCTION lines, each with its Microsoft Learn page) or an operator written with parentheses (in, between, not-as-operator, and, or).
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertGreaterEqual(len(funcs), 15)
+        literals = self._kql_literals()
+        self.assertEqual({"datetime"}, set(literals), "datetime('...') is a literal of the datetime type, not a function")
+        self.assertNotIn("datetime", funcs)
+        for name, url in {**funcs, **literals}.items():
+            self.assertRegex(url, r"^https://learn\.microsoft\.com/kusto/query/[a-z0-9\-]+(?:/[a-z0-9\-]+)?$", name)
+        operators = {"in", "between", "and", "or", "not"}
+        seen = set()
+        for q in self._diagnose_queries():
+            for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(q)):
+                seen.add(fn)
+                self.assertTrue(fn in funcs or fn in operators or fn in literals, f"{fn}() is not a listed KQL function (allow-list in diagnose.sh) in\n{q[:300]}")
+        self.assertTrue({"extract", "coalesce", "iff", "strcat", "tostring", "replace_regex"} <= seen)
+        self.assertNotIn("nullif", seen)
+        # Mutation check (the review's): a nullif in a query is caught by the same predicate.
+        mutant = "x | extend fm = coalesce(nullif(tostring(j.message), ''), '(no message)')"
+        bad = [fn for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(mutant)) if fn not in funcs and fn not in operators]
+        self.assertEqual(["nullif"], bad)
+        # Mutation check of the reserved-word scan: `kind` as a column, a bare `count`, a stray `in` as a column.
+        for mut, word in (("| extend kind = case(", "kind"), ("| project TimeGenerated, type", "type"), ("| where count != 0", "count"), ("| where order == 1", "order")):
+            bare = self._kql_strip("x " + mut)
+            rest = bare
+            for ctx in (r"\|\s*(?:where|extend|project|summarize)\b", r"\bcount\s*\("):
+                rest = _re.sub(ctx, " ", rest)
+            self.assertIn(word, [t.lower() for t in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest) if t.lower() in reserved], mut)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
@@ -918,12 +1678,30 @@ class Workflows(unittest.TestCase):
             if "${{ matrix." in name:
                 # A matrix job is never required directly (skipped, it reports under the unexpanded name only); its
                 # aggregator job is: JvmSplit pins the one for jvm-analytics. D-LEAD-CI-ANALYTICS-SHARD-01.
-                self.assertEqual(name, "Backend analytics tests (${{ matrix.shard }})", "the only matrix job")
+                self.assertIn(name, ("Backend analytics tests (${{ matrix.shard }})", "Web e2e (shard ${{ matrix.shard }} of 5)"), "the only matrix jobs")
+                continue
+            if name == "Web (lint, types, tests, build)":
+                # The web build job feeds the e2e shards; the required check is its aggregator "Web (lint, types, tests,
+                # build, e2e)" (web-check, which fails when this job or a shard fails). D-CI-E2E-01.
                 continue
             self.assertIn(f"'{name}'", gov, "every ci job is a required check on main")
         self.assertNotIn("'Contract lint'", gov, "no required check without a job")
         self.assertIn("tools/ci/last-green-int.sh", c, "every ci run shows the last green INT run and its age")
         self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
+
+    def test_web_e2e_is_sharded_and_the_required_check_is_the_aggregator(self):
+        # D-CI-E2E-01: the e2e outgrew the 30-minute job limit; shards run in parallel, the limit is not widened.
+        c = self.text("ci.yml")
+        web = c[c.index("\n  web:"):c.index("\n  images:")]
+        self.assertIn("shard: [1, 2, 3, 4, 5]", web)
+        self.assertIn("PW_SHARD: ${{ matrix.shard }}/5", web)
+        self.assertIn("fail-fast: false", web)
+        self.assertNotIn("timeout-minutes: 3", web.replace("timeout-minutes: 30", ""), "no limit widened")
+        self.assertNotRegex(web, r"timeout-minutes: (3[1-9]|[4-9]\d|\d{3})")
+        self.assertIn("needs: [changes, web, web-e2e]", web)
+        self.assertIn("name: Web (lint, types, tests, build, e2e)", web)
+        self.assertIn("if: always()", web)
+        self.assertIn("count-e2e", web, "the shards must add up to the full list")
 
     def test_data_dictionary_stays_a_required_check(self):
         c = self.text("ci.yml")
@@ -1734,7 +2512,7 @@ class SliceSmoke(unittest.TestCase):
                                 "route_id", "bundle_version", "config_version", "payload"}
                     for r in b["records"]:
                         if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
-                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                                r"[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
                             return self.reply(400, {"code": "ERR_VALIDATION"})
                     if b["batch_uuid"] in state["batches"]:
                         return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})

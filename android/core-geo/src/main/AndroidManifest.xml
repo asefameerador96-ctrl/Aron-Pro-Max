@@ -5,10 +5,60 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Mock-location app detection (FixDeviceState.mock_app_present, docs/24 s10.3); the apps ship outside Play. -->
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
+    <!-- QUERY_ALL_PACKAGES is NOT used (D-OWNER-MDM-02): Google Play restricts it to apps whose core purpose needs it, which a
+         sales app does not. Android 11+ hides every package that is not declared, so the apps this module needs to see are
+         listed in <queries> below: the known fake-GPS apps (the same list as res/values/fake_gps_packages.xml) and the root,
+         hook and app-clone tools of RootHints. FakeGpsManifestDriftTest fails when the manifest and the lists differ. An app
+         that is not listed is still caught by the mock flag on the fix. -->
+    <queries>
+        <!-- fake-GPS apps: res/values/fake_gps_packages.xml -->
+        <package android:name="com.lexa.fakegps" />
+        <package android:name="com.incorporateapps.fakegps.fre" />
+        <package android:name="com.blogspot.newapphorizons.fakegps" />
+        <package android:name="com.theappninjas.gpsjoystick" />
+        <package android:name="ru.gavrikov.mocklocations" />
+        <package android:name="com.rosteam.gpsemulator" />
+        <package android:name="com.gsmartstudio.fakegps" />
+        <package android:name="com.usefullapps.fakegpslocationpro" />
+        <package android:name="com.fakegps.mock" />
+        <package android:name="com.evezzon.fakegps" />
+        <package android:name="com.lkr.fakelocation" />
+        <package android:name="com.fly.gps" />
+        <package android:name="com.fakegps.joystick" />
+        <package android:name="com.ccs.fake.location" />
+        <package android:name="com.mocklocation.fakegps" />
+        <package android:name="com.pro.fakegps" />
+        <!-- RootHints.ROOT_APPS -->
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="io.github.vvb2060.magisk" />
+        <package android:name="io.github.huskydg.magisk" />
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="me.bmax.apatch" />
+        <package android:name="eu.chainfire.supersu" />
+        <package android:name="com.koushikdutta.superuser" />
+        <package android:name="com.noshufou.android.su" />
+        <package android:name="com.thirdparty.superuser" />
+        <package android:name="com.kingroot.kinguser" />
+        <package android:name="com.kingo.root" />
+        <!-- RootHints.HOOK_APPS -->
+        <package android:name="de.robv.android.xposed.installer" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="org.meowcat.edxposed.manager" />
+        <package android:name="com.saurik.substrate" />
+        <!-- RootHints.CLONE_APPS -->
+        <package android:name="com.lbe.parallel.intl" />
+        <package android:name="com.parallel.space.lite" />
+        <package android:name="com.excelliance.dualaid" />
+        <package android:name="com.ludashi.dualspace" />
+        <package android:name="com.oasisfeng.island" />
+        <package android:name="com.applisto.appcloner" />
+        <package android:name="com.app.hider.master.dual.app" />
+        <package android:name="com.polestar.multiaccount" />
+        <package android:name="info.cloneapp.mochat.in.goast" />
+        <package android:name="com.cloneapp.parallelspace.dualspace" />
+        <package android:name="com.vmos.pro" />
+        <package android:name="com.f1player" />
+    </queries>
     <application>
         <!-- Batched breadcrumb deliveries from the fused provider through the app's own PendingIntent. -->
         <receiver
