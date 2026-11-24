@@ -220,7 +220,7 @@ object AsthaModel {
         }, p,
     )
 
-    private fun brands(productsJson: String?): Map<Long, BrandName> {
+    fun brands(productsJson: String?): Map<Long, BrandName> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         return (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
             val o = n as? JsonObject ?: return@mapNotNull null

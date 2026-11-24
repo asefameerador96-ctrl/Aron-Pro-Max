@@ -343,10 +343,14 @@ internal data class SkuTargetLoad(val data: com.aktcl.aron.feature.programmes.Sk
 
 /** The SKU target figures of every route of the bundle (`route.<id>` sections) with the frame of this phone's memos (FigureFrame): today on this phone per SKU, and the count of earlier-day memos the server has not confirmed. */
 /** The server's SKU target figures of the bundle's routes as sent (no memo of this phone): what the Home card needs. Returns the data and the route ids. */
-private suspend fun readSkuTargetData(day: SrDay): Pair<com.aktcl.aron.feature.programmes.SkuTargetData?, List<Long>> {
+private suspend fun readRouteFigures(day: SrDay): Pair<List<com.aktcl.aron.feature.programmes.RouteFigures>, List<Long>> {
     val date = day.reference.businessDate()
     val routeIds = day.reference.routesOfDay(date ?: "").map { it.route.routeId }.distinct()
-    val figures = routeIds.mapNotNull { com.aktcl.aron.feature.programmes.RouteFigures.parse(day.reference.section("route.$it")) }
+    return routeIds.mapNotNull { com.aktcl.aron.feature.programmes.RouteFigures.parse(day.reference.section("route.$it")) } to routeIds
+}
+
+private suspend fun readSkuTargetData(day: SrDay): Pair<com.aktcl.aron.feature.programmes.SkuTargetData?, List<Long>> {
+    val (figures, routeIds) = readRouteFigures(day)
     val skus = day.reference.skus().associate { k ->
         k.skuId to com.aktcl.aron.feature.programmes.SkuInfo(k.skuId, k.shortName ?: k.name, k.nameBn, k.categoryCode, k.baseUnit, k.basePerPack, k.entryUnitDefault)
     }
@@ -378,5 +382,45 @@ fun SkuTargetHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
     val load = rememberAsyncLoad(locale) { readSkuTargets(day) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         com.aktcl.aron.feature.programmes.SkuTargetScreen(page.data, locale, todayBySku = page.today, unconfirmedEarlier = page.unconfirmed, forkLeftOut = page.fork, offline = offline)
+    }
+}
+
+
+/** What the KPI Dashboard reads in one pass: the server's KPI as sent, and the phone's own memos as separate lines (never added into a figure). */
+internal data class KpiLoad(val data: com.aktcl.aron.feature.programmes.KpiData?, val volumeToday: com.aktcl.aron.feature.programmes.KpiToday?, val memoToday: com.aktcl.aron.feature.programmes.KpiToday?, val unconfirmed: Int)
+
+/** The KPI of the bundle's routes (`route.<id>`: `kpi`, `calendar`) with the brand names of the product tree and the figure frame of this phone's memos (cigarette volume and memo count). */
+internal suspend fun readKpi(day: SrDay): KpiLoad = withContext(Dispatchers.IO) {
+    val (figures, routeIds) = readRouteFigures(day)
+    val data = com.aktcl.aron.feature.programmes.KpiModel.build(figures, com.aktcl.aron.feature.programmes.AsthaModel.brands(day.reference.section("products")))
+    if (data == null) return@withContext KpiLoad(null, null, null, 0)
+    val memos = day.programmes.memosOfMonth(data.month)
+    val acked = day.programmes.ackedBeforeRequest()
+    val mine = routeIds.toSet()
+    val memoIn: (com.aktcl.aron.feature.programmes.LocalMemo) -> Boolean = { it.routeId == null || it.routeId in mine }
+    val cigarettes = day.reference.skus().filter { it.categoryCode == "cigarette" }.map { it.skuId }.toSet()
+    val all = com.aktcl.aron.feature.programmes.FigureFrame.of(memos, data.month, data.throughDate, data.asOf, acked, memoIn)
+    val vol = com.aktcl.aron.feature.programmes.FigureFrame.of(memos, data.month, data.throughDate, data.asOf, acked, memoIn, lineIn = { it.skuId in cigarettes }).today
+    // today's packets: each pack size divided by its own factor (never a stick sum of mixed pack sizes)
+    val packets = vol.byPack.entries.sumOf { (f, q) -> q * 1000L / f }
+    KpiLoad(data, com.aktcl.aron.feature.programmes.KpiToday(com.aktcl.aron.feature.programmes.FieldQty(packets, "packet"), vol.memoCount), com.aktcl.aron.feature.programmes.KpiToday(null, all.today.memoCount), all.unconfirmedEarlier)
+}
+
+/** KPI Dashboard of the SR (manual 60): the downloaded KPI figures. A bundle with no KPI section (an older server) keeps the earlier KPI screen (the day's own strip and money cards). */
+@Composable
+fun KpiDashboardHost(day: SrDay, locale: UiLocale, offline: Boolean = false, onSeeAll: (com.aktcl.aron.feature.programmes.KpiKind) -> Unit = {}) {
+    val load = rememberAsyncLoad(locale) { readKpi(day) }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        if (page.data == null) KpiHost(day)
+        else com.aktcl.aron.feature.programmes.KpiDashboardScreen(page.data, locale, volumeToday = page.volumeToday, memoToday = page.memoToday, unconfirmedEarlier = page.unconfirmed, offline = offline, onSeeAll = onSeeAll)
+    }
+}
+
+/** Brand wise KPI (manual 61) for one list of the dashboard. */
+@Composable
+fun BrandKpiHost(day: SrDay, locale: UiLocale, kind: com.aktcl.aron.feature.programmes.KpiKind, offline: Boolean = false) {
+    val load = rememberAsyncLoad(locale, kind) { readKpi(day) }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        com.aktcl.aron.feature.programmes.BrandKpiScreen(page.data, kind, locale, offline = offline)
     }
 }

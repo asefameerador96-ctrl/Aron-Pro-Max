@@ -184,4 +184,40 @@
         <item quantity="one">%1$s memo has two edits and is left out of today on this phone until it is sorted.</item>
         <item quantity="other">%1$s memos have two edits and are left out of today on this phone until they are sorted.</item>
     </plurals>
+    <!-- KPI Dashboard and Brand wise KPI (manual 60, 61): English where the reference screens are English -->
+    <string name="pg_kpi_title">KPI Dashboard</string>
+    <string name="pg_kpi_brands_title">Brand wise KPI</string>
+    <string name="pg_kpi_allocated">Allocated KPI</string>
+    <string name="pg_kpi_achieved">Achieved KPI</string>
+    <string name="pg_kpi_achievement">Achievement</string>
+    <string name="pg_kpi_volume_title">Volume Target vs Achievement</string>
+    <string name="pg_kpi_memo_title">Memo Target vs Achievement</string>
+    <string name="pg_kpi_blm_title">BLM Target vs Achievement</string>
+    <string name="pg_kpi_cpr_title">CPR - Target Call vs Successful Call</string>
+    <string name="pg_kpi_total_target">Total Target</string>
+    <string name="pg_kpi_total_achievement">Total Achievement</string>
+    <string name="pg_kpi_brand">Brand</string>
+    <string name="pg_kpi_volume">Volume</string>
+    <string name="pg_kpi_memo">Memo</string>
+    <string name="pg_kpi_see_all">See all brands (%1$s)</string>
+    <string name="pg_kpi_target_cpr">Target CPR</string>
+    <string name="pg_kpi_achieved_cpr">Achieved CPR</string>
+    <string name="pg_kpi_kpi_today">KPI Achieved Today</string>
+    <string name="pg_kpi_unit_memo">memo</string>
+    <string name="pg_kpi_empty">No KPI is set for this month.</string>
+    <string name="pg_kpi_brands_cut">The download was cut: some brands are not shown.</string>
+    <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
+    <string name="pg_kpi_on_memo">KPI on - Memo</string>
+    <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>
+    <string name="pg_kpi_total_volume">Total volume</string>
+    <string name="pg_kpi_total_memo">Total memo</string>
+    <string name="pg_kpi_fmc_brands">FMC BRANDS</string>
+    <string name="pg_kpi_blm_categories">BLM</string>
+    <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
+    <string name="pg_kpi_cat_match">Match</string>
+    <string name="pg_kpi_cat_lighter">Lighter</string>
+    <string-array name="pg_months_full">
+        <item>January</item><item>February</item><item>March</item><item>April</item><item>May</item><item>June</item>
+        <item>July</item><item>August</item><item>September</item><item>October</item><item>November</item><item>December</item>
+    </string-array>
 </resources>

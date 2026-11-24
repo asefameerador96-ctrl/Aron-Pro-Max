@@ -184,4 +184,40 @@
         <item quantity="one">%1$sটি মেমোর দুটি সংশোধন আছে; সমাধান না হওয়া পর্যন্ত এই ফোনের আজকের হিসাবে বাদ।</item>
         <item quantity="other">%1$sটি মেমোর দুটি করে সংশোধন আছে; সমাধান না হওয়া পর্যন্ত এই ফোনের আজকের হিসাবে বাদ।</item>
     </plurals>
+    <!-- KPI Dashboard and Brand wise KPI (manual 60, 61): English where the reference screens are English -->
+    <string name="pg_kpi_title">KPI Dashboard</string>
+    <string name="pg_kpi_brands_title">Brand wise KPI</string>
+    <string name="pg_kpi_allocated">বরাদ্দকৃত কেপিআই</string>
+    <string name="pg_kpi_achieved">Achieved KPI</string>
+    <string name="pg_kpi_achievement">অর্জন</string>
+    <string name="pg_kpi_volume_title">Volume Target vs Achievement</string>
+    <string name="pg_kpi_memo_title">Memo Target vs Achievement</string>
+    <string name="pg_kpi_blm_title">BLM Target vs Achievement</string>
+    <string name="pg_kpi_cpr_title">CPR - Target Call vs Successful Call</string>
+    <string name="pg_kpi_total_target">Total Target</string>
+    <string name="pg_kpi_total_achievement">Total Achievement</string>
+    <string name="pg_kpi_brand">ব্রান্ড</string>
+    <string name="pg_kpi_volume">Volume</string>
+    <string name="pg_kpi_memo">মেমো</string>
+    <string name="pg_kpi_see_all">See all brands (%1$s)</string>
+    <string name="pg_kpi_target_cpr">Target CPR</string>
+    <string name="pg_kpi_achieved_cpr">Achieved CPR</string>
+    <string name="pg_kpi_kpi_today">KPI Achieved Today</string>
+    <string name="pg_kpi_unit_memo">মেমো</string>
+    <string name="pg_kpi_empty">এ মাসের জন্য কোনো কেপিআই নেই।</string>
+    <string name="pg_kpi_brands_cut">ডাউনলোড কাটা হয়েছে: কিছু ব্র্যান্ড দেখানো হয়নি।</string>
+    <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
+    <string name="pg_kpi_on_memo">KPI on - Memo</string>
+    <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>
+    <string name="pg_kpi_total_volume">মোট ভলিউম</string>
+    <string name="pg_kpi_total_memo">মোট মেমো</string>
+    <string name="pg_kpi_fmc_brands">FMC BRANDS</string>
+    <string name="pg_kpi_blm_categories">BLM</string>
+    <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
+    <string name="pg_kpi_cat_match">ম্যাচ</string>
+    <string name="pg_kpi_cat_lighter">লাইটার</string>
+    <string-array name="pg_months_full">
+        <item>জানুয়ারি</item><item>ফেব্রুয়ারি</item><item>মার্চ</item><item>এপ্রিল</item><item>মে</item><item>জুন</item>
+        <item>জুলাই</item><item>আগস্ট</item><item>সেপ্টেম্বর</item><item>অক্টোবর</item><item>নভেম্বর</item><item>ডিসেম্বর</item>
+    </string-array>
 </resources>

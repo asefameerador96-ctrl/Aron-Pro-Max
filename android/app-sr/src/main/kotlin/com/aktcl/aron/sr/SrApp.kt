@@ -135,7 +135,7 @@ internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.
 /** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
 internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN, SKU_TARGET }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN, SKU_TARGET, KPI_BRANDS }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -145,6 +145,7 @@ object SrNav {
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.ASTHA_TARGET, SrScreen.ASTHA_GIFT -> SrScreen.ASTHA_MENU
+        SrScreen.KPI_BRANDS -> SrScreen.KPI
         SrScreen.PHOTO_ASTHA, SrScreen.PHOTO_CAMPAIGN -> SrScreen.PHOTO_MENU
         SrScreen.LOYALTY_POINTS, SrScreen.LOYALTY_REDEEM -> SrScreen.LOYALTY_MENU
         SrScreen.EDIT -> SrScreen.MEMO
@@ -361,6 +362,7 @@ fun SrApp(
     )
     val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
+    var kpiKind by remember { mutableStateOf(com.aktcl.aron.feature.programmes.KpiKind.VOLUME) }
     // the STD of the Home Target card: the server's cigarette figures of the bundle (null: a dash)
     var homeStd by remember { mutableStateOf<com.aktcl.aron.feature.home.HomeStd?>(null) }
     LaunchedEffect(data, resumeTick, screen == SrScreen.HOME) { if (screen == SrScreen.HOME) homeStd = runCatching { readHomeStd(day) }.getOrNull() }
@@ -607,7 +609,8 @@ fun SrApp(
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
         SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day, onSupport = { screen = SrScreen.SUPPORT }) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
-        SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
+        SrScreen.KPI -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_kpi_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiDashboardHost(day, locale, offline = !day.isOnline(), onSeeAll = { kpiKind = it; screen = SrScreen.KPI_BRANDS }) }
+        SrScreen.KPI_BRANDS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_kpi_brands_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { BrandKpiHost(day, locale, kpiKind, offline = !day.isOnline()) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
         SrScreen.ASTHA_MENU -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
             com.aktcl.aron.feature.programmes.AsthaMenuScreen(onTarget = { screen = SrScreen.ASTHA_TARGET }, onGift = { screen = SrScreen.ASTHA_GIFT })
