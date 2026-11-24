@@ -438,3 +438,12 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - After-landing: A-PROG3 starts the target/KPI/Star screens in slices; P-SR2b merges INT and pushes its three fixes, then re-review; A-GATE8 small round (sweep blind spots, summary line); P-SR1b done, idle.
 - CI gate flaw found via T-KPI3: lane migrations base = last green run of the branch, never moves; contract steps skipped behind it. Fix assigned to INFRA1 (lane/ci-migrations-base, D-CI-MIGRATIONS-BASE-01), T1 check by the lead before landing.
 - Next server train: T-KPI3 372acbd58 (lows) + L-A13 (after its merge round), both need a short check.
+
+## 2026-11-24 18:55 UTC
+
+- **Stall 18 Nov 21:40 to 24 Nov 18:00 UTC: weekly usage limit.** The allowance that reset on 17 Nov was spent in about 28 hours (eight lanes in parallel plus large checker workflows). Nothing was lost on origin; unpushed local lane commits may be gone if containers were replaced (P-SR2b 7b361e54, 5535f6fa; A-PROG3 c67e47548, f9ee09dea): lanes told to check and redo.
+- **Pacing rule from now (D-LEAD-PACE-03, lead's own):** at most THREE lanes working at once; one train per day unless a blocking fix needs more; checker workflows sized to the diff (one lens + refuters for small rounds; full panels only for T1 code); the two-hourly check stays silent and cheap. Review the rule when a get_session read shows the week more than half unused at mid-week.
+- Wave 1 (running): P-SR2b (push the three review fixes after merging INT), A-PROG3 (slice 1 of target/KPI/Star/campaign screens), INFRA1 (state of the CI migrations-base fix; readiness note for the new Azure account, no Azure access).
+- Wave 2 (after wave 1 reports): T-KPI3 372acbd58 short check + dash-perf measurement fix; L-A13 merge round; A-GATE8 small round; A-INT3 026037794 short check. Then one server train and one Android train.
+- P-SR1b shows "needs input: confirm push of 6e5ace77 despite the lead's do-not-push": left as is; the lead's instruction stands until the next Android train is planned.
+- Owner rows open: old Azure account end stated as "maybe 25 November" (tomorrow), laptop inventory not received, dump listing not received, 17 decisions + item 18, device walk, portal brief. Reminder delivered today (it was due 19 Nov and sat in the queue during the stall).
