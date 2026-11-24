@@ -135,7 +135,7 @@ internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.
 /** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
 internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN, SKU_TARGET }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -361,6 +361,9 @@ fun SrApp(
     )
     val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
+    // the STD of the Home Target card: the server's cigarette figures of the bundle (null: a dash)
+    var homeStd by remember { mutableStateOf<com.aktcl.aron.feature.home.HomeStd?>(null) }
+    LaunchedEffect(data, resumeTick, screen == SrScreen.HOME) { if (screen == SrScreen.HOME) homeStd = runCatching { readHomeStd(day) }.getOrNull() }
     // SRM-B-61: Astha, Loyalty Point and Match Program show only when their cfg.flag.* is on for this user
     var enabledTiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(data, resumeTick) { enabledTiles = day.enabledProgrammeTiles() }
@@ -462,7 +465,7 @@ fun SrApp(
                 banner = srHomeBanner(data.downloading) { com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover) ?: srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
-                sync = sync, onSync = openSync,
+                sync = sync, onSync = openSync, std = homeStd, onHero = { screen = SrScreen.SKU_TARGET },
                 sunlight = sunlight, onSunlight = onSunlight,
                 routeKindLabel = routeKindText(data.route?.visitKind),
                 reauthRequired = user.reauthRequired, updateRequired = user.updateRequired,
@@ -616,6 +619,7 @@ fun SrApp(
         SrScreen.LOYALTY_POINTS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_points), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { OutletPointsHost(day, locale, pointsOutlet) { id -> pointsOutlet = id; screen = SrScreen.LOYALTY_REDEEM } }
         SrScreen.LOYALTY_REDEEM -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_redeem), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { RedemptionHost(day, locale, pointsOutlet) }
         SrScreen.ASTHA_GIFT -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_tile_gift), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { GiftSelectionHost(day, locale) }
+        SrScreen.SKU_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_tgt_title), goBack, sync, openSync) { SkuTargetHost(day, locale, offline = !day.isOnline()) }
         SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
         SrScreen.PHOTO_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_photo_capture), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
             com.aktcl.aron.feature.programmes.PhotoMenuScreen(onAstha = { screen = SrScreen.PHOTO_ASTHA }, onCampaign = { screen = SrScreen.PHOTO_CAMPAIGN })

@@ -336,3 +336,47 @@ fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
 internal suspend fun cashRateOf(day: SrDay): Long? = withContext(Dispatchers.IO) {
     runCatching { day.reference.config("cfg.loyalty.cash_rate_mtk_per_point", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toLongOrNull() }.getOrNull()
 }
+
+
+/** What the SKU target page reads in one pass: the server's route figures of the bundle as sent, and the phone's own memos as separate lines (never added into a figure). */
+internal data class SkuTargetLoad(val data: com.aktcl.aron.feature.programmes.SkuTargetData?, val today: Map<Long, com.aktcl.aron.feature.programmes.LocalToday>, val unconfirmed: Int, val fork: Int)
+
+/** The SKU target figures of every route of the bundle (`route.<id>` sections) with the frame of this phone's memos (FigureFrame): today on this phone per SKU, and the count of earlier-day memos the server has not confirmed. */
+/** The server's SKU target figures of the bundle's routes as sent (no memo of this phone): what the Home card needs. Returns the data and the route ids. */
+private suspend fun readSkuTargetData(day: SrDay): Pair<com.aktcl.aron.feature.programmes.SkuTargetData?, List<Long>> {
+    val date = day.reference.businessDate()
+    val routeIds = day.reference.routesOfDay(date ?: "").map { it.route.routeId }.distinct()
+    val figures = routeIds.mapNotNull { com.aktcl.aron.feature.programmes.RouteFigures.parse(day.reference.section("route.$it")) }
+    val skus = day.reference.skus().associate { k ->
+        k.skuId to com.aktcl.aron.feature.programmes.SkuInfo(k.skuId, k.shortName ?: k.name, k.nameBn, k.categoryCode, k.baseUnit, k.basePerPack, k.entryUnitDefault)
+    }
+    return com.aktcl.aron.feature.programmes.SkuTargetModel.build(figures, skus) to routeIds
+}
+
+internal suspend fun readSkuTargets(day: SrDay): SkuTargetLoad = withContext(Dispatchers.IO) {
+    val (data, routeIds) = readSkuTargetData(day)
+    val month = data?.month; val through = data?.throughDate
+    if (data == null || month == null || through == null) return@withContext SkuTargetLoad(data, emptyMap(), 0, 0)
+    val memos = day.programmes.memosOfMonth(month)
+    val acked = day.programmes.ackedBeforeRequest()
+    val mine = routeIds.toSet()
+    val memoIn: (com.aktcl.aron.feature.programmes.LocalMemo) -> Boolean = { it.routeId == null || it.routeId in mine }
+    val all = com.aktcl.aron.feature.programmes.FigureFrame.of(memos, month, through, data.asOf, acked, memoIn)
+    val today = data.rows.associate { r ->
+        r.skuId to com.aktcl.aron.feature.programmes.FigureFrame.of(memos, month, through, data.asOf, acked, memoIn, lineIn = { it.skuId == r.skuId }).today
+    }
+    SkuTargetLoad(data, today, all.unconfirmedEarlier, all.forkLeftOut)
+}
+
+/** The STD of the Home card (cigarette SKUs, thousandths of base sticks) from the same read, or null when the bundle has no cigarette target: the card shows a dash. */
+internal suspend fun readHomeStd(day: SrDay): com.aktcl.aron.feature.home.HomeStd? =
+    withContext(Dispatchers.IO) { com.aktcl.aron.feature.programmes.SkuTargetModel.homeStd(readSkuTargetData(day).first) }?.let { (a, t) -> com.aktcl.aron.feature.home.HomeStd(a, t) }
+
+/** Target and achievement by SKU of the SR (manual 10): the downloaded server figures with the phone's own sales of today in separate lines. Works offline from the stored bundle. */
+@Composable
+fun SkuTargetHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
+    val load = rememberAsyncLoad(locale) { readSkuTargets(day) }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        com.aktcl.aron.feature.programmes.SkuTargetScreen(page.data, locale, todayBySku = page.today, unconfirmedEarlier = page.unconfirmed, forkLeftOut = page.fork, offline = offline)
+    }
+}

@@ -152,4 +152,36 @@
     <string name="pg_shop_territory">Territory</string>
     <string name="pg_shop_zone">Zone</string>
     <string name="pg_pack_base">%1$s: %2$s %3$s</string>
+    <!-- SKU target and achievement (manual 10) -->
+    <string name="pg_tgt_title">Target &amp; Achievement</string>
+    <string name="pg_tgt_tab_std">STD</string>
+    <string name="pg_tgt_target">Target</string>
+    <string name="pg_tgt_achieved">Achieved</string>
+    <string name="pg_tgt_remaining">Left</string>
+    <string name="pg_tgt_percent">Achv.</string>
+    <string name="pg_tgt_ads">ADS</string>
+    <string name="pg_tgt_tads">TADS</string>
+    <string name="pg_tgt_pads">PADS</string>
+    <string name="pg_tgt_rads">RADS</string>
+    <string name="pg_tgt_unit_packet">packet</string>
+    <string name="pg_tgt_unit_box">box</string>
+    <string name="pg_tgt_unit_dozen">dozen</string>
+    <string name="pg_tgt_unit_stick">stick</string>
+    <string name="pg_tgt_unit_piece">piece</string>
+    <string name="pg_tgt_through">Server figures through %1$s</string>
+    <string name="pg_tgt_through_first">Server figures: no day of this month has closed yet (from the 1st)</string>
+    <string name="pg_tgt_as_of">As of %1$s</string>
+    <string name="pg_tgt_today_phone">Today on this phone: %1$s %2$s (not in the figures above)</string>
+    <string name="pg_tgt_offline">Offline: showing the last download.</string>
+    <string name="pg_tgt_no_calendar">The working-day numbers are not in this download: the daily averages show a dash.</string>
+    <string name="pg_tgt_truncated">The download was cut at 500 rows: some SKUs are not shown.</string>
+    <string name="pg_tgt_empty">No SKU target is set for this month.</string>
+    <plurals name="pg_tgt_unconfirmed">
+        <item quantity="one">%1$s memo of earlier days is not confirmed by the server yet; it is not in the figures.</item>
+        <item quantity="other">%1$s memos of earlier days are not confirmed by the server yet; they are not in the figures.</item>
+    </plurals>
+    <plurals name="pg_tgt_fork">
+        <item quantity="one">%1$s memo has two edits and is left out of today on this phone until it is sorted.</item>
+        <item quantity="other">%1$s memos have two edits and are left out of today on this phone until they are sorted.</item>
+    </plurals>
 </resources>
