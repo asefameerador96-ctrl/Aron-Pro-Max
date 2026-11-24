@@ -32,9 +32,55 @@ class FigureFrameTest {
         val a = memo("a", "2026-11-18", "acked", 1); val b = memo("b", "2026-11-18", "acked", 2, supersedes = "a"); val c = memo("c", "2026-11-18", "pending", 3, supersedes = "b")
         val f = frame(listOf(a, b, c))
         assertEquals(3L, f.today.qtyBase); assertEquals(1L, f.today.memoCount); assertEquals(0, f.unconfirmedEarlier)
-        val old = memo("o", "2026-11-10", "acked", 5); val edit = memo("e", "2026-11-18", "pending", 6, supersedes = "o")
-        val g = frame(listOf(old, edit), setOf("o"))
-        assertTrue(g.today.isEmpty); assertEquals(1, g.unconfirmedEarlier) // never added: the figure holds the old memo
+    }
+
+    // B2 (lead, slice 1 check): a live tip dated after through_date is today on this phone whatever its chain holds
+    @Test fun b2_confirmedEditAfterThroughDateOfAnEarlierDayMemoIsTodayAndNotCounted() {
+        val o = memo("o", "2026-11-10", "acked", 5); val e = memo("e", "2026-11-18", "acked", 6, supersedes = "o")
+        val f = frame(listOf(o, e), setOf("o", "e")) // the server holds neither version in the figure it sent
+        assertEquals(6L, f.today.qtyBase); assertEquals(1L, f.today.memoCount); assertEquals(0, f.unconfirmedEarlier)
+    }
+
+    @Test fun b2_unconfirmedEditAfterThroughDateOfAnEarlierDayMemoIsTodayAndTheEarlierMemoIsAnUnconfirmedChange() {
+        val o = memo("o", "2026-11-10", "acked", 5); val e = memo("e", "2026-11-18", "pending", 6, supersedes = "o")
+        val f = frame(listOf(o, e), setOf("o")) // the figure still holds o; the phone never subtracts it
+        assertEquals(6L, f.today.qtyBase); assertEquals(1, f.unconfirmedEarlier)
+    }
+
+    @Test fun b2_crossMonthEditIsTodayAndTheEarlierMonthMemoIsNotThisFiguresChange() {
+        val o = memo("o", "2026-10-30", "acked", 5); val e = memo("e", "2026-11-02", "acked", 6, supersedes = "o")
+        val f = FigureFrame.of(listOf(o, e), "2026-11", "2026-11-01", null, setOf("o", "e"))
+        assertEquals(6L, f.today.qtyBase); assertEquals(0, f.unconfirmedEarlier)
+        val g = FigureFrame.of(listOf(o, memo("e2", "2026-11-02", "pending", 6, supersedes = "o")), "2026-11", "2026-11-01", null, setOf("o"))
+        assertEquals(6L, g.today.qtyBase); assertEquals(0, g.unconfirmedEarlier) // o is of October: not in November's figure
+    }
+
+    // B1 (lead, slice 1 check): an unconfirmed earlier-day edit that removes the figure's lines is still counted
+    private fun memoOfSku(uuid: String, date: String, state: String, sku: Long, qty: Long = 10, supersedes: String? = null, kind: String = "sale") =
+        LocalMemo(uuid, 1L, date, supersedes, state, null, listOf(LocalMemoLine(sku, "sale", qty, 20, qty * 100)), 7, kind, null)
+
+    @Test fun b1_unconfirmedEditThatMovesTheSaleToAnotherSkuIsCountedForTheFigureThatStillHoldsTheOriginal() {
+        val o = memoOfSku("o", "2026-11-10", "acked", 5); val e = memoOfSku("e", "2026-11-10", "pending", 6, supersedes = "o")
+        val sku5 = FigureFrame.of(listOf(o, e), month, through, null, setOf("o"), lineIn = { it.skuId == 5L })
+        assertEquals(1, sku5.unconfirmedEarlier) // the figure of SKU 5 still holds o; e has no SKU 5 line
+        val sku6 = FigureFrame.of(listOf(o, e), month, through, null, setOf("o"), lineIn = { it.skuId == 6L })
+        assertEquals(1, sku6.unconfirmedEarlier)
+    }
+
+    @Test fun b1_unconfirmedEditThatBecameAZeroSaleIsCounted() {
+        val o = memoOfSku("o", "2026-11-10", "acked", 5); val z = memoOfSku("z", "2026-11-10", "pending", 5, supersedes = "o", kind = "zero_sale")
+        assertEquals(1, FigureFrame.of(listOf(o, z), month, through, null, setOf("o"), lineIn = { it.skuId == 5L }).unconfirmedEarlier)
+    }
+
+    @Test fun voidOfAnEarlierDayMemoDatedAfterThroughDateIsCountedUntilConfirmed() {
+        val o = memo("o", "2026-11-10", "acked", 4); val v = memo("v", "2026-11-18", "pending", voidOf = "o")
+        assertEquals(1, frame(listOf(o, v), setOf("o")).unconfirmedEarlier)
+        assertEquals(0, frame(listOf(o, v.copy(state = "acked")), setOf("o", "v")).unconfirmedEarlier)
+    }
+
+    @Test fun voidInThisMonthOfAnEarlierMonthMemoIsNotCounted() {
+        val o = memo("o", "2026-10-30", "acked", 4); val v = memo("v", "2026-11-02", "pending", voidOf = "o")
+        assertEquals(0, FigureFrame.of(listOf(o, v), "2026-11", "2026-11-17", null, setOf("o")).unconfirmedEarlier)
     }
 
     @Test fun aForkOfTwoLiveEditsIsLeftOutOfTodayAndNamed() {

@@ -43,10 +43,30 @@ class RouteFiguresTest {
     }
 
     @Test fun anAbsentOrNullSectionIsNullOrEmptyAndABadMemberIsDroppedAlone() {
-        val f = RouteFigures.parse("""{"route_id":1,"targets":[{"scope_type":"route","product_level":"sku","product_id":1,"month":"2026-11","std_target":"x","std_unit":"stick"}],"kpi":null,"calendar":null}""")!!
-        assertEquals(emptyList<SkuTarget>(), f.targets); assertNull(f.kpi); assertNull(f.calendar); assertNull(f.star); assertEquals(emptyList<RouteCampaign>(), f.campaigns)
+        val good = """{"scope_type":"route","scope_id":7,"product_level":"sku","product_id":2,"month":"2026-11","std_target":"10.000","std_unit":"stick","memo_target":0}"""
+        val bad = """{"scope_type":"route","product_level":"sku","product_id":1,"month":"2026-11","std_target":"x","std_unit":"stick","memo_target":0}"""
+        val f = RouteFigures.parse("""{"route_id":1,"targets":[$bad,$good],"kpi":null,"calendar":null}""")!!
+        assertEquals(listOf(2L), f.targets.map { it.skuId }) // the bad row is dropped alone, its good sibling stays
+        assertNull(f.kpi); assertNull(f.calendar); assertNull(f.star); assertEquals(emptyList<RouteCampaign>(), f.campaigns)
         assertNull(RouteFigures.parse("[]")); assertNull(RouteFigures.parse("not json")); assertNotNull(RouteFigures.parse("{}"))
     }
 
     private fun RouteStar.projection(): Long? = projectionMilli
+
+    @Test fun aMissingRequiredMemberDropsTheMemberAndIsNeverReplacedByZero() {
+        // memo_count, the campaign "remaining", a brand's memo_target and the calendar's last_month_working_days are required by the contract
+        val f = RouteFigures.parse("""{"route_id":7,
+          "achievement_mtd":[{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":1,"achieved_qty_base":5,"as_of":"x"},
+                             {"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":2,"achieved_qty_base":6,"memo_count":1,"as_of":"x"}],
+          "campaigns":[{"outlet_id":1,"programme_id":4,"label_en":"A","month":"2026-11","through_date":"2026-11-17","std":{"target":5,"achieved":1},"memo":{"target":5,"achieved":1,"remaining":4},"skus":[]},
+                       {"outlet_id":2,"programme_id":4,"label_en":"B","month":"2026-11","through_date":"2026-11-17","std":{"target":5,"achieved":1,"remaining":4},"memo":{"target":5,"achieved":1,"remaining":4},"skus":[]}],
+          "calendar":{"month":"2026-11","working_days":26,"elapsed_working_days_before_today":14,"remaining_working_days_after_today":11,"today_is_working":true,"through_date":"2026-11-17","as_of":"x"},
+          "kpi":{"month":"2026-11","through_date":"2026-11-17","as_of":"x","allocated_mtk":1,"achieved_mtk":null,"achievement_bp":null,"volume":{"target":1,"achieved":1,"bp":null},"memo":{"target":1,"achieved":1,"bp":null},
+                 "brands":[{"brand_id":1,"volume_target":1,"volume_achieved":1,"volume_bp":null,"memo_achieved":1,"memo_bp":null,"kpi_alloc_mtk":1,"kpi_today_mtk":null,"by_pack":[]},
+                           {"brand_id":2,"volume_target":1,"volume_achieved":1,"volume_bp":null,"memo_target":1,"memo_achieved":1,"memo_bp":null,"kpi_alloc_mtk":1,"kpi_today_mtk":null,"by_pack":[]}],"brands_truncated":false,"categories":[],"cpr":null}}""")!!
+        assertEquals(listOf(2L), f.achievement.map { it.skuId })
+        assertEquals(listOf(2L), f.campaigns.map { it.outletId })
+        assertNull(f.calendar)
+        assertEquals(listOf(2L), f.kpi!!.brands.map { it.brandId })
+    }
 }

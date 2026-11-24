@@ -270,4 +270,12 @@ class FigureRuleBTest {
         val two = FigureRuleB.show(FigureRuleB.ServerFigure(100, 1), memos, null, month, "2026-11-04")!!
         assertEquals(two, one); assertEquals(112L, one.qtyBase)
     }
+
+    @Test fun aKnownOrderForkIsNotAddedTwiceAndTheEditedMemoIsNotSubtracted() {
+        val through = "2026-11-04"
+        val o = lm("o", "2026-11-03", "acked", 10); val e1 = lm("e1", "2026-11-03", "pending", 11, supersedes = "o"); val e2 = lm("e2", "2026-11-03", "pending", 12, supersedes = "o")
+        val d = FigureRuleB.delta(listOf(o, e1, e2), setOf("o"), month, through)!!
+        assertEquals(emptyList<String>(), d.add.map { it.uuid }) // neither tip: two tips for one sale
+        assertEquals(emptyList<String>(), d.subtract.map { it.uuid }) // and o stays in the figure (it may read low, never high)
+    }
 }

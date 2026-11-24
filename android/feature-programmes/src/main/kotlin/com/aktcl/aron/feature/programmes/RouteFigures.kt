@@ -102,60 +102,60 @@ data class RouteFigures(
         private fun target(e: JsonElement): SkuTarget? {
             val o = e as? JsonObject ?: return null
             if (o.str("product_level") != "sku" || o.str("scope_type") != "route") return null
-            return SkuTarget(o.long("product_id") ?: return null, o.str("month") ?: return null, AsthaModel.decimal3(o["std_target"]) ?: return null, o.str("std_unit") ?: return null, o.long("memo_target") ?: 0L)
+            return SkuTarget(o.long("product_id") ?: return null, o.str("month") ?: return null, AsthaModel.decimal3(o["std_target"]) ?: return null, o.str("std_unit") ?: return null, o.long("memo_target") ?: return null)
         }
 
         private fun achieved(e: JsonElement): SkuAchieved? {
             val o = e as? JsonObject ?: return null
             if (o.str("product_level") != "sku") return null
-            return SkuAchieved(o.long("product_id") ?: return null, o.long("achieved_qty_base") ?: return null, o.long("memo_count") ?: 0L, o.str("through_date"), o.str("as_of"))
+            return SkuAchieved(o.long("product_id") ?: return null, o.long("achieved_qty_base") ?: return null, o.long("memo_count") ?: return null, o.str("through_date"), o.str("as_of"))
         }
 
         private fun calendar(o: JsonObject): SentCalendar? {
             val e = o.int("elapsed_working_days_before_today"); val r = o.int("remaining_working_days_after_today")
             if (e == null || r == null || e < 0 || r < 0) return null
-            return SentCalendar(o.str("month") ?: return null, o.int("working_days") ?: return null, e, r, o.bool("today_is_working") ?: return null, o.int("last_month_working_days") ?: 0, o.str("through_date") ?: return null, o.str("as_of"))
+            return SentCalendar(o.str("month") ?: return null, o.int("working_days") ?: return null, e, r, o.bool("today_is_working") ?: return null, o.int("last_month_working_days") ?: return null, o.str("through_date") ?: return null, o.str("as_of"))
         }
 
         private fun packs(o: JsonObject): List<PackFigure> = o.list("by_pack").mapNotNull { e ->
             val p = e as? JsonObject ?: return@mapNotNull null
-            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: 0L, p.long("achieved") ?: 0L)
+            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null)
         }
 
-        private fun total(o: JsonObject?): KpiTotal = KpiTotal(o?.long("target") ?: 0L, o?.long("achieved") ?: 0L, o?.long("bp"))
+        private fun total(o: JsonObject?): KpiTotal? = o?.let { KpiTotal(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("bp")) }
 
         private fun kpi(o: JsonObject): RouteKpi? = RouteKpi(
             o.str("month") ?: return null, o.str("through_date") ?: return null, o.str("as_of"), o.long("allocated_mtk"), o.long("achieved_mtk"), o.long("achievement_bp"),
-            total(o["volume"] as? JsonObject), total(o["memo"] as? JsonObject),
+            total(o["volume"] as? JsonObject) ?: return null, total(o["memo"] as? JsonObject) ?: return null,
             o.list("brands").mapNotNull { e ->
                 val b = e as? JsonObject ?: return@mapNotNull null
-                KpiBrand(b.long("brand_id") ?: return@mapNotNull null, b.long("volume_target") ?: 0L, b.long("volume_achieved") ?: 0L, b.long("volume_bp"), b.long("memo_target") ?: 0L,
-                    b.long("memo_achieved") ?: 0L, b.long("memo_bp"), b.long("kpi_alloc_mtk") ?: 0L, b.long("kpi_today_mtk"), packs(b))
+                KpiBrand(b.long("brand_id") ?: return@mapNotNull null, b.long("volume_target") ?: return@mapNotNull null, b.long("volume_achieved") ?: return@mapNotNull null, b.long("volume_bp"), b.long("memo_target") ?: return@mapNotNull null,
+                    b.long("memo_achieved") ?: return@mapNotNull null, b.long("memo_bp"), b.long("kpi_alloc_mtk") ?: return@mapNotNull null, b.long("kpi_today_mtk"), packs(b))
             },
             o.bool("brands_truncated") == true,
             o.list("categories").mapNotNull { e ->
                 val c = e as? JsonObject ?: return@mapNotNull null
-                KpiCategory(c.str("category_code") ?: return@mapNotNull null, c.long("volume_target") ?: 0L, c.long("volume_achieved") ?: 0L, c.long("volume_bp"), packs(c))
+                KpiCategory(c.str("category_code") ?: return@mapNotNull null, c.long("volume_target") ?: return@mapNotNull null, c.long("volume_achieved") ?: return@mapNotNull null, c.long("volume_bp"), packs(c))
             },
             (o["cpr"] as? JsonObject)?.let { KpiCpr(it.long("target_bp"), it.long("alloc_mtk"), it.long("achieved_bp")) },
         )
 
         private fun star(o: JsonObject): RouteStar? = RouteStar(
             o.long("programme_id") ?: return null, o.str("name_en") ?: return null, o.str("name_bn"), o.str("month") ?: return null, o.str("through_date") ?: return null, o.str("as_of"),
-            o.str("sr_name"), o.str("sr_code"), o.str("route_name") ?: "", o.int("lmwd") ?: 0, o.int("wd") ?: 0, o.int("ewd") ?: 0,
+            o.str("sr_name"), o.str("sr_code"), o.str("route_name") ?: return null, o.int("lmwd") ?: return null, o.int("wd") ?: return null, o.int("ewd") ?: return null,
             AsthaModel.decimal3(o["target"]) ?: return null, AsthaModel.decimal3(o["std"]) ?: return null, AsthaModel.decimal3(o["projection"]), o.long("achievement_bp"),
-            AsthaModel.decimal3(o["lms"]) ?: 0L, AsthaModel.decimal3(o["lmads"]), AsthaModel.decimal3(o["pads"]), o.long("growth_bp"),
-            o.str("status_en") ?: "", o.str("status_bn") ?: "", o.str("achieved_slab"), o.long("slab_amount_mtk"), o.str("projected_slab"), o.long("projected_amount_mtk"),
+            AsthaModel.decimal3(o["lms"]) ?: return null, AsthaModel.decimal3(o["lmads"]), AsthaModel.decimal3(o["pads"]), o.long("growth_bp"),
+            o.str("status_en") ?: return null, o.str("status_bn") ?: return null, o.str("achieved_slab"), o.long("slab_amount_mtk"), o.str("projected_slab"), o.long("projected_amount_mtk"),
         )
 
-        private fun figure(o: JsonObject?): CampaignFigure? = o?.let { CampaignFigure(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("remaining") ?: 0L) }
+        private fun figure(o: JsonObject?): CampaignFigure? = o?.let { CampaignFigure(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("remaining") ?: return null) }
 
         private fun campaign(e: JsonElement): RouteCampaign? {
             val o = e as? JsonObject ?: return null
             return RouteCampaign(
-                o.long("outlet_id") ?: return null, o.long("programme_id") ?: return null, o.str("label_en") ?: "", o.str("label_bn"), o.str("month") ?: return null, o.str("through_date") ?: return null, o.str("as_of"),
+                o.long("outlet_id") ?: return null, o.long("programme_id") ?: return null, o.str("label_en") ?: return null, o.str("label_bn"), o.str("month") ?: return null, o.str("through_date") ?: return null, o.str("as_of"),
                 figure(o["std"] as? JsonObject) ?: return null, figure(o["memo"] as? JsonObject) ?: return null,
-                o.list("skus").mapNotNull { s -> (s as? JsonObject)?.let { CampaignSku(it.long("sku_id") ?: return@mapNotNull null, it.long("target_qty_base") ?: 0L, it.long("sold_qty_base") ?: 0L) } },
+                o.list("skus").mapNotNull { s -> (s as? JsonObject)?.let { CampaignSku(it.long("sku_id") ?: return@mapNotNull null, it.long("target_qty_base") ?: return@mapNotNull null, it.long("sold_qty_base") ?: return@mapNotNull null) } },
             )
         }
 

@@ -32,30 +32,39 @@ data class FigureFrame(
             // who put each memo out: a live memo that supersedes it, or a live void record
             val killed = HashSet<String>()
             mine.forEach { k -> k.supersedes?.let { killed += it }; k.voidOf?.let { killed += it } }
-            val tips = mine.filter { it.voidOf == null && it.uuid !in killed && it.businessDate.take(7) == month }
-            fun rootOf(m: LocalMemo): String? = FigureRuleB.chainOfOrNull(m, byId)?.last()?.uuid
-            val forkRoots = tips.filter { it.supersedes != null && it.businessDate > throughDate }.groupBy { rootOf(it) }.filter { (r, v) -> r != null && v.size > 1 }.keys
-            var qty = 0L; var count = 0L; var mtk = 0L; val packs = HashMap<Int, Long>(); var unconfirmed = 0; var fork = 0
             fun hasLines(m: LocalMemo) = m.memoKind == "sale" && m.lines.any { it.lineKind == "sale" && lineIn(it) }
+            /** [m] and the memos it replaced, newest first, as far as this phone has them. */
+            fun known(m: LocalMemo): List<LocalMemo> {
+                val out = ArrayList<LocalMemo>(); var cur: LocalMemo? = m; var guard = 0
+                while (cur != null && guard++ < 64) { out += cur; cur = cur.supersedes?.let { byId[it] } }
+                return out
+            }
+            fun inWindow(m: LocalMemo) = m.businessDate.take(7) == month && m.businessDate <= throughDate // a day the server figure covers
+            // a memo belongs to this figure when it, or any memo of its edit chain, has lines for it (an edit that drops the lines, or became a zero sale, still changes what the figure holds)
+            fun relevant(m: LocalMemo) = known(m).any { hasLines(it) }
+            val tips = mine.filter { it.voidOf == null && it.uuid !in killed && it.businessDate.take(7) == month }
+            // a FORK: two live later-day edits of one memo have two tips for one sale; neither is put into "today" (named instead)
+            val forkRoots = tips.filter { it.supersedes != null && it.businessDate > throughDate }.groupBy { known(it).last().uuid }.filter { it.value.size > 1 }.keys
+            var qty = 0L; var count = 0L; var mtk = 0L; val packs = HashMap<Int, Long>(); var unconfirmed = 0; var fork = 0
             for (m in tips) {
-                if (!hasLines(m)) continue
-                val after = m.businessDate > throughDate
-                val chain = FigureRuleB.chainOfOrNull(m, byId)
-                // a later-day memo counts as today only when EVERY memo of its edit chain is a later day too (the figure holds none of them); a chain reaching an earlier day is an unconfirmed change of that day
-                val allAfter = after && (m.supersedes == null || chain?.all { it.businessDate > throughDate } == true)
-                if (allAfter) {
-                    if (m.supersedes != null && rootOf(m) in forkRoots) { fork++; continue }
-                    val ls = m.lines.filter { it.lineKind == "sale" && lineIn(it) }
-                    qty += ls.sumOf { it.qtyBase }; mtk += ls.sumOf { it.grossMtk }; count += 1
-                    ls.groupBy { it.packFactor }.forEach { (f, l) -> packs[f] = (packs[f] ?: 0L) + l.sumOf { it.qtyBase } }
+                if (!relevant(m)) continue
+                if (m.businessDate > throughDate) {
+                    // a live tip dated after through_date is today on this phone WHATEVER its chain holds: the figure never holds it
+                    if (m.supersedes != null && known(m).last().uuid in forkRoots) { if (hasLines(m)) fork++; continue }
+                    if (hasLines(m)) {
+                        val ls = m.lines.filter { it.lineKind == "sale" && lineIn(it) }
+                        qty += ls.sumOf { it.qtyBase }; mtk += ls.sumOf { it.grossMtk }; count += 1
+                        ls.groupBy { it.packFactor }.forEach { (f, l) -> packs[f] = (packs[f] ?: 0L) + l.sumOf { it.qtyBase } }
+                    }
+                    // when it edits a memo of a day the figure covers and the server has not confirmed the edit, that earlier-day memo may still be in the figure: an unconfirmed change, counted (never netted)
+                    if (m.supersedes != null && !confirmed(m, ackedBeforeRequest) && known(m).drop(1).any { inWindow(it) && hasLines(it) }) unconfirmed++
                 } else if (!confirmed(m, ackedBeforeRequest)) unconfirmed++
             }
-            // a void of an earlier-day memo that the server has not confirmed is an unconfirmed change of that day as well
+            // a void the server has not confirmed, of a memo of a day the figure covers (whatever day the void itself carries); a void of a memo of another month is not this figure's
             for (v in mine) {
-                if (v.voidOf == null || v.businessDate.take(7) != month || v.businessDate > throughDate) continue
-                val target = byId[v.voidOf]
-                if (target != null && !hasLines(target)) continue
-                if (!confirmed(v, ackedBeforeRequest)) unconfirmed++
+                if (v.voidOf == null || confirmed(v, ackedBeforeRequest)) continue
+                val target = byId[v.voidOf] ?: continue
+                if (inWindow(target) && relevant(target)) unconfirmed++
             }
             return FigureFrame(month, throughDate, asOf, fromFirst, LocalToday(qty, count, mtk, packs.filterValues { it != 0L }), unconfirmed, fork)
         }

@@ -86,10 +86,16 @@ object FigureRuleB {
             return Delta(cand.filter { it.uuid !in forked }, emptyList())
         }
         // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
-        val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
         val byUuid = memos.associateBy { it.uuid }
+        // a FORK (two live edits of one memo) has two tips for one sale: neither is added and the memo they edit is not subtracted (the figure may read low, never high); on one phone an edit always supersedes the
+        // newest live version, so a fork needs a record the phone did not make itself, but it is handled the same way here as without the order
+        val forkedTips = live.filter { it.voidOf == null && it.supersedes != null && it.uuid !in dead && inMonth(it) }
+            .groupBy { chainOf(it, byUuid)?.last()?.uuid }.filter { (root, tips) -> root != null && tips.size > 1 }
+        val forkedIds = forkedTips.values.flatten().map { it.uuid }.toSet()
+        val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && it.uuid !in forkedIds && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
         val subtract = dead.mapNotNull { id ->
             val m = byUuid[id] ?: return@mapNotNull null
+            if (forkedTips.isNotEmpty() && chainOf(m, byUuid)?.last()?.uuid in forkedTips.keys) return@mapNotNull null
             val k = killer.getValue(id)
             // held by the server figure (acknowledged before the request, inside the month, up to through_date), and the record that voids or replaces it is not
             if (m.voidOf == null && inMonth(m) && !cutAfter(m) && id in ackedBeforeRequest && k !in ackedBeforeRequest && m.state != "rejected" && m.state != "uncertain") m else null
