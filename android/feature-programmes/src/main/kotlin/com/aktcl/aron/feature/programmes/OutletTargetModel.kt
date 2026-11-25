@@ -36,10 +36,16 @@ data class OutletCampaignView(
     val stdUnitKey: String? = null,
     /** True when the bundle cut the list: the server's achieved and remaining figures cover only the SKUs it sent, so they are partial (the targets are complete). */
     val achievedPartial: Boolean = false,
+    /** True when THIS outlet's own entry says its SKU table is cut (a 1.26.0 server): the server's STD and memo figures are complete, only the phone's category totals and today lines are partial. */
+    val outletCut: Boolean = false,
 )
 
 /** The campaigns of one outlet; [truncated] when the bundle cut its campaign list (an outlet with none may still have one: the empty state says so). */
-data class OutletTargetData(val campaigns: List<OutletCampaignView>, val truncated: Boolean)
+data class OutletTargetData(
+    val campaigns: List<OutletCampaignView>, val truncated: Boolean,
+    /** True when an older server cut the route list: every campaign of the outlet is then read as cut (achievement, remaining and totals dashed). A 1.26.0 server never sets it: see [OutletCampaignView.outletCut]. */
+    val routeCut: Boolean = truncated,
+)
 
 object OutletTargetModel {
     /**
@@ -49,14 +55,17 @@ object OutletTargetModel {
     fun build(figures: List<RouteFigures>, outletId: Long, skus: Map<Long, SkuInfo>, frameOf: (RouteCampaign, (Long) -> Boolean) -> FigureFrame): OutletTargetData? {
         val truncated = figures.any { it.campaignsTruncated }
         // the same outlet on two routes carries the same figure twice: one view per programme
-        val mine = figures.flatMap { it.campaigns }.filter { it.outletId == outletId }.distinctBy { it.programmeId to it.month }
+        val mine = figures.flatMap { f -> f.campaigns.map { it to f.perOutletCut } }.filter { it.first.outletId == outletId }.distinctBy { it.first.programmeId to it.first.month }
         if (mine.isEmpty()) return if (truncated) OutletTargetData(emptyList(), true) else null
         val order = skus.keys.withIndex().associate { it.value to it.index }
-        val views = mine.sortedBy { it.programmeId }.map { c ->
+        val views = mine.sortedBy { it.first.programmeId }.map { (c, perOutlet) ->
+            // a 1.26.0 route (some entry carries the flag): only an entry with its own flag is cut. Any other route: the route flag cuts every outlet, as before.
+            val routeCut = truncated && !perOutlet
+            val outletCut = perOutlet && c.truncated == true
             // a SKU the phone does not know, a negative quantity or a unit rule that fails drops THAT row only (never the whole read); the list is then incomplete and its totals are a dash
             val rows = c.skus.mapNotNull { s -> row(s, skus) }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { order[it.skuId] ?: Int.MAX_VALUE }))
             val skuMissing = rows.size != c.skus.size
-            val incomplete = skuMissing || truncated
+            val incomplete = skuMissing || routeCut || outletCut
             val frame = frameOf(c) { true }
             // one line per category AND unit (a 20s SKU in packets and a one-stick SKU in sticks are never added); an arithmetic overflow is a dash, not a vanished line
             val todayCats = rows.groupBy { it.categoryCode to it.unitKey }.mapNotNull { (key, rs) ->
@@ -71,13 +80,13 @@ object OutletTargetModel {
             // the server's STD adds base units of every category: its unit word is only true when all the campaign's SKUs share one base unit
             val baseUnits = c.skus.map { skus[it.skuId]?.baseUnit }.distinct()
             // a cut list: the kept Target STD covers ALL the outlet's campaign SKUs while only some were sent, so the unit cannot be known
-            val stdUnit = if (truncated) null else baseUnits.singleOrNull()?.takeIf { it in setOf("stick", "piece", "dozen") }
+            val stdUnit = if (routeCut || outletCut) null else baseUnits.singleOrNull()?.takeIf { it in setOf("stick", "piece", "dozen") }
             OutletCampaignView(
                 c.programmeId, c.labelEn, c.labelBn, c.month, c.throughDate, c.asOf, c.throughDate.take(7) < c.month,
-                c.std, c.memo, rows, totals(rows, incomplete), skuMissing, frame.today, frame.unconfirmedEarlier, frame.forkLeftOut, todayCats, incomplete, stdUnit, truncated,
+                c.std, c.memo, rows, totals(rows, incomplete), skuMissing, frame.today, frame.unconfirmedEarlier, frame.forkLeftOut, todayCats, incomplete, stdUnit, routeCut, outletCut,
             )
         }
-        return OutletTargetData(views, truncated)
+        return OutletTargetData(views, truncated, views.any { it.achievedPartial })
     }
 
     /** One SKU row, or null when the phone cannot show it honestly (unknown SKU, negative quantity, a unit rule that throws). */
