@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { dashBn } from "@/lib/i18n/messages-dash-bn";
 import { dashEn } from "@/lib/i18n/messages-dash-en";
+import { REFRESH_MS } from "@/components/dash/table-actions";
 
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 const BENGALI = /[ঀ-৿]/;
@@ -18,6 +19,12 @@ describe("dashboard catalogue", () => {
       expect(placeholders(v), k).toEqual(placeholders(dashEn[k as keyof typeof dashEn]));
       if (!/^(app\.|common\.language)/.test(k)) expect(BENGALI.test(v), `${k}: ${v}`).toBe(true);
     }
+  });
+  it("the auto-refresh note states the interval the page really uses (REFRESH_MS, D-NIGHT-SYNC-01)", () => {
+    const seconds = REFRESH_MS / 1000;
+    expect(dashEn["dashboard.auto_refresh"]).toContain(`every ${seconds} seconds`);
+    const bn = String(seconds).replace(/\d/g, (d) => String.fromCharCode(0x09e6 + Number(d)));   // Bengali digits
+    expect(dashBn["dashboard.auto_refresh"]).toContain(`প্রতি ${bn} সেকেন্ডে`);
   });
   it("no Latin digit in a bn value outside the listed technical tokens", () => {
     const bad = Object.entries(dashBn).filter(([k, v]) => !LATIN_DIGIT_OK.test(k) && /\d/.test(v.replace(/\{\w+\}/g, "")));

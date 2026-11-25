@@ -23,6 +23,10 @@ import org.jdbi.v3.core.Handle
  * - [afterChildStored]: a family split across batches is verified when its last child arrives; the memo already
  *   stored (it was printed) stays and gets `server_flags` `arithmetic_mismatch` for review. A stored header with a
  *   gross and a negative net (stored before the header check existed) is flagged when any child lands.
+ * - [kindLinesProblem]: a memo's kind and its line count must agree, `zero_sale` if and only if `line_count` is 0 (the phone writes `zero_sale` only for a memo
+ *   without lines). A memo that says otherwise (only a non-phone client can send one) is quarantined `arithmetic_mismatch` with the detail `memo_kind_lines: ...`
+ *   (the whole family together, or the header alone when it comes first), never rejected: a printed memo is a fact and a reviewer decides. Without the rule the
+ *   server figures (`ACTIVE_MEMO`: `line_count > 0`, no kind) and the programme reads (`memo_kind = 'sale'`) would disagree about such a row.
  * - A line priced differently from the price list valid on `price_list_date` flags the memo `price_mismatch` and is
  *   never rejected: the printed memo is the fact.
  */
@@ -46,7 +50,7 @@ object MemoChecks {
                 continue
             }
             if (counts != stated) continue
-            val problems = runCatching { verify(p, children.map { it.str("type")!! to (it["payload"] as JsonObject) }) }.getOrElse { listOf("unreadable: ${it.message}") }
+            val problems = listOfNotNull(kindLinesProblem(p)) + runCatching { verify(p, children.map { it.str("type")!! to (it["payload"] as JsonObject) }) }.getOrElse { listOf("unreadable: ${it.message}") }
             if (problems.isNotEmpty()) {
                 val detail = "memo $mu: " + problems.joinToString("; ")
                 out[mu] = detail
@@ -192,6 +196,17 @@ object MemoChecks {
         mu to java.security.MessageDigest.getInstance("SHA-256").digest(body.toByteArray())
     }.toMap()
 
+    /** `zero_sale` iff `line_count` is 0; null when the memo's kind and its stated line count agree (or the header does not say). */
+    fun kindLinesProblem(p: JsonObject): String? {
+        val kind = p.str("memo_kind") ?: return null
+        val lines = p.long("line_count") ?: return null
+        return when {
+            kind == "zero_sale" && lines != 0L -> "memo_kind_lines: zero_sale memo states line_count $lines"
+            kind == "sale" && lines == 0L -> "memo_kind_lines: sale memo states line_count 0"
+            else -> null
+        }
+    }
+
     /** Equations a single record shows on its own; null when they hold (or the record is not money). */
     fun recordMismatch(type: String, p: JsonObject): String? = runCatching {
         when (type) {
@@ -201,6 +216,7 @@ object MemoChecks {
                 val paid = p.long("paid_mtk")!!; val due = p.long("due_mtk")!!
                 val raw = gross - offer - drp - qc
                 when {
+                    kindLinesProblem(p) != null -> kindLinesProblem(p)
                     net != Money.roundToPaisaHalfUp(raw) -> "net_mtk $net, recomputed ${Money.roundToPaisaHalfUp(raw)}"
                     round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
                     paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"

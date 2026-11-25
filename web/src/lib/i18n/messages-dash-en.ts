@@ -370,7 +370,7 @@ export const dashEn = {
   "home.extras.rank": "TSO / zone ranking",
   "home.extras.sr_note": "SRs of your zones on the business date, best net sales first.",
   "home.extras.rank_note": "Teams in your scope on the business date, best net sales first.",
-  "dashboard.auto_refresh": "Updates itself every minute while this tab is open.",
+  "dashboard.auto_refresh": "Updates itself every 30 seconds while this tab is open.",
   "drill.open": "Details",
   "drill.back": "Back to the dashboard",
   "drill.cat.routes": "{name}: routes",
