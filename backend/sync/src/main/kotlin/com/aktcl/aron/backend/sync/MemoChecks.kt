@@ -25,8 +25,12 @@ import org.jdbi.v3.core.Handle
  *   gross and a negative net (stored before the header check existed) is flagged when any child lands.
  * - [kindLinesProblem]: a memo's kind and its line count must agree, `zero_sale` if and only if `line_count` is 0 (the phone writes `zero_sale` only for a memo
  *   without lines). A memo that says otherwise (only a non-phone client can send one) is quarantined `arithmetic_mismatch` with the detail `memo_kind_lines: ...`
- *   (the whole family together, or the header alone when it comes first), never rejected: a printed memo is a fact and a reviewer decides. Without the rule the
- *   server figures (`ACTIVE_MEMO`: `line_count > 0`, no kind) and the programme reads (`memo_kind = 'sale'`) would disagree about such a row.
+ *   (the whole family together, or the header alone when it comes first), never rejected: a printed memo is a fact. Without the rule the
+ *   server figures (`ACTIVE_MEMO`: `line_count > 0`, no kind) and the programme reads (`memo_kind = 'sale'`) would disagree about such a row. WHAT A REVIEWER CAN DO with
+ *   such an item (it is a money-class record, like any `arithmetic_mismatch`; `QuarantineAcceptTest.aMemoKindLinesItemCanOnlyBeDiscarded...` pins it): a plain accept
+ *   re-runs the same check, which still fails, so it answers 409 and the item stays open; an accept with a fixed record is refused 409 for every money type (docs/24 s8.6:
+ *   it needs a second person, which the resolve request cannot carry yet); the one way out is DISCARD, after which the memo is keyed again with a consistent kind. The
+ *   phone never sends the shape, so an item means a non-phone client or a bug. A detail carries the memo uuid and every problem found, joined with "; ", the same on both paths.
  * - A line priced differently from the price list valid on `price_list_date` flags the memo `price_mismatch` and is
  *   never rejected: the printed memo is the fact.
  */
@@ -44,7 +48,7 @@ object MemoChecks {
             val stated = Triple(p.int("line_count") ?: 0, p.int("discount_line_count") ?: 0, p.int("qc_line_count") ?: 0)
             if (counts.first > stated.first || counts.second > stated.second || counts.third > stated.third) {
                 // More children than the header counts (s7.4 counts = the child records): never a split family.
-                val detail = "memo $mu: children $counts exceed the stated counts $stated"
+                val detail = "memo $mu: " + listOfNotNull(kindLinesProblem(p), "children $counts exceed the stated counts $stated").joinToString("; ")
                 out[mu] = detail
                 children.forEach { c -> c.str("client_uuid")?.let { out[it] = detail } }
                 continue
@@ -208,23 +212,28 @@ object MemoChecks {
     }
 
     /** Equations a single record shows on its own; null when they hold (or the record is not money). */
-    fun recordMismatch(type: String, p: JsonObject): String? = runCatching {
+    fun recordMismatch(type: String, p: JsonObject, clientUuid: String? = null): String? = runCatching {
         when (type) {
             "memo" -> {
-                val gross = p.long("gross_mtk")!!; val offer = p.long("offer_discount_mtk")!!; val drp = p.long("drp_discount_mtk")!!
-                val qc = p.long("qc_deduction_mtk")!!; val round = p.long("round_adj_mtk")!!; val net = p.long("net_mtk")!!
-                val paid = p.long("paid_mtk")!!; val due = p.long("due_mtk")!!
-                val raw = gross - offer - drp - qc
-                when {
-                    kindLinesProblem(p) != null -> kindLinesProblem(p)
-                    net != Money.roundToPaisaHalfUp(raw) -> "net_mtk $net, recomputed ${Money.roundToPaisaHalfUp(raw)}"
-                    round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
-                    paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
-                    p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
-                    // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
-                    net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
-                    else -> null
-                }
+                val kind = runCatching { kindLinesProblem(p) }.getOrNull()
+                // the money members are read in their OWN runCatching: a missing or unreadable one is a problem to JOIN with the kind problem, never a reason to lose it
+                val money = runCatching {
+                    val gross = p.long("gross_mtk")!!; val offer = p.long("offer_discount_mtk")!!; val drp = p.long("drp_discount_mtk")!!
+                    val qc = p.long("qc_deduction_mtk")!!; val round = p.long("round_adj_mtk")!!; val net = p.long("net_mtk")!!
+                    val paid = p.long("paid_mtk")!!; val due = p.long("due_mtk")!!
+                    val raw = gross - offer - drp - qc
+                    when {
+                        net != Money.roundToPaisaHalfUp(raw) -> "net_mtk $net, recomputed ${Money.roundToPaisaHalfUp(raw)}"
+                        round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
+                        paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
+                        p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
+                        // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
+                        net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
+                        else -> null
+                    }
+                }.getOrElse { "unreadable money member" }
+                // every problem of the header, joined, and the same "memo <uuid>: " lead as the family path (also for an unreadable money member)
+                listOfNotNull(kind, money).takeIf { it.isNotEmpty() }?.joinToString("; ", prefix = clientUuid?.let { "memo $it: " } ?: "")
             }
             "memo_line" -> {
                 val want = Money.lineGrossMtk(p.long("qty_base")!!, p.long("base_price_mtk")!!, p.long("price_per_qty")!!)

@@ -288,6 +288,27 @@ class QuarantineAcceptTest {
     }
 
     @Test
+    fun aMemoKindLinesItemCanOnlyBeDiscardedNeitherAcceptNorAFixStoresIt() = testApplication {
+        app()
+        val fam = saleFamily()
+        val memoRec = fam[1]; val memo = cu(memoRec)
+        val p = memoRec["payload"]!!.jsonObject
+        val bad = fam.toMutableList().also { it[1] = JsonObject(memoRec + ("payload" to JsonObject(p + ("memo_kind" to JsonPrimitive("zero_sale"))))) }
+        client.send(client.token(), batch(bad))
+        val id = item(memo).first
+        assertEquals("open", item(memo).second)
+        // the money check is never overridden: a plain accept re-runs it and fails, 409, the item stays open, nothing is stored
+        assertEquals(HttpStatusCode.Conflict, client.resolve(id, "accept").status)
+        // a fix of a memo needs a second person (docs/24 s8.6), even one that makes the kind consistent
+        val fixed = JsonObject(memoRec + ("payload" to JsonObject(p + ("memo_kind" to JsonPrimitive("sale")))))
+        assertEquals(HttpStatusCode.Conflict, client.resolve(id, "accept_with_fix", fixed).status)
+        assertEquals("open", item(memo).second); assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
+        // the one way out is discard (the memo is then keyed again with a consistent kind)
+        assertEquals(HttpStatusCode.OK, client.resolve(id, "discard").status)
+        assertEquals("discarded", item(memo).second)
+    }
+
+    @Test
     fun aFixKeepsItsIdentityAndThePhonesOriginalIsADuplicateAfterIt() = testApplication {
         app()
         val fam = saleFamily(outlet = otherOutletId)
