@@ -55,7 +55,7 @@ object OutletTargetModel {
     fun build(figures: List<RouteFigures>, outletId: Long, skus: Map<Long, SkuInfo>, frameOf: (RouteCampaign, (Long) -> Boolean) -> FigureFrame): OutletTargetData? {
         // an older route: the route flag says something was cut, and an outlet with no entry may be one of the missing. A 1.27.0 route says it apart: the outlet list was cut (`campaigns_outlets_truncated`) or not
         val anyCut = figures.any { it.campaignsTruncated }
-        val truncated = figures.any { if (it.perOutletCut) it.campaignsOutletsTruncated else it.campaignsTruncated }
+        val truncated = figures.any { it.outletListMayBeCut }
         // the same outlet on two routes carries the same figure twice: one view per programme
         val mine = figures.flatMap { f -> f.campaigns.map { it to f.perOutletCut } }.filter { it.first.outletId == outletId }.distinctBy { it.first.programmeId to it.first.month }
         if (mine.isEmpty()) return if (truncated) OutletTargetData(emptyList(), true) else null

@@ -169,7 +169,7 @@ fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Mo
             val dash = today.failed || today.noRoute || today.unknownDash
             val memosPhrase = if (dash) Percent.DASH else pluralStringResource(R.plurals.pg_star_today_memos, today.memoCount.coerceIn(0L, 1_000_000L).toInt(), StarTodayModel.memoCountText(today, locale))
             // a SKU the phone cannot place with some lines counted: the figures are a lower bound ("at least"), never presented as exact
-            val qty = StarTodayModel.qtyText(today, locale).let { if (today.lowerBound) stringResource(R.string.pg_star_at_least, it) else it }
+            val qty = StarTodayModel.qtyText(today, locale).let { if (today.lowerBound && it != Percent.DASH) stringResource(R.string.pg_star_at_least, it) else it } // a quantity that cannot be computed is a plain dash, never "at least —"
             val memos = if (today.lowerBound) stringResource(R.string.pg_star_at_least, memosPhrase) else memosPhrase
             Text(
                 stringResource(if (today.failed) R.string.pg_star_today_failed else if (today.noRoute) R.string.pg_star_today_no_route else if (today.incomplete || today.unknownSku) R.string.pg_star_today_partial else R.string.pg_star_today, qty, memos),

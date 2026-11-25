@@ -176,7 +176,7 @@ class OutletTargetModelTest {
     }
 
     @Test fun nW2_aNewServerOutletThatIsNotCutIsCompleteEvenWhenAnotherOutletOfTheRouteWas() {
-        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = true)
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaignCut(5, sku(900, 500, 120), flag = """"truncated":false,""")), truncated = true) // 1.27.0: the member on EVERY entry
         assertTrue(r.perOutletCut)
         val c = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!.let { assertTrue(!it.routeCut); it.campaigns.single() }
         assertTrue(!c.achievedPartial); assertTrue(!c.outletCut); assertTrue(!c.incomplete)
@@ -195,7 +195,7 @@ class OutletTargetModelTest {
     }
 
     @Test fun nW4_anEntryWithTheFlagAbsentOrNullOrFalseIsNotCutOnANewServerRoute() {
-        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaignCut(5, sku(900, 500, 0), flag = """"truncated":null,"""), campaignCut(6, sku(900, 500, 0), flag = """"truncated":false,""")), truncated = true)
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaignCut(5, sku(900, 500, 0), flag = """"truncated":false,"""), campaignCut(6, sku(900, 500, 0), flag = """"truncated":false,""")), truncated = true)
         listOf(5L, 6L).forEach { o -> assertTrue(!OutletTargetModel.build(listOf(r), o, skus, noFrame)!!.campaigns.single().outletCut) }
     }
 
@@ -249,5 +249,37 @@ class OutletTargetModelTest {
         fun parse(m: String) = RouteFigures.parse("""{"route_id":7,"campaigns":[]$m}""")!!.campaignsOutletsTruncated
         assertTrue(parse(""","campaigns_outlets_truncated":true"""))
         assertTrue(!parse(""","campaigns_outlets_truncated":null""")); assertTrue(!parse(""","campaigns_outlets_truncated":false""")); assertTrue(!parse(""))
+    }
+
+    // ---- a cached 1.26.0 bundle: `truncated` ONLY on cut entries, no outlets marker, campaigns_truncated = outlet cap OR any entry cut. Read the old way.
+    @Test fun nX1_a126RouteWithOneFlaggedEntryAndOthersUnflaggedIsOldStyleSoAnOutletWithNoEntryGetsTheCutNote() {
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaign(outlet = 8, skus = sku(900, 500, 120))), truncated = true) // 1.26.0 shape; the outlet cap may be the cause
+        assertTrue(!r.perOutletCut); assertTrue(r.outletListMayBeCut)
+        val none = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        assertTrue(none.campaigns.isEmpty()); assertTrue(none.truncated) // the cut note, not "No campaign target is set"
+        val listed = OutletTargetModel.build(listOf(r), 8, skus, noFrame)!!
+        assertTrue(listed.routeCut); assertTrue(listed.campaigns.single().achievedPartial); assertTrue(!listed.campaigns.single().outletCut) // the old rule: the route flag cuts every outlet
+    }
+
+    @Test fun nX2_theShapeThatCannotBeToldApartEveryEntryCutRouteFlagSetNoMarkerTakesTheCautiousReadingForANoEntryOutlet() {
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaignCut(8, sku(900, 500, 0))), truncated = true)
+        assertTrue(r.perOutletCut) // every entry carries the member
+        assertTrue(r.outletListMayBeCut) // cannot exclude a cap cut (1.26.0): the cautious reading
+        val none = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        assertTrue(none.campaigns.isEmpty()); assertTrue(none.truncated)
+        assertTrue(OutletTargetModel.build(listOf(r), 9, skus, noFrame)!!.campaigns.single().outletCut) // an entry that is cut is cut either way
+    }
+
+    @Test fun nX3_aRealV127RouteWithAFalseEntryAndNoMarkerKnowsTheOutletListWasNotCut() {
+        val r = routeV27(listOf(entry(9, true), entry(8, false)), campaignsTruncated = true, outletsTruncated = null)
+        assertTrue(r.perOutletCut); assertTrue(!r.outletListMayBeCut) // a false entry is only ever sent by 1.27.0: no outlet is missing
+    }
+
+    @Test fun nX4_aRouteWithNoEntriesIsOldStyleAndTheMarkerAloneMakesItNewStyle() {
+        val none = route(emptyList(), truncated = true)
+        assertTrue(!none.perOutletCut); assertTrue(none.outletListMayBeCut)
+        val marker = routeV27(emptyList(), campaignsTruncated = true, outletsTruncated = true)
+        assertTrue(marker.perOutletCut); assertTrue(marker.outletListMayBeCut)
+        assertTrue(!routeV27(emptyList(), campaignsTruncated = false, outletsTruncated = null).outletListMayBeCut)
     }
 }

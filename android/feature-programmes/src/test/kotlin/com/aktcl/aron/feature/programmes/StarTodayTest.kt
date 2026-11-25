@@ -243,4 +243,9 @@ class StarTodayTest {
         show(AppLanguage.BN, star(cat = "match"), StarToday(0, 1, 0, 0, false, failed = true))
         compose.onNodeWithText("আজ এই ফোনে: — STD, — (এই ফোন এখন মেমো পড়তে পারেনি)").assertExists()
     }
+
+    @Test fun lowAMalformedDivisorIsAPlainDashNeverAtLeastDash() {
+        show(AppLanguage.EN, star(cat = "match"), StarToday(50, 0, 2, 0, incomplete = false, unknownSku = true))
+        compose.onNodeWithText("Today on this phone: — STD, at least 2 memos (may be incomplete; not in the STD above)").assertExists()
+    }
 }
