@@ -3391,3 +3391,4 @@
 - 2026-11-25 12:48 UTC lane check: health ok, live build da7fd7b1f5 (train 133). Train 136 branch 8a4a8adeeb lane CI 45613369442 18/18 green, GO sent to the integrator. Targets server lane 9ee153683c passed the lead's read (next server train 137 after 136 lands). Programmes lane dbb34bcd08 (in train 136), next round held locally. No owner message.
 - 2026-11-25 14:36 UTC: train 137 landed and deployed (live build 5f4efb7ee1); lanes released as in lead-state.
 - 2026-11-25 14:46 UTC lane check: live build 5f4efb7ee1 (train 137). Targets server lane c9b552d6ba (lane CI 45634655699 green) in checker workflow (web commits + T1 zero_sale rule). Programmes lane working on the 1.27.0 round (no push yet, under 90 min). No owner message.
+- 2026-11-25 16:00 UTC: train 138 landed and deployed (live build 6cee5275a2); both lanes released for their follow-up pushes.
