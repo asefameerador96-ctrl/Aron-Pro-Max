@@ -1684,3 +1684,11 @@ zero_sale rule: both directions; uses the header's stated line_count so upload o
 Limits: rows stored before the rule are not re-checked (count on dev still to run); a memo held under this rule cannot be plain-accepted (money holds never are); a pilot phone holding an unsynced memo from a build before 2026-10-07 would be held, not lost (judged very unlikely, not measured).
 
 Lows for the lane's next round: recordMismatch shows only the kind detail when money is also wrong on a header-first upload (collect both, call once); detail prefix differs between the two paths; the children-exceed check hides the kind detail; KDoc "a reviewer decides" should say what a reviewer can actually do; stale "60 s" comment at the top of the spec; the cached token in IngestRulesCheckerTest depends on no test revoking the session.
+
+# 691b18fe5f (detail text follow-up, discard-only test, count SQL), 2026-11-25: PASS, 0 blocking (2 Opus read-only lenses + lead's read)
+
+Decision and outcome code are unchanged for every memo header payload (kind ok/wrong x money ok/wrong/missing field: table in the checker result); only the detail text changes. recordMismatch has one caller (IngestService step 8). The only consumer that matches on the "memo <uuid>: " lead (heldChildren) excludes the parent's own item, so nothing new is picked up. tools/ops/memo-kind-lines-count.sql returns three counts only; not run. No test was run by the reviewers; lane CI 45650217361 green by the lane's report.
+
+Lows: when a money member is missing the detail is the bare "unreadable money member" without the uuid or the kind problem, so the KDoc sentence "every problem found, the same on both paths" is too wide; one section of the new test passed before the change too.
+
+Rides the next server train (140) after Android train 139.
