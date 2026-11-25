@@ -337,6 +337,11 @@ class IngestRulesCheckerTest {
         client.ok(token, batch(excess))
         val d3 = detailOf(em)
         assertTrue(d3.startsWith("memo $em: memo_kind_lines: zero_sale memo states line_count 1; children"), d3)
+        // a header missing a money member: the kind problem is not lost behind the bare "unreadable money member", and the uuid leads (the pure check, as the ingest calls it)
+        val noGross = JsonObject(fam[1]["payload"]!!.jsonObject.filterKeys { it != "gross_mtk" })
+        val unreadable = com.aktcl.aron.backend.sync.MemoChecks.recordMismatch("memo", noGross, fm)
+        assertEquals("memo $fm: memo_kind_lines: zero_sale memo states line_count 2; unreadable money member", unreadable)
+        assertEquals("memo $fm: unreadable money member", com.aktcl.aron.backend.sync.MemoChecks.recordMismatch("memo", JsonObject(noGross + ("memo_kind" to JsonPrimitive("sale"))), fm), "no kind problem: only the money one, still behind the uuid")
     }
 
     // F-SYS-062 / s7.4 "line_count = the number of child records": more lines than the header states, all in one batch.

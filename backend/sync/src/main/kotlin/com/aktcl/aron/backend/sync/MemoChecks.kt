@@ -215,21 +215,24 @@ object MemoChecks {
     fun recordMismatch(type: String, p: JsonObject, clientUuid: String? = null): String? = runCatching {
         when (type) {
             "memo" -> {
-                val kind = kindLinesProblem(p)
-                val gross = p.long("gross_mtk")!!; val offer = p.long("offer_discount_mtk")!!; val drp = p.long("drp_discount_mtk")!!
-                val qc = p.long("qc_deduction_mtk")!!; val round = p.long("round_adj_mtk")!!; val net = p.long("net_mtk")!!
-                val paid = p.long("paid_mtk")!!; val due = p.long("due_mtk")!!
-                val raw = gross - offer - drp - qc
-                val money = when {
-                    net != Money.roundToPaisaHalfUp(raw) -> "net_mtk $net, recomputed ${Money.roundToPaisaHalfUp(raw)}"
-                    round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
-                    paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
-                    p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
-                    // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
-                    net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
-                    else -> null
-                }
-                // every problem of the header, joined, and the same "memo <uuid>: " lead as the family path
+                val kind = runCatching { kindLinesProblem(p) }.getOrNull()
+                // the money members are read in their OWN runCatching: a missing or unreadable one is a problem to JOIN with the kind problem, never a reason to lose it
+                val money = runCatching {
+                    val gross = p.long("gross_mtk")!!; val offer = p.long("offer_discount_mtk")!!; val drp = p.long("drp_discount_mtk")!!
+                    val qc = p.long("qc_deduction_mtk")!!; val round = p.long("round_adj_mtk")!!; val net = p.long("net_mtk")!!
+                    val paid = p.long("paid_mtk")!!; val due = p.long("due_mtk")!!
+                    val raw = gross - offer - drp - qc
+                    when {
+                        net != Money.roundToPaisaHalfUp(raw) -> "net_mtk $net, recomputed ${Money.roundToPaisaHalfUp(raw)}"
+                        round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
+                        paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
+                        p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
+                        // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
+                        net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
+                        else -> null
+                    }
+                }.getOrElse { "unreadable money member" }
+                // every problem of the header, joined, and the same "memo <uuid>: " lead as the family path (also for an unreadable money member)
                 listOfNotNull(kind, money).takeIf { it.isNotEmpty() }?.joinToString("; ", prefix = clientUuid?.let { "memo $it: " } ?: "")
             }
             "memo_line" -> {
