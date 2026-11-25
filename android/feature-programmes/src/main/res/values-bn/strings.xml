@@ -222,4 +222,25 @@
         <item>জানুয়ারি</item><item>ফেব্রুয়ারি</item><item>মার্চ</item><item>এপ্রিল</item><item>মে</item><item>জুন</item>
         <item>জুলাই</item><item>আগস্ট</item><item>সেপ্টেম্বর</item><item>অক্টোবর</item><item>নভেম্বর</item><item>ডিসেম্বর</item>
     </string-array>
+    <!-- Match Box Lifting Star (manual 62): English where the reference screen is English -->
+    <string name="pg_star_title">Match Box Lifting Star</string>
+    <string name="pg_star_target">Target</string>
+    <string name="pg_star_std">STD</string>
+    <string name="pg_star_projection">Projection</string>
+    <string name="pg_star_achievement">Achievement</string>
+    <string name="pg_star_lms">LMS</string>
+    <string name="pg_star_lmads">LMADS</string>
+    <string name="pg_star_pads">PADS</string>
+    <string name="pg_star_growth">Growth</string>
+    <string name="pg_star_status">Status</string>
+    <string name="pg_star_slab">Achieved Slab</string>
+    <string name="pg_star_slab_amount">Slab Amount</string>
+    <string name="pg_star_projected">Projected Amount</string>
+    <string name="pg_star_tk">Tk</string>
+    <string name="pg_star_sr_name">SR Name: %1$s (%2$s)</string>
+    <string name="pg_star_sr_route">SR Route: %1$s</string>
+    <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
+    <string name="pg_star_lm_open">গত মাস এই কাটঅফে শেষ হয়নি: LMS ও LMADS চূড়ান্ত নয়।</string>
+    <string name="pg_star_empty">এ মাসের জন্য কোনো লিফটিং স্টার টার্গেট নেই।</string>
+    <string name="pg_star_truncated">রুটে একাধিক সক্রিয় প্রোগ্রাম আছে: শুধু প্রথমটি দেখানো হচ্ছে।</string>
 </resources>

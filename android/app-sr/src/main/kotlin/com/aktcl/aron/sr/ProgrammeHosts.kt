@@ -429,4 +429,19 @@ fun BrandKpiHost(day: SrDay, locale: UiLocale, kind: com.aktcl.aron.feature.prog
 }
 
 
+/** The Lifting Star snapshots of the bundle's routes (`route.<id>.star`, the server's figures as sent) and whether the bundle cut a list (`star_truncated`). */
+internal suspend fun readStars(day: SrDay): Pair<List<com.aktcl.aron.feature.programmes.RouteStar>, Boolean> = withContext(Dispatchers.IO) {
+    val (figures, _) = readRouteFigures(day)
+    figures.mapNotNull { it.star } to figures.any { it.starTruncated }
+}
+
+/** Match Box Lifting Star of the SR (manual 62): the downloaded server snapshot, read-only, works offline from the stored bundle. */
+@Composable
+fun StarHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
+    val load = rememberAsyncLoad(locale) { readStars(day) }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { (stars, truncated) ->
+        com.aktcl.aron.feature.programmes.StarScreen(stars, locale, truncated = truncated, offline = offline)
+    }
+}
+
 private fun gcdOf(a: Long, b: Long): Long = if (b == 0L) a else gcdOf(b, a % b)
