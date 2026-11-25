@@ -134,7 +134,7 @@ object AsthaModel {
     }
 
     /** sku id -> its brand node id: the SKU's variant node, walked up the product tree to the brand level; SKUs whose chain has no brand are left out. */
-    private fun skuBrands(productsJson: String?): Map<Long, Long> {
+    fun skuBrands(productsJson: String?): Map<Long, Long> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         val parents = (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
             val o = n as? JsonObject ?: return@mapNotNull null
@@ -153,7 +153,7 @@ object AsthaModel {
      * brand node id -> the category code of its SKUs (`products.skus[].category_code`, the seed sets no code on the category nodes), lower case.
      * A brand whose SKUs disagree, or that has none, is left out: its unit is then not guessed.
      */
-    private fun brandCategories(productsJson: String?): Map<Long, String> {
+    fun brandCategories(productsJson: String?): Map<Long, String> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         val skuBrand = skuBrands(productsJson)
         val perBrand = HashMap<Long, MutableSet<String>>()
@@ -220,7 +220,7 @@ object AsthaModel {
         }, p,
     )
 
-    private fun brands(productsJson: String?): Map<Long, BrandName> {
+    fun brands(productsJson: String?): Map<Long, BrandName> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         return (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
             val o = n as? JsonObject ?: return@mapNotNull null

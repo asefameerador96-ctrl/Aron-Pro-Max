@@ -1,6 +1,7 @@
 AchievementRow:
   type: object
-  description: Month-to-date achievement known to the server; the phone adds its own unsynced sales on top.
+  description: Month-to-date achievement read from the accepted memos through `through_date`; the figures rule is
+    stated once in `RouteSnapshot` (`as_of` is informational).
   required:
   - scope_type
   - scope_id
@@ -29,5 +30,13 @@ AchievementRow:
     memo_count:
       type: integer
       minimum: 0
+      description: Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale
+        lines only. See the figures rule in `RouteSnapshot`.
     as_of:
       $ref: '#/components/schemas/Timestamp'
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+      description: 'Last Dhaka business date the figure covers: the last CLOSED day when the bundle was built (the
+        bundle date minus one day, or yesterday for a bundle built ahead while today is still open). The bundle
+        date''s own memos are never in a server figure. What the phone shows is stated once, as the figures rule
+        in the description of `RouteSnapshot`. Contract 1.24.0, optional.'

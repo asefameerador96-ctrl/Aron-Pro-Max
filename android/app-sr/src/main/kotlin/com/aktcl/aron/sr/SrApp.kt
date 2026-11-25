@@ -135,16 +135,17 @@ internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.
 /** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
 internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA, PHOTO_CAMPAIGN, SKU_TARGET, KPI_BRANDS, STAR, OUTLET_TARGET }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
     fun parent(s: SrScreen): SrScreen = when (s) {
-        SrScreen.FORCE, SrScreen.NO_SALE -> SrScreen.VISIT
+        SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.OUTLET_TARGET -> SrScreen.VISIT
         SrScreen.SUPPORT, SrScreen.PRINTER_DIAG -> SrScreen.SETTINGS
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.ASTHA_TARGET, SrScreen.ASTHA_GIFT -> SrScreen.ASTHA_MENU
+        SrScreen.KPI_BRANDS -> SrScreen.KPI
         SrScreen.PHOTO_ASTHA, SrScreen.PHOTO_CAMPAIGN -> SrScreen.PHOTO_MENU
         SrScreen.LOYALTY_POINTS, SrScreen.LOYALTY_REDEEM -> SrScreen.LOYALTY_MENU
         SrScreen.EDIT -> SrScreen.MEMO
@@ -258,6 +259,7 @@ fun SrApp(
     var soonTile by rememberSaveable { mutableStateOf(HomeTile.ASTHA) }
     // The outlet points page is a navigation target that takes an outlet id (null = pick one): the Loyalty menu opens it with none; the Sales
     // screen entry of manual 55 is wired by lane android-parity-sr-1 by setting this and screen = LOYALTY_POINTS (docs/status/android-sr-programmes.md).
+    var targetOutlet by rememberSaveable { mutableStateOf<Long?>(null) }
     var pointsOutlet by rememberSaveable { mutableStateOf<Long?>(null) }
     // the request form's kind lives here (saveable): the frame title AND the form read the same value after a recreate or process death
     var requestKind by rememberSaveable { mutableStateOf(day.requestKind) }
@@ -268,6 +270,7 @@ fun SrApp(
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
     // "সেল ডাটা" is up inside the sale or memo host: the frame says so (SaleHost and MemoHost report it)
     var saleData by remember { mutableStateOf(false) }
+    var saleBarTitle by remember { mutableStateOf(SaleBarTitle.SALE) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val stockAttempt by day.stockAttempt.collectAsState()
@@ -361,6 +364,10 @@ fun SrApp(
     )
     val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
+    var kpiKind by rememberSaveable { mutableStateOf(com.aktcl.aron.feature.programmes.KpiKind.VOLUME) }
+    // the STD of the Home Target card: the server's cigarette figures of the bundle (null: a dash)
+    var homeStd by remember { mutableStateOf<com.aktcl.aron.feature.home.HomeStd?>(null) }
+    LaunchedEffect(data, resumeTick, screen == SrScreen.HOME) { if (screen == SrScreen.HOME) homeStd = runCatching { readHomeStd(day) }.getOrNull() }
     // SRM-B-61: Astha, Loyalty Point and Match Program show only when their cfg.flag.* is on for this user
     var enabledTiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(data, resumeTick) { enabledTiles = day.enabledProgrammeTiles() }
@@ -453,7 +460,7 @@ fun SrApp(
                         HomeTile.ASTHA -> screen = SrScreen.ASTHA_MENU // lane android-sr-programmes, manual 48
                         HomeTile.LOYALTY_POINT -> screen = SrScreen.LOYALTY_MENU // lane android-sr-programmes, manual 53/55
                         HomeTile.PHOTO_CAPTURE -> screen = SrScreen.PHOTO_MENU // lane android-sr-programmes, manual 56
-                        HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
+                        HomeTile.MATCH_PROGRAM -> screen = SrScreen.STAR // lane android-sr-programmes, manual 62
                         else -> onOtherTile(t)
                     }
                 },
@@ -462,7 +469,7 @@ fun SrApp(
                 banner = srHomeBanner(data.downloading) { com.aktcl.aron.feature.attendance.rolloverNoticeText(rollover) ?: srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
-                sync = sync, onSync = openSync,
+                sync = sync, onSync = openSync, std = homeStd, onHero = { screen = SrScreen.SKU_TARGET },
                 sunlight = sunlight, onSunlight = onSunlight,
                 routeKindLabel = routeKindText(data.route?.visitKind),
                 reauthRequired = user.reauthRequired, updateRequired = user.updateRequired,
@@ -566,12 +573,20 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(
+            when {
+                saleData -> stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title)
+                // R1: the bar says "QC", "QC এন্ট্রি" or "স্লাইড" while those pages are up
+                saleBarTitle == SaleBarTitle.QC -> stringResource(R.string.sr_bar_qc)
+                saleBarTitle == SaleBarTitle.QC_ENTRY -> stringResource(R.string.sr_bar_qc_entry)
+                saleBarTitle == SaleBarTitle.SLIDE -> stringResource(R.string.sr_bar_slide)
+                else -> stringResource(HomeR.string.hm_tile_sale)
+            }, goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it }, onOpenStock = { day.forgetStock(); screen = SrScreen.STOCK })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it }, onSaleBarTitle = { saleBarTitle = it }, locale = locale, onOutletTarget = { targetOutlet = it; screen = SrScreen.OUTLET_TARGET }, onOpenStock = { day.forgetStock(); screen = SrScreen.STOCK })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
@@ -593,6 +608,9 @@ fun SrApp(
                 }
             }
         }
+        SrScreen.OUTLET_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_ot_title), goBack, sync, openSync) {
+            targetOutlet?.let { OutletTargetHost(day, locale, it, offline = !day.isOnline()) } ?: LaunchedEffect(Unit) { screen = SrScreen.VISIT }
+        }
         SrScreen.NO_SALE -> SrFrame(stringResource(R.string.sr_no_sale), goBack, sync, openSync) { NoSaleHost(day, onDone = { screen = SrScreen.HOME }) }
         SrScreen.SKIP -> SrFrame(stringResource(R.string.sr_skip_outlet), goBack, sync, openSync) {
             skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
@@ -604,7 +622,9 @@ fun SrApp(
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
         SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day, onSupport = { screen = SrScreen.SUPPORT }) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
-        SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
+        SrScreen.KPI -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_kpi_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiDashboardHost(day, locale, offline = !day.isOnline(), onSeeAll = { kpiKind = it; screen = SrScreen.KPI_BRANDS }) }
+        SrScreen.STAR -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_star_title), goBack, sync, openSync) { StarHost(day, locale, offline = !day.isOnline()) }
+        SrScreen.KPI_BRANDS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_kpi_brands_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { BrandKpiHost(day, locale, kpiKind, offline = !day.isOnline()) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
         SrScreen.ASTHA_MENU -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
             com.aktcl.aron.feature.programmes.AsthaMenuScreen(onTarget = { screen = SrScreen.ASTHA_TARGET }, onGift = { screen = SrScreen.ASTHA_GIFT })
@@ -616,6 +636,7 @@ fun SrApp(
         SrScreen.LOYALTY_POINTS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_points), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { OutletPointsHost(day, locale, pointsOutlet) { id -> pointsOutlet = id; screen = SrScreen.LOYALTY_REDEEM } }
         SrScreen.LOYALTY_REDEEM -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_redeem), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { RedemptionHost(day, locale, pointsOutlet) }
         SrScreen.ASTHA_GIFT -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_tile_gift), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { GiftSelectionHost(day, locale) }
+        SrScreen.SKU_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_tgt_title), goBack, sync, openSync) { SkuTargetHost(day, locale, offline = !day.isOnline()) }
         SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
         SrScreen.PHOTO_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_photo_capture), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
             com.aktcl.aron.feature.programmes.PhotoMenuScreen(onAstha = { screen = SrScreen.PHOTO_ASTHA }, onCampaign = { screen = SrScreen.PHOTO_CAMPAIGN })

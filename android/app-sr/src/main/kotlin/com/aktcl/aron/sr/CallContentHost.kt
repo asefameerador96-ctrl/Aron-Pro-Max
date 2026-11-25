@@ -89,7 +89,8 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
     }
     // SRM-B-05 (shot 35 left): a gradient title band ("AV" or "KV"), the item centred, a full-width gradient "× বন্ধ করুন" at the bottom
     val close = { finish(if (item.kind == "av") ContentOutcome.SKIPPED_USER else ContentOutcome.VIEWED) }
-    ContentStepView(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv), stringResource(R.string.sr_content_close_x), close) {
+    ContentStepView(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv), stringResource(R.string.sr_content_close_x), close,
+        pictureDescription = stringResource(if (item.kind == "av") R.string.sr_content_av_desc else R.string.sr_content_kv_desc)) {
         if (item.kind == "av") {
             AndroidView(
                 factory = { ctx ->

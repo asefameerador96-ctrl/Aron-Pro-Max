@@ -33,10 +33,11 @@ ProgrammesSection:
     redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption
     of this user acknowledged before the request was received (and everything the ledger holds, with no business-date
     cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution
-    or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server''s per-uuid
-    answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections`
-    names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications
-    (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
+    or an acknowledgement has reached the phone. This phone arithmetic stays the rule for this section (the earlier
+    plan to replace it with a per-uuid server answer, an identity probe, is PARKED, D-LEAD-FIGURES-SIMPLE-01). Caps
+    are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200),
+    gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`)
+    the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty

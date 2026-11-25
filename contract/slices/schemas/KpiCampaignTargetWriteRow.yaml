@@ -1,0 +1,26 @@
+KpiCampaignTargetWriteRow:
+  type: object
+  required:
+  - outlet_code
+  - programme_code
+  - month
+  - std_target
+  - memo_target
+  additionalProperties: false
+  properties:
+    outlet_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    programme_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    std_target:
+      $ref: '#/components/schemas/Decimal3'
+    memo_target:
+      type: integer
+      minimum: 0
+      maximum: 1000000

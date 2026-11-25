@@ -48,7 +48,16 @@ Status words: COMPARED = recorded through the production host flags and compared
 | ui-reference | home-1/2, stock, attendance, sale-select, outlet-menu, tasks, astha, summary | as the rows above | |
 
 
-## HANDOVER NOW (P-SR1b, 2026-11-18, written while a push is blocked; read this first)
+## LOWS from the lead's check of b08c3782 (CLOSED in D-PAR-SR1-31 except item 6, which the gates lane does)
+1. `SaleFlow.commit` success path keeps a stale `notice`: clear it on commit.
+2. `editLocked` turns every ISE on a locked draft into the Locked notice (e.g. zero-sale-with-lines): keep the lock wording for lock refusals only.
+3. `SaleRoute.laterShown` is plain remember: the later-changes dialog shows again after a rotation; use rememberSaveable.
+4. KV image and AV video have no content description for TalkBack.
+5. `PickerSheet` hardcodes a colour (0xFFEBE5F0) instead of a look token (ignores Sunlight).
+6. `SaleViewModelGuardTest` reads source text by a relative path: declare the source as a Gradle test input.
+Pushed head with CI: b08c3782 (run 44372290509; only red step: "Download the shard reports", GitHub artifact egress 503, not code).
+
+## HANDOVER NOW (P-SR1b, 2026-11-18; the push block was lifted by the owner, 442fdccf and b08c3782 are pushed)
 - LOCAL ONLY, NOT PUSHED: commit 41ee52a1 on lane/android-parity-sr-1 (five lows: beginEdit refused on a QC-locked sale before prefill + locked dialog in both edit hosts, landed-leftover-draft edit start, survey dropdown TalkBack, VM guard source test, cleanups; D-PAR-SR1-30). Pushes were denied by the auto-mode classifier twice (reasons "Destructive or Unwanted Actions", "Undermining Oversight"). The lead asked the owner to approve. Do NOT rebase or amend it. When approved: `git push origin lane/android-parity-sr-1`, tell the lead.
 - Last pushed and CI-green head: d60e2e2f (run 44284286779), batch-checked PASS by the lead; look train 2 goes AFTER train 121 (integrity train: SrApp, MainActivity, CaptureRepository, ActionGate, setGatedContent).
 - WHEN THE LEAD SAYS "train 121 landed": merge the integration branch (merge commit), keep every screen behind setGatedContent, run EveryActivityIsGatedTest and EveryWriterIsGatedTest, re-verify goldens (record nothing unless a look changed on purpose; AMO and TSO must stay 0), push, wait for all lane ci jobs, report "checked <head> run <id>"; that head is what the lead pins. Update the status head line.

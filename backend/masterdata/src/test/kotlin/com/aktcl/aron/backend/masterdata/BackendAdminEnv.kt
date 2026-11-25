@@ -131,6 +131,7 @@ class BackendAdminEnv : AutoCloseable {
                     entryUnlockRoutes(EntryUnlockDeps(db, reach, cfg, guard))
                     duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard))
                     routeTargetRoutes(RouteTargetDeps(db, guard))
+                    routeKpiTargetRoutes(RouteTargetDeps(db, guard))
                     webEntryRoutes(WebEntryDeps(db, reach, cfg, guard))
                     adminContentRoutes(AdminContentDeps(db, blob, cfg, guard))
                 }

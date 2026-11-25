@@ -227,4 +227,55 @@ class FigureRuleBTest {
         assertEquals(emptyList<String>(), d2.add.map { it.uuid }) // the original may be in the figure: nothing can be netted
         assertEquals(2, FigureRuleB.unknownOrder(listOf(earlyOld, earlyEdit), false, month, through)) // and the note says so
     }
+
+    @Test fun anEditChainOfThreeAllAfterThroughDateCountsTheNewestOnceAndNamesNothing() {
+        val through = "2026-11-04"
+        val a = lm("a", "2026-11-17", "acked", 10); val b = lm("b", "2026-11-17", "acked", 11, supersedes = "a"); val c = lm("c", "2026-11-17", "pending", 12, supersedes = "b")
+        val d = FigureRuleB.delta(listOf(a, b, c), null, month, through)!!
+        assertEquals(listOf("c"), d.add.map { it.uuid })
+        assertEquals(0, FigureRuleB.unknownOrder(listOf(a, b, c), false, month, through))
+    }
+
+    @Test fun anEditChainOfThreeWhoseRootIsDatedUpToThroughDateIsLeftOutAndNotCountedTwice() {
+        val through = "2026-11-04"
+        val a = lm("a", "2026-11-03", "acked", 10)                       // may be in the figure
+        val b = lm("b", "2026-11-17", "acked", 11, supersedes = "a")
+        val c = lm("c", "2026-11-17", "pending", 12, supersedes = "b")
+        val d = FigureRuleB.delta(listOf(a, b, c), null, month, through)!!
+        assertEquals(emptyList<String>(), d.add.map { it.uuid }) // never a double count: c is NOT added while a may already be in the figure
+        assertEquals(2, FigureRuleB.unknownOrder(listOf(a, b, c), false, month, through)) // a (may be in) and c (the edit); b is counted by its edit c
+        val shown = FigureRuleB.show(FigureRuleB.ServerFigure(100, 1), listOf(a, b, c), null, month, through)!!
+        assertEquals(100L, shown.qtyBase)
+    }
+
+    @Test fun aForkOfTwoLiveEditsOnDifferentDaysIsNotAddedTwiceAndIsNamed() {
+        val through = "2026-11-04"
+        val a = lm("a", "2026-11-17", "acked", 10); val e1 = lm("e1", "2026-11-17", "pending", 11, supersedes = "a"); val e2 = lm("e2", "2026-11-18", "pending", 12, supersedes = "a")
+        assertEquals(emptyList<String>(), FigureRuleB.delta(listOf(a, e1, e2), null, month, through)!!.add.map { it.uuid })
+        assertEquals(2, FigureRuleB.unknownOrder(listOf(a, e1, e2), false, month, through)) // the two tips of the fork are named (a later-day memo with live edits is counted by them); none is in a figure
+    }
+
+    @Test fun theNoteIgnoresAVoidedLaterDayMemoAndMemosOfOtherMonths() {
+        val through = "2026-11-04"
+        val t = lm("t", "2026-11-17", "acked", 10); val v = LocalMemo("v", 1L, "2026-11-17", null, "pending", null, emptyList(), 7, "sale", "t")
+        assertEquals(0, FigureRuleB.unknownOrder(listOf(t, v), false, month, through))
+        val other = lm("o", "2026-10-03", "acked", 5)
+        assertEquals(0, FigureRuleB.unknownOrder(listOf(other), false, month, through))
+    }
+
+    @Test fun showFromOnePlanGivesTheSameFiguresAsShowPerCall() {
+        val memos = listOf(lm("f", "2026-11-03", "pending", 5), lm("t", "2026-11-17", "acked", 7))
+        val plan = FigureRuleB.plan(memos, null, month, "2026-11-04")
+        val one = FigureRuleB.show(FigureRuleB.ServerFigure(100, 1), plan)!!
+        val two = FigureRuleB.show(FigureRuleB.ServerFigure(100, 1), memos, null, month, "2026-11-04")!!
+        assertEquals(two, one); assertEquals(112L, one.qtyBase)
+    }
+
+    @Test fun aKnownOrderForkIsNotAddedTwiceAndTheEditedMemoIsNotSubtracted() {
+        val through = "2026-11-04"
+        val o = lm("o", "2026-11-03", "acked", 10); val e1 = lm("e1", "2026-11-03", "pending", 11, supersedes = "o"); val e2 = lm("e2", "2026-11-03", "pending", 12, supersedes = "o")
+        val d = FigureRuleB.delta(listOf(o, e1, e2), setOf("o"), month, through)!!
+        assertEquals(emptyList<String>(), d.add.map { it.uuid }) // neither tip: two tips for one sale
+        assertEquals(emptyList<String>(), d.subtract.map { it.uuid }) // and o stays in the figure (it may read low, never high)
+    }
 }

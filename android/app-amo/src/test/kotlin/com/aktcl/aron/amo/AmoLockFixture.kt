@@ -51,6 +51,13 @@ import org.junit.Assert.assertTrue
 import java.io.File
 
 /**
+ * D-AGATE-30: the pinned start of every lock fixture: 05:00 Dhaka (2026-10-05T23:00:00Z) of 2026-10-06. EARLY in the day on purpose: the trusted clock adopts a far jump only when it is
+ * closer to the phone's wall clock (which is after this date) than its estimate, so tests that move the clock FORWARD (10:00, 17:00, the next day) work and a start later than the times a
+ * test anchors would make the clock refuse to go back. Never the real clock.
+ */
+internal const val FIXTURE_NOON_MS = 1791241200000L
+
+/**
  * tso-manual X4a (fix round, checker high 1 and medium "wiring"): a real [AmoDay], and so the real [AmoSaleKit] with the
  * wiring the screens use, on an in-memory database. The AMO is outside a call unless a test opens one (no route of its
  * own). Nothing reaches the network; the location source answers at the outlet (counted, and [duringFix] runs while the fix
@@ -61,7 +68,11 @@ import java.io.File
  * `day.sale.new…ViewModel()` directly) and hands a screen it shows to [own]. [close] lets that work finish, cancels and
  * joins it, drains Room, and only then closes the database; a test restores its exception catchers after [close].
  */
-internal class AmoLockFixture(context: Context, latePolicy: String?, private val settled: Boolean = true) : AutoCloseable {
+internal class AmoLockFixture(
+    context: Context, latePolicy: String?, private val settled: Boolean = true,
+    /** D-AGATE-30: the fixture's clock (trusted time) at construction; default a PINNED instant, 05:00 Dhaka of 2026-10-06, never the real clock, so no test takes its business date from the wall clock. */
+    clockMs: Long = FIXTURE_NOON_MS,
+) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
         .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
@@ -98,7 +109,7 @@ internal class AmoLockFixture(context: Context, latePolicy: String?, private val
                 fixReads++
                 duringFix()
                 return SourceResult.Located(
-                    RawLocation(LAT + phoneOffsetLat, LNG, 8.0, provider = "fused", timeMs = System.currentTimeMillis(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
+                    RawLocation(LAT + phoneOffsetLat, LNG, 8.0, provider = "fused", timeMs = components.trustedClock.nowMs(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
                 )
             }
         },
@@ -153,7 +164,7 @@ internal class AmoLockFixture(context: Context, latePolicy: String?, private val
         day.refreshDayGate()
     }
 
-    init { setLatePolicy(latePolicy); checkIn() }
+    init { trustAt(clockMs); setLatePolicy(latePolicy); checkIn() }
 
     fun meta(routeId: Long? = route): CaptureMeta = day.metaProvider.meta(routeId ?: 0L)
 

@@ -68,9 +68,14 @@
     <string name="sr_survey_answer">Answer:</string>
     <string name="sr_survey_pick">Select</string>
     <string name="sr_content_kv">KV</string>
+    <string name="sr_content_kv_desc">Key visual (KV) picture</string>
+    <string name="sr_content_av_desc">Advertisement (AV) video</string>
     <string name="sr_content_av">AV</string>
     <string name="sr_content_close_x">× Close</string>
     <string name="sr_journey_load_failed">Could not load the Sales Journey</string>
+    <string name="sr_bar_qc">QC</string>
+    <string name="sr_bar_qc_entry">QC entry</string>
+    <string name="sr_bar_slide">Slide</string>
     <string name="sr_call_ended_title">The call was ended on the phone</string>
     <string name="sr_call_ended_final">The Final Submit has already closed the day of this call, so no end of the call was written. The call is ended on the phone.</string>
     <string name="sr_call_ended_submit">The sales of the day of this call are already submitted, so no end of the call was written. The call is ended on the phone.</string>

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronField
 
@@ -66,6 +68,8 @@ fun filterPickItems(items: List<PickItem>, query: String): List<PickItem> {
 fun SearchPickerField(
     title: String, searchHint: String, items: List<PickItem>, selected: PickItem?, onPick: (PickItem) -> Unit, tag: String,
     modifier: Modifier = Modifier, enabled: Boolean = true, emptyText: String? = null, isError: Boolean = false,
+    /** The manual's round status marker before a chosen outlet (screenshots 43, 44); its colour only repeats what the label already says. */
+    leadingDot: Color? = null,
 ) {
     val look = LocalAronLook.current
     var open by rememberSaveable(tag) { mutableStateOf(false) }
@@ -84,6 +88,9 @@ fun SearchPickerField(
                 .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (leadingDot != null) {
+                Box(Modifier.padding(end = 10.dp).size(14.dp).clip(androidx.compose.foundation.shape.CircleShape).background(leadingDot))
+            }
             Text(
                 selected?.label ?: title, Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else look.inkMuted,
@@ -110,9 +117,10 @@ private fun PickerDialog(title: String, searchHint: String, items: List<PickItem
 @Composable
 fun PickerSheet(title: String, searchHint: String, items: List<PickItem>, query: String, onQuery: (String) -> Unit, none: String, clear: String, onPick: (PickItem) -> Unit) {
     val look = LocalAronLook.current
+    val colors = com.aktcl.aron.core.ui.LocalAronColors.current
     val shown = remember(items, query) { filterPickItems(items, query) }
     Column(
-        Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFFEBE5F0)).padding(20.dp),
+        Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(28.dp)).background(if (colors.sunlight) colors.surfaceSolid else AronLook.LavenderPanel).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge, color = look.ink)

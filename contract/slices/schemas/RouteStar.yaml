@@ -1,0 +1,152 @@
+RouteStar:
+  type: object
+  description: Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3
+    in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth
+    signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown,
+    never applied to a memo. Contract 1.24.0.
+  required:
+  - programme_id
+  - programme_code
+  - name_en
+  - name_bn
+  - month
+  - through_date
+  - as_of
+  - sr_name
+  - sr_code
+  - route_name
+  - lmwd
+  - wd
+  - ewd
+  - target
+  - std
+  - projection
+  - achievement_bp
+  - lms
+  - lmads
+  - pads
+  - growth_bp
+  - status_en
+  - status_bn
+  - achieved_slab
+  - slab_amount_mtk
+  - projected_slab
+  - projected_amount_mtk
+  additionalProperties: false
+  properties:
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    programme_code:
+      type: string
+      maxLength: 40
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    month:
+      $ref: '#/components/schemas/Month'
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    sr_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    sr_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    route_name:
+      type: string
+      maxLength: 120
+    lmwd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of last month that have CLOSED at the cut (all of them once `through_date` is past
+        the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the
+        divisor of `lmads`, over the same days as `lms`.
+    wd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of the month.
+    ewd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Elapsed working days under the single day-count convention (SkuProgress.dayCounts) of the calendar
+        anchor, `max(through_date + 1, the 1st of the bundle month)`; 0 when the window is empty (the 1st of the
+        month), and the figures that divide by it are then null, never zero.
+    target:
+      $ref: '#/components/schemas/Decimal3'
+    std:
+      $ref: '#/components/schemas/Decimal3'
+    projection:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    achievement_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Projection over target.
+    lms:
+      $ref: '#/components/schemas/Decimal3'
+      description: 'Last month''s sold quantity in the programme unit, over the CLOSED days of last month: FINAL
+        only once last month has closed (all of it once `through_date` is past its end); a bundle built ahead on
+        the last day of a month holds the days up to `through_date` only (the same days as `lmwd`).'
+    lmads:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+      description: 'Last month''s average daily sold quantity, `lms` divided by `lmwd`: FINAL only once last month
+        has closed. Null when `lmwd` is 0 (no closed working day of last month at the cut, e.g. a bundle built ahead
+        on the first day of a month whose first days are all non-working), never zero by default; a Decimal3 `0.000`
+        means a real zero (no sale over the closed working days).'
+    pads:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    growth_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+    status_en:
+      type: string
+      maxLength: 120
+    status_bn:
+      type: string
+      maxLength: 120
+    achieved_slab:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    slab_amount_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    projected_slab:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    projected_amount_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0

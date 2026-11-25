@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 184 | 3053 |
-| `dw` | 76 | 1233 |
+| `app` | 189 | 3097 |
+| `dw` | 81 | 1287 |
 
 ## Index
 
@@ -114,6 +114,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.offer_version_product`](#appoffer_version_product) | table | backend:masterdata | ONLINE | master | none | Product the offer version applies to, at category, brand, variant or SKU level. |
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
+| [`app.outlet_campaign_sku_target`](#appoutlet_campaign_sku_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page). |
+| [`app.outlet_campaign_target`](#appoutlet_campaign_target) | table | backend:admin | ONLINE | master | none | Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month. |
 | [`app.outlet_change_request`](#appoutlet_change_request) | table | backend:masterdata | OFFLINE | transaction | sensitive | A request from the field to add, close, edit, move or relocate an outlet, with proposed data and decision trail. |
 | [`app.outlet_class_history`](#appoutlet_class_history) | table | db | SERVER | master | none | One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, price type and status (route and cluster are in app.outlet_placement_history) (V0119); written by the history trigger on app.outlet, seeded from app.audit_log. |
 | [`app.outlet_location_history`](#appoutlet_location_history) | table | backend:masterdata | SERVER | master | none | Append-only history of every map pin an outlet has had and where it came from. |
@@ -155,12 +157,15 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.role_grant_map`](#approle_grant_map) | table | backend:auth | REFERENCE | master | none | Admin permission granted to each role, carried as the web permission claim. |
 | [`app.route`](#approute) | table | backend:masterdata | ONLINE | master | none | A sales route in a zone with its code, kind, visit days and label. |
 | [`app.route_assignment`](#approute_assignment) | table | backend:masterdata | ONLINE | master | none | Assignment of a user to a route as primary or cover for a date range. |
+| [`app.route_brand_kpi_target`](#approute_brand_kpi_target) | table | backend:admin | ONLINE | master | none | Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05). |
 | [`app.route_day`](#approute_day) | table | backend:sync | SERVER | transaction | none | One row per route and business date holding the day state and submit timestamps; created by the server from assignments. |
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
 | [`app.route_history`](#approute_history) | table | db | SERVER | master | none | One row is a period of a route's kind, visit kind, class and status (its zone is in app.route_zone_history) (V0119); written by the history trigger on app.route, seeded from app.audit_log. |
+| [`app.route_kpi_month`](#approute_kpi_month) | table | backend:admin | ONLINE | master | none | Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row. |
 | [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.route_programme_target`](#approute_programme_target) | table | backend:admin | ONLINE | master | none | Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal. |
 | [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
 | [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period in which a route belonged to a zone; written by triggers on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
@@ -272,13 +277,18 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
 | [`dw.v_offer`](#dwv_offer) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per discount programme (app.offer) with the rule of its current version. The portal exists; the field does not use it yet (memo offer line zero, bundle offers empty). is_effective = status active. |
 | [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
+| [`dw.v_outlet_campaign_sku_target`](#dwv_outlet_campaign_sku_target) | view | worker | SERVER | master | none | Stable view: campaign SKU target per outlet and month in base units (N-3). |
+| [`dw.v_outlet_campaign_target`](#dwv_outlet_campaign_target) | view | worker | SERVER | master | none | Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3). |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
 | [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
 | [`dw.v_programme_version`](#dwv_programme_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme. |
+| [`dw.v_route_brand_kpi_target`](#dwv_route_brand_kpi_target) | view | worker | SERVER | master | none | Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5). |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
+| [`dw.v_route_kpi_month`](#dwv_route_kpi_month) | view | worker | SERVER | master | none | Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5). |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
+| [`dw.v_route_programme_target`](#dwv_route_programme_target) | view | worker | SERVER | master | none | Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
 | [`dw.v_support_ticket`](#dwv_support_ticket) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided. |
 | [`dw.v_survey_response`](#dwv_survey_response) | view | backend:sync | OFFLINE | transaction | personal | Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query), every survey kind: outlet, date, question, answer, photo flag. A text answer is free text and can hold personal data (a phone number): the view is personal and bi_reader reads it without answer_text. The photo itself (a media id) is never in a reuse view. is_effective = not voided. |
@@ -2944,6 +2954,50 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (merged_into_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (pii_key_id) REFERENCES app.pii_key(key_id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
 
+## app.outlet_campaign_sku_target
+
+Campaign target of an outlet for a SKU and month in base units (the SKU table of the outlet target page).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `sku_id` | bigint | not null |  | SKU (app.sku). |
+| `qty_base` | bigint | not null |  | Target quantity in the SKU's base unit (sticks, pieces or dozens). |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id, sku_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
+## app.outlet_campaign_target
+
+Campaign target of an outlet for a month: STD target (programme unit) and memo target; the row is the outlet's membership of the campaign for that month.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Campaign programme (app.programme, kind campaign). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `std_target` | numeric(16,3) | not null |  | STD target of the month, up to three decimals (base units of the campaign SKUs; owner question Q-H). |
+| `memo_target` | integer | not null |  | Number of memos the outlet should place with the campaign SKUs in the month. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, month, outlet_id)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.outlet_change_request
 
 A request from the field to add, close, edit, move or relocate an outlet, with proposed data and decision trail.
@@ -4058,6 +4112,28 @@ Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.route_brand_kpi_target
+
+Memo target and allocated KPI of a route for a brand (product_node level brand) and month; the volume target is the sum of app.route_monthly_target over the brand's SKUs (D-TKPI-05).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `brand_id` | bigint | not null |  | Brand: an app.product_node of level brand (checked by the upload API). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `memo_target` | integer | not null |  | Number of memos containing the brand the route should reach in the month. |
+| `kpi_alloc_mtk` | bigint | not null |  | KPI money allocated to the brand for the month, integer milli-taka. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, brand_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (brand_id) REFERENCES app.product_node(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.route_day
 
 One row per route and business date holding the day state and submit timestamps; created by the server from assignments.
@@ -4204,6 +4280,28 @@ Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id) ON DELETE CASCADE`
 
+## app.route_kpi_month
+
+Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `kpi_alloc_mtk` | bigint | not null |  | Total KPI money allocated to the route for the month, integer milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points (5000 = 50.00%); null when none is set. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR, integer milli-taka; null when none is set. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.route_monthly_target
 
 Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload.
@@ -4245,6 +4343,27 @@ Planned visit days of a route, effective-dated.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
+
+## app.route_programme_target
+
+Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Programme (app.programme). |
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `target_qty` | numeric(16,3) | not null |  | Target in the programme unit (base units divided by programme.rules.unit_divisor), up to three decimals. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.route_target_batch
 
@@ -7293,6 +7412,49 @@ Stable view: one row per immutable offer version with its rule, validity, reward
 | `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active offer. |
 
+## dw.v_outlet_campaign_sku_target
+
+Stable view: campaign SKU target per outlet and month in base units (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `sku_code` | text | null |  | SKU code. |
+| `qty_base` | bigint | null |  | Target quantity in the SKU base unit. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
+## dw.v_outlet_campaign_target
+
+Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `std_target` | numeric(16,3) | null |  | STD target of the month, three decimals. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_outlet_masked
 
 Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107).
@@ -7392,6 +7554,26 @@ Stable view: one row per immutable programme version with its window, rules, tie
 | `data_origin` | app.data_origin | null |  | Always production: programmes carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active programme. |
 
+## dw.v_route_brand_kpi_target
+
+Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `brand_id` | bigint | null |  | Brand (app.product_node). |
+| `brand_code` | text | null |  | Brand code; null when the brand has none. |
+| `brand_name` | text | null |  | Brand English name. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_day
 
 Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true.
@@ -7463,6 +7645,24 @@ Stable view: active memos, outlets sold to, gross and net per route, business da
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the memos behind the row. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_route_kpi_month
+
+Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_monthly_target
 
 Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01).
@@ -7483,6 +7683,24 @@ Stable view: route x SKU monthly targets in base units with the month's working 
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
 | `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_route_programme_target
+
+Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `programme_id` | bigint | null |  | Programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `target_qty` | numeric(16,3) | null |  | Target in the programme unit, three decimals. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
 
 ## dw.v_stock_movement
 

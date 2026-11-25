@@ -410,3 +410,74 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 126 built (Android only): gates-2 45178efa + programmes d762c3aa1 + parity-sr-1 b08c3782; D-LEAD-TRAIN-126-01; GO to the integrator. Follow-ups after landing: A-GATE8 fixes the SR outlet-request photo claim before the gate (pre-existing) + Gradle input gaps; A-PROG3 fixes the 3-chain fallback double count; P-SR1b lows round; P-SR2b (7924c154c, 31 goldens changed, 16 conflicts resolved) merges INT again, then my review.
 - T-KPI3: confirming check of bfd2efd1d = 4 blocking (month-end anchor, RouteCalendar text, caches inside the snapshot, two stale doc lines); waiting for its next head.
 - CI note: web summary job failed twice on run 44372290509 with GitHub artifact storage 503 (egress limit); other runs passed; watch on the train run.
+
+## 2026-11-18 20:05 UTC
+
+- **Train 126 LANDED** (Android only): INT 0baf2b4dd. Lane ci 44379713186 green (19 rows, no re-run, no 503), INT ci 44382424499 (#2507) green, deploy #366 skipped by design (nothing deployable changed), health stays on build 2c7ff3c1b. APK aron-release-signed-dev-2507 42,155,997 B (+16,184 B). 13 goldens added, none modified. Size gate: 10 warnings (sr +8.0..8.8 %, amo +9.4..10.5 % vs the 6 Nov baseline; fail line +15 %); growth looks real, not a stale baseline; A-INT3 asked for a breakdown (no baseline change).
+- T-KPI3 third pass on b79247502: 3 blocking (Star last month not cut at through, unclamped anchor text, count tests assert only a sum). L-A13 8e807fd1b: 1 blocking (race latch reads server-wide pg_locks). Both sent.
+- After-landing rounds sent: A-GATE8 (SR outlet-request gate before photo claims + inputs; 7550ce14 fixture clock), A-PROG3 (3-chain fallback double count), P-SR1b (lows), P-SR2b (merge INT, then my review).
+- Not walked on a device: trains 121..126.
+
+## 2026-11-18 21:12 UTC
+
+- **Train 127 LANDED** (server, T1): INT 71941f7fc. Lane ci 44387855991 green (19 rows; every Repository gates step read: migrations 'order: 4 new migration(s)', oasdiff '0 breaking, 1.23.0 -> 1.24.0', slices up to date, Redocly valid), INT ci 44391010429 (#2516) green, deploy 44394153062 (#367) green: PITR 2026-11-18T20:49:29Z, migrate job caj-aron-dev-migrate-byiz9bk 'migrations succeeded' (console NOT in the deploy log), worker --0000247, SR smoke passed, health build 71941f7fc. APK aron-release-signed-dev-2516 42,155,413 B. e2e 383 of 383. ops-diagnose dispatched for 20:44..21:10Z to read the migrate console (0209 -> 0213).
+- Train 128 (Android) built: gates-2 b8bc2a70 + programmes d6ab7faef + parity-sr-1 abe7415d; D-LEAD-TRAIN-128-01.
+- P-SR2b ed947557c reviewed: 3 blocking (stale Slide pop-up state, Back discards QC without asking, golden without its dialog); fixed locally, holding for train 128.
+- L-A13 690a43fb6 PASS; rides the next server train after merging INT. T-KPI3 lows round local (b611dd910).
+- A-INT3 size reductions 026037794: only ~45 KB per app; sr +7.3 %, amo +8.6 %; owner decision 18 (reset baseline or keep the warning). The OkHttp public-suffix asset drop needs a short check before it lands.
+- Owner list: 17 decisions + item 18; laptop inventory; dump listing (attachment did not arrive); device walk tomorrow; portal brief.
+
+## 2026-11-18 21:25 UTC
+
+- **Train 127 migration proof** (ops-diagnose run 44398163195, window 20:44..21:10Z, green, no failed section): migrate execution caj-aron-dev-migrate-byiz9bk: pre-flight nothing to do (V0191, V0199 not pending), flyway validated 191, current version 0209, migrating to 0210, 0211, 0212, 0213, 'applied 4, now at 0213', about 2.6 s. PostgreSQL log in the window: 0 ERROR/FATAL, no lock waits, no cancelled statements. API: 0 ERROR/WARN rows; two ProbeFailed warnings at 21:01:54 and 21:01:59 while the new revision started, ready at 21:02:10. Worker: revision --0000247 running, 1 replica; ONE WARN row from logger aron.main at 20:50:51 (text withheld by design, cause unknown); KEDA ScaledObjectCheckFailed warnings during the roll. Plain 'error line' rows at each container start (1 migrate, 1 API, 4 worker): unexplained, same pattern as on train 125; to read from a private terminal.
+- Train 128 (Android) with the integrator: lane/lead-train128 68b105cfcd.
+
+## 2026-11-18 21:40 UTC
+
+- **Train 128 LANDED** (Android only): INT 664eb9161. Lane ci 44398259383 green (19 rows, no re-run; e2e 382 passed, 1 FLAKY, name being read), INT ci 44400812349 (#2523) green, deploy #368 skipped by design, health stays on 71941f7fc. APK aron-release-signed-dev-2523 42,156,877 B (+1,464 B). Goldens: 3 modified, 1 added as expected. Size gate: same 10 warnings (sr +8.0..8.8 %, amo +9.4..10.6 %). The five gate test classes could not be confirmed by name in the CI log (tasks executed, build successful): A-GATE8 asked to print a per-class summary.
+- After-landing: A-PROG3 starts the target/KPI/Star screens in slices; P-SR2b merges INT and pushes its three fixes, then re-review; A-GATE8 small round (sweep blind spots, summary line); P-SR1b done, idle.
+- CI gate flaw found via T-KPI3: lane migrations base = last green run of the branch, never moves; contract steps skipped behind it. Fix assigned to INFRA1 (lane/ci-migrations-base, D-CI-MIGRATIONS-BASE-01), T1 check by the lead before landing.
+- Next server train: T-KPI3 372acbd58 (lows) + L-A13 (after its merge round), both need a short check.
+
+## 2026-11-24 18:55 UTC
+
+- **Stall 18 Nov 21:40 to 24 Nov 18:00 UTC: weekly usage limit.** The allowance that reset on 17 Nov was spent in about 28 hours (eight lanes in parallel plus large checker workflows). Nothing was lost on origin; unpushed local lane commits may be gone if containers were replaced (P-SR2b 7b361e54, 5535f6fa; A-PROG3 c67e47548, f9ee09dea): lanes told to check and redo.
+- **Pacing rule from now (D-LEAD-PACE-03, lead's own):** at most THREE lanes working at once; one train per day unless a blocking fix needs more; checker workflows sized to the diff (one lens + refuters for small rounds; full panels only for T1 code); the two-hourly check stays silent and cheap. Review the rule when a get_session read shows the week more than half unused at mid-week.
+- Wave 1 (running): P-SR2b (push the three review fixes after merging INT), A-PROG3 (slice 1 of target/KPI/Star/campaign screens), INFRA1 (state of the CI migrations-base fix; readiness note for the new Azure account, no Azure access).
+- Wave 2 (after wave 1 reports): T-KPI3 372acbd58 short check + dash-perf measurement fix; L-A13 merge round; A-GATE8 small round; A-INT3 026037794 short check. Then one server train and one Android train.
+- P-SR1b shows "needs input: confirm push of 6e5ace77 despite the lead's do-not-push": left as is; the lead's instruction stands until the next Android train is planned.
+- Owner rows open: old Azure account end stated as "maybe 25 November" (tomorrow), laptop inventory not received, dump listing not received, 17 decisions + item 18, device walk, portal brief. Reminder delivered today (it was due 19 Nov and sat in the queue during the stall).
+
+## 2026-11-25 03:45 UTC
+
+- **Train 129 handed to the integrator** (GO sent 03:40): lane/lead-train129 a47b861f2e = INT 664eb9161 + lead docs + lane/ci-migrations-base 39ee78df5 + lane/android-parity-sr-2 9b9546a96. No server, db, contract or web change. Verify on landing: pushed sha, integration CI per job, deploy skipped or unchanged, APK name and size.
+- **Programmes lane NOT in train 129** (D-LEAD-TRAIN-129-02): SrApp.kt conflict with the parity lane's hook screens. A-PROG3 (session_014mnioMCDLry9MUsj6oF3Ka) retired with a handover at 1d9058a3f (code a9be020c0, final recheck passed). Successor **A-PROG4 = session_014mnioQKRmjp7FThuksVkoC**: waits for my "train 129 landed" message, then merges INT, resolves the conflict (real screens replace hooks), takes three small lows; that merge is reviewed before the next Android train; then screens 21 and 50.
+- **T-KPI3** (session_014mnioQ69orMsmNhwJntrJC) restarted 03:00: merge INT, dash-perf measurement fix, category_code on KPI by_pack (additive contract), answers on negative achieved and the Star SKU list. No report yet.
+- **INFRA1**: told to stay idle until the landing; follow-up lows after it (empty-list guard in the loop; lint only files absent from every base).
+- **Reviewer workflows:** agents that ran shell experiments stalled on approvals three times. Reviewers are now read-only (git show/diff, Grep, Read); the lead runs experiments itself from a script file in the scratchpad.
+- Active lanes now: T-KPI3, A-PROG4 (waiting), integrator. Wave 2 still to start: L-A13 merge round, A-GATE8 small round, A-INT3 026037794 short check.
+- Owner: no message since 18 Nov. Open: old Azure account (stated end 25 Nov), laptop inventory, dump listing, decisions 1 to 19 (19 = one decimal vs whole numbers for stick SKUs), device walk, portal brief.
+
+## 2026-11-25 04:10 UTC
+
+- **Train 129 LANDED**: INT 2d64ac3f87 (one push, fast-forward of a47b861f2e + train row). Integration CI 45540278299: 18 of 18 jobs green (lead's own read of the jobs API), e2e 383 passed, 0 flaky. Deploy #369 (run 45542056072) ran for real (unexpected: no server change; the integrator guesses the ci.yml change made every area run) and succeeded: 0 migrations, worker 0 restarts, SR slice smoke passed. Health read by the lead at 04:07: ok, build 2d64ac3f87. APK aron-release-signed-dev-2540 42,200,310 B (+0.10 % on train 128).
+- **Lead's miss:** the train branch had no lane CI run before the GO (two quick pushes to lane/lead-train129; no run on a47b861f2e). The integration run was the first proof. From now on the GO message names the lane CI run of the train head, or says explicitly that none is required.
+- Not verified: migrate and start-up consoles (not in the log), the size gate warning table, anything on a device.
+- Told after the landing: A-PROG4 (round 1: merge, SrApp.kt conflict, three lows), T-KPI3 (merge, test lows, dash-perf evidence attachment; T1 passed at 780820b1a, short confirming pass on the final diff), INFRA1 (follow-up: empty-list guard, lint only files absent from every base).
+- Next trains: server train = T-KPI3 (contract 1.25.0) + L-A13 merge round (not yet restarted) + INFRA1 follow-up; Android train = A-PROG4 round 1 (+ A-GATE8 small round, A-INT3 size commit when checked).
+
+## 2026-11-25 06:10 UTC
+
+- **Train 130 LANDED**: INT 218d11f6bc (fast-forward of c594bb029b + row). Lane CI of the train head 45548479428 18/18 (read by the lead before the GO); integration CI 45553394669 green (web and infra jobs skipped by the filter); deploy #370 ran and succeeded (0 migrations, worker 0 restarts, SR smoke passed); health read by the lead: build 218d11f6bc. APK aron-release-signed-dev-2547 42,259,381 B (+0.14 %).
+- **Size gate: 10 warnings, no failure.** sr-release +10.0 to +11.0 % per ABI (universal +6.4 %), amo-release +9.5 to +10.6 %, tso within 0.5 %. Warn is +5 %, fail +15 %: SR has about 4 points of room. A-INT3's reduction commit 026037794 (about 45 KB per app) is unchecked and not landed; owner item 18 (baseline) open.
+- Not verified: migrate and start-up consoles, test names, any device.
+- **Train 131** (server) being built: T-KPI3 3684b63db + CI follow-up 2a013a5b8.
+- A-PROG4 told to push its local round (screen 21 with parity look, screen 50 record, KPI lows) after merging INT.
+
+## 2026-11-25 07:35 UTC
+
+- **Train 131 LANDED**: INT 2767ef1eaa (fast-forward of 06aa916abc + row). Lane CI of the train head 45557920686 18/18; integration CI 45563267780 18/18 (lead's read); oasdiff "0 breaking change(s) ... 1.24.0 -> 1.25.0"; deploy #371 succeeded (0 migrations, worker 0 restarts, SR smoke passed); health read by the lead: build 2767ef1eaa. APK aron-release-signed-dev-2552 42,259,607 B. Not observable: a live KPI by_pack entry with category_code (the smoke does not print it); migrate and start-up consoles.
+- **Train 132** (Android) being built: programmes e7307cd8c (screen 21 passed at 6b0fdc2e0). A-PROG4 (session_014mnioQKRmjp7FThuksVkoC) retired with a handover; a successor is needed only for new programme work (phone use of category_code, Star today line once the server sends the SKU list).
+- Server follow-ups for T-KPI3 or a successor: campaign achievement over ALL campaign SKUs when the list is cut + a per-outlet cut flag; Star SKU list in the bundle; then the phone uses category_code.
+- Waiting: A-INT3 guard round on the APK size commit. Not restarted: L-A13 (loyalty merge round), A-GATE8 (small round).
+- Owner questions open (no owner message since 18 Nov): 1 to 18 as before; 19 one decimal vs whole numbers for stick SKUs; 20 multi-month selection on the target screen; 21 campaign STD per category vs one cross-category number. Plus the old Azure account (stated end 25 Nov; still serving deploys at 07:27 UTC today), laptop inventory, dump listing, device walk, portal brief.

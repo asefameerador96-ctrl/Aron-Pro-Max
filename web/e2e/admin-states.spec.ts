@@ -10,7 +10,7 @@ const PAGES = [
   "/admin", "/admin/master-data", "/admin/audit", "/admin/calendar", "/admin/config", "/admin/config/app-block", "/admin/config/audit", "/admin/config/changes", "/admin/config/day",
   "/admin/config/flags", "/admin/config/geofence", "/admin/config/history", "/admin/config/keys", "/admin/config/quarantine", "/admin/config/reach", "/admin/config/rules",
   "/admin/config/switches", "/admin/config/sync-health", "/admin/content", "/admin/data-entry", "/admin/day", "/admin/device-otps", "/admin/devices", "/admin/dues", "/admin/enrolment",
-  "/admin/entry-unlocks", "/admin/export-log", "/admin/house-dedupe", "/admin/mdm", "/admin/mdm/activity", "/admin/mdm/alerts", "/admin/mdm/enrolment", "/admin/mdm/policies",
+  "/admin/entry-unlocks", "/admin/export-log", "/admin/house-dedupe", "/admin/kpi-targets", "/admin/mdm", "/admin/mdm/activity", "/admin/mdm/alerts", "/admin/mdm/enrolment", "/admin/mdm/policies",
   "/admin/mdm/policies/new", "/admin/outlet-change", "/admin/outlet-import", "/admin/permissions", "/admin/prices", "/admin/print-templates", "/admin/quarantine", "/admin/radius",
   "/admin/releases", "/admin/route-targets", "/admin/rubrics", "/admin/sales-plan", "/admin/sr-lifecycle", "/admin/sr-transfer", "/admin/supervisor-targets", "/admin/surveys",
   "/admin/team", "/admin/tutorials", "/admin/wholesale-marking", ...GENERIC,

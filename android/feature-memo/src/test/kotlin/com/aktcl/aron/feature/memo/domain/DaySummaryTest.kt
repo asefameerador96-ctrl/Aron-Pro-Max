@@ -45,4 +45,31 @@ class DaySummaryTest {
         val s = DaySummaryCalculator.compute(listOf(m), skus, mapOf(105L to 10L))
         assertEquals(0, s.skus.single().discountMtk); assertEquals(42_000, s.discountAndOthersMtk); assertEquals(238_000, s.grandTotalMtk)
     }
+
+    // lead gate finding 3: the vendor's category order is for the SR screen only
+    private val mixed = mapOf(1L to SummarySku(1, "cigarette"), 2L to SummarySku(2, "bidi"), 3L to SummarySku(3, "match"), 4L to SummarySku(4, "lighter"))
+    private fun mixedMemo() = listOf(SummaryMemo("a", null, listOf(SummaryLine(1, 10, 10_000), SummaryLine(2, 20, 20_000), SummaryLine(3, 3, 3_000), SummaryLine(4, 4, 4_000)), emptyList(), 0, 37_000))
+
+    // the AMO summary and the PRINTED summary read compute(): it keeps the original alphabetical listing
+    @Test fun computeKeepsTheOriginalAlphabeticalCategoryOrderForTheAmoAndThePrint() {
+        val s = DaySummaryCalculator.compute(mixedMemo(), mixed, mapOf(1L to 50L, 2L to 50L, 3L to 50L, 4L to 50L))
+        assertEquals(listOf("bidi", "cigarette", "lighter", "match"), s.categories.map { it.categoryCode })
+    }
+
+    @Test fun thePrintedSummaryDoesNotFollowTheScreenOrder() {
+        val s = DaySummaryCalculator.compute(mixedMemo(), mixed, mapOf(1L to 50L, 2L to 50L, 3L to 50L, 4L to 50L))
+        val names = PrintNames({ "S$it" }, { "O$it" }, "sr", "r")
+        val before = PrintMapping.daySummary(s, 0, 0, 1L, names)
+        val after = PrintMapping.daySummary(DaySummaryCalculator.inCategoryOrder(s), 0, 0, 1L, names)
+        assertEquals("only the screen's copy is reordered; the paper's lines are the same either way", before, after)
+    }
+
+    // the SR host alone asks for the vendor order, and only the listing moves
+    @Test fun theSrScreenOrderIsCigaretteBidiLighterMatchAndNoFigureMoves() {
+        val s = DaySummaryCalculator.compute(mixedMemo(), mixed, mapOf(1L to 50L, 2L to 50L, 3L to 50L, 4L to 50L))
+        val sr = DaySummaryCalculator.inCategoryOrder(s)
+        assertEquals(listOf("cigarette", "bidi", "lighter", "match"), sr.categories.map { it.categoryCode })
+        assertEquals(s.categories.toSet(), sr.categories.toSet())
+        assertEquals(s.copy(categories = sr.categories), sr)
+    }
 }

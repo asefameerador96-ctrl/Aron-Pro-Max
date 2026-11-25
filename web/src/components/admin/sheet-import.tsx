@@ -40,7 +40,8 @@ export interface Parsed {
 /** Problems of the whole sheet: skip_rows cannot help (there is nothing good to load). */
 const SHEET_LEVEL = new Set(["missing_header", "too_many_rows", "no_rows"]);
 export interface PreviewBase {
-  rows: number;
+  /** Row count of the one-array uploads; the KPI preview counts per section instead. */
+  rows?: number;
   replaces?: number;
   errors: SheetIssue[];
   /** True when the server lists only the first errors (1000). */
@@ -70,6 +71,8 @@ export interface SheetImportConfig<P extends PreviewBase> {
   templateFile: string;
   /** Hint listing the sheet's columns. */
   columnsText: string;
+  /** Body member that carries the rows (default `rows`; the KPI targets use one array per section). */
+  rowsMember?: string;
   columnLabel: (column: string) => string;
   /** Message key of a problem code (`rt.problem.<code>`); a code without a message shows the generic text. */
   problemKey: (code: string) => string;
@@ -139,7 +142,7 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
 
   const flagBody = Object.fromEntries((cfg.flags ?? []).filter((f) => ticked[f.member]).map((f) => [f.member, f.value]));
   const skipOn = (cfg.flags ?? []).some((f) => f.skipsBadRows && ticked[f.member]);
-  const body = (dry: boolean) => ({ batch_uuid: batch, rows: parsed!.rows, dry_run: dry, ...flagBody });
+  const body = (dry: boolean) => ({ batch_uuid: batch, [cfg.rowsMember ?? "rows"]: parsed!.rows, dry_run: dry, ...flagBody });
   // (7) push 1b: with "skip rows" ticked, rows the browser already found bad are left out (and listed) and the good rows still load.
   const clientSkipped = parsed ? new Set(parsed.issues.filter((i) => !SHEET_LEVEL.has(i.code)).map((i) => i.row)).size : 0;
   const blocked = !parsed || parsed.rows.length === 0 || (parsed.issues.length > 0 && !(skipOn && parsed.issues.every((i) => !SHEET_LEVEL.has(i.code))));
