@@ -540,3 +540,7 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 139 (lane/lead-train139 3707212bb9 = INT 6cee5275a2 + docs + programmes b38ea3405e, Android only): lane CI 45652195725 18/18 green, GO sent.
 - Next: server train 140 = INT after 139 + docs + lane/sr-targets-server 3705b9ac6e (detail text only, PASS). After 140 both lanes have nothing open: T-KPI4 handover written; A-PROG5 writing its handover.
 - Owed to the owner in the evening report: device-walk list docs/status/sr-programmes-device-walk.md (on INT after train 139).
+
+## 2026-11-25 17:00 UTC
+- Train 139 LANDED: INT a6d449ab6f (Android only), integration run 45657587039 green, deploy skipped by design, live build stays 6cee5275a2. APK aron-release-signed-dev-2598 42,059,297 B. Size gate: sr +9.9..+10.9 % (universal +6.3 %), amo +8.6..+9.6 % (universal +5.3 %), tso -0.7..-1.4 %; warnings only (owner item 18 open). Device-walk list on INT: docs/status/sr-programmes-device-walk.md. Nothing walked on a device.
+- Train 140 being built (server, targets lane 3705b9ac6e).
