@@ -3,8 +3,11 @@ package com.aktcl.aron.rules
 /**
  * SR Target and Achievement by SKU (manual screen 10, D-58 amended 2026-10-04, doc 16 K-13, R-23; lane T-KPI1, N-2).
  *
- * Integers in, integers out, rounded ONCE half up, no floating point (same style as [Percent] and [Targets]). The phone and
- * the server call these same functions; the server's own figures are the oracle of the phone's local recomputation.
+ * Integers in, integers out, rounded ONCE half up, no floating point (same style as [Percent] and [Targets]). The server
+ * calls [row] on whole base units. The Android SKU target screen (lane android-sr-programmes, D-SRPROG-11) uses only [dayCounts]
+ * and the [Calendar]: it keeps the Decimal3 target and the achieved quantity unrounded, divides the raw figure by the day count and
+ * the unit factor as one exact quotient and rounds ONCE at display in the unit shown (a packet, a box, a dozen), so a figure on
+ * the phone can differ in the last decimal from the whole-base-unit figures of [row] (target 500 over 14 days: 36 here, 35.7 on the phone).
  *
  *   ADS  = achieved / elapsed working days        PADS = ADS (default, owner question Q-B)
  *   TADS = target / elapsed working days          RADS = remaining / remaining working days

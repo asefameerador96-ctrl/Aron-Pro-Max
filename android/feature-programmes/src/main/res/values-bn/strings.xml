@@ -152,4 +152,96 @@
     <string name="pg_shop_territory">টেরিটরি</string>
     <string name="pg_shop_zone">জোন</string>
     <string name="pg_pack_base">%1$s: %2$s %3$s</string>
+    <!-- SKU target and achievement (manual 10) -->
+    <string name="pg_tgt_title">টার্গেট ও অ্যাচিভমেন্ট</string>
+    <string name="pg_tgt_tab_std">এস টি ডি</string>
+    <string name="pg_tgt_target">টার্গেট</string>
+    <string name="pg_tgt_achieved">অ্যাচিভ</string>
+    <string name="pg_tgt_remaining">বাকি</string>
+    <string name="pg_tgt_percent">অর্জন</string>
+    <string name="pg_tgt_ads">ADS</string>
+    <string name="pg_tgt_tads">TADS</string>
+    <string name="pg_tgt_pads">PADS</string>
+    <string name="pg_tgt_rads">RADS</string>
+    <string name="pg_tgt_unit_packet">প্যাকেট</string>
+    <string name="pg_tgt_unit_box">বক্স</string>
+    <string name="pg_tgt_unit_dozen">ডজন</string>
+    <string name="pg_tgt_unit_stick">স্টিক</string>
+    <string name="pg_tgt_unit_piece">পিস</string>
+    <string name="pg_tgt_through">সার্ভারের হিসাব %1$s পর্যন্ত</string>
+    <string name="pg_tgt_through_first">সার্ভারের হিসাব: এ মাসের কোনো দিন এখনো শেষ হয়নি (১ তারিখ থেকে)</string>
+    <string name="pg_tgt_as_of">%1$s অনুযায়ী</string>
+    <string name="pg_tgt_today_phone">আজ এই ফোনে: %1$s %2$s (উপরের হিসাবে নেই)</string>
+    <string name="pg_tgt_offline">অফলাইন: শেষ ডাউনলোড দেখানো হচ্ছে।</string>
+    <string name="pg_tgt_no_calendar">এই ডাউনলোডে কর্মদিবসের সংখ্যা নেই: দৈনিক গড় ড্যাশ দেখাচ্ছে।</string>
+    <string name="pg_tgt_truncated">ডাউনলোড ৫০০ সারিতে কাটা হয়েছে: কিছু SKU দেখানো হয়নি।</string>
+    <string name="pg_tgt_empty">এ মাসের জন্য কোনো SKU টার্গেট নেই।</string>
+    <plurals name="pg_tgt_unconfirmed">
+        <item quantity="one">আগের দিনের %1$sটি মেমো সার্ভার এখনো নিশ্চিত করেনি; এটি হিসাবে নেই।</item>
+        <item quantity="other">আগের দিনের %1$sটি মেমো সার্ভার এখনো নিশ্চিত করেনি; এগুলো হিসাবে নেই।</item>
+    </plurals>
+    <plurals name="pg_tgt_fork">
+        <item quantity="one">%1$sটি মেমোর দুটি সংশোধন আছে; সমাধান না হওয়া পর্যন্ত এই ফোনের আজকের হিসাবে বাদ।</item>
+        <item quantity="other">%1$sটি মেমোর দুটি করে সংশোধন আছে; সমাধান না হওয়া পর্যন্ত এই ফোনের আজকের হিসাবে বাদ।</item>
+    </plurals>
+    <!-- KPI Dashboard and Brand wise KPI (manual 60, 61): English where the reference screens are English -->
+    <string name="pg_kpi_title">KPI Dashboard</string>
+    <string name="pg_kpi_brands_title">Brand wise KPI</string>
+    <string name="pg_kpi_allocated">বরাদ্দকৃত কেপিআই</string>
+    <string name="pg_kpi_achieved">Achieved KPI</string>
+    <string name="pg_kpi_achievement">অর্জন</string>
+    <string name="pg_kpi_volume_title">Volume Target vs Achievement</string>
+    <string name="pg_kpi_memo_title">Memo Target vs Achievement</string>
+    <string name="pg_kpi_blm_title">BLM Target vs Achievement</string>
+    <string name="pg_kpi_cpr_title">CPR - Target Call vs Successful Call</string>
+    <string name="pg_kpi_total_target">Total Target</string>
+    <string name="pg_kpi_total_achievement">Total Achievement</string>
+    <string name="pg_kpi_brand">ব্রান্ড</string>
+    <string name="pg_kpi_volume">Volume</string>
+    <string name="pg_kpi_memo">মেমো</string>
+    <string name="pg_kpi_see_all">See all brands (%1$s)</string>
+    <string name="pg_kpi_target_cpr">Target CPR</string>
+    <string name="pg_kpi_achieved_cpr">Achieved CPR</string>
+    <string name="pg_kpi_kpi_today">KPI Achieved Today</string>
+    <string name="pg_kpi_unit_memo">মেমো</string>
+    <string name="pg_kpi_empty">এ মাসের জন্য কোনো কেপিআই নেই।</string>
+    <string name="pg_kpi_incomplete">এই ডাউনলোডে কিছু রুটের কেপিআই নেই অথবা ব্র্যান্ডের তালিকা কাটা: একাধিক রুটের শতকরা হার দেখানো হচ্ছে না।</string>
+    <string name="pg_kpi_unit_unknown">একক স্পষ্ট নয়</string>
+    <string name="pg_kpi_brands_cut">ডাউনলোড কাটা হয়েছে: কিছু ব্র্যান্ড দেখানো হয়নি।</string>
+    <string name="pg_kpi_volume_left_out">যে ম্যাচ বা লাইটার ব্র্যান্ডের হিসাব ফোন মেলাতে পারেনি সেটি এখানে নেই; মেমো তালিকায় দেখুন।</string>
+    <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
+    <string name="pg_kpi_on_memo">KPI on - Memo</string>
+    <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>
+    <string name="pg_kpi_total_volume">মোট ভলিউম</string>
+    <string name="pg_kpi_total_memo">মোট মেমো</string>
+    <string name="pg_kpi_fmc_brands">FMC BRANDS</string>
+    <string name="pg_kpi_blm_categories">BLM</string>
+    <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
+    <string name="pg_kpi_cat_match">ম্যাচ</string>
+    <string name="pg_kpi_cat_lighter">লাইটার</string>
+    <string-array name="pg_months_full">
+        <item>জানুয়ারি</item><item>ফেব্রুয়ারি</item><item>মার্চ</item><item>এপ্রিল</item><item>মে</item><item>জুন</item>
+        <item>জুলাই</item><item>আগস্ট</item><item>সেপ্টেম্বর</item><item>অক্টোবর</item><item>নভেম্বর</item><item>ডিসেম্বর</item>
+    </string-array>
+    <!-- Match Box Lifting Star (manual 62): English where the reference screen is English -->
+    <string name="pg_star_title">Match Box Lifting Star</string>
+    <string name="pg_star_target">Target</string>
+    <string name="pg_star_std">STD</string>
+    <string name="pg_star_projection">Projection</string>
+    <string name="pg_star_achievement">Achievement</string>
+    <string name="pg_star_lms">LMS</string>
+    <string name="pg_star_lmads">LMADS</string>
+    <string name="pg_star_pads">PADS</string>
+    <string name="pg_star_growth">Growth</string>
+    <string name="pg_star_status">Status</string>
+    <string name="pg_star_slab">Achieved Slab</string>
+    <string name="pg_star_slab_amount">Slab Amount</string>
+    <string name="pg_star_projected">Projected Amount</string>
+    <string name="pg_star_tk">Tk</string>
+    <string name="pg_star_sr_name">SR Name: %1$s (%2$s)</string>
+    <string name="pg_star_sr_route">SR Route: %1$s</string>
+    <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
+    <string name="pg_star_lm_open">গত মাস এই কাটঅফে শেষ হয়নি: LMS ও LMADS চূড়ান্ত নয়।</string>
+    <string name="pg_star_empty">এ মাসের জন্য কোনো লিফটিং স্টার টার্গেট নেই।</string>
+    <string name="pg_star_truncated">রুটে একাধিক সক্রিয় প্রোগ্রাম আছে: শুধু প্রথমটি দেখানো হচ্ছে।</string>
 </resources>
