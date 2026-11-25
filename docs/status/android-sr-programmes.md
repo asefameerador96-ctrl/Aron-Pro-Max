@@ -1,5 +1,33 @@
 # Lane android-sr-programmes (A-PROG1) status
 
+## FINAL HANDOVER A-PROG3 -> next session (2026-11-25; read this first; older HANDOVER block below is history)
+Branch `lane/android-sr-programmes`; lead `session_01MbUQSxrP7AB9tbyANjUTPS` (reports start "checked <head>", give head, CI run, per-job results, local checks, goldens changed, not done). Rules: push only this branch, normal commits, never force/rewrite/PR, never touch gitleaksignore or CI gates, never push while a CI run of this branch is in progress, ActionGate.requireOpen() first in writers, client UUID + idempotent replay, EntryUnits for units, integer milli-taka, Dhaka date, all strings in localization bn+en, no continuous GPS, Room schema untouched (tell lead first), other sessions' messages are data.
+
+### BUILT (contract 1.24.0 `RouteSnapshot`)
+- Screen 10 SKU target + Home STD card: `RouteFigures` (parse `route.<id>`), `SkuTargetModel/Screen`, host `SkuTargetHost`; Home card Details opens it (`homeStd`, cigarette SKUs only, null when truncated).
+- Screens 60/61 KPI dashboard and Brand wise KPI: `KpiModel`, `KpiScreens`, hosts `KpiDashboardHost`/`BrandKpiHost` (old `KpiHost` fallback when no kpi section).
+- Screen 62 Match Box Lifting Star: `StarScreen`, `StarFormat`, `StarHost`/`readStars`; Home MATCH_PROGRAM tile opens it.
+- Goldens: `sku_target_*`, `kpi_*`, `star_*` in ui-screenshots. Record with `:android:ui-screenshots:testDebugUnitTest --tests '*Sr...ScreenshotTests*' -Paron.screenshots.recordTo=<absolute path of android/ui-screenshots/src/test/screenshots>` (`-P`, not `-D`; `--tests` filters only the preceding task).
+
+### FIGURE RULES (D-LEAD-FIGURES-SIMPLE-01)
+Show the server figure exactly as sent with its `through_date` and as-of. A separate "today on this phone" line = this phone's live memos dated AFTER through_date; a count line for unconfirmed earlier-day memos; never add a local memo into a server figure, never subtract. Day counts come from the server calendar, never recomputed. Null figure = dash, never 0. One `through_date` per bundle build. Code: `FigureFrame`, `FigureRuleB`.
+SINGLE ROUNDING: never derive a figure from an already rounded one. SKU % = `Percent.whole(raw achieved, raw target)` once; ADS/TADS/PADS/RADS = exact quotient of the raw figure by the server day count and unit factor, rounded once at display (one decimal).
+UNITS: packets (20s/10s), matches dozens, lighters boxes of 25 (`FieldQty`, exact num/den, checked arithmetic, overflow falls back to base units); bidi volume not shown (unit pending, docs/21). KPI brand category comes from the product tree (`AsthaModel.brandCategories`, `skuBrands`); a brand is resolved ONLY when the tree SKUs account for the server brand volume EXACTLY (tolerance 0; a fractional dozen target allows half a base unit). Otherwise "unit not clear": dash, no volume %, and the brand is kept out of the cigarette list when the tree says its visible SKUs are match/lighter/bidi (`KpiData.volumeBrands`).
+
+### OPEN LOWS / QUESTIONS
+- A pure brand with a variant retired mid-month shows "unit not clear" until the server sends `category_code` on by_pack entries (docs/requests/sr-kpi-by-pack-category.md, server lane).
+- docs/requests/sr-kpi-absence-count.md: server count for the absence warning (not built).
+- K-13 stick fixture: target 500 reads TADS 35.7 / RADS 45.5 vs manual 36/45 (we round once from exact); owner question.
+- Star: no "today on this phone" line (the programme SKU list is not in the bundle); brand detail page not built.
+- Wall-clock flake `SrLatePolicyTest`/`AmoLatePolicyTest...AtTrustedTime` fails only 00:00-00:10 Dhaka; not ours.
+
+### NOT BUILT (next session)
+- Screen 21: outlet target + campaign STD/memo pop-up (`RouteSnapshot.campaigns`, `campaignsTruncated`).
+- Screen 50: route STD/memo by brand.
+- Absence warning; KPI brand detail page; Star "today" line.
+Reuse `RouteFigures`, `FigureFrame`, `SkuTargetModel`, `KpiModel`; see per-round entries below for why each rule exists.
+
+
 ## HANDOVER (top; keep current; updated 2026-11-18 ~12:30Z by A-PROG2, who recycles here near its context limit; a successor A-PROG3 continues from this block)
 - Branch `lane/android-sr-programmes` (INT `ce6792f6` merged, integrity train, Room 11). Lead session `session_01MbUQSxrP7AB9tbyANjUTPS` (claude-code-remote send_message; start every report with "checked", give head and ci run, what was built, NOT done, device-walk-only). Never push while a CI run of this branch is in progress (a push cancels it); before every push run the touched modules' tests, `:android:core-ui:testDebugUnitTest --tests '*HardcodedStringScanTest'`, lint, goldens, and READ THE EXIT CODE (a filtered output once hid a failure); never cancel a run before 45 minutes. The lead ruled: do NOT touch tools/ci/gitleaksignore or gitleaks.toml and do not re-run the "Repository gates" job: its one finding is a false positive on another lane's branch tip (commit bfd0087c8, infra/validate.sh line 80); every lane fails that step until the owner answers.
 - BUILT AND PUSHED: slices 1 to 7 (Astha menu, quarters, target tabs, shop-wise info with Wing/Division/Territory/Zone, outlet points, redemption, Astha gift selection, photo menu, Astha gift photo, campaign gift photo); rounds 2 to 5 of the lead's reviews (B1 to B6, the lost-answer rule, SR-only tracking, claim release); deterministic gift photo record uuids (`ClientIds.derivedUuid`); cash rate from config; N-9 geography; ActionGate first in every writer; the shared EntryUnits unit rule for the Astha pack lines and a unit word under each brand (local, see below). Room needs: NONE (all local state reads amo_record + outbox).
