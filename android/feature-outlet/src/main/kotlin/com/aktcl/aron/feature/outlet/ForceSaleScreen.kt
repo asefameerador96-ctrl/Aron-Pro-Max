@@ -49,8 +49,22 @@ object ForceSaleTags {
 fun GeoPhotoBlock(
     state: GeoPhotoState, onShutter: () -> Unit, modifier: Modifier = Modifier, note: String? = null,
     @androidx.annotation.StringRes takeLabel: Int = R.string.out_take_photo,
+    /**
+     * The SR's outlet forms (manual 42 and 44), where the vendor shows the wide gradient button and nothing else before a
+     * capture. The card, the badge and the explaining note appear only once there IS something to report — a stored fix, an
+     * attached photo or a mocked one — so the empty form reads exactly as the rep knows it and no warning is ever silent.
+     */
+    vendor: Boolean = false,
 ) {
     val look = LocalAronLook.current
+    if (vendor && state.photo == null && state.accuracyMeters == null && !state.geoMocked) {
+        // reverse = the manual's purple-at-the-left to crimson-at-the-right ramp (#4A1C99 to #A73964), the GEO button's own direction
+        AronPrimaryButton(
+            stringResource(takeLabel), onShutter,
+            modifier.fillMaxWidth().testTag(ForceSaleTags.PHOTO), enabled = !state.busy, reverse = true,
+        )
+        return
+    }
     FormCard(modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {

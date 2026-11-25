@@ -118,7 +118,7 @@ internal fun FormBar(primary: BarAction, secondary: BarAction? = null, reason: S
             }
             AronPrimaryButton(
                 primary.text, primary.onClick, Modifier.weight(if (secondary != null) 0.6f else 1f).then(primary.tag?.let { Modifier.testTagged(it) } ?: Modifier),
-                enabled = primary.enabled,
+                enabled = primary.enabled, glyph = primary.glyph,
             )
         }
     }
