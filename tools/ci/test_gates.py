@@ -944,11 +944,63 @@ class MigrationsBase(unittest.TestCase):
         self.assertIn(1, results.values(), "the gate fails when ANY base fails")
         self.assertTrue(green_head)
 
+    def _migrations_step(self):
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        i = ci.index("- name: Migrations (shipped ones unchanged")
+        run = ci[ci.index("run: |\n", i) + len("run: |\n"):]
+        lines = []
+        for line in run.splitlines():
+            if line.startswith("          "):
+                lines.append(line[10:])
+            elif line.strip() == "":
+                lines.append("")
+            else:
+                break
+        return "\n".join(lines)
+
+    def test_an_empty_base_list_fails_instead_of_running_zero_checks(self):
+        step = self._migrations_step()
+        for bases in ("", "   "):
+            r = subprocess.run(["bash", "-e", "-c", step], cwd=self.repo, env={**os.environ, "MIGRATIONS_BASES": bases}, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, "empty list must not end green")
+            self.assertIn("refusing to run zero checks", r.stdout + r.stderr)
+
+    def test_squawk_lints_only_files_absent_from_every_base(self):
+        # I0 shipped V0004; A did not. Against base A the file V0004 looks new; with I0 named as another base it is not linted again.
+        self.git("checkout", "-q", "-b", "int")
+        self.write("V0004__shipped.sql", "SET lock_timeout = '5s';\nCREATE TABLE s4 (id bigint PRIMARY KEY);\n")
+        self.commit("I0: integration ships V4")
+        i0 = self.sha()
+        self.git("checkout", "-q", "-b", "lane", self.stale)
+        Path(self.repo, "lane_a.txt").write_text("x\n")
+        self.commit("A")
+        a = self.sha()
+        self.git("merge", "-q", "--no-ff", "--no-edit", i0)
+        self.write("V0005__lane.sql", "SET lock_timeout = '5s';\nCREATE TABLE lane5 (id bigint PRIMARY KEY);\n")
+        self.commit("lane adds its own V5")
+        fake = Path(self.repo, "fake-squawk.sh")
+        fake.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$LINT_LOG\"\n")
+        fake.chmod(0o755)
+        log = Path(self.repo, "lint.log")
+
+        def run(also):
+            log.write_text("")
+            env = {**os.environ, "LINT_LOG": str(log), "MIGRATIONS_ALSO_SHIPPED": also}
+            r = subprocess.run(["bash", "tools/ci/migrations-check.sh", a, str(fake)], cwd=self.repo, env=env, capture_output=True, text=True)
+            return r.returncode, log.read_text(), r.stdout + r.stderr
+        rc, linted, out = run("")
+        self.assertIn("V0004__shipped.sql", linted, "without the other base the shipped file looks new")
+        rc, linted, out = run(i0)
+        self.assertNotIn("V0004__shipped.sql", linted, "shipped at another merge-base: not linted again")
+        self.assertIn("V0005__lane.sql", linted, "the lane's own new migration is still linted")
+        self.assertIn("shipped at another merge-base", out)
+
     def test_the_workflow_wires_the_base_and_keeps_the_contract_steps_running(self):
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn('mig_lines="$(tools/ci/migrations-base.sh "${check}")"', ci)
         self.assertIn('tools/ci/migrations-check.sh "${b}" squawk || rc=1', ci, "the gate runs against EVERY base")
-        self.assertIn("for b in ${MIGRATIONS_BASES}; do", ci)
+        self.assertIn('for b in "${bases[@]}"; do', ci)
+        self.assertIn('MIGRATIONS_ALSO_SHIPPED="${others}"', ci)
         self.assertIn('echo "migrations base: ${l%% *} (${l#* })"', ci, "each chosen base and why are printed")
         gates = ci[ci.index("\n  gates:"):ci.index("\n  jvm:")]
         for name in ("Contract breaking-change check (oasdiff)", "contract/slices is current", "Lint contract/openapi.yaml (Redocly"):
