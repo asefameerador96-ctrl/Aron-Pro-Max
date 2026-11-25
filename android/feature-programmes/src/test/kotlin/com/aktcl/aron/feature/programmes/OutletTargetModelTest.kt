@@ -282,4 +282,35 @@ class OutletTargetModelTest {
         assertTrue(marker.perOutletCut); assertTrue(marker.outletListMayBeCut)
         assertTrue(!routeV27(emptyList(), campaignsTruncated = false, outletsTruncated = null).outletListMayBeCut)
     }
+
+    // ---- two routes of different shapes in one figures list: each entry is read by ITS route's shape, a cut route never cuts another route's outlets
+    @Test fun nY1_anUncutOldRouteNextToACutNewRouteStaysComplete() {
+        val old = route(listOf(campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = false) // old-style, nothing cut
+        val new = routeV27(listOf(entry(9, true), entry(8, false)), campaignsTruncated = true, outletsTruncated = null) // 1.27.0, one outlet's SKU list cut
+        val figs = listOf(old, new)
+        val five = OutletTargetModel.build(figs, 5, skus, noFrame)!!.campaigns.single()
+        assertTrue(!five.achievedPartial); assertTrue(!five.outletCut); assertTrue(!five.incomplete) // not cut by the other route's flag
+        assertTrue(OutletTargetModel.build(figs, 9, skus, noFrame)!!.campaigns.single().outletCut)
+        assertNull(OutletTargetModel.build(figs, 6, skus, noFrame)) // no entry anywhere and neither route may have missing outlets
+    }
+
+    @Test fun nY2_a126AllFlaggedRouteNextToAnUncutOldRouteIsCautiousOnlyForTheNoEntryOutlet() {
+        val old = route(listOf(campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = false)
+        val allFlagged = routeV27(listOf(entry(9, true), entry(8, true)), campaignsTruncated = true, outletsTruncated = null) // the indistinguishable shape
+        val figs = listOf(old, allFlagged)
+        assertTrue(!OutletTargetModel.build(figs, 5, skus, noFrame)!!.campaigns.single().incomplete) // the uncut old route's outlet is complete
+        assertTrue(OutletTargetModel.build(figs, 8, skus, noFrame)!!.campaigns.single().outletCut)
+        val none = OutletTargetModel.build(figs, 6, skus, noFrame)!!
+        assertTrue(none.campaigns.isEmpty()); assertTrue(none.truncated) // cautious: a cap cut cannot be excluded
+    }
+
+    @Test fun nY3_aCutOldRouteNextToAnUncutNewRouteCutsOnlyItsOwnOutlets() {
+        val old = route(listOf(campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = true) // old-style and cut
+        val new = routeV27(listOf(entry(8, false)), campaignsTruncated = false, outletsTruncated = null)
+        val figs = listOf(old, new)
+        val five = OutletTargetModel.build(figs, 5, skus, noFrame)!!.campaigns.single()
+        assertTrue(five.achievedPartial); assertTrue(five.incomplete)
+        val eight = OutletTargetModel.build(figs, 8, skus, noFrame)!!.campaigns.single()
+        assertTrue(!eight.achievedPartial); assertTrue(!eight.incomplete) // the new route's outlet is not cut by the old route's flag
+    }
 }

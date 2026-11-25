@@ -67,8 +67,8 @@ data class RouteCampaign(
     val outletId: Long, val programmeId: Long, val labelEn: String, val labelBn: String?, val month: String, val throughDate: String, val asOf: String?,
     val std: CampaignFigure, val memo: CampaignFigure, val skus: List<CampaignSku>,
     /**
-     * The per-outlet cut flag of a contract 1.26.0 server: the member is PRESENT only when true (this outlet's SKU table is cut, or another campaign of the outlet is not shown; `std` and `memo` still cover
-     * all its SKUs). Null: the member is absent (or null). A 1.26.0 server never sends the member for an uncut outlet, so absence alone does not tell the server's version: see [RouteFigures.perOutletCut].
+     * The per-outlet cut flag: this outlet's SKU table is cut, or another campaign of the outlet is not shown (`std` and `memo` still cover all its SKUs). A 1.27.0 server sends it on EVERY entry (true or false);
+     * a 1.26.0 server sent it only when true; an older one never. Null: the member is absent (or null). Its absence on one entry does not tell the server's version: see [RouteFigures.perOutletCut].
      */
     val truncated: Boolean? = null,
 )
@@ -84,7 +84,6 @@ data class RouteFigures(
     /** Contract 1.27.0: true when the route had more campaign outlets than the cap and the list was cut, so OUTLETS ARE MISSING (sent only when true; absent, null or false: every campaign outlet is in the list). An older server never sends it. */
     val campaignsOutletsTruncated: Boolean = false,
 ) {
-    /** The month of the figures: the calendar's, else the first section that has one. */
     /**
      * True when this route is read the 1.27.0 way (an entry is cut only by its own `truncated`; an outlet with no entry is "may be missing" only by `campaigns_outlets_truncated`). The bundle holds no
      * contract version, and BUNDLES ARE CACHED ON THE PHONE for offline use, so an older server's bundle can still be here. The signs:
@@ -107,6 +106,7 @@ data class RouteFigures(
         !perOutletCut -> campaignsTruncated
         else -> campaignsTruncated && campaigns.all { it.truncated == true }
     }
+    /** The month of the figures: the calendar's, else the first section that has one. */
     val month: String? get() = calendar?.month ?: kpi?.month ?: star?.month ?: targets.firstOrNull()?.month ?: campaigns.firstOrNull()?.month
 
     /** The last closed day the figures cover: the calendar's, else the newest through_date of any section; null when the bundle has none. */

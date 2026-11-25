@@ -53,16 +53,15 @@ object OutletTargetModel {
      * (the outlet's memos, lines of the SKUs the filter keeps), so nothing local is ever added into a server figure. Null when the bundle holds no campaign for the outlet and did not cut its list.
      */
     fun build(figures: List<RouteFigures>, outletId: Long, skus: Map<Long, SkuInfo>, frameOf: (RouteCampaign, (Long) -> Boolean) -> FigureFrame): OutletTargetData? {
-        // an older route: the route flag says something was cut, and an outlet with no entry may be one of the missing. A 1.27.0 route says it apart: the outlet list was cut (`campaigns_outlets_truncated`) or not
-        val anyCut = figures.any { it.campaignsTruncated }
+        // an outlet with NO entry may be one the server left out: per route, by its own shape (RouteFigures.outletListMayBeCut). Each entry is read by ITS route's shape, so a cut route never cuts another route's outlets
         val truncated = figures.any { it.outletListMayBeCut }
         // the same outlet on two routes carries the same figure twice: one view per programme
-        val mine = figures.flatMap { f -> f.campaigns.map { it to f.perOutletCut } }.filter { it.first.outletId == outletId }.distinctBy { it.first.programmeId to it.first.month }
+        val mine = figures.flatMap { f -> f.campaigns.map { Triple(it, f.perOutletCut, f.campaignsTruncated) } }.filter { it.first.outletId == outletId }.distinctBy { it.first.programmeId to it.first.month }
         if (mine.isEmpty()) return if (truncated) OutletTargetData(emptyList(), true) else null
         val order = skus.keys.withIndex().associate { it.value to it.index }
-        val views = mine.sortedBy { it.first.programmeId }.map { (c, perOutlet) ->
+        val views = mine.sortedBy { it.first.programmeId }.map { (c, perOutlet, routeFlag) ->
             // a 1.26.0 route (some entry carries the flag): only an entry with its own flag is cut. Any other route: the route flag cuts every outlet, as before.
-            val routeCut = anyCut && !perOutlet
+            val routeCut = routeFlag && !perOutlet
             val outletCut = perOutlet && c.truncated == true
             // a SKU the phone does not know, a negative quantity or a unit rule that fails drops THAT row only (never the whole read); the list is then incomplete and its totals are a dash
             val rows = c.skus.mapNotNull { s -> row(s, skus) }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { order[it.skuId] ?: Int.MAX_VALUE }))
