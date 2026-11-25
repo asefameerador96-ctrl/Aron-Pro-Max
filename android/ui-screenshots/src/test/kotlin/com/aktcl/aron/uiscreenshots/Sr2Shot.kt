@@ -217,17 +217,6 @@ class Sr2Shot {
         }
     }
 
-    // ---- Programme hook pages (manuals 10, 60, 61) ----
-    @Test fun hook_target_bn() = shot("sr2_hook_target_bn") {
-        ParityFrame(com.aktcl.aron.feature.memo.ui.programmeHookTitle(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET), null) {
-            com.aktcl.aron.feature.memo.ui.ProgrammeHookContent(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET, {})
-        }
-    }
-    @Test fun hook_kpi_bn() = shot("sr2_hook_kpi_bn") {
-        ParityFrame(com.aktcl.aron.feature.memo.ui.programmeHookTitle(com.aktcl.aron.feature.memo.ui.ProgrammeHook.KPI), null) {
-            com.aktcl.aron.feature.memo.ui.ProgrammeHookContent(com.aktcl.aron.feature.memo.ui.ProgrammeHook.KPI, {})
-        }
-    }
 
     // ================= slice 4 =================
     // The outlet screens (manuals 42 to 45), Tutorial (46), Sales Journey (59), Settings and Logout (63 to 65).
@@ -379,11 +368,6 @@ class Sr2Shot {
                 kpiStrip, com.aktcl.aron.feature.memo.ui.KpiMonth("November 2026", 10, 30),
                 { kpiCats[it] ?: it }, { kpiUnits[it] ?: it }, onSeeAllBrands = {},
             )
-        }
-    }
-    @Config(qualifiers = "bn-w360dp-h1000dp") @Test fun kpi_brand_bn() = shot("sr2_kpi_brand_bn") {
-        ParityFrame(stringResource(com.aktcl.aron.feature.memo.R.string.hook_brand_title), com.aktcl.aron.core.ui.R.drawable.aron_art_kpi) {
-            com.aktcl.aron.feature.memo.ui.BrandKpiContent({})
         }
     }
 

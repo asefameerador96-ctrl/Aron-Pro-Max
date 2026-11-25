@@ -37,7 +37,6 @@ import com.aktcl.aron.feature.memo.domain.KpiStrip
 
 object KpiDashboardTags {
     const val SCREEN = "kpi_dashboard"
-    const val BRAND_SCREEN = "kpi_brand"
     const val REAL = "kpi_dash_real"
     fun seeAll(section: String) = "kpi_see_all_$section"
 }
@@ -117,43 +116,6 @@ fun KpiDashboardContent(
                 Figure(stringResource(R.string.kpi_no_sale), localizedNumber(strip.noSaleOutlets.toLong()))
             }
         }
-    }
-}
-
-/**
- * Brand wise KPI (manual 61), opened by "See all brands". Every figure on it belongs to the deferred programme, so the page keeps
- * the vendor's two summary columns and its FMC BRANDS heading and says, once, that the figures arrive later. It shows no brand row
- * rather than a row of dashes, because an empty-looking brand list would read as "this brand sold nothing".
- */
-@Composable
-fun BrandKpiContent(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    ScrollColumn(
-        modifier.background(look.page).testTag(KpiDashboardTags.BRAND_SCREEN), contentPadding = PaddingValues(AronTokens.Space.Screen),
-        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-    ) {
-        AronInfoCard(stringResource(R.string.hook_note))
-        WhiteCard {
-            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Text(stringResource(R.string.kpi_brand_cig), style = MaterialTheme.typography.titleSmall, color = look.ink)
-                LaterLine(stringResource(R.string.kpi_brand_total_volume))
-                LaterLine(stringResource(R.string.kpi_brand_total_memo))
-            }
-        }
-        WhiteCard {
-            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Text(stringResource(R.string.kpi_brand_memo), style = MaterialTheme.typography.titleSmall, color = look.ink)
-                LaterLine(stringResource(R.string.kpi_brand_total_memo))
-                LaterLine(stringResource(R.string.kpi_brand_total_volume))
-            }
-        }
-        Text(stringResource(R.string.kpi_brand_section), style = MaterialTheme.typography.labelMedium, color = look.secondaryText)
-        WhiteCard {
-            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
-                LaterLine(stringResource(R.string.hook_brand_what))
-            }
-        }
-        com.aktcl.aron.core.ui.aron.AronTextButton(stringResource(R.string.hook_back), onBack, Modifier.fillMaxWidth())
     }
 }
 

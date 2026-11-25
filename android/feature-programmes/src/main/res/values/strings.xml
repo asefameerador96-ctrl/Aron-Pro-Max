@@ -152,4 +152,96 @@
     <string name="pg_shop_territory">Territory</string>
     <string name="pg_shop_zone">Zone</string>
     <string name="pg_pack_base">%1$s: %2$s %3$s</string>
+    <!-- SKU target and achievement (manual 10) -->
+    <string name="pg_tgt_title">Target &amp; Achievement</string>
+    <string name="pg_tgt_tab_std">STD</string>
+    <string name="pg_tgt_target">Target</string>
+    <string name="pg_tgt_achieved">Achieved</string>
+    <string name="pg_tgt_remaining">Left</string>
+    <string name="pg_tgt_percent">Achv.</string>
+    <string name="pg_tgt_ads">ADS</string>
+    <string name="pg_tgt_tads">TADS</string>
+    <string name="pg_tgt_pads">PADS</string>
+    <string name="pg_tgt_rads">RADS</string>
+    <string name="pg_tgt_unit_packet">packet</string>
+    <string name="pg_tgt_unit_box">box</string>
+    <string name="pg_tgt_unit_dozen">dozen</string>
+    <string name="pg_tgt_unit_stick">stick</string>
+    <string name="pg_tgt_unit_piece">piece</string>
+    <string name="pg_tgt_through">Server figures through %1$s</string>
+    <string name="pg_tgt_through_first">Server figures: no day of this month has closed yet (from the 1st)</string>
+    <string name="pg_tgt_as_of">As of %1$s</string>
+    <string name="pg_tgt_today_phone">Today on this phone: %1$s %2$s (not in the figures above)</string>
+    <string name="pg_tgt_offline">Offline: showing the last download.</string>
+    <string name="pg_tgt_no_calendar">The working-day numbers are not in this download: the daily averages show a dash.</string>
+    <string name="pg_tgt_truncated">The download was cut at 500 rows: some SKUs are not shown.</string>
+    <string name="pg_tgt_empty">No SKU target is set for this month.</string>
+    <plurals name="pg_tgt_unconfirmed">
+        <item quantity="one">%1$s memo of earlier days is not confirmed by the server yet; it is not in the figures.</item>
+        <item quantity="other">%1$s memos of earlier days are not confirmed by the server yet; they are not in the figures.</item>
+    </plurals>
+    <plurals name="pg_tgt_fork">
+        <item quantity="one">%1$s memo has two edits and is left out of today on this phone until it is sorted.</item>
+        <item quantity="other">%1$s memos have two edits and are left out of today on this phone until they are sorted.</item>
+    </plurals>
+    <!-- KPI Dashboard and Brand wise KPI (manual 60, 61): English where the reference screens are English -->
+    <string name="pg_kpi_title">KPI Dashboard</string>
+    <string name="pg_kpi_brands_title">Brand wise KPI</string>
+    <string name="pg_kpi_allocated">Allocated KPI</string>
+    <string name="pg_kpi_achieved">Achieved KPI</string>
+    <string name="pg_kpi_achievement">Achievement</string>
+    <string name="pg_kpi_volume_title">Volume Target vs Achievement</string>
+    <string name="pg_kpi_memo_title">Memo Target vs Achievement</string>
+    <string name="pg_kpi_blm_title">BLM Target vs Achievement</string>
+    <string name="pg_kpi_cpr_title">CPR - Target Call vs Successful Call</string>
+    <string name="pg_kpi_total_target">Total Target</string>
+    <string name="pg_kpi_total_achievement">Total Achievement</string>
+    <string name="pg_kpi_brand">Brand</string>
+    <string name="pg_kpi_volume">Volume</string>
+    <string name="pg_kpi_memo">Memo</string>
+    <string name="pg_kpi_see_all">See all brands (%1$s)</string>
+    <string name="pg_kpi_target_cpr">Target CPR</string>
+    <string name="pg_kpi_achieved_cpr">Achieved CPR</string>
+    <string name="pg_kpi_kpi_today">KPI Achieved Today</string>
+    <string name="pg_kpi_unit_memo">memo</string>
+    <string name="pg_kpi_empty">No KPI is set for this month.</string>
+    <string name="pg_kpi_incomplete">Some routes have no KPI in this download or a brand list was cut: the percentages over several routes are not shown.</string>
+    <string name="pg_kpi_unit_unknown">unit not clear</string>
+    <string name="pg_kpi_brands_cut">The download was cut: some brands are not shown.</string>
+    <string name="pg_kpi_volume_left_out">A match or lighter brand whose figures the phone cannot match is not listed here; see it under Memo.</string>
+    <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
+    <string name="pg_kpi_on_memo">KPI on - Memo</string>
+    <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>
+    <string name="pg_kpi_total_volume">Total volume</string>
+    <string name="pg_kpi_total_memo">Total memo</string>
+    <string name="pg_kpi_fmc_brands">FMC BRANDS</string>
+    <string name="pg_kpi_blm_categories">BLM</string>
+    <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
+    <string name="pg_kpi_cat_match">Match</string>
+    <string name="pg_kpi_cat_lighter">Lighter</string>
+    <string-array name="pg_months_full">
+        <item>January</item><item>February</item><item>March</item><item>April</item><item>May</item><item>June</item>
+        <item>July</item><item>August</item><item>September</item><item>October</item><item>November</item><item>December</item>
+    </string-array>
+    <!-- Match Box Lifting Star (manual 62): English where the reference screen is English -->
+    <string name="pg_star_title">Match Box Lifting Star</string>
+    <string name="pg_star_target">Target</string>
+    <string name="pg_star_std">STD</string>
+    <string name="pg_star_projection">Projection</string>
+    <string name="pg_star_achievement">Achievement</string>
+    <string name="pg_star_lms">LMS</string>
+    <string name="pg_star_lmads">LMADS</string>
+    <string name="pg_star_pads">PADS</string>
+    <string name="pg_star_growth">Growth</string>
+    <string name="pg_star_status">Status</string>
+    <string name="pg_star_slab">Achieved Slab</string>
+    <string name="pg_star_slab_amount">Slab Amount</string>
+    <string name="pg_star_projected">Projected Amount</string>
+    <string name="pg_star_tk">Tk</string>
+    <string name="pg_star_sr_name">SR Name: %1$s (%2$s)</string>
+    <string name="pg_star_sr_route">SR Route: %1$s</string>
+    <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
+    <string name="pg_star_lm_open">Last month has not closed at this cut: LMS and LMADS are not final.</string>
+    <string name="pg_star_empty">No Lifting Star target is set for this month.</string>
+    <string name="pg_star_truncated">The route has more than one active programme: only the first is shown.</string>
 </resources>
