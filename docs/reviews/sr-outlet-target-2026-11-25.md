@@ -203,3 +203,7 @@ Lows:
 - A today line whose lcm overflows is now emitted as a dash line even when every sold quantity is zero. The zero-quantity check runs before the dash line is returned, so only a zero-quantity overflow case is affected, and that case is practically unreachable. Honest, but it can show a '— packet' line for a day with no sales.
 - The goldens outlet_target_en_popup_cut, bn_popup, bn_popup_font20 and en_popup_phone_lines all use stdUnit=null, so they show the mixed-unit note and no unit word. The only golden showing a unit word is outlet_target_en_popup_one_unit. No golden shows the 'may be incomplete' today lines or the pop-up dropped-row note. Those are covered by Compose assertions in OutletTargetScreenTest, not by goldens. This is acceptable because no golden name claims it.
 - In bn_popup_font20 the pop-up body is clipped inside its scroll area at 'Achievement Memo'. This is the existing scroll behaviour and the Details and Okay buttons stay visible, so it is not a defect.
+
+# Final pass, code head 6b0fdc2e0 (branch head e7307cd8c, docs only), 2026-11-25: PASS
+
+Read by the lead (22 lines of code and tests): `stdUnit = if (truncated) null else ...` in OutletTargetModel.build, the neutral pg_ot_std_mixed text in both languages, the dead coerceAtLeast removed, the two screen tests now asserting "1,000" with no unit word on a cut list, a new model test for the cut case. Lane CI run 45567121511 green (lane's report). Four goldens re-recorded for the changed note text. Remaining lows are in the sections above. Not verified: any device.
