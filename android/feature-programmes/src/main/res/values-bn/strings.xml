@@ -271,7 +271,7 @@
     <string name="pg_ot_cut">এই রুটের ডাউনলোড কাটা হয়েছে: এই আউটলেটের আরও SKU বা আরও একটি ক্যাম্পেইন থাকতে পারে। অর্জন, বাকি ও মোট দেখানো হচ্ছে না।</string>
     <string name="pg_ot_total_ach">%1$s টার্গেট পরিমাণের অর্জন: %2$s</string>
     <string name="pg_ot_std_value">%1$s %2$s</string>
-    <string name="pg_ot_std_mixed">STD-তে স্টিক, পিস ও ডজন একসাথে গোনা হয়েছে (সার্ভারের হিসাব)।</string>
+    <string name="pg_ot_std_mixed">STD-তে বিভিন্ন SKU-র বেস ইউনিট যোগ করা হয় (সার্ভারের হিসাব)।</string>
     <string name="pg_ot_today_phone_partial">আজ এই ফোনে: %1$s মেমো (অসম্পূর্ণ হতে পারে; উপরের হিসাবে নেই)</string>
     <string name="pg_ot_today_cat_partial">আজ এই ফোনে, %3$s: %1$s %2$s (অসম্পূর্ণ হতে পারে; উপরের হিসাবে নেই)</string>
 </resources>

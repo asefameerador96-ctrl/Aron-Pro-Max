@@ -120,9 +120,9 @@ class OutletTargetScreenTest {
     }
 
     @Test fun thePopupTakesTheBanglaCampaignNameFromTheLocale() {
-        show(AppLanguage.BN) { OutletTargetPopup("X", data(), it, {}) }
+        show(AppLanguage.BN) { OutletTargetPopupCard("X", data(), it, {}) } // the card, not the dialog window: the test locale reaches it
         compose.onNodeWithText("সুপার স্টার লো", substring = true).assertExists()
-        compose.onNodeWithText("১,০০০", substring = true).assertExists()
+        compose.onNodeWithText("১,০০০ স্টিক").assertExists() // the one-unit fixture: number and unit word, exact
     }
 
     @Test fun aLongBanglaNameAtFontScaleTwoStillShowsEveryFigure() {
@@ -132,21 +132,21 @@ class OutletTargetScreenTest {
 
     // O2: a cut list says so on non-empty data and does not read as complete
     @Test fun aCutListSaysSoOnThePageAndThePopupWhenThereAreRows() {
-        show(AppLanguage.EN) { OutletTargetScreen("X", null, OutletTargetData(listOf(view(incomplete = true)), true), it) }
+        show(AppLanguage.EN) { OutletTargetScreen("X", null, OutletTargetData(listOf(view(incomplete = true, partial = true, stdUnit = null)), true), it) }
         compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
         compose.onNodeWithText("Cigarette achievement of the target quantity: —").assertExists() // the % of a cut list is a dash
     }
 
     @Test fun theCutNoteShowsInThePopupWithFigures() {
-        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true)), true), it, {}) }
-        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists(); compose.onNodeWithText("1,000 stick").assertExists()
+        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true, partial = true, stdUnit = null)), true), it, {}) }
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists(); compose.onNodeWithText("1,000").assertExists()
     }
 
     // R1: the STD unit word is only true when the campaign has one unit
     @Test fun stdFiguresCarryNoUnitWordWhenUnitsAreCountedTogetherAndANoteSaysSo() {
         show(AppLanguage.EN) { OutletTargetPopup("X", data(view(stdUnit = null)), it, {}) }
         compose.onNodeWithTag(OutletTargetTags.STD_MIXED).assertExists()
-        compose.onNodeWithText("Sticks, pieces and dozens are counted together in STD (server figure).").assertExists()
+        compose.onNodeWithText("STD adds base units of different SKUs (server figure).").assertExists()
         compose.onNodeWithText("1,000").assertExists() // no "stick" after the number
         assertEquals(0, compose.onAllNodesWithText("1,000 stick").fetchSemanticsNodes().size) // the number carries no unit word
     }
@@ -158,8 +158,11 @@ class OutletTargetScreenTest {
 
     // R2: a cut list keeps the target and dashes achievement and remaining (STD and memo)
     @Test fun aCutListKeepsTheTargetAndDashesAchievementAndRemaining() {
-        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true, partial = true)), true), it, {}) }
-        compose.onNodeWithText("1,000 stick").assertExists() // target STD kept
+        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true, partial = true, stdUnit = null)), true), it, {}) }
+        compose.onNodeWithText("1,000").assertExists() // target STD kept, with NO unit word: the kept target covers SKUs that were not sent
+        assertEquals(0, compose.onAllNodesWithText("1,000 stick").fetchSemanticsNodes().size)
+        compose.onNodeWithText("10").assertExists() // target memo kept
+        compose.onNodeWithTag(OutletTargetTags.STD_MIXED).assertExists()
         assertEquals(4, compose.onAllNodesWithText("—").fetchSemanticsNodes().size) // achievement and remaining, STD and memo
         compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
     }

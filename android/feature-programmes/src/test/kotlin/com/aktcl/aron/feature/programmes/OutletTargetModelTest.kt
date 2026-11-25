@@ -158,4 +158,10 @@ class OutletTargetModelTest {
     }
 
     @Test fun aNegativeNumeratorIsADash() { assertEquals("—", OutletTargetModel.totalText(-1L, 1L, UiLocale.EN)) }
+
+    @Test fun aCutListHasNoStdUnitWordEvenWhenEverySentSkuIsOneUnit() {
+        // 20 stick SKUs sent, 2 lighter SKUs cut: the kept Target STD covers the lighters too, so "stick" would be false
+        val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(901, 300, 0))), truncated = true)), 5, skus, noFrame)!!.campaigns.single()
+        assertNull(c.stdUnitKey); assertTrue(c.achievedPartial)
+    }
 }

@@ -70,7 +70,8 @@ object OutletTargetModel {
             }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { it.unitKey }))
             // the server's STD adds base units of every category: its unit word is only true when all the campaign's SKUs share one base unit
             val baseUnits = c.skus.map { skus[it.skuId]?.baseUnit }.distinct()
-            val stdUnit = baseUnits.singleOrNull()?.takeIf { it in setOf("stick", "piece", "dozen") }
+            // a cut list: the kept Target STD covers ALL the outlet's campaign SKUs while only some were sent, so the unit cannot be known
+            val stdUnit = if (truncated) null else baseUnits.singleOrNull()?.takeIf { it in setOf("stick", "piece", "dozen") }
             OutletCampaignView(
                 c.programmeId, c.labelEn, c.labelBn, c.month, c.throughDate, c.asOf, c.throughDate.take(7) < c.month,
                 c.std, c.memo, rows, totals(rows, incomplete), skuMissing, frame.today, frame.unconfirmedEarlier, frame.forkLeftOut, todayCats, incomplete, stdUnit, truncated,
@@ -115,7 +116,7 @@ object OutletTargetModel {
     fun totalText(num: Long?, den: Long, locale: UiLocale): String {
         if (num == null || num < 0L) return Percent.DASH
         val d = runCatching { Math.multiplyExact(den, 1000L) }.getOrNull() ?: return Percent.DASH
-        val t = Qty.tenths(num.coerceAtLeast(0L), d) ?: return Percent.DASH
+        val t = Qty.tenths(num, d) ?: return Percent.DASH
         val frac = t % 10L
         return Formats.integer(t / 10L, locale) + if (frac != 0L) Formats.digits(".$frac", locale) else ""
     }
