@@ -313,4 +313,15 @@ class OutletTargetModelTest {
         val eight = OutletTargetModel.build(figs, 8, skus, noFrame)!!.campaigns.single()
         assertTrue(!eight.achievedPartial); assertTrue(!eight.incomplete) // the new route's outlet is not cut by the old route's flag
     }
+
+    @Test fun nY4_anOutletWithNoEntryOnAnyRouteGetsTheCutNoteWhenAnyOneRoutesOutletListWasCutByThePlainMarkerAndEntriesStayPerRoute() {
+        val plain = routeV27(listOf(entry(8, false)), campaignsTruncated = true, outletsTruncated = true) // a plain 1.27.0 marker: outlets are missing on this route
+        val other = route(listOf(campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = false) // an uncut old-style route
+        val figs = listOf(other, plain)
+        val none = OutletTargetModel.build(figs, 6, skus, noFrame)!!
+        assertTrue(none.campaigns.isEmpty()); assertTrue(none.truncated) // may have been on the cut route: the cut note
+        val five = OutletTargetModel.build(figs, 5, skus, noFrame)!!.campaigns.single()
+        assertTrue(!five.incomplete); assertTrue(!five.achievedPartial) // the entry of the uncut route is complete
+        assertTrue(!OutletTargetModel.build(figs, 8, skus, noFrame)!!.campaigns.single().incomplete) // the listed outlet of the cut-list route is complete too
+    }
 }

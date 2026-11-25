@@ -53,7 +53,8 @@ object OutletTargetModel {
      * (the outlet's memos, lines of the SKUs the filter keeps), so nothing local is ever added into a server figure. Null when the bundle holds no campaign for the outlet and did not cut its list.
      */
     fun build(figures: List<RouteFigures>, outletId: Long, skus: Map<Long, SkuInfo>, frameOf: (RouteCampaign, (Long) -> Boolean) -> FigureFrame): OutletTargetData? {
-        // an outlet with NO entry may be one the server left out: per route, by its own shape (RouteFigures.outletListMayBeCut). Each entry is read by ITS route's shape, so a cut route never cuts another route's outlets
+        // Each ENTRY is read by ITS OWN route's shape and flag (the server computes the cap and the flags per route, SrCampaigns.load), so a cut on route A says nothing about the entries listed for route B.
+        // An outlet with NO entry on any route is different: the phone cannot know which route it would have been on, so it gets the cut note when ANY route's list may be cut ([RouteFigures.outletListMayBeCut]).
         val truncated = figures.any { it.outletListMayBeCut }
         // the same outlet on two routes carries the same figure twice: one view per programme
         val mine = figures.flatMap { f -> f.campaigns.map { Triple(it, f.perOutletCut, f.campaignsTruncated) } }.filter { it.first.outletId == outletId }.distinctBy { it.first.programmeId to it.first.month }
