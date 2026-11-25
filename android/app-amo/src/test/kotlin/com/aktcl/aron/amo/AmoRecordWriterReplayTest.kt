@@ -299,6 +299,23 @@ class AmoRecordWriterReplayTest {
         assertEquals(base + 1, outbox().size); assertEquals(rows, payloads("survey_response"))
     }
 
+    /** D-AGATE-32: with Developer options on (the gate closed) a replayed Save claims no photo: the replay branch used to claim before any gate. */
+    @Test fun aReplayedSurveySaveWithAClosedGateClaimsNoPhoto() = runBlocking {
+        val v = visit(); val survey = SurveyEntity(1, 1, "S", null); val photo = ClientIds.newUuid()
+        val rows = listOf(SurveyResponseRow(ClientIds.newUuid(), v, 1, 1, question, SurveyAnswer(bool = true, photoUuid = photo)))
+        writer.saveSurvey(v, survey, rows)
+        relaunch(); claims.clear() // the answers are stored, the claim was lost: the replay would claim again
+        val before = com.aktcl.aron.core.common.ActionGate.check
+        com.aktcl.aron.core.common.ActionGate.check = { false }
+        try {
+            val thrown = runCatching { writer.saveSurvey(v, survey, rows) }.exceptionOrNull()
+            assertTrue("the closed gate refuses the replay: $thrown", thrown is com.aktcl.aron.core.common.GateClosedException)
+            assertTrue("no photo is claimed behind a closed gate", claims.isEmpty())
+        } finally { com.aktcl.aron.core.common.ActionGate.check = before }
+        writer.saveSurvey(v, survey, rows) // open again: the same replay claims the photo once
+        assertEquals(listOf(photo, "survey", rows[0].clientUuid, ""), claims.single())
+    }
+
     @Test fun aSurveyPhotoNotClaimedBeforeAKillIsClaimedWhenSaveIsReplayed() = runBlocking {
         val v = visit(); val survey = SurveyEntity(1, 1, "S", null); val photo = ClientIds.newUuid()
         val rows = listOf(SurveyResponseRow(ClientIds.newUuid(), v, 1, 1, question, SurveyAnswer(bool = true, photoUuid = photo)))

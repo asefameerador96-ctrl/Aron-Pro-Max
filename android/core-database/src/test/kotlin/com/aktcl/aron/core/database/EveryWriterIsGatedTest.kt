@@ -61,7 +61,27 @@ class EveryWriterIsGatedTest {
      */
     private val funHeadRegex = Regex("""\n\s*(?:(?:private|internal|public|override|protected|open|operator|tailrec|infix|inline|suspend|abstract|external)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")
 
-    private val writeMarker = Regex("""[oO]utbox(Dao\(\))?\.insert|withTransaction""")
+    /**
+     * D-AGATE-32 (blind spot closed): the DAO write methods are DERIVED from the DAO sources (`@Insert`, `@Update`, `@Delete`, `@Upsert`, and an `@Query` that starts with INSERT, UPDATE, DELETE or
+     * REPLACE; the annotation may be on the line before the function), so a write method added to a DAO later is discovered with no edit here. A call `.name(` of one of them in a main source file
+     * outside the DAO package marks that file as a writer, with or without a transaction and with or without the outbox. HEURISTIC, honestly: a method of ANOTHER class with the same name would
+     * mark its file too (a false positive is named on a list, never silently ignored); a write through reflection or a raw `execSQL` / `compileStatement` is not seen (the second marker below
+     * finds those so that none exists outside the DAO package).
+     */
+    private val daoWriteAnnotation = Regex("""(@(?:Insert|Update|Delete|Upsert)\b(?:\([^)]*\))?|@Query\(\s*"\s*(?:INSERT|UPDATE|DELETE|REPLACE)[^"]*"\s*\))\s*(?:abstract\s+|open\s+)*(?:suspend\s+)?fun\s+(\w+)""", RegexOption.IGNORE_CASE)
+
+    private fun daoWriteNames(): Set<String> {
+        val dir = root().resolve("core-database/src/main/kotlin/com/aktcl/aron/core/database/dao")
+        val names = dir.listFiles { f -> f.extension == "kt" }.orEmpty().flatMap { f -> daoWriteAnnotation.findAll(f.readText()).map { it.groupValues[2] }.toList() }.toSet()
+        assertTrue("the DAO scan found only ${names.size} write methods: it is broken", names.size >= 40)
+        return names
+    }
+
+    private val writeMarker: Regex by lazy {
+        // `insert` alone is the outbox DAO's: it is matched through the outbox pattern, not as a bare method name
+        val direct = (daoWriteNames() - "insert").joinToString("|")
+        Regex("""[oO]utbox(Dao\(\))?\.insert|withTransaction|\.($direct)\(|\bexecSQL\(|compileStatement\(""")
+    }
 
     /** Files whose writers are OPERATIONAL: each must call `ActionGate.requireOpen()` (CaptureRepository is scanned per function above). */
     private val gatedFiles = setOf(
@@ -80,6 +100,18 @@ class EveryWriterIsGatedTest {
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/ActivityLog.kt" to "activity log",
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/ErrorReporter.kt" to "error reporter",
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncEngine.kt" to "sync bookkeeping (acks, digest, counters)",
+        // D-AGATE-32: files the DIRECT-DAO discovery (no transaction, no outbox) found. Every one writes the key-value table `sync_meta`, the outbox bookkeeping or the schema, never a field record.
+        "app-amo/src/main/kotlin/com/aktcl/aron/amo/RoomCallTargetsStore.kt" to "call-targets cache in sync_meta (a read model of the server's answer)",
+        "app-tso/src/main/kotlin/com/aktcl/aron/tso/TicketsHost.kt" to "drops the local mirror keys of tickets and events the server already answers (sync_meta); the ticket save itself is TicketDevice.save, gated (photo-claim sweep)",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/RouteDayLock.kt" to "the server's void of a submit cycle recorded in sync_meta (a sync result, not a field act)",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/LocalPurge.kt" to "retention purge of rows already acknowledged by the server (raw SQL; its own purge rules)",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/Migration9To10.kt" to "schema migration (raw SQL, runs once at database open)",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/BundleDownloader.kt" to "bundle refresh bookkeeping in sync_meta",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/ResumeConfigCheck.kt" to "config version and refresh flags in sync_meta",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncRules.kt" to "removes ack-resolution stash keys in sync_meta",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncWork.kt" to "purge cutoff and purge date markers in sync_meta",
+        "feature-attendance/src/main/kotlin/com/aktcl/aron/feature/attendance/DayCloseFailed.kt" to "failed-close counters in sync_meta (they drive the lock-out page, they are not a record)",
+        "feature-dayclose/src/main/kotlin/com/aktcl/aron/feature/dayclose/RoomDayAdapters.kt" to "marks a refused outbox row unseen (sync bookkeeping)",
     )
 
     private fun root(): File = listOf(File("."), File("android"), File("..")).first { File(it, "core-database/src/main").isDirectory || File(it, "android/core-database/src/main").isDirectory }
@@ -87,7 +119,7 @@ class EveryWriterIsGatedTest {
 
     private fun discovered(): Set<String> {
         val r = root()
-        return r.walkTopDown().filter { it.isFile && it.extension == "kt" && "/src/main/" in it.invariantSeparatorsPath && "/build/" !in it.invariantSeparatorsPath }
+        return r.walkTopDown().filter { it.isFile && it.extension == "kt" && "/src/main/" in it.invariantSeparatorsPath && "/build/" !in it.invariantSeparatorsPath && "/core/database/dao/" !in it.invariantSeparatorsPath }
             .filter { writeMarker.containsMatchIn(it.readText()) }.map { it.relativeTo(r).invariantSeparatorsPath }.toSet()
     }
 
@@ -142,18 +174,25 @@ class EveryWriterIsGatedTest {
     private val gatedByCaller = mapOf(
         // the four audit saves write through CaptureRepository.recordAmo / recordSurveyResponse, which gate first inside their own transaction (scanned above)
         "AmoRecordWriter.kt" to setOf("saveJointCallLocked", "saveSurveyLocked", "savePriceComplianceLocked", "saveAssessmentLocked"),
-        // the survey answers go through CaptureRepository (gated first inside the transaction); this transaction only groups them
-        "SrDay.kt" to setOf("saveSurvey"),
-        // retires a plan MIRROR row once the server plan holds the outlet: a read-model refresh, not an operational record
-        "TsoReadModels.kt" to setOf("plans"),
+        // TsoReadModels: `plans` retires a plan MIRROR row once the server plan holds the outlet; `cachePut` writes the read cache: read-model refreshes, not operational records
+        "TsoReadModels.kt" to setOf("plans", "cachePut", "refresh"),
+        // D-AGATE-32: `dismissRolloverNotice` deletes the phone's own rollover marks (clearPhoneMarks: the notice has been seen), a record of the phone, not an act; the TSO `refresh` overrides
+        // (leave, feedback) cache the server's answer and drop the local "not sent yet" mirror rows the server now holds: a read-model refresh
+        // SrDay.saveSurvey: the survey answers go through CaptureRepository (gated first inside the transaction); this transaction only groups them
+        "SrDay.kt" to setOf("saveSurvey", "dismissRolloverNotice"),
+        "AmoDay.kt" to setOf("dismissRolloverNotice"),
     )
+
+    /** How many declarations a named exemption must have (default one). `TsoReadModels.refresh` is the override of two sources (leave, feedback): both are read-model refreshes. */
+    private val exemptDeclarations = mapOf("TsoReadModels.kt.refresh" to 2)
 
     /** Each exemption names ONE function: a same-named overload added later would be exempt silently, so each name must be declared exactly once in its file. */
     @Test fun eachNamedExemptionIsOneUniqueFunction() {
         val files = gatedFiles.associateBy { it.substringAfterLast('/') }
         for ((name, fns) in gatedByCaller) for (fn in fns) {
             val n = Regex("""\bfun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?$fn\(""").findAll(file(files.getValue(name))).count()
-            assertEquals("$name.$fn must be declared exactly once (pin the signature if you add an overload)", 1, n)
+            val want = exemptDeclarations["$name.$fn"] ?: 1
+            assertEquals("$name.$fn must be declared exactly $want time(s) (pin the signature if you add an overload)", want, n)
         }
     }
 
@@ -193,6 +232,47 @@ class EveryWriterIsGatedTest {
         assertTrue("the gift photo save gates before the claim", photo.indexOf("ActionGate.requireOpen()") < photo.indexOf("claimPhoto(photoUuid"))
     }
 
+    /**
+     * D-AGATE-32: the direct-DAO discovery does not rely on one hand-kept name list. (a) The derived write-method names include the ones that were the blind spot (a plain `@Insert` used
+     * outside a transaction, a `@Query("DELETE ...")`, a multi-line annotation), so the scan cannot silently shrink. (b) No file other than the repositories and the named lists writes
+     * through the DAO: `everyWriteSourceIsOnANamedList` fails for a new one.
+     */
+    @Test fun theDirectDaoDiscoveryKnowsTheBlindSpotMethods() {
+        val names = daoWriteNames()
+        for (n in listOf("insertFix", "insertMemo", "clearPhoneMarks", "deleteMeta", "putMeta", "markMemoPrinted", "upsertJob", "markRefusedUnseen", "returnToPending")) assertTrue("the DAO scan must know $n", n in names)
+        // a read method must never be taken for a writer
+        for (n in listOf("meta", "tasks", "jobs", "phoneMarks", "clusterCreates")) assertFalse("$n is a read", n in names)
+        assertTrue("a direct call is a marker", writeMarker.containsMatchIn("capture.insertFix(row)"))
+        assertTrue("a delete in a launched block is a marker", writeMarker.containsMatchIn("background.launch { runCatching { capture.clearPhoneMarks(upTo) } }"))
+        assertFalse("a read is not a marker", writeMarker.containsMatchIn("val m = dao.meta(key)"))
+    }
+
+    /**
+     * D-AGATE-32: in [CaptureRepository] every function that calls a DAO write WITHOUT opening a transaction either gates first or is named with the reason. (Those with a transaction are
+     * scanned by [everyTransactionalWriterGatesFirst].)
+     */
+    private val repositoryDirectWritersNotGated = mapOf(
+        "addPhoneMark" to "a record of the phone (a mark), not an act",
+        "clearPhoneMarks" to "removes marks already sent",
+        "writeDaySubmit" to "private body of recordDaySubmit and recordCheckOut, which gate first inside their transaction (everyTransactionalWriterGatesFirst)",
+    )
+
+    @Test fun everyDirectDaoWriterOfTheRepositoryGatesOrIsNamed() {
+        val s = source(); val heads = funHeadRegex.findAll(s).toList()
+        val direct = (daoWriteNames() - "insert").joinToString("|")
+        val call = Regex("""\.($direct)\(""")
+        val found = ArrayList<String>(); val bad = ArrayList<String>()
+        heads.forEachIndexed { i, m ->
+            val body = s.substring(m.range.first, heads.getOrNull(i + 1)?.range?.first ?: s.length)
+            if ("withTransaction" in body || !call.containsMatchIn(body)) return@forEachIndexed
+            val fn = m.groupValues[1]; found += fn
+            val gate = body.indexOf("ActionGate.requireOpen()")
+            if ((gate < 0 || gate > call.find(body)!!.range.first) && fn !in repositoryDirectWritersNotGated) bad += fn
+        }
+        assertEquals("these repository functions write through the DAO outside a transaction without the gate first and are not named: $bad", emptyList<String>(), bad)
+        assertEquals("a stale allow-list hides a renamed writer", emptySet<String>(), repositoryDirectWritersNotGated.keys - found.toSet())
+    }
+
     /** D-AGATE-25: the check-out's open-work guard (item 6) runs AFTER the Developer options gate, never before it. */
     @Test fun theCheckOutGuardRunsAfterTheGate() {
         val body = writers().first { it.name == "recordCheckOut" }.body
@@ -220,7 +300,6 @@ class EveryWriterIsGatedTest {
         "AmoDay.kt.memoHeader" to "wiring lambda; AmoRecordWriter gates before every call", "TicketsHost.kt.refreshConfig" to "wiring lambda; TicketDevice.save gates before its claims",
         // the survey claims run AFTER the gated repository transaction (recordSurveyResponse gates first) except the replay branch below
         "SrDay.kt.saveSurvey" to "after the gated transaction (recordSurveyResponse gates first)",
-        "AmoRecordWriter.kt.saveSurveyLocked" to "after the gated transaction; the REPLAY branch claims photos of answers already stored without the gate (known, pre-existing, status file)",
     )
 
     @Test fun everyPhotoClaimComesAfterTheGateOrIsNamed() {

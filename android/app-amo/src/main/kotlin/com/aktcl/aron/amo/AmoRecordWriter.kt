@@ -157,6 +157,8 @@ class AmoRecordWriter(
         underCallLock { saveSurveyLocked(visitUuid, survey, rows) }
 
     private suspend fun saveSurveyLocked(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) {
+        // D-AGATE-32: the gate is first, ahead of the replay branch below, which claims photos without writing a row (a closed gate must leave no claim behind)
+        com.aktcl.aron.core.common.ActionGate.requireOpen()
         if (rows.isEmpty()) return
         val stored = db.captureDao().surveyResponsesOf(visitUuid)
         if (stored.isNotEmpty()) {
