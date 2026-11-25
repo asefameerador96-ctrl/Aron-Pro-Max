@@ -164,4 +164,49 @@ class OutletTargetModelTest {
         val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(901, 300, 0))), truncated = true)), 5, skus, noFrame)!!.campaigns.single()
         assertNull(c.stdUnitKey); assertTrue(c.achievedPartial)
     }
+
+    // ---- contract 1.26.0: the per-outlet `truncated` flag. The phone knows the server is 1.26.0 only by that field (a member only a 1.26.0 server sends, exactly when an outlet is cut); the bundle has no contract version.
+    private fun campaignCut(outlet: Long, skus: String, flag: String = """"truncated":true,""") =
+        campaign(outlet = outlet, skus = skus).replaceFirst("\"std\"", flag + "\"std\"")
+
+    @Test fun nW1_anOlderServerKeepsTodaysBehaviourACutRouteListCutsEveryOutlet() {
+        val d = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120))), truncated = true)), 5, skus, noFrame)!!
+        val c = d.campaigns.single()
+        assertTrue(d.routeCut); assertTrue(c.achievedPartial); assertTrue(!c.outletCut); assertTrue(c.incomplete); assertNull(c.stdUnitKey)
+    }
+
+    @Test fun nW2_aNewServerOutletThatIsNotCutIsCompleteEvenWhenAnotherOutletOfTheRouteWas() {
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaign(outlet = 5, skus = sku(900, 500, 120))), truncated = true)
+        assertTrue(r.perOutletCut)
+        val c = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!.let { assertTrue(!it.routeCut); it.campaigns.single() }
+        assertTrue(!c.achievedPartial); assertTrue(!c.outletCut); assertTrue(!c.incomplete)
+        assertEquals("stick", c.stdUnitKey); assertEquals(24L, c.totals.single().pct); assertTrue(c.totals.single().targetNum != null)
+    }
+
+    @Test fun nW3_aNewServerCutOutletShowsAchievementAndRemainingAsSentAndDashesOnlyThePhoneTotals() {
+        val r = route(listOf(campaignCut(5, sku(900, 500, 120))), truncated = true)
+        val d = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        val c = d.campaigns.single()
+        assertTrue(!d.routeCut); assertTrue(c.outletCut); assertTrue(!c.achievedPartial) // the server's STD and memo cover all the SKUs: shown as sent
+        assertEquals(CampaignFigure(1000, 300, 700), c.std); assertEquals(CampaignFigure(10, 4, 6), c.memo)
+        assertTrue(c.incomplete); assertNull(c.stdUnitKey)
+        val t = c.totals.single(); assertNull(t.targetNum); assertNull(t.soldNum); assertNull(t.pct) // computed on the phone from the cut table: a dash
+        assertEquals(24L, c.rows.single().pct) // the row is the server's own figure
+    }
+
+    @Test fun nW4_anEntryWithTheFlagAbsentOrNullOrFalseIsNotCutOnANewServerRoute() {
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0)), campaignCut(5, sku(900, 500, 0), flag = """"truncated":null,"""), campaignCut(6, sku(900, 500, 0), flag = """"truncated":false,""")), truncated = true)
+        listOf(5L, 6L).forEach { o -> assertTrue(!OutletTargetModel.build(listOf(r), o, skus, noFrame)!!.campaigns.single().outletCut) }
+    }
+
+    @Test fun nW5_aRouteWithNoCutAtAllIsCompleteOnBothServerGenerations() {
+        val d = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120))))), 5, skus, noFrame)!!
+        assertTrue(!d.routeCut); assertTrue(!d.campaigns.single().incomplete); assertTrue(!d.campaigns.single().outletCut)
+    }
+
+    @Test fun nW6_aCutOutletOfANewServerThatListsNoCampaignForTheAskedOutletStaysTheEmptyCutAnswer() {
+        val r = route(listOf(campaignCut(9, sku(900, 500, 0))), truncated = true)
+        val d = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        assertTrue(d.campaigns.isEmpty()); assertTrue(d.truncated) // the outlet may be one the route's outlet cap left out
+    }
 }

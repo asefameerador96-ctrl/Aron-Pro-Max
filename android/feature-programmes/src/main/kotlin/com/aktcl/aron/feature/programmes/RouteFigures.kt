@@ -25,8 +25,11 @@ data class SentCalendar(
     fun dayCounts(convention: SkuProgress.DayConvention = SkuProgress.DEFAULT_CONVENTION): SkuProgress.DayCounts = SkuProgress.dayCounts(skuCalendar(), convention)
 }
 
-/** Target and achieved base units for one pack size (`KpiPackFigure`). */
-data class PackFigure(val packFactor: Int, val target: Long, val achieved: Long)
+/**
+ * Target and achieved base units for one pack size (`KpiPackFigure`). [categoryCode] is the SKU category of the entry (contract 1.25.0, lower case); null from an older server, which does not send it
+ * (the phone then resolves the category from its product tree, as before).
+ */
+data class PackFigure(val packFactor: Int, val target: Long, val achieved: Long, val categoryCode: String? = null)
 
 data class KpiTotal(val target: Long, val achieved: Long, val bp: Long?)
 
@@ -61,6 +64,11 @@ data class CampaignSku(val skuId: Long, val targetQtyBase: Long, val soldQtyBase
 data class RouteCampaign(
     val outletId: Long, val programmeId: Long, val labelEn: String, val labelBn: String?, val month: String, val throughDate: String, val asOf: String?,
     val std: CampaignFigure, val memo: CampaignFigure, val skus: List<CampaignSku>,
+    /**
+     * The per-outlet cut flag of a contract 1.26.0 server: the member is PRESENT only when true (this outlet's SKU table is cut, or another campaign of the outlet is not shown; `std` and `memo` still cover
+     * all its SKUs). Null: the member is absent (or null). A 1.26.0 server never sends the member for an uncut outlet, so absence alone does not tell the server's version: see [RouteFigures.perOutletCut].
+     */
+    val truncated: Boolean? = null,
 )
 
 /**
@@ -73,6 +81,12 @@ data class RouteFigures(
     val campaigns: List<RouteCampaign>, val campaignsTruncated: Boolean, val targetsTruncated: Boolean, val starTruncated: Boolean,
 ) {
     /** The month of the figures: the calendar's, else the first section that has one. */
+    /**
+     * True when the server of this route sends the per-outlet cut flag (contract 1.26.0): at least one campaign entry carries a `truncated` member. The bundle holds no contract version, and a 1.26.0 server
+     * leaves the member out of an uncut entry, so this is the only sign: a field that ONLY a 1.26.0 server sends (it is sent exactly when an outlet is cut). A route that has no flagged entry, or an older
+     * server, is read the old way (a cut route list makes every outlet's achievement partial).
+     */
+    val perOutletCut: Boolean get() = campaigns.any { it.truncated != null }
     val month: String? get() = calendar?.month ?: kpi?.month ?: star?.month ?: targets.firstOrNull()?.month ?: campaigns.firstOrNull()?.month
 
     /** The last closed day the figures cover: the calendar's, else the newest through_date of any section; null when the bundle has none. */
@@ -119,7 +133,7 @@ data class RouteFigures(
 
         private fun packs(o: JsonObject): List<PackFigure> = o.list("by_pack").mapNotNull { e ->
             val p = e as? JsonObject ?: return@mapNotNull null
-            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null)
+            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null, p.str("category_code")?.trim()?.lowercase()?.takeIf { it.isNotBlank() })
         }
 
         private fun total(o: JsonObject?): KpiTotal? = o?.let { KpiTotal(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("bp")) }
@@ -156,6 +170,7 @@ data class RouteFigures(
                 o.long("outlet_id") ?: return null, o.long("programme_id") ?: return null, o.str("label_en") ?: return null, o.str("label_bn"), o.str("month") ?: return null, o.str("through_date") ?: return null, o.str("as_of"),
                 figure(o["std"] as? JsonObject) ?: return null, figure(o["memo"] as? JsonObject) ?: return null,
                 o.list("skus").mapNotNull { s -> (s as? JsonObject)?.let { CampaignSku(it.long("sku_id") ?: return@mapNotNull null, it.long("target_qty_base") ?: return@mapNotNull null, it.long("sold_qty_base") ?: return@mapNotNull null) } },
+                o.bool("truncated"),
             )
         }
 

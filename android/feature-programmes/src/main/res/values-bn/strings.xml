@@ -219,6 +219,11 @@
     <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
     <string name="pg_kpi_cat_match">ম্যাচ</string>
     <string name="pg_kpi_cat_lighter">লাইটার</string>
+    <string name="pg_kpi_part_cigarette">সিগারেট</string>
+    <string name="pg_kpi_part_bidi">বিড়ি</string>
+    <string name="pg_kpi_part_other">অন্যান্য</string>
+    <string name="pg_kpi_part_sep">" · "</string>
+    <string name="pg_kpi_part_unknown">%1$s —</string>
     <string-array name="pg_months_full">
         <item>জানুয়ারি</item><item>ফেব্রুয়ারি</item><item>মার্চ</item><item>এপ্রিল</item><item>মে</item><item>জুন</item>
         <item>জুলাই</item><item>আগস্ট</item><item>সেপ্টেম্বর</item><item>অক্টোবর</item><item>নভেম্বর</item><item>ডিসেম্বর</item>
@@ -256,6 +261,7 @@
     <string name="pg_ot_okay">Okay</string>
     <string name="pg_ot_details">এসকেইউ টার্গেট দেখুন</string>
     <string name="pg_ot_empty">এই আউটলেটের জন্য কোনো ক্যাম্পেইন টার্গেট নেই।</string>
+    <string name="pg_ot_cut_outlet">এই আউটলেটের SKU তালিকা কাটা হয়েছে: উপরের STD ও মেমো হিসাব এর সব SKU ধরে, কিন্তু ক্যাটাগরির মোট ও এই ফোনের লাইন শুধু দেখানো SKU ধরে, তাই দেখানো হচ্ছে না বা অসম্পূর্ণ হতে পারে।</string>
     <string name="pg_ot_empty_cut">ডাউনলোড কাটা হয়েছে, তাই এই আউটলেটের ক্যাম্পেইন টার্গেট বাদ পড়তে পারে।</string>
     <string name="pg_ot_col_sku">এসকেইউ</string>
     <string name="pg_ot_col_target">টার্গেট</string>
