@@ -67,8 +67,8 @@ data class RouteCampaign(
     val outletId: Long, val programmeId: Long, val labelEn: String, val labelBn: String?, val month: String, val throughDate: String, val asOf: String?,
     val std: CampaignFigure, val memo: CampaignFigure, val skus: List<CampaignSku>,
     /**
-     * The per-outlet cut flag of a contract 1.26.0 server: the member is PRESENT only when true (this outlet's SKU table is cut, or another campaign of the outlet is not shown; `std` and `memo` still cover
-     * all its SKUs). Null: the member is absent (or null). A 1.26.0 server never sends the member for an uncut outlet, so absence alone does not tell the server's version: see [RouteFigures.perOutletCut].
+     * The per-outlet cut flag: this outlet's SKU table is cut, or another campaign of the outlet is not shown (`std` and `memo` still cover all its SKUs). A 1.27.0 server sends it on EVERY entry (true or false);
+     * a 1.26.0 server sent it only when true; an older one never. Null: the member is absent (or null). Its absence on one entry does not tell the server's version: see [RouteFigures.perOutletCut].
      */
     val truncated: Boolean? = null,
 )
@@ -81,14 +81,32 @@ data class RouteCampaign(
 data class RouteFigures(
     val routeId: Long?, val targets: List<SkuTarget>, val achievement: List<SkuAchieved>, val calendar: SentCalendar?, val kpi: RouteKpi?, val star: RouteStar?,
     val campaigns: List<RouteCampaign>, val campaignsTruncated: Boolean, val targetsTruncated: Boolean, val starTruncated: Boolean,
+    /** Contract 1.27.0: true when the route had more campaign outlets than the cap and the list was cut, so OUTLETS ARE MISSING (sent only when true; absent, null or false: every campaign outlet is in the list). An older server never sends it. */
+    val campaignsOutletsTruncated: Boolean = false,
 ) {
-    /** The month of the figures: the calendar's, else the first section that has one. */
     /**
-     * True when the server of this route sends the per-outlet cut flag (contract 1.26.0): at least one campaign entry carries a `truncated` member. The bundle holds no contract version, and a 1.26.0 server
-     * leaves the member out of an uncut entry, so this is the only sign: a field that ONLY a 1.26.0 server sends (it is sent exactly when an outlet is cut). A route that has no flagged entry, or an older
-     * server, is read the old way (a cut route list makes every outlet's achievement partial).
+     * True when this route is read the 1.27.0 way (an entry is cut only by its own `truncated`; an outlet with no entry is "may be missing" only by `campaigns_outlets_truncated`). The bundle holds no
+     * contract version, and BUNDLES ARE CACHED ON THE PHONE for offline use, so an older server's bundle can still be here. The signs:
+     *  - `campaigns_outlets_truncated` present: a member only a 1.27.0 server sends: new-style;
+     *  - EVERY campaign entry carries a non-null `truncated` (a 1.27.0 server sends it on every entry, true or false): new-style;
+     *  - otherwise old-style, including a 1.26.0 route (that server sent `truncated` ONLY on cut entries, no outlets marker, and its `campaigns_truncated` was the outlet cap OR any entry cut): the route flag
+     *    cuts every outlet and an outlet with no entry gets the cut note, exactly as before 1.26.0.
+     * A route with no entries is old-style. One shape cannot be told apart: every entry `truncated` true, `campaigns_truncated` true, no outlets marker (a 1.26.0 route whose listed entries were all cut and
+     * whose outlet cap may also have been hit, or a 1.27.0 route whose every listed entry is cut and whose list was NOT cut). It reads new-style for the entries (each is cut, the same either way) and takes the
+     * CAUTIOUS reading for an outlet with no entry ([outletListMayBeCut]): the cost on a 1.27.0 server is one over-cautious "may be missing" note.
      */
-    val perOutletCut: Boolean get() = campaigns.any { it.truncated != null }
+    val perOutletCut: Boolean get() = campaignsOutletsTruncated || (campaigns.isNotEmpty() && campaigns.all { it.truncated != null })
+
+    /**
+     * True when an outlet that has NO entry on this route may be one the server left out: an old-style route: whenever it cut anything (`campaigns_truncated`); a 1.27.0 route: only by `campaigns_outlets_truncated`,
+     * except the one shape that cannot be told apart from a 1.26.0 cap cut (see [perOutletCut]): every entry cut, the route flag set and no marker: cautiously true.
+     */
+    val outletListMayBeCut: Boolean get() = when {
+        campaignsOutletsTruncated -> true
+        !perOutletCut -> campaignsTruncated
+        else -> campaignsTruncated && campaigns.all { it.truncated == true }
+    }
+    /** The month of the figures: the calendar's, else the first section that has one. */
     val month: String? get() = calendar?.month ?: kpi?.month ?: star?.month ?: targets.firstOrNull()?.month ?: campaigns.firstOrNull()?.month
 
     /** The last closed day the figures cover: the calendar's, else the newest through_date of any section; null when the bundle has none. */
@@ -111,7 +129,7 @@ data class RouteFigures(
                 kpi = (o["kpi"] as? JsonObject)?.let(::kpi),
                 star = (o["star"] as? JsonObject)?.let(::star),
                 campaigns = o.list("campaigns").mapNotNull(::campaign),
-                campaignsTruncated = o.bool("campaigns_truncated") == true, targetsTruncated = o.bool("targets_truncated") == true, starTruncated = o.bool("star_truncated") == true,
+                campaignsTruncated = o.bool("campaigns_truncated") == true, targetsTruncated = o.bool("targets_truncated") == true, starTruncated = o.bool("star_truncated") == true, campaignsOutletsTruncated = o.bool("campaigns_outlets_truncated") == true,
             )
         }
 
