@@ -119,7 +119,8 @@ class SrOutletTargetScreenshotTests {
     @Test fun outlet_target_en_page_offline() = shot("outlet_target_en_page_offline", AppLanguage.EN) { Frame { OutletTargetScreen("Ruku Store (2034)", null, data, UiLocale.EN, offline = true) } }
 
     // contract 1.26.0: this outlet's own entry says its SKU list is cut; the server's figures are shown, only the phone's totals are dashed
-    @Test fun outlet_target_bn_page_outlet_cut() = shot("outlet_target_bn_page_outlet_cut") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(incomplete = true).copy(outletCut = true)), true, routeCut = false), UiLocale.BN) } }
+    @Test fun outlet_target_bn_page_outlet_cut() = shot("outlet_target_bn_page_outlet_cut") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(incomplete = true).copy(outletCut = true, achievedPartial = false)), true, routeCut = false), UiLocale.BN) } }
+    @Test fun outlet_target_en_popup_outlet_cut() = shot("outlet_target_en_popup_outlet_cut", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(incomplete = true, stdUnit = null).copy(outletCut = true, achievedPartial = false)), true, routeCut = false), UiLocale.EN, {}) } }
     @Test fun outlet_target_bn_page_cut_rows() = shot("outlet_target_bn_page_cut_rows") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(incomplete = true)), true), UiLocale.BN) } }
     @Test fun outlet_target_en_popup_cut() = shot("outlet_target_en_popup_cut", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(incomplete = true)), true), UiLocale.EN, {}) } }
     @Test fun outlet_target_en_popup_one_unit() = shot("outlet_target_en_popup_one_unit", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(stdUnit = "stick")), false), UiLocale.EN, {}) } }
