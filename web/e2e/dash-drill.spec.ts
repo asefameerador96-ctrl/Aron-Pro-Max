@@ -68,16 +68,21 @@ test("an unknown drill-down shows the not-found page", async ({ page }) => {
   await expect(page.getByTestId("page-not-found")).toBeVisible();
 });
 
-test("auto-refresh does not poll faster than 60 s", async ({ page }) => {
+test("auto-refresh does not poll faster than its 30 s interval", async ({ page }) => {
+  // AutoRefresh re-reads the page 30 s (REFRESH_MS, D-NIGHT-SYNC-01) after it MOUNTS. The window is anchored on the fake time read BEFORE the navigation, so the mount
+  // (which can only come after it) is always later than the window start: the first tick is at mount + 30 s, strictly after the 30 s window ends, however fast or slow the
+  // hydration is. The earlier form started the window when the test reached it, after the page had loaded; when the page mounted first (about 1 run in 5 under CPU load) the
+  // 30 s tick fell inside the window and the test saw its own page's refresh (reads 1, a real RSC request with the router state tree, not a prefetch).
   await page.clock.install();
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
-  await page.goto("/overview");
+  const start = await page.evaluate(() => Date.now());
   let reads = 0;
   page.on("request", (r) => {
     if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/overview") reads++;
   });
-  await page.clock.runFor(30_000);
+  await page.goto("/overview");
+  await page.clock.runFor(Math.max(0, start + 30_000 - (await page.evaluate(() => Date.now()))));
   expect(reads).toBe(0);
   await page.clock.runFor(35_000);
   await expect.poll(() => reads).toBeGreaterThan(0);
