@@ -204,9 +204,50 @@ class OutletTargetModelTest {
         assertTrue(!d.routeCut); assertTrue(!d.campaigns.single().incomplete); assertTrue(!d.campaigns.single().outletCut)
     }
 
-    @Test fun nW6_aCutOutletOfANewServerThatListsNoCampaignForTheAskedOutletStaysTheEmptyCutAnswer() {
-        val r = route(listOf(campaignCut(9, sku(900, 500, 0))), truncated = true)
+    // ---- contract 1.27.0: `truncated` on EVERY entry (true or false) and `campaigns_outlets_truncated` (true or absent). An older server sends neither.
+    private fun routeV27(campaigns: List<String>, campaignsTruncated: Boolean, outletsTruncated: Boolean?) = RouteFigures.parse(
+        """{"route_id":7,"campaigns":[${campaigns.joinToString(",")}],"campaigns_truncated":$campaignsTruncated${if (outletsTruncated == true) ""","campaigns_outlets_truncated":true""" else ""}}""",
+    )!!
+    private fun entry(outlet: Long, cut: Boolean, skus: String = sku(900, 500, 120)) = campaignCut(outlet, skus, flag = """"truncated":$cut,""")
+
+    @Test fun nW6_aNewServerRouteWhoseOnlyCutIsAnotherOutletsSkuListHasNoMissingOutletsSoAnOutletWithNoEntryIsSimplyNone() {
+        val r = routeV27(listOf(entry(9, true), entry(8, false)), campaignsTruncated = true, outletsTruncated = null)
+        assertTrue(r.perOutletCut); assertTrue(!r.campaignsOutletsTruncated)
+        assertNull(OutletTargetModel.build(listOf(r), 5, skus, noFrame)) // the outlet list was not cut: outlet 5 has no campaign, and nothing is said to be missing
+    }
+
+    @Test fun nW7_aNewServerRouteWhoseOutletListWasCutSaysAnOutletWithNoEntryMayBeMissing() {
+        val r = routeV27(listOf(entry(8, false)), campaignsTruncated = true, outletsTruncated = true)
         val d = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
-        assertTrue(d.campaigns.isEmpty()); assertTrue(d.truncated) // the outlet may be one the route's outlet cap left out
+        assertTrue(d.campaigns.isEmpty()); assertTrue(d.truncated)
+    }
+
+    @Test fun nW8_anOutletWithItsOwnEntryIsCompleteEvenWhenTheOutletListWasCutAndItsFlagIsFalse() {
+        val r = routeV27(listOf(entry(5, false)), campaignsTruncated = true, outletsTruncated = true)
+        val d = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        val c = d.campaigns.single()
+        assertTrue(!c.outletCut); assertTrue(!c.incomplete); assertTrue(!d.routeCut); assertEquals(24L, c.totals.single().pct)
+    }
+
+    @Test fun nW9_aNewServerOutletWithItsFlagTrueIsCutAndTheOthersOnTheRouteAreNot() {
+        val r = routeV27(listOf(entry(5, true), entry(6, false)), campaignsTruncated = true, outletsTruncated = null)
+        val cut = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!.campaigns.single()
+        assertTrue(cut.outletCut); assertTrue(!cut.achievedPartial); assertNull(cut.totals.single().pct)
+        assertTrue(!OutletTargetModel.build(listOf(r), 6, skus, noFrame)!!.campaigns.single().outletCut)
+    }
+
+    @Test fun nW10_anOlderServerPayloadWithNeitherMemberBehavesAsBefore() {
+        val r = route(listOf(campaign(skus = sku(900, 500, 120))), truncated = true) // no `truncated` on the entry, no marker
+        assertTrue(!r.perOutletCut)
+        val d = OutletTargetModel.build(listOf(r), 5, skus, noFrame)!!
+        assertTrue(d.routeCut); assertTrue(d.campaigns.single().achievedPartial); assertTrue(d.campaigns.single().incomplete)
+        val other = OutletTargetModel.build(listOf(r), 9, skus, noFrame)!! // an outlet with no entry on a cut old route: the empty cut answer
+        assertTrue(other.campaigns.isEmpty()); assertTrue(other.truncated)
+    }
+
+    @Test fun nW11_theOutletsTruncatedMemberIsReadTrueOnlyAndNullFalseOrAbsentIsFalse() {
+        fun parse(m: String) = RouteFigures.parse("""{"route_id":7,"campaigns":[]$m}""")!!.campaignsOutletsTruncated
+        assertTrue(parse(""","campaigns_outlets_truncated":true"""))
+        assertTrue(!parse(""","campaigns_outlets_truncated":null""")); assertTrue(!parse(""","campaigns_outlets_truncated":false""")); assertTrue(!parse(""))
     }
 }

@@ -81,14 +81,16 @@ data class RouteCampaign(
 data class RouteFigures(
     val routeId: Long?, val targets: List<SkuTarget>, val achievement: List<SkuAchieved>, val calendar: SentCalendar?, val kpi: RouteKpi?, val star: RouteStar?,
     val campaigns: List<RouteCampaign>, val campaignsTruncated: Boolean, val targetsTruncated: Boolean, val starTruncated: Boolean,
+    /** Contract 1.27.0: true when the route had more campaign outlets than the cap and the list was cut, so OUTLETS ARE MISSING (sent only when true; absent, null or false: every campaign outlet is in the list). An older server never sends it. */
+    val campaignsOutletsTruncated: Boolean = false,
 ) {
     /** The month of the figures: the calendar's, else the first section that has one. */
     /**
-     * True when the server of this route sends the per-outlet cut flag (contract 1.26.0): at least one campaign entry carries a `truncated` member. The bundle holds no contract version, and a 1.26.0 server
-     * leaves the member out of an uncut entry, so this is the only sign: a field that ONLY a 1.26.0 server sends (it is sent exactly when an outlet is cut). A route that has no flagged entry, or an older
-     * server, is read the old way (a cut route list makes every outlet's achievement partial).
+     * True when the server of this route sends the per-outlet cut flag: at least one campaign entry carries a `truncated` member, or the route carries `campaigns_outlets_truncated` (both are members only a
+     * newer server sends; a 1.27.0 server sends `truncated` on EVERY entry, true or false). The bundle holds no contract version, so these members are the sign. A route without either, or an older server, is read
+     * the old way (a cut route list makes every outlet's achievement partial). A 1.26.0-style route (the flag on cut entries only) is read like a 1.27.0 one; no such server is live any more.
      */
-    val perOutletCut: Boolean get() = campaigns.any { it.truncated != null }
+    val perOutletCut: Boolean get() = campaigns.any { it.truncated != null } || campaignsOutletsTruncated
     val month: String? get() = calendar?.month ?: kpi?.month ?: star?.month ?: targets.firstOrNull()?.month ?: campaigns.firstOrNull()?.month
 
     /** The last closed day the figures cover: the calendar's, else the newest through_date of any section; null when the bundle has none. */
@@ -111,7 +113,7 @@ data class RouteFigures(
                 kpi = (o["kpi"] as? JsonObject)?.let(::kpi),
                 star = (o["star"] as? JsonObject)?.let(::star),
                 campaigns = o.list("campaigns").mapNotNull(::campaign),
-                campaignsTruncated = o.bool("campaigns_truncated") == true, targetsTruncated = o.bool("targets_truncated") == true, starTruncated = o.bool("star_truncated") == true,
+                campaignsTruncated = o.bool("campaigns_truncated") == true, targetsTruncated = o.bool("targets_truncated") == true, starTruncated = o.bool("star_truncated") == true, campaignsOutletsTruncated = o.bool("campaigns_outlets_truncated") == true,
             )
         }
 
