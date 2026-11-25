@@ -92,7 +92,8 @@ class StarTodayTest {
 
     @Test fun aTruncatedSkuListSaysMayBeIncompleteAndTheUnconfirmedCountIsItsOwnLine() {
         show(AppLanguage.EN, star(ids = listOf(1), idsCut = true), StarToday(0, 1, 0, 2, true))
-        compose.onNodeWithText("Today on this phone: 0.00 STD, 0 memos (may be incomplete: the programme lists more SKUs than this phone received; not in the STD above)").assertExists()
+        compose.onNodeWithText("Today on this phone: 0.00 STD, 0 memos (may be incomplete; not in the STD above)").assertExists()
+        compose.onNodeWithTag(StarTags.REASON_LIST).assertExists(); compose.onNodeWithText("The programme lists more SKUs than this phone received.").assertExists()
         compose.onNodeWithTag(StarTags.UNCONFIRMED).assertExists()
         compose.onNodeWithText("2 memos of earlier days are not confirmed by the server yet; they are not in the figures.").assertExists()
     }
@@ -128,11 +129,11 @@ class StarTodayTest {
         val figs = listOf(routeFigures(7, """"sku_category":"match""""))
         val full = category + (9L to "match") // 9 is withdrawn but still in the phone's table
         val withdrawn = StarTodayModel.forRoutes(figs, full, { listOf(memoOn("a", 7, 9L to 6L)) }, emptySet())[0]!!
-        assertEquals(6L, withdrawn.qtyBase); assertTrue(!withdrawn.incomplete)
+        assertEquals(6L, withdrawn.qtyBase); assertTrue(!withdrawn.unknownSku)
         val unknown = StarTodayModel.forRoutes(figs, category, { listOf(memoOn("a", 7, 77L to 6L)) }, emptySet())[0]!! // 77 is not in the table at all
-        assertEquals(0L, unknown.qtyBase); assertTrue(unknown.incomplete) // it may belong to the programme: the line says so
+        assertEquals(0L, unknown.qtyBase); assertTrue(unknown.unknownSku); assertTrue(!unknown.incomplete) // it may belong to the programme: the line says so, with its own reason
         val ids = StarTodayModel.forRoutes(listOf(routeFigures(7, """"sku_ids":[1]""")), category, { listOf(memoOn("a", 7, 77L to 6L)) }, emptySet())[0]!!
-        assertTrue(!ids.incomplete) // an explicit id list needs no category: a SKU outside it is simply not the programme's
+        assertTrue(!ids.unknownSku) // an explicit id list needs no category: a SKU outside it is simply not the programme's
     }
 
     @Test fun lowARowWithoutARuleIsNullAndNeverReadsAnyMemo() {
@@ -151,5 +152,54 @@ class StarTodayTest {
     @Test fun lowOneMemoIsSingular() {
         show(AppLanguage.EN, star(cat = "match"), StarToday(12, 12, 1, 0, false))
         compose.onNodeWithText("Today on this phone: 1.00 STD, 1 memo (not in the STD above)").assertExists()
+    }
+
+    // ---- next round: unresolved SKUs in the unconfirmed count, live tips only, separate reasons, no route id
+    private fun memoDay(uuid: String, date: String, route: Long, state: String, supersedes: String? = null, vararg lines: Pair<Long, Long>) =
+        LocalMemo(uuid, 5, date, supersedes, state, null, lines.map { LocalMemoLine(it.first, "sale", it.second, 1, 0) }, routeId = route)
+
+    @Test fun n2_anUnconfirmedEarlierDayMemoOfAnUnknownSkuIsCountedAndAnAckedOneIsNot() {
+        val figs = listOf(routeFigures(7, """"sku_category":"match""""))
+        val pending = memoDay("p", "2026-11-09", 7, "pending", null, 77L to 5L) // 77 is not in the table: may be a match, may be in the server figure
+        val acked = memoDay("a", "2026-11-08", 7, "acked", null, 77L to 5L)
+        assertEquals(1, StarTodayModel.forRoutes(figs, category, { listOf(pending, acked) }, setOf("a"))[0]!!.unconfirmedEarlier)
+        // a memo with a counted line AND an unknown line is counted once
+        val both = memoDay("b", "2026-11-09", 7, "pending", null, 1L to 5L, 77L to 5L)
+        assertEquals(1, StarTodayModel.forRoutes(figs, category, { listOf(both) }, emptySet())[0]!!.unconfirmedEarlier)
+    }
+
+    @Test fun n2b_aSupersededVersionWithAnUnknownSkuDoesNotFlagTheLineButTheLiveTipDoes() {
+        val figs = listOf(routeFigures(7, """"sku_category":"match""""))
+        val old = memoDay("old", "2026-11-12", 7, "pending", null, 77L to 5L)
+        val edit = memoDay("new", "2026-11-12", 7, "pending", "old", 1L to 5L) // the edit dropped the unknown SKU
+        assertTrue(!StarTodayModel.forRoutes(figs, category, { listOf(old, edit) }, emptySet())[0]!!.unknownSku)
+        val live = memoDay("live", "2026-11-12", 7, "pending", null, 77L to 5L)
+        assertTrue(StarTodayModel.forRoutes(figs, category, { listOf(live) }, emptySet())[0]!!.unknownSku)
+        val rejected = memoDay("rej", "2026-11-12", 7, "rejected", null, 77L to 5L)
+        assertTrue(!StarTodayModel.forRoutes(figs, category, { listOf(rejected) }, emptySet())[0]!!.unknownSku)
+    }
+
+    @Test fun n3_theTwoReasonsAreSeparateFlagsAndSeparateLines() {
+        val figs = listOf(routeFigures(7, """"sku_category":"match""""))
+        val t = StarTodayModel.forRoutes(figs, category, { listOf(memoOn("a", 7, 77L to 6L)) }, emptySet())[0]!!
+        assertTrue(t.unknownSku); assertTrue(!t.incomplete) // the phone's own reason does not set the server's list-cut reason
+        show(AppLanguage.EN, star(cat = "match"), StarToday(0, 1, 0, 0, incomplete = false, unknownSku = true))
+        compose.onNodeWithTag(StarTags.REASON_SKU).assertExists(); compose.onNodeWithText("This phone sold a SKU it does not know; it may belong to this programme.").assertExists()
+        assertEquals(0, compose.onAllNodesWithTag(StarTags.REASON_LIST).fetchSemanticsNodes().size)
+    }
+
+    @Test fun n3b_bothReasonsShowBothLines() {
+        show(AppLanguage.EN, star(ids = listOf(1), idsCut = true), StarToday(0, 1, 0, 0, incomplete = true, unknownSku = true))
+        compose.onNodeWithTag(StarTags.REASON_LIST).assertExists(); compose.onNodeWithTag(StarTags.REASON_SKU).assertExists()
+    }
+
+    @Test fun n4_aStarWithoutARouteIdShowsADashNotZero() {
+        val noRoute = RouteFigures.parse(
+            """{"star":{"programme_id":3,"name_en":"Star","month":"2026-11","through_date":"2026-11-10","route_name":"R","lmwd":26,"wd":26,"ewd":10,"target":"20.000","std":"2.833","lms":"12.250","status_en":"a","status_bn":"b","sku_category":"match"}}""",
+        )!!
+        val t = StarTodayModel.forRoutes(listOf(noRoute), category, { listOf(memoOn("a", null, 1L to 6L)) }, emptySet())[0]!!
+        assertTrue(t.noRoute); assertEquals("—", StarTodayModel.qtyText(t, UiLocale.EN)); assertEquals("—", StarTodayModel.memoCountText(t, UiLocale.EN))
+        show(AppLanguage.EN, star(cat = "match"), t)
+        compose.onNodeWithText("Today on this phone: — STD, — (this download has no route for this Star, so this phone cannot tell which memos are on it)").assertExists()
     }
 }
