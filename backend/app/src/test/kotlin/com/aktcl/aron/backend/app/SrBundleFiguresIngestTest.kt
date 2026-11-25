@@ -52,7 +52,7 @@ import kotlinx.coroutines.runBlocking
  * `POST /v1/admin/quarantine/{id}/resolve`, the office voids a route-day through `POST /v1/admin/data-void` and keys a paper memo through `POST /v1/admin/data-entry`, and after EACH
  * step the figures of `GET /v1/sync/bundle?for=D` (achievement, KPI brand volume and memos, Star STD, campaign STD and memos) are compared with the TRUTH computed independently
  * from `app.memo` / `app.memo_line` through D - 1 (the cut: today is never in a server figure). Clock: Monday 2027-01-04 10:00 Dhaka; memos are dated Sunday 2027-01-03, a closed day, so the bundle for
- * 2027-01-04 and the one built ahead for 2027-01-05 both hold them. (The phone-side merge, `POST /v1/sync/figures` and its identity rule are PARKED, docs/requests/sr-programmes-phone-rule-b.md.)
+ * 2027-01-04 and the one built ahead for 2027-01-05 both hold them.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation::class)
