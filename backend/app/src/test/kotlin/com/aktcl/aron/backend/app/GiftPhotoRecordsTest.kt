@@ -655,7 +655,8 @@ class GiftPhotoRecordsTest {
             val bd = today.minusDays(15)
             val v = record("visit", """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${java.time.Instant.now()}","sequence_no":1,"planned":true,"fix":${fixOk.replace("PURPOSE", "visit_open")},
                 "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""", routeId = route, cu = visit, family = visit, secondsAgo = oldSecs)
-            val m = record("memo", """{"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"sr1001-${bd.toString().substring(2).replace("-", "")}-5901","memo_kind":"sale","committed_at":"${java.time.Instant.now()}",
+            // the parent memo has no lines, so its kind is zero_sale (the ingest rule: zero_sale iff line_count 0; the phone writes it that way); the test is about the due collection held for it
+            val m = record("memo", """{"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"sr1001-${bd.toString().substring(2).replace("-", "")}-5901","memo_kind":"zero_sale","committed_at":"${java.time.Instant.now()}",
                 "price_list_date":"$bd","price_type":"outlet","gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"is_credit":false,
                 "line_count":0,"discount_line_count":0,"qc_line_count":0,"offer_version_ids":[],"rounding_mode":"half_up_paisa"}""", routeId = route, cu = memo, family = visit, rank = 1, secondsAgo = oldSecs)
             val d = record("due_collection", """{"outlet_id":$outlet,"against_memo_client_uuid":"$memo","against_memo_no":"x","against_memo_business_date":"$bd","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":100000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
