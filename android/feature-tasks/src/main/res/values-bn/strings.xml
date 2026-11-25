@@ -19,4 +19,5 @@
     <string name="tsk_swipe_resolve">Resolve</string>
     <string name="tsk_resolve_confirm_title">টাস্কটি সমাধান করবেন?</string>
     <string name="tsk_cancel">বাতিল</string>
+    <string name="tsk_swipe_hint">টাস্ক সমাধান করতে কার্ডটি ডানে টানুন।</string>
 </resources>

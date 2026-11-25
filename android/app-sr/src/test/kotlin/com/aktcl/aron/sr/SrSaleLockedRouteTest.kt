@@ -57,6 +57,8 @@ class SrSaleLockedRouteTest {
     init { shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java)) }
     @get:Rule val compose = createComposeRule(StandardTestDispatcher())
     private var f: SrLockFixture? = null
+    /** The activity's back dispatcher, captured from inside the composition (the compose rule does not expose the activity). */
+    private var backDispatcher: androidx.activity.OnBackPressedDispatcher? = null
 
     @Before fun setUp() { Dispatchers.setMain(MainLooperImmediate.dispatcher) }
     @After fun tearDown() { try { f?.close() } finally { Dispatchers.resetMain() } }
@@ -87,13 +89,14 @@ class SrSaleLockedRouteTest {
         }
     }
 
-    private fun show(s: Sale): StateRestorationTester {
+    private fun show(s: Sale, vendorQc: Boolean = false): StateRestorationTester {
         val tester = StateRestorationTester(compose)
         tester.setContent {
+            backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
             val ctx = AppLocale.wrap(LocalContext.current, AppLanguage.EN)
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(AppLanguage.EN) {
-                    SaleRoute(s.vm, s.fx.day.printerManager, s.fx.day.sale::skuName, onFinished = {}, zeroSaleReasonPicker = true, quantityPopup = true)
+                    SaleRoute(s.vm, s.fx.day.printerManager, s.fx.day.sale::skuName, onFinished = {}, zeroSaleReasonPicker = true, quantityPopup = true, vendorQc = vendorQc)
                 }
             }
         }
@@ -154,5 +157,105 @@ class SrSaleLockedRouteTest {
         show(s)
         until { compose.onAllNodesWithTag(SaleTags.NOTICE).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("QC you typed was not submitted, so it was cleared. Open QC again to enter it.").assertExists()
+    }
+
+    // ---- the same rules on the page the SR really gets: SaleHost passes vendorQc = true, so the route draws QcManualScreen, not the two-step page above ----
+    // (lead review B2; the tests above still drive the old component, which is dead on the SR path)
+
+    private fun openVendorQc() {
+        until { compose.onAllNodesWithText("Proceed").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Proceed").performClick()
+        until { compose.onAllNodesWithText("Product QC").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Product QC").performClick()
+        until { compose.onAllNodesWithTag(QcTags.TILE).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** A system Back, through the activity's dispatcher, as the gesture or the button sends it. */
+    private fun back() { compose.runOnIdle { checkNotNull(backDispatcher) { "no back dispatcher in the composition" }.onBackPressed() }; compose.waitForIdle() }
+
+    private fun draftWithOneLine(): Sale {
+        val s = sale()
+        s.vm.setQuantity(105, 2, QtyUnit.DOZEN); until { s.vm.state.value.draft?.lines?.size == 1 }
+        return s
+    }
+
+    @Test fun vendorAnOpenQcPageIsNotRestored() {
+        val s = draftWithOneLine()
+        val tester = show(s, vendorQc = true)
+        openVendorQc()
+        compose.onAllNodesWithTag(QcTags.TILE)[0].performClick()
+        until { compose.onAllNodesWithTag(QcTags.QTY_FIELD).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(6) // the entry page is open
+        tester.emulateSavedInstanceStateRestore()
+        compose.waitForIdle()
+        openVendorQc()
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(0) // the tiles, not the saved page
+    }
+
+    @Test fun vendorALockedSaleReopensOnReviewAfterARestoration() {
+        val s = draftWithOneLine()
+        s.vm.setQc(QcEntry(105, "damaged_crushed", "MFC", 1)); until { s.vm.state.value.draft?.qc?.size == 1 }
+        s.vm.completeQc(); until { s.vm.state.value.draft?.qcCompleted == true }
+        val tester = show(s, vendorQc = true)
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() }
+        tester.emulateSavedInstanceStateRestore(); compose.waitForIdle()
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("Proceed").assertCountEquals(0)
+    }
+
+    @Test fun vendorBackWithTypedUnsubmittedQcAsksFirstAndNoKeepsEverything() {
+        val s = draftWithOneLine()
+        show(s, vendorQc = true)
+        openVendorQc()
+        s.vm.setQc(QcEntry(105, "damaged_crushed", "MFC", 1)); until { s.vm.state.value.draft?.qc?.size == 1 } // typed on the page, not submitted
+        until { compose.onAllNodesWithTag(QcTags.SUMMARY_ROW).fetchSemanticsNodes().isNotEmpty() }
+        back()
+        compose.onNodeWithText("Discard everything entered in QC?").assertExists() // asked; nothing was wiped
+        assertEquals(1, s.vm.state.value.draft!!.qc.size)
+        compose.onNodeWithText("No").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Discard everything entered in QC?").assertDoesNotExist()
+        compose.onAllNodesWithTag(QcTags.TILE).assertCountEquals(1) // still on the QC page
+        assertEquals("No keeps everything", 1, s.vm.state.value.draft!!.qc.size)
+    }
+
+    @Test fun vendorBackWithTypedUnsubmittedQcThenYesDiscardsWhatWasTyped() {
+        val s = draftWithOneLine()
+        show(s, vendorQc = true)
+        openVendorQc()
+        s.vm.setQc(QcEntry(105, "damaged_crushed", "MFC", 1)); until { s.vm.state.value.draft?.qc?.size == 1 }
+        until { compose.onAllNodesWithTag(QcTags.SUMMARY_ROW).fetchSemanticsNodes().isNotEmpty() }
+        back()
+        compose.onNodeWithText("Yes").performClick()
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() } // left for Review
+        until { s.vm.state.value.draft!!.qc.isEmpty() }
+        assertEquals("Yes put back what the page opened with (nothing)", emptyList<QcEntry>(), s.vm.state.value.draft!!.qc)
+    }
+
+    @Test fun vendorBackWithNothingTypedLeavesAtOnceWithoutAQuestion() {
+        val s = draftWithOneLine()
+        show(s, vendorQc = true)
+        openVendorQc()
+        back()
+        compose.onAllNodesWithText("Discard everything entered in QC?").assertCountEquals(0)
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun vendorBackOnSubmittedQcLeavesWithoutRestoringAndRaisesNoLockedNotice() {
+        val s = draftWithOneLine()
+        s.vm.setQc(QcEntry(105, "damaged_crushed", "MFC", 1)); until { s.vm.state.value.draft?.qc?.size == 1 }
+        s.vm.completeQc(); until { s.vm.state.value.draft?.qcCompleted == true }
+        show(s, vendorQc = true)
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Product QC").performClick()
+        until { compose.onAllNodesWithTag(QcTags.TILE).fetchSemanticsNodes().isNotEmpty() }
+        back()
+        until { compose.onAllNodesWithText("Print").fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("Discard everything entered in QC?").assertCountEquals(0)
+        // the notice, if one were raised, comes from a view-model coroutine: let the main loop run before looking
+        val settle = System.currentTimeMillis() + 500
+        until { System.currentTimeMillis() > settle }
+        assertEquals("a plain Back on submitted QC must not raise the QC locked notice", null, s.vm.state.value.notice)
+        compose.onAllNodesWithTag(SaleTags.NOTICE).assertCountEquals(0)
+        assertEquals(1, s.vm.state.value.draft!!.qc.size)
     }
 }

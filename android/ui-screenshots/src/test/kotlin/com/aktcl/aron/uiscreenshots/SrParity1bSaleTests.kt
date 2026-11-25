@@ -73,7 +73,7 @@ class SrParity1bSaleTests {
     private val open = VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z"))
     private val q = CallQuestion(label, {}, {}, {})
 
-    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, sr: Boolean = true, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, titleText: String? = null, content: @Composable () -> Unit) {
+    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, sr: Boolean = true, clicks: List<String> = emptyList(), customActions: List<String> = emptyList(), expectText: String? = null, typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, titleText: String? = null, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         // a dialog focuses its text field, whose cursor blinks for ever: the clock is stepped by hand for those frames
         if (frozenClock) rule.mainClock.autoAdvance = false
@@ -87,6 +87,14 @@ class SrParity1bSaleTests {
         if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle()
         typeInto?.let { (tag, text) -> rule.onNodeWithTag(tag).performTextInput(text); if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle() }
         clicks.forEach { if (it.startsWith("#") && it.contains("@")) rule.onAllNodesWithTag(it.drop(1).substringBefore("@"))[it.substringAfter("@").toInt()].performClick() else if (it.startsWith("#")) rule.onNodeWithTag(it.drop(1)).performClick() else rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
+        // a custom accessibility action by node tag (the swipe's twin: a card with no visible button), then the page is settled
+        customActions.forEach { tag ->
+            val actions = rule.onNodeWithTag(tag).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
+            rule.runOnIdle { actions.first().action() }
+            rule.waitForIdle()
+        }
+        // an interaction that silently became a no-op would capture the page it started from: the expected result must be on screen first (lead review B3)
+        expectText?.let { rule.onNodeWithText(it).assertExists() }
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
     }
@@ -241,7 +249,7 @@ class SrParity1bSaleTests {
     @Test fun tasksManualSunlight() = shot("srp1b_tasks_sunlight", sunlight = true, titleText = "টাস্ক", icon = null) { Tasks() }
     @Test fun tasksManualFont20() = shot("srp1b_tasks_font20", fontScale = 2.0f, titleText = "টাস্ক", icon = null) { Tasks() }
     @Test fun tasksManualEmpty() = shot("srp1b_tasks_empty", titleText = "টাস্ক", icon = null) { Tasks(com.aktcl.aron.feature.tasks.TaskListState(showEmptyState = true, syncedAt = "2026-11-18T04:42:00.000Z")) }
-    @Test fun tasksManualAsk() = shot("srp1b_tasks_resolve_ask", titleText = "টাস্ক", icon = null, clicks = listOf("#" + com.aktcl.aron.feature.tasks.TaskTags.resolve("t1"))) { Tasks() }
+    @Test fun tasksManualAsk() = shot("srp1b_tasks_resolve_ask", titleText = "টাস্ক", icon = null, customActions = listOf(com.aktcl.aron.feature.tasks.TaskTags.resolve("t1")), expectText = "টাস্কটি সমাধান করবেন?") { Tasks() }
 
     @Test fun printerConnectedBar() = shot("srp1b_stock_printer_connected", title = com.aktcl.aron.feature.home.R.string.hm_tile_stock, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_stock) {
         androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {

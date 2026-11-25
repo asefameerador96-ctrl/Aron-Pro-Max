@@ -1,0 +1,41 @@
+<!--
+  The "লগ আউট" Settings tile of the owner's manual (screenshots 63 to 65): a purple round badge with a white sign-out
+  arrow leaving an open door. Drawn here, in feature-home, because core-ui belongs to another lane.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- the round badge -->
+    <path android:pathData="M24,2a22,22 0 1,0 0.01,0z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="10" android:startY="8" android:endX="38" android:endY="40"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF7A3FD0" />
+                <item android:offset="1" android:color="#FF3B1A7A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- the door: three sides open towards the arrow -->
+    <path
+        android:pathData="M28,14h-9a2,2 0 0,0 -2,2v16a2,2 0 0,0 2,2h9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- the arrow leaving through it -->
+    <path
+        android:pathData="M24,24h11"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M31,19.6l4.4,4.4l-4.4,4.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
