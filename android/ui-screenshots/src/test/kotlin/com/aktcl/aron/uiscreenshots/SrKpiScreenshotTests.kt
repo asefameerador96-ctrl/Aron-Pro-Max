@@ -105,6 +105,11 @@ class SrKpiScreenshotTests {
     @Test fun kpi_dashboard_bn_empty() = shot("kpi_dashboard_bn_empty") { Frame(ProgR.string.pg_kpi_title) { KpiDashboardScreen(null, UiLocale.BN, offline = true) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_volume() = shot("kpi_brands_bn_volume") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_unit_unclear() = shot("kpi_brands_bn_unit_unclear") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(brands = listOf(brand(1, 21600, 4735, 119, 90), brand(6, 2030, 300, 50, 20, "null"))), KpiKind.VOLUME, UiLocale.BN) } }
+    // lead low (round 1 merge review): the note under the volume list when an unresolved match or lighter brand is left out, and the older-server message of the brand page
+    @Test @Config(qualifiers = "bn-w360dp-h1000dp") fun kpi_brands_bn_volume_left_out() = shot("kpi_brands_bn_volume_left_out") {
+        Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi()!!.let { d -> d.copy(brands = d.brands + com.aktcl.aron.feature.programmes.KpiBrandRow(77, BrandName("Safe Match", "সেফ ম্যাচ"), null, null, null, 5, null, null, 0, "match")) }, KpiKind.VOLUME, UiLocale.BN) }
+    }
+    @Test fun kpi_brands_bn_not_sent() = shot("kpi_brands_bn_not_sent") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(null, KpiKind.VOLUME, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_memo() = shot("kpi_brands_bn_memo") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.MEMO, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_en_blm() = shot("kpi_brands_en_blm", AppLanguage.EN) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.BLM, UiLocale.EN) } }
     @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun kpi_brands_bn_font20() = shot("kpi_brands_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }

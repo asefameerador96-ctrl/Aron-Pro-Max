@@ -281,7 +281,7 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
         if (offline) Note(stringResource(R.string.pg_tgt_offline), KpiTags.OFFLINE)
         if (data == null) {
             Box(Modifier.fillMaxWidth().heightIn(min = 160.dp).testTag(KpiTags.EMPTY), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.pg_kpi_empty), style = TextStyle(fontSize = 18.sp, color = look.ink, textAlign = TextAlign.Center))
+                Text(stringResource(R.string.pg_kpi_not_sent), style = TextStyle(fontSize = 18.sp, color = look.ink, textAlign = TextAlign.Center))
             }
             return@Column
         }
@@ -301,7 +301,7 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
             }
         }
         Text(stringResource(R.string.pg_kpi_fmc_brands), Modifier.fillMaxWidth().background(look.card).padding(horizontal = 12.dp, vertical = 10.dp), style = TextStyle(fontSize = 14.sp, color = look.inkMuted))
-        if (kind == KpiKind.VOLUME && data.volumeLeftOut) Note(stringResource(R.string.pg_kpi_volume_left_out), KpiTags.LEFT_OUT)
+        if (kind == KpiKind.VOLUME && data.volumeLeftOut) Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { Note(stringResource(R.string.pg_kpi_volume_left_out), KpiTags.LEFT_OUT) }
         Column(Modifier.fillMaxWidth().background(look.card)) {
             if (kind == KpiKind.BLM) data.categories.forEach { c ->
                 BrandRow(KpiTags.category(c.categoryCode), categoryName(c.categoryCode), stringResource(R.string.pg_tgt_target) + " " + KpiModel.qtyText(c.pair.target, locale) + " " + unitWord(c.pair.target.unitKey),
