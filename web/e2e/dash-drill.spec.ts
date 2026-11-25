@@ -69,22 +69,35 @@ test("an unknown drill-down shows the not-found page", async ({ page }) => {
 });
 
 test("auto-refresh does not poll faster than its 30 s interval", async ({ page }) => {
-  // AutoRefresh re-reads the page 30 s (REFRESH_MS, D-NIGHT-SYNC-01) after it MOUNTS. The window is anchored on the fake time read BEFORE the navigation, so the mount
-  // (which can only come after it) is always later than the window start: the first tick is at mount + 30 s, strictly after the 30 s window ends, however fast or slow the
-  // hydration is. The earlier form started the window when the test reached it, after the page had loaded; when the page mounted first (about 1 run in 5 under CPU load) the
-  // 30 s tick fell inside the window and the test saw its own page's refresh (reads 1, a real RSC request with the router state tree, not a prefetch).
+  // AutoRefresh re-reads the page every REFRESH_MS (30 s, D-NIGHT-SYNC-01) counted from the moment it MOUNTS. Under load that moment is not fixed in the fake clock (the earlier
+  // forms started their window when the test reached it: a page that had mounted first saw its own 30 s tick inside a "0 reads" window, about 1 run in 5; a page that mounted late
+  // had no tick inside the later one). So the test records the fake time at which the page registers its 30 s interval and counts from there: no read of the data before
+  // mount + 30 s, a read right after it. Link prefetches (next-router-prefetch) fire once at hydration and are not data reads.
   await page.clock.install();
+  await page.addInitScript(() => {
+    const si = window.setInterval.bind(window);
+    window.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+      if (ms === 30_000) (window as unknown as { __refreshMountedAt: number }).__refreshMountedAt = Date.now();
+      return si(fn, ms, ...args);
+    }) as typeof setInterval;
+  });
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
-  const start = await page.evaluate(() => Date.now());
   let reads = 0;
   page.on("request", (r) => {
-    // a data READ is a non-prefetch RSC request (router.refresh); the router's link prefetches fire once at hydration, they are not polling
     if (r.headers()["rsc"] === "1" && !r.headers()["next-router-prefetch"] && new URL(r.url()).pathname === "/overview") reads++;
   });
   await page.goto("/overview");
-  await page.clock.runFor(Math.max(0, start + 30_000 - (await page.evaluate(() => Date.now()))));
+  const mountedAt = () => page.evaluate(() => (window as unknown as { __refreshMountedAt?: number }).__refreshMountedAt ?? null);
+  await expect.poll(mountedAt, { timeout: 15_000 }).not.toBeNull();
+  const mount = (await mountedAt())!;
+  // stop the clock a little after the mount, so the advance below is exact (a running clock keeps moving while the calls travel)
+  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 500));
+  await page.waitForTimeout(800);
+  const paused = await page.evaluate(() => Date.now());
+  expect(paused - mount).toBeLessThan(15_000);
+  await page.clock.runFor(mount + 29_999 - paused);
   expect(reads).toBe(0);
-  await page.clock.runFor(35_000);
+  await page.clock.runFor(1_000);
   await expect.poll(() => reads).toBeGreaterThan(0);
 });
