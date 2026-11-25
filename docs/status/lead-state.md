@@ -549,3 +549,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 140 (lane/lead-train140 00076022b8 = INT a6d449ab6f + docs + targets server 3705b9ac6e): lane CI 45659586913 18/18 green, GO sent 17:38.
 - T-KPI4 and A-PROG5 idle with handovers (programmes 2649bf4cc = comment + handover, rides the next Android train).
 - NEW LANES (usage read: seven_day allowed): L-A14 session_014mnioPNfx8ThzeV7X8jtev (lane/portal-loyalty-api-c: merge INT, contract becomes 1.28.0, full gate, one push); A-GATE9 session_014mnioLA4Lw6VzX4uNod5p6 (new branch lane/android-gates-3: writer sweep blind spot, survey replay gate, pinned fixture clocks, per-class summary line). Active set: L-A14, A-GATE9, integrator.
+
+## 2026-11-25 18:18 UTC (evening state)
+- Train 140 LANDED and DEPLOYED: INT 85abe78170, integration run 45667036261 green, deploy 45669196350 real, smoke sale accepted, live build 85abe78170 (lead's own read). Not verified: migrate/start-up consoles; the held-memo reason text in a live response.
+- Landed today (25 Nov): trains 129 to 140. Live: contract 1.27.0, migrations V0213, last APK aron-release-signed-dev-2598.
+- Active: L-A14 (loyalty merge round), A-GATE9 (gates small round), integrator. Idle with handover: T-KPI4, A-PROG5, A-SIZE1, INFRA1.
+- Next trains: Android = gates-3 + programmes 2649bf4cc (comment/handover); server = loyalty 1.28.0 after the lead's check.
