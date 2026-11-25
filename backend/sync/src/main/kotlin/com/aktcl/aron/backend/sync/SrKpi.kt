@@ -92,31 +92,40 @@ object SrKpi {
 
         // Per pack size (owner rule 5: the phone shows packets, and a stick sum of 20s and 10s cannot be turned into packets): target and achieved of every brand and
         // BLM category by `base_per_pack` of the SKUs, base units, from the same two sources as the sums above (review, D-TKPI-10).
-        val brandPacks = HashMap<Pair<Long, Long>, MutableMap<Int, LongArray>>(); val catPacks = HashMap<Pair<Long, String>, MutableMap<Int, LongArray>>()
-        fun packOf(m: MutableMap<Pair<Long, Long>, MutableMap<Int, LongArray>>, route: Long, brand: Long, pack: Int) = m.getOrPut(route to brand) { java.util.TreeMap() }.getOrPut(pack) { LongArray(2) }
+        // Each entry is keyed by (category, pack size): a brand whose SKUs mix categories (a 20s cigarette and a match SKU, both `base_per_pack` 1) must not put sticks and dozens in one entry, so every
+        // entry says which SKU category it counts (`category_code`, additive: sr-kpi-by-pack-category). A SKU of an inactive or discontinued variant is read from the same unfiltered SKU table, so its target
+        // and sales are counted and labelled exactly like any other.
+        class PackKey(val category: String, val pack: Int) : Comparable<PackKey> {
+            override fun compareTo(other: PackKey) = compareValuesBy(this, other, { it.category }, { it.pack })
+            override fun equals(other: Any?) = other is PackKey && other.category == category && other.pack == pack
+            override fun hashCode() = category.hashCode() * 31 + pack
+        }
+        val brandPacks = HashMap<Pair<Long, Long>, MutableMap<PackKey, LongArray>>(); val catPacks = HashMap<Pair<Long, String>, MutableMap<PackKey, LongArray>>()
+        fun packOf(m: MutableMap<Pair<Long, Long>, MutableMap<PackKey, LongArray>>, route: Long, brand: Long, key: PackKey) = m.getOrPut(route to brand) { java.util.TreeMap() }.getOrPut(key) { LongArray(2) }
         h.createQuery(
             """
-            SELECT t.route_id, b.id, s.base_per_pack, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id
+            SELECT t.route_id, b.id, s.category_code, s.base_per_pack, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id
               JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
-             WHERE t.route_id = ANY(:r) AND t.month = :m GROUP BY t.route_id, b.id, s.base_per_pack
+             WHERE t.route_id = ANY(:r) AND t.month = :m GROUP BY t.route_id, b.id, s.category_code, s.base_per_pack
             """,
-        ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getInt(3).toLong(), rs.getLong(4)) }.list().forEach { packOf(brandPacks, it[0], it[1], it[2].toInt())[0] = it[3] }
+        ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), PackKey(rs.getString(3) ?: "", rs.getInt(4)), rs.getLong(5)) }.list()
+            .forEach { packOf(brandPacks, it[0] as Long, it[1] as Long, it[2] as PackKey)[0] = it[3] as Long }
         for ((route, f) in figures) for (l in f.lines) {
             val sku = dim.skus[l.skuId] ?: continue
-            if (sku.brandId != null && l.saleQty != 0L) packOf(brandPacks, route, sku.brandId, sku.basePerPack)[1] += l.saleQty
+            if (sku.brandId != null && l.saleQty != 0L) packOf(brandPacks, route, sku.brandId, PackKey(sku.category ?: "", sku.basePerPack))[1] += l.saleQty
         }
         h.createQuery(
             "SELECT t.route_id, s.category_code, s.base_per_pack, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id WHERE t.route_id = ANY(:r) AND t.month = :m AND s.category_code IN ('match','lighter') GROUP BY 1, 2, 3",
         ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getString(2), rs.getInt(3), rs.getLong(4)) }.list().forEach {
-            catPacks.getOrPut((it[0] as Long) to (it[1] as String)) { java.util.TreeMap() }.getOrPut(it[2] as Int) { LongArray(2) }[0] = it[3] as Long
+            catPacks.getOrPut((it[0] as Long) to (it[1] as String)) { java.util.TreeMap() }.getOrPut(PackKey(it[1] as String, it[2] as Int)) { LongArray(2) }[0] = it[3] as Long
         }
         for ((route, f) in figures) for (l in f.lines) {
             val sku = dim.skus[l.skuId] ?: continue
             val c = sku.category
-            if ((c == "match" || c == "lighter") && l.saleQty != 0L) catPacks.getOrPut(route to c) { java.util.TreeMap() }.getOrPut(sku.basePerPack) { LongArray(2) }[1] += l.saleQty
+            if ((c == "match" || c == "lighter") && l.saleQty != 0L) catPacks.getOrPut(route to c) { java.util.TreeMap() }.getOrPut(PackKey(c, sku.basePerPack)) { LongArray(2) }[1] += l.saleQty
         }
-        fun packsJson(m: Map<Int, LongArray>?) = buildJsonArray {
-            m.orEmpty().forEach { (pack, v) -> if (v[0] > 0 || v[1] > 0) add(buildJsonObject { put("pack_factor", pack); put("target", v[0]); put("achieved", v[1]) }) }
+        fun packsJson(m: Map<PackKey, LongArray>?) = buildJsonArray {
+            m.orEmpty().forEach { (key, v) -> if (v[0] > 0 || v[1] > 0) add(buildJsonObject { put("pack_factor", key.pack); if (key.category.isNotEmpty()) put("category_code", key.category); put("target", v[0]); put("achieved", v[1]) }) }
         }
 
         val monthRows = h.createQuery("SELECT route_id, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk FROM app.route_kpi_month WHERE route_id = ANY(:r) AND month = :m")

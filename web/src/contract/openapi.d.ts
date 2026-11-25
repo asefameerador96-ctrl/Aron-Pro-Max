@@ -7085,6 +7085,11 @@ export interface components {
         KpiPackFigure: {
             /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
             pack_factor: number;
+            /**
+             * @description The category of the SKUs counted in this entry (the SKU `category_code`). An entry counts ONE category and ONE pack size, so a brand whose SKUs mix categories (a 20s cigarette and a match SKU) has one entry per category and pack size, never sticks and dozens in the same entry; the phone shows each entry in its category's unit. SKUs of an inactive or discontinued variant are counted and labelled like any other. Contract 1.25.0, optional: absent from an older server (the phone then resolves the category from its product tree).
+             * @enum {string}
+             */
+            category_code?: "cigarette" | "bidi" | "match" | "lighter";
             /** Format: int64 */
             target: number;
             /** Format: int64 */
