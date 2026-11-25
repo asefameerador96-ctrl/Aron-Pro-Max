@@ -502,3 +502,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - T-KPI4 told it may push its local round 596e3ecbc after merging INT (tests, log text, contract wording); short check, then it rides the next server train.
 - Next lane to start: programmes successor (phone uses category_code, the per-outlet cut flag, complete campaign achievement, Star SKU list for "today on this phone").
 - 10:25 UTC: train 134 branch lane/lead-train134 0a03c0af61 pushed (lane CI pending; GO check scheduled 10:59). **A-PROG5 = session_014mnioLoU8DBxKWHJjJov1b** started on lane/android-sr-programmes: slice 1 KPI uses category_code; slice 2 outlet target uses the per-outlet flag and the complete achievement; slice 3 Lifting Star "today on this phone". One slice per push, review between slices. Active lanes: T-KPI4, A-PROG5, integrator. A-SIZE1 idle until train 134 lands.
+
+## 2026-11-25 11:15 UTC
+
+- **Train 134 LANDED**: INT e56764a5c3 (fast-forward of 0a03c0af61 + row). Lane CI 45593725977 18/18; integration CI 45598409642 all green (lead's read); both new gate steps ran on both runs ("okhttp public-suffix scan: clean (581 files)", "self-test ok"); deploy #374 skipped by design (live build stays da7fd7b1f5, train 133). APK aron-release-signed-dev-2570 42,047,128 B (229,942 B smaller, -0.54 %). Size gate: sr arm64-v8a +9.8 %, armeabi-v7a +10.6 %; amo +8.6 to +9.6 %; tso about -1.3 %. Baseline untouched; owner item 18 still open.
+- Six trains today (129 to 134). Not verified for any: a device; identical rendering of the minified icons beyond the numeric path comparison and the screenshot job's verdict; the asset's absence inside the CI-built APKs (lane's local listing only).
+- A-PROG5: slice 1 passed at 0cf576b41a (rides the next Android train with slice 2); slice 2 being built. T-KPI4: c59291c01 passed, rides the next server train. A-SIZE1: done, idle.
