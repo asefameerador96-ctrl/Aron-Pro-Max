@@ -7085,6 +7085,11 @@ export interface components {
         KpiPackFigure: {
             /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
             pack_factor: number;
+            /**
+             * @description The category of the SKUs counted in this entry (the SKU `category_code`). The entries of a list are ordered by category code (alphabetical: bidi, cigarette, lighter, match), then by `pack_factor` ascending. An entry counts ONE category and ONE pack size, so a brand whose SKUs mix categories (a 20s cigarette and a match SKU) has one entry per category and pack size, never sticks and dozens in the same entry; the phone shows each entry in its category's unit. SKUs of an inactive or discontinued variant are counted and labelled like any other. Contract 1.25.0, optional: absent from an older server (the phone then resolves the category from its product tree).
+             * @enum {string}
+             */
+            category_code?: "cigarette" | "bidi" | "match" | "lighter";
             /** Format: int64 */
             target: number;
             /** Format: int64 */
@@ -7159,7 +7164,9 @@ export interface components {
              * @description Projection over target.
              */
             achievement_bp: number | null;
+            /** @description Last month's sold quantity in the programme unit, over the CLOSED days of last month: FINAL only once last month has closed (all of it once `through_date` is past its end); a bundle built ahead on the last day of a month holds the days up to `through_date` only (the same days as `lmwd`). */
             lms: components["schemas"]["Decimal3"];
+            /** @description Last month's average daily sold quantity, `lms` divided by `lmwd`: FINAL only once last month has closed. Null when `lmwd` is 0 (no closed working day of last month at the cut, e.g. a bundle built ahead on the first day of a month whose first days are all non-working), never zero by default; a Decimal3 `0.000` means a real zero (no sale over the closed working days). */
             lmads: components["schemas"]["Decimal3"] | null;
             pads: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */

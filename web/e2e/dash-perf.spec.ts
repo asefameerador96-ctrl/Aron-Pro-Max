@@ -21,10 +21,16 @@ test("home on Fast 3G with 4x CPU: JS, LCP and layout shift stay in budget", asy
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   await cdp.send("Network.clearBrowserCache");
   await page.addInitScript(() => {
-    const w = window as unknown as { __lcp: number; __cls: number };
+    const w = window as unknown as { __lcp: number; __cls: number; __lcpEntries: { t: number; size: number; el: string }[] };
     w.__lcp = 0;
     w.__cls = 0;
-    new PerformanceObserver((l) => { for (const e of l.getEntries()) w.__lcp = e.startTime; }).observe({ type: "largest-contentful-paint", buffered: true });
+    w.__lcpEntries = [];
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries() as unknown as { startTime: number; size: number; element?: Element | null }[]) {
+        w.__lcp = e.startTime;
+        w.__lcpEntries.push({ t: Math.round(e.startTime), size: e.size, el: e.element ? `${e.element.tagName.toLowerCase()}.${String(e.element.className).slice(0, 40)}` : "" });
+      }
+    }).observe({ type: "largest-contentful-paint", buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries() as unknown as { value: number; hadRecentInput: boolean }[]) if (!e.hadRecentInput) w.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
   });
   let jsBytes = 0;
@@ -32,6 +38,15 @@ test("home on Fast 3G with 4x CPU: JS, LCP and layout shift stay in budget", asy
   const sizes = new Map<string, string>();
   cdp.on("Network.responseReceived", (e: { requestId: string; type: string }) => { if (e.type === "Script") sizes.set(e.requestId, e.requestId); });
   cdp.on("Network.loadingFinished", (e: { requestId: string; encodedDataLength: number }) => { if (sizes.has(e.requestId)) jsBytes += e.encodedDataLength; });
+  // EVIDENCE ONLY (attached when an assertion below fails, never read by one): the request timeline of the measured navigation, so an outlier shows which request waited (a flaky LCP of 3628 ms
+  // against 1660 ms on the retry was seen once in CI with no cause found, D-TKPI-22). It changes no number, no assertion and no retry.
+  const timeline: { ms: number; ev: string; url: string; info: string }[] = [];
+  let t0 = 0;
+  const mark = (ts: number, ev: string, url: string, info: string) => { if (!t0) t0 = ts; timeline.push({ ms: Math.round((ts - t0) * 1000), ev, url: url.replace(/^https?:\/\/[^/]+/, "").slice(0, 80), info }); };
+  const urls = new Map<string, string>();
+  cdp.on("Network.requestWillBeSent", (e: { requestId: string; timestamp: number; type?: string; request: { url: string } }) => { urls.set(e.requestId, e.request.url); mark(e.timestamp, "request", e.request.url, e.type ?? ""); });
+  cdp.on("Network.responseReceived", (e: { requestId: string; timestamp: number; response: { status: number; url: string } }) => { urls.set(e.requestId, e.response.url); mark(e.timestamp, "response", e.response.url, String(e.response.status)); });
+  cdp.on("Network.loadingFinished", (e: { requestId: string; timestamp: number; encodedDataLength: number }) => mark(e.timestamp, "finished", urls.get(e.requestId) ?? "", `${e.encodedDataLength} B`));
   await page.goto("/", { waitUntil: "load" });
   await expect(page.getByTestId("national-dashboard")).toBeVisible({ timeout: 60_000 });
   await page.waitForLoadState("networkidle");
@@ -45,11 +60,17 @@ test("home on Fast 3G with 4x CPU: JS, LCP and layout shift stay in budget", asy
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(2000);
   const after = await page.evaluate(() => (window as unknown as { __cls: number }).__cls);
+  const lcpEntries = await page.evaluate(() => (window as unknown as { __lcpEntries: unknown[] }).__lcpEntries);
   const result = { jsKbEncoded: Math.round(jsBytes / 1024), lcpMs: Math.round(cold.lcp), clsLoad: Number(cold.cls.toFixed(3)), clsRefreshDelta: Number((after - before).toFixed(3)) };
   await info.attach("perf-numbers", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
   console.log("PERF", JSON.stringify(result));
-  expect(result.jsKbEncoded, "JS on the wire (KB)").toBeLessThanOrEqual(BUDGET.jsKbGzip);
-  expect(result.lcpMs, "LCP (ms)").toBeLessThanOrEqual(BUDGET.lcpMs);
-  expect(result.clsLoad, "CLS on load").toBeLessThanOrEqual(BUDGET.cls);
-  expect(result.clsRefreshDelta, "CLS from a refresh").toBeLessThanOrEqual(0.01);
+  try {
+    expect(result.jsKbEncoded, "JS on the wire (KB)").toBeLessThanOrEqual(BUDGET.jsKbGzip);
+    expect(result.lcpMs, "LCP (ms)").toBeLessThanOrEqual(BUDGET.lcpMs);
+    expect(result.clsLoad, "CLS on load").toBeLessThanOrEqual(BUDGET.cls);
+    expect(result.clsRefreshDelta, "CLS from a refresh").toBeLessThanOrEqual(0.01);
+  } catch (err) {
+    await info.attach("perf-evidence-on-failure", { body: JSON.stringify({ result, lcpEntries, timeline }, null, 2), contentType: "application/json" });
+    throw err;
+  }
 });

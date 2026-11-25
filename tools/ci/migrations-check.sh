@@ -7,7 +7,7 @@
 #      would otherwise skip it on an existing database).
 #   3. Lint: squawk on the migrations added since <base> only (the shipped ones are history and are not re-judged),
 #      with tools/ci/squawk.toml (rules that protect a live table; style rules our schema does not follow are off).
-# Usage: tools/ci/migrations-check.sh <base-commit> [squawk binary]
+# Usage: [MIGRATIONS_ALSO_SHIPPED="<other merge-base> ..."] tools/ci/migrations-check.sh <base-commit> [squawk binary]
 # Owner: infra lane. The db lane owns db/migrations; this script only reads it.
 set -euo pipefail
 base="${1:?base commit}"
@@ -72,6 +72,20 @@ echo "order: ${#added[@]} new migration(s), highest shipped version $max_shipped
 
 # 3. squawk on the new ones.
 lint=("${added[@]}" "${replaced[@]}")
+# With several merge-bases (criss-cross history, tools/ci/migrations-base.sh) the CI loop runs this script once per base and names the
+# OTHER bases in MIGRATIONS_ALSO_SHIPPED: a file that exists at any of them was shipped on the integration branch, so it is not "new"
+# and is not linted again (that would be a false red against the older base).
+if [ -n "${MIGRATIONS_ALSO_SHIPPED:-}" ] && [ "${#lint[@]}" -gt 0 ]; then
+  kept=()
+  for f in "${lint[@]}"; do
+    shipped_elsewhere=false
+    for ob in ${MIGRATIONS_ALSO_SHIPPED}; do
+      if git cat-file -e "$ob:$f" 2>/dev/null; then shipped_elsewhere=true; break; fi
+    done
+    if [ "$shipped_elsewhere" = true ]; then echo "squawk: $f is shipped at another merge-base: not linted again"; else kept+=("$f"); fi
+  done
+  lint=("${kept[@]}")
+fi
 if [ "${#lint[@]}" -gt 0 ]; then
   if ! "$squawk" --config tools/ci/squawk.toml --reporter gcc --assume-in-transaction "${lint[@]}"; then
     err "squawk found migration risks in: ${lint[*]} (rules: tools/ci/squawk.toml; fix the migration, it is not shipped yet. Most common: put SET lock_timeout = '5s'; before the first DDL, CREATE INDEX CONCURRENTLY on an existing table, ADD CONSTRAINT ... NOT VALID then VALIDATE CONSTRAINT)"

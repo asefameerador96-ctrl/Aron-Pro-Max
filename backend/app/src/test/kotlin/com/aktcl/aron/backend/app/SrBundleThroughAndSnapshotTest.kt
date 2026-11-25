@@ -88,8 +88,17 @@ class SrBundleThroughAndSnapshotTest {
         return Seen(t, a, c.elapsed_working_days_before_today, c.today_is_working, c.remaining_working_days_after_today, c.working_days)
     }
 
+    /** The hand-worked literals below assume the seed's calendar: Friday is the only weekend day and January and February 2027 have no holiday or make-up day on any level. Pinned here, so a changed seed fails THIS, not a count. */
+    private fun assertSeedCalendarAssumption() {
+        val weekend = DbServerConfig(fresh.db, RegistryDefaults(), clock).value("cfg.calendar.weekend_days").toString()
+        assertEquals("[5]", weekend, "the global weekend is Friday only")
+        assertEquals(0L, q("SELECT count(*) FROM app.cfg_value WHERE key = 'cfg.calendar.weekend_days' AND scope_type IN ('wing', 'division') AND effective_to IS NULL"), "no wing or division weekend override")
+        assertEquals(0L, q("SELECT count(*) FROM app.calendar_holiday WHERE revoked_at IS NULL AND date BETWEEN DATE '2027-01-01' AND DATE '2027-02-28'"), "no holiday or make-up day in January or February 2027 on any level")
+    }
+
     /** The three day counts pinned to LITERAL values (hand-worked: Friday weekend, no holiday in January or February 2027 in the seed), and their sum to the month's working days. */
     private fun assertCounts(s: Seen, before: Int, today: Boolean, after: Int, what: String) {
+        assertSeedCalendarAssumption()
         assertEquals(listOf<Any>(before, today, after), listOf(s.elapsed, s.today, s.remaining), "elapsed / today_is_working / remaining: $what")
         assertEquals(s.workingDays, s.elapsed + (if (s.today) 1 else 0) + s.remaining, "before + today + after = the month's working days: $what")
     }
@@ -122,6 +131,16 @@ class SrBundleThroughAndSnapshotTest {
     }
 
     @Test
+    fun aBundleBuiltOnAFridayForSaturdayAnchorsOnTheNonWorkingFridayNotOnTheWorkingSaturday() {
+        nowAt = Instant.parse("2027-01-08T02:00:00Z")   // Friday 2027-01-08 08:00 Dhaka (the weekend day); the bundle for Saturday 9 Jan is built ahead
+        fx.memo("00000000-0000-4000-8000-0000000b0051", route, outlet, "2027-01-07", listOf(SrMemoFixture.L(skuC, 5)))
+        val s = seen("2027-01-09")
+        assertEquals(setOf("2027-01-07"), s.through, "through is Thursday 7 Jan, the last closed day")
+        // the anchor is Friday 8 Jan (not a working day): had today_is_working been read for the bundle date (Saturday, a working day) it would say true
+        assertCounts(s, 6, false, 20, "built Fri 8 Jan for Sat 9 Jan: Sat 2, Sun 3, Mon 4, Tue 5, Wed 6 and Thu 7 elapsed; the anchor Friday is not working; Sat 9 .. Sat 30 minus Fridays 15, 22, 29 remain")
+    }
+
+    @Test
     fun aBundleBuiltAheadOnTheLastDayOfTheMonthForTheFirstHasAnEmptyWindowAndSaysSo() {
         nowAt = Instant.parse("2027-01-31T02:00:00Z")   // Sunday 2027-01-31 08:00: the bundle for Monday 2027-02-01 is built ahead
         fx.memo("00000000-0000-4000-8000-0000000b0021", route, outlet, "2027-01-30", listOf(SrMemoFixture.L(skuC, 5)))
@@ -130,6 +149,11 @@ class SrBundleThroughAndSnapshotTest {
         assertEquals(setOf("2027-01-30"), s0.through, "calendar, achievement, kpi, star and campaigns all report through 30 January")
         assertCounts(s0, 0, true, 23, "built Sun 31 Jan for Mon 1 Feb: the anchor is Monday 1 Feb, not Sunday 31 Jan")
         val r = service.bundle(principal, LocalDate.parse("2027-02-01"), "1.0.0+1").full.routes.single { it.route_id == route }
+        val star = r.star!!.jsonObject
+        assertEquals(0, star["ewd"]!!.jsonPrimitive.content.toInt(), "the empty window has no elapsed working day: ewd is 0")
+        assertEquals("kotlinx.serialization.json.JsonNull", star["pads"]!!.javaClass.name, "pads is null on the empty window (never zero)")
+        assertEquals("kotlinx.serialization.json.JsonNull", star["growth_bp"]!!.javaClass.name, "growth_bp is null on the empty window")
+        assertEquals("0.000", star["lmads"]!!.jsonPrimitive.content, "no memo in January and 25 closed working days: lmads is 0.000, a number, not null (lmads is null only when lmwd is 0)")
         assertEquals("2027-02", r.calendar?.month, "the bundle's month is February")
         assertEquals("2027-01-30", r.calendar?.through_date, "complete through the last closed day, which is in January: the window of February is empty")
         assertTrue(r.achievement_mtd.none { it.jsonObject["achieved_qty_base"]!!.jsonPrimitive.content.toLong() > 0 }, "no January memo is in a February figure")
