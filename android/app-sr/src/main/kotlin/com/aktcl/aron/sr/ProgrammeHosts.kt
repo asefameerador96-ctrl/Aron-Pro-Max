@@ -449,3 +449,33 @@ fun StarHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
 }
 
 private fun gcdOf(a: Long, b: Long): Long = if (b == 0L) a else gcdOf(b, a % b)
+
+
+/** The campaign targets of one outlet (manual 21): the server figures of the bundle's routes as sent, with this phone's own memos of the outlet as separate lines (never added into a figure). Works offline. */
+internal suspend fun readOutletTarget(day: SrDay, outletId: Long): com.aktcl.aron.feature.programmes.OutletTargetData? = withContext(Dispatchers.IO) {
+    val (figures, routeIds) = readRouteFigures(day)
+    val skus = day.reference.skus().associate { k ->
+        k.skuId to com.aktcl.aron.feature.programmes.SkuInfo(k.skuId, k.shortName ?: k.name, k.nameBn, k.categoryCode, k.baseUnit, k.basePerPack, k.entryUnitDefault)
+    }
+    val acked = day.programmes.ackedBeforeRequest()
+    val mine = routeIds.toSet()
+    val memosByMonth = figures.flatMap { it.campaigns }.filter { it.outletId == outletId }.map { it.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
+    com.aktcl.aron.feature.programmes.OutletTargetModel.build(figures, outletId, skus) { c, keep ->
+        val memos = memosByMonth[c.month].orEmpty()
+        val campaignSkus = c.skus.map { it.skuId }.toSet()
+        com.aktcl.aron.feature.programmes.FigureFrame.of(
+            memos, c.month, c.throughDate, c.asOf, acked, memoIn = { it.outletId == outletId && (it.routeId == null || it.routeId in mine) }, lineIn = { it.skuId in campaignSkus && keep(it.skuId) },
+        )
+    }
+}
+
+/** Outlet target page (manual 21, right): the campaign SKU table of the outlet chosen on the call screen, from the stored bundle. */
+@Composable
+fun OutletTargetHost(day: SrDay, locale: UiLocale, outletId: Long, offline: Boolean = false) {
+    val load = rememberAsyncLoad(locale, outletId) { readOutletTarget(day, outletId) }
+    val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == outletId }
+    val label = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) }.orEmpty()
+    AronLoaded(load, stringResource(com.aktcl.aron.feature.programmes.R.string.pg_ot_failed), stringResource(HomeR.string.fb_retry)) { data ->
+        com.aktcl.aron.feature.programmes.OutletTargetScreen(label, day.dayData.collectAsState().value.route?.name, data, locale, offline = offline)
+    }
+}
