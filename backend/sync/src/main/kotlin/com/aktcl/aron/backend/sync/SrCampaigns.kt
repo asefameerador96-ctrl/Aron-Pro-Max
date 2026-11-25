@@ -53,10 +53,11 @@ object SrCampaigns {
             .bindArray("o", Long::class.javaObjectType, outletIds).bind("m", first)
             .map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list()
             .filter { camps[it[0]]?.programmeId == it[1] }.groupBy { it[0] }
-        // The SKUs shown per outlet (the campaign's own, cut at the SKU cap) are the ONLY SKUs read, so the memo figure can never count memos of a SKU the table does not
-        // show (another campaign of the outlet, or a SKU past the cut): the (outlet, SKU) pairs go into the query, matched by a join (review, D-TKPI-10).
+        // The SKU TABLE is cut at the SKU cap (`shown`), but the FIGURES are computed over ALL the campaign's SKUs of the outlet: the (outlet, SKU) pairs of every SKU target of the chosen campaign go
+        // into the query (matched by a join, so another campaign's SKU is never counted), exactly as the target (`std_target`, `memo_target`) is the whole campaign's. A cut table therefore never
+        // under-reports the achieved STD or memo count (T1 follow-up of train 131); the per-outlet `truncated` flag tells the phone which outlets show a partial table.
         val shown = skuTargets.mapValues { it.value.take(maxSkus) }
-        val pairs = shown.flatMap { (o, rows) -> rows.map { o to it[2] } }
+        val pairs = skuTargets.flatMap { (o, rows) -> rows.map { o to it[2] } }
         val sold = HashMap<Pair<Long, Long>, Long>(); val memoSets = HashMap<Long, MutableSet<java.util.UUID>>()
         val (lines, outletAt) = SrMemoFigures.forOutletPairs(h, pairs, first, through)
         for (l in lines) { sold.merge(l.outlet to l.skuId, l.qty, Long::plus); memoSets.getOrPut(l.outlet) { HashSet() }.add(l.memo) }
@@ -68,16 +69,18 @@ object SrCampaigns {
             val rows = ids.take(maxOutlets).map { oid ->
                 val c = camps.getValue(oid)
                 val skus = shown[oid].orEmpty()
-                val achievedStd = skus.sumOf { sold[oid to it[2]] ?: 0L }
+                val achievedStd = skuTargets[oid].orEmpty().sumOf { sold[oid to it[2]] ?: 0L }   // ALL the campaign's SKUs, not only the ones listed below
+                val cut = (skuTargets[oid]?.size ?: 0) > maxSkus || oid in moreThanOne
                 buildJsonObject {
                     put("outlet_id", oid); put("programme_id", c.programmeId); put("label_en", c.en); put("label_bn", c.bn?.let { JsonPrimitive(it) } ?: JsonNull)
                     put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOfRoute.wire())
+                    if (cut) put("truncated", true)   // only when true: this outlet's SKU table is cut, or another active campaign of the outlet is not shown
                     put("std", figure(c.std.setScale(0, java.math.RoundingMode.HALF_UP).toLong(), achievedStd))
                     put("memo", figure(c.memo.toLong(), memos[oid] ?: 0L))
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })
                 }
             }
-            Result(rows, ids.size > maxOutlets || ids.take(maxOutlets).any { (skuTargets[it]?.size ?: 0) > maxSkus || it in moreThanOne })
+            Result(rows, ids.size > maxOutlets || rows.any { it["truncated"] != null })
         }
     }
 }

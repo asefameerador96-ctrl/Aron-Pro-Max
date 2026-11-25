@@ -35,6 +35,14 @@ RouteCampaign:
       $ref: '#/components/schemas/BusinessDate'
     as_of:
       $ref: '#/components/schemas/Timestamp'
+    truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True (present only when true) when THIS outlet's `skus` table is cut at the SKU cap or another
+        active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's
+        SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level
+        `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional.
     std:
       $ref: '#/components/schemas/CampaignFigure'
     memo:
