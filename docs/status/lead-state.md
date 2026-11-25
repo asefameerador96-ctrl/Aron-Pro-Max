@@ -465,3 +465,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Not verified: migrate and start-up consoles (not in the log), the size gate warning table, anything on a device.
 - Told after the landing: A-PROG4 (round 1: merge, SrApp.kt conflict, three lows), T-KPI3 (merge, test lows, dash-perf evidence attachment; T1 passed at 780820b1a, short confirming pass on the final diff), INFRA1 (follow-up: empty-list guard, lint only files absent from every base).
 - Next trains: server train = T-KPI3 (contract 1.25.0) + L-A13 merge round (not yet restarted) + INFRA1 follow-up; Android train = A-PROG4 round 1 (+ A-GATE8 small round, A-INT3 size commit when checked).
+
+## 2026-11-25 06:10 UTC
+
+- **Train 130 LANDED**: INT 218d11f6bc (fast-forward of c594bb029b + row). Lane CI of the train head 45548479428 18/18 (read by the lead before the GO); integration CI 45553394669 green (web and infra jobs skipped by the filter); deploy #370 ran and succeeded (0 migrations, worker 0 restarts, SR smoke passed); health read by the lead: build 218d11f6bc. APK aron-release-signed-dev-2547 42,259,381 B (+0.14 %).
+- **Size gate: 10 warnings, no failure.** sr-release +10.0 to +11.0 % per ABI (universal +6.4 %), amo-release +9.5 to +10.6 %, tso within 0.5 %. Warn is +5 %, fail +15 %: SR has about 4 points of room. A-INT3's reduction commit 026037794 (about 45 KB per app) is unchecked and not landed; owner item 18 (baseline) open.
+- Not verified: migrate and start-up consoles, test names, any device.
+- **Train 131** (server) being built: T-KPI3 3684b63db + CI follow-up 2a013a5b8.
+- A-PROG4 told to push its local round (screen 21 with parity look, screen 50 record, KPI lows) after merging INT.
