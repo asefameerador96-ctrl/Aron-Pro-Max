@@ -54,6 +54,8 @@ data class RouteStar(
     val programmeId: Long, val name: String, val nameBn: String?, val month: String, val throughDate: String, val asOf: String?, val srName: String?, val srCode: String?, val routeName: String,
     val lmwd: Int, val wd: Int, val ewd: Int, val targetMilli: Long, val stdMilli: Long, val projectionMilli: Long?, val achievementBp: Long?, val lmsMilli: Long, val lmadsMilli: Long?,
     val padsMilli: Long?, val growthBp: Long?, val statusEn: String, val statusBn: String, val achievedSlab: String?, val slabAmountMtk: Long?, val projectedSlab: String?, val projectedAmountMtk: Long?,
+    /** Contract 1.26.0, all optional (an older server sends none): [unitDivisor] converts base units to the programme unit (null: 1); the SKUs the STD counts are [skuIds] (cleaned, ascending, at most 500) or, when absent, [skuCategory]. */
+    val unitDivisor: Long? = null, val skuCategory: String? = null, val skuIds: List<Long>? = null, val skuIdsTruncated: Boolean = false,
 )
 
 data class CampaignFigure(val target: Long, val achieved: Long, val remaining: Long)
@@ -160,6 +162,9 @@ data class RouteFigures(
             AsthaModel.decimal3(o["target"]) ?: return null, AsthaModel.decimal3(o["std"]) ?: return null, AsthaModel.decimal3(o["projection"]), o.long("achievement_bp"),
             AsthaModel.decimal3(o["lms"]) ?: return null, AsthaModel.decimal3(o["lmads"]), AsthaModel.decimal3(o["pads"]), o.long("growth_bp"),
             o.str("status_en") ?: return null, o.str("status_bn") ?: return null, o.str("achieved_slab"), o.long("slab_amount_mtk"), o.str("projected_slab"), o.long("projected_amount_mtk"),
+            o.long("unit_divisor")?.takeIf { it >= 1L }, o.str("sku_category")?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+            (o["sku_ids"] as? JsonArray)?.let { a -> a.mapNotNull { (it as? JsonPrimitive)?.longOrNull } },
+            o.bool("sku_ids_truncated") == true,
         )
 
         private fun figure(o: JsonObject?): CampaignFigure? = o?.let { CampaignFigure(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("remaining") ?: return null) }

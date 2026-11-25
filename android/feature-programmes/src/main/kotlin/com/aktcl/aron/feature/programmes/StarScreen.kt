@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -54,6 +55,8 @@ object StarTags {
     const val SLAB = "star_slab"
     const val SLAB_AMOUNT = "star_slab_amount"
     const val PROJECTED = "star_projected"
+    const val TODAY = "star_today"
+    const val UNCONFIRMED = "star_unconfirmed"
 }
 
 object StarFormat {
@@ -87,7 +90,7 @@ object StarFormat {
  * [stars] empty is the empty state; loading and error belong to the host. The phone's own sales are not shown here: the programme's SKU list is not in the bundle.
  */
 @Composable
-fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Modifier, truncated: Boolean = false, offline: Boolean = false) {
+fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Modifier, truncated: Boolean = false, offline: Boolean = false, today: List<StarToday?> = emptyList()) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (offline) Text(stringResource(R.string.pg_tgt_offline), Modifier.testTag(StarTags.OFFLINE), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
@@ -97,12 +100,12 @@ fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Mo
             }
             return@Column
         }
-        stars.forEach { StarCard(it, locale) }
+        stars.forEachIndexed { i, s -> StarCard(s, locale, today.getOrNull(i)) }
         if (truncated) Text(stringResource(R.string.pg_star_truncated), Modifier.testTag(StarTags.TRUNCATED), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
     }
 }
 
-@Composable private fun StarCard(s: RouteStar, locale: UiLocale) {
+@Composable private fun StarCard(s: RouteStar, locale: UiLocale, today: StarToday? = null) {
     val look = LocalAronLook.current
     val deep = Color(0xFF3F1A9E)
     val tk = stringResource(R.string.pg_star_tk)
@@ -157,6 +160,17 @@ fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Mo
         ) {
             Text(stringResource(R.string.pg_star_projected), style = TextStyle(fontSize = 18.sp, color = Color(0xCCFFFFFF)))
             Text(StarFormat.tk(s.projectedAmountMtk, locale, tk), style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White))
+        }
+        // this phone's own sales since the closed day, SEPARATE from the server's STD (never added to it) and only when the row names the SKUs it counts
+        if (today != null) Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(if (today.incomplete) R.string.pg_star_today_partial else R.string.pg_star_today, StarTodayModel.qtyText(today, locale), Formats.integer(today.memoCount, locale)),
+                Modifier.testTag(StarTags.TODAY), style = TextStyle(fontSize = 14.sp, color = look.ink),
+            )
+            if (today.unconfirmedEarlier > 0) Text(
+                pluralStringResource(R.plurals.pg_tgt_unconfirmed, today.unconfirmedEarlier, Formats.integer(today.unconfirmedEarlier.toLong(), locale)),
+                Modifier.testTag(StarTags.UNCONFIRMED), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium),
+            )
         }
     }
 }

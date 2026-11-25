@@ -434,17 +434,33 @@ fun BrandKpiHost(day: SrDay, locale: UiLocale, kind: com.aktcl.aron.feature.prog
 
 
 /** The Lifting Star snapshots of the bundle's routes (`route.<id>.star`, the server's figures as sent) and whether the bundle cut a list (`star_truncated`). */
-internal suspend fun readStars(day: SrDay): Pair<List<com.aktcl.aron.feature.programmes.RouteStar>, Boolean> = withContext(Dispatchers.IO) {
+internal suspend fun readStars(day: SrDay): StarLoad = withContext(Dispatchers.IO) {
     val (figures, _) = readRouteFigures(day)
-    figures.mapNotNull { it.star } to figures.any { it.starTruncated }
+    val withStar = figures.filter { it.star != null }
+    val categories = day.reference.skus().associate { it.skuId to it.categoryCode }
+    val acked = day.programmes.ackedBeforeRequest()
+    val memosByMonth = withStar.map { it.star!!.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
+    // "today on this phone" per Star: this route's memos, the SKUs the programme counts (sku_ids or sku_category), in the programme unit; no line when the row names neither
+    val today = withStar.map { f ->
+        val s = f.star!!
+        val keep = com.aktcl.aron.feature.programmes.StarTodayModel.skuFilter(s) { categories[it] } ?: return@map null
+        runCatching {
+            val frame = com.aktcl.aron.feature.programmes.FigureFrame.of(memosByMonth[s.month].orEmpty(), s.month, s.throughDate, s.asOf, acked, memoIn = { it.routeId == null || it.routeId == f.routeId }, lineIn = { keep(it.skuId) })
+            com.aktcl.aron.feature.programmes.StarTodayModel.of(s, frame)
+        }.getOrNull()
+    }
+    StarLoad(withStar.map { it.star!! }, figures.any { it.starTruncated }, today)
 }
+
+/** The Star rows of the bundle, whether the bundle cut a list, and the phone's own "today" line of each row (null: the row names no SKUs). */
+internal class StarLoad(val stars: List<com.aktcl.aron.feature.programmes.RouteStar>, val truncated: Boolean, val today: List<com.aktcl.aron.feature.programmes.StarToday?>)
 
 /** Match Box Lifting Star of the SR (manual 62): the downloaded server snapshot, read-only, works offline from the stored bundle. */
 @Composable
 fun StarHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
     val load = rememberAsyncLoad(locale) { readStars(day) }
-    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { (stars, truncated) ->
-        com.aktcl.aron.feature.programmes.StarScreen(stars, locale, truncated = truncated, offline = offline)
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { l ->
+        com.aktcl.aron.feature.programmes.StarScreen(l.stars, locale, truncated = l.truncated, offline = offline, today = l.today)
     }
 }
 

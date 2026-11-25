@@ -247,6 +247,8 @@
     <string name="pg_star_sr_route">SR Route: %1$s</string>
     <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
     <string name="pg_star_lm_open">Last month has not closed at this cut: LMS and LMADS are not final.</string>
+    <string name="pg_star_today">Today on this phone: %1$s STD, %2$s memo (not in the STD above)</string>
+    <string name="pg_star_today_partial">Today on this phone: %1$s STD, %2$s memo (may be incomplete: the programme lists more SKUs than this phone received; not in the STD above)</string>
     <string name="pg_star_empty">No Lifting Star target is set for this month.</string>
     <string name="pg_star_truncated">The route has more than one active programme: only the first is shown.</string>
     <string name="pg_ot_title">Outlet target</string>
