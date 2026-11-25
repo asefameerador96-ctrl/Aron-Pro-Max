@@ -90,7 +90,7 @@ class SrParity1bMoreTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, titleText: String? = null, icon: Int? = null, clicks: List<String> = emptyList(), content: @Composable () -> Unit) {
+    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, titleText: String? = null, icon: Int? = null, clicks: List<String> = emptyList(), expectText: String? = null, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
@@ -101,6 +101,8 @@ class SrParity1bMoreTests {
         }
         rule.waitForIdle()
         clicks.forEach { if (it.startsWith("#")) rule.onNodeWithTag(it.drop(1)).performClick() else rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
+        // an interaction that silently became a no-op would capture the page it started from: the expected result must be on screen first (lead review B3)
+        expectText?.let { rule.onNodeWithText(it).assertExists() }
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
     }
@@ -114,7 +116,7 @@ class SrParity1bMoreTests {
     @Test fun settings() = shot("srp1b_settings") { Settings() }
     @Test fun settingsSunlight() = shot("srp1b_settings_sunlight", sunlight = true) { Settings() }
     @Test fun settingsFont20() = shot("srp1b_settings_font20", fontScale = 2.0f) { Settings() }
-    @Test fun settingsLogoutAsk() = shot("srp1b_settings_logout_ask", clicks = listOf("লগ আউট")) { Settings() }
+    @Test fun settingsLogoutAsk() = shot("srp1b_settings_logout_ask", clicks = listOf("লগ আউট"), expectText = "আজকের বিক্রয় জমা দেওয়া হয়নি") { Settings() }
 
     // ---- Sales Journey (manual 59) ----
     private fun call(id: String, outlet: Long, open: Long, close: Long?, sold: Boolean, edited: Boolean, status: JourneyCallStatus, dur: Long?, dist: Double?, run: Double, gap: Long?) =

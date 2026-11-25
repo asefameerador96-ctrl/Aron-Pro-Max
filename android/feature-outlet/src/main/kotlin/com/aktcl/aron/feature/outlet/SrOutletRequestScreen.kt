@@ -100,10 +100,9 @@ fun SrOutletRequestContent(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
-            if (kind == OutletRequestKind.CLOSE) {
-                FormNotice(stringResource(R.string.out_req_close_notice), kind = BannerKind.Warning)
-                if (form.openDueMtk > 0) FormNotice(stringResource(R.string.out_req_dues_warning), kind = BannerKind.Warning)
-            }
+            // The manual's Permanent close page carries no standing banner (screenshot 43): the sentence belongs to the confirm
+            // dialog, which asks it on Save. A warning that something is WRONG (open dues) still shows, and is never silent.
+            if (kind == OutletRequestKind.CLOSE && form.openDueMtk > 0) FormNotice(stringResource(R.string.out_req_dues_warning), kind = BannerKind.Warning)
             when (kind) {
                 OutletRequestKind.NEW -> {
                     SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == form.clusterId?.toString() }, { onChange(form.copy(clusterId = it.key.toLongOrNull())) }, SrRequestTags.CLUSTER, isError = RequestError.CLUSTER_REQUIRED in errors)
@@ -114,13 +113,22 @@ fun SrOutletRequestContent(
                     val inCluster = remember(rows, clusterFilter) { rows.filter { clusterFilter == null || it.outlet.clusterId == clusterFilter } }
                     SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == clusterFilter?.toString() }, { clusterFilter = it.key.toLongOrNull() }, SrRequestTags.CLUSTER)
                     val retailerTitle = stringResource(R.string.out_pick_retailer)
-                    val pick = rows.firstOrNull { it.outlet.outletId == form.outletId }?.let { PickItem(it.outlet.outletId.toString(), "● " + it.label) }
+                    val pick = rows.firstOrNull { it.outlet.outletId == form.outletId }?.let { PickItem(it.outlet.outletId.toString(), it.label) }
                     SearchPickerField(
-                        retailerTitle, searchHint, inCluster.map { PickItem(it.outlet.outletId.toString(), "● " + it.label) }, pick,
+                        retailerTitle, searchHint, inCluster.map { PickItem(it.outlet.outletId.toString(), it.label) }, pick,
                         { p -> outlets.firstOrNull { it.outletId.toString() == p.key }?.let(onPickOutlet) }, SrRequestTags.RETAILER,
-                        isError = RequestError.OUTLET_REQUIRED in errors,
+                        isError = RequestError.OUTLET_REQUIRED in errors, leadingDot = if (pick != null) VendorOutletDot else null,
                     )
-                    outlets.firstOrNull { it.outletId == form.outletId }?.let { DetailsCard(it) }
+                    val chosen = outlets.firstOrNull { it.outletId == form.outletId }
+                    // manual 43 left: with nothing chosen the page says, centred, what to do next
+                    if (chosen == null) {
+                        Text(
+                            retailerTitle, Modifier.fillMaxWidth().padding(top = AronTokens.Space.M),
+                            style = MaterialTheme.typography.bodyLarge, color = look.ink, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    } else {
+                        DetailsCard(chosen)
+                    }
                 }
                 OutletRequestKind.INFO, OutletRequestKind.LOCATION -> {
                     OutletSwitcher(rows, form.outletId, onPickOutlet, searchHint)
@@ -138,14 +146,14 @@ fun SrOutletRequestContent(
                     }
                 }
             }
-            if (kind.needsGeoPhoto && (kind != OutletRequestKind.INFO || form.outletId != null)) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note), takeLabel = R.string.out_req_capture_geo_photo)
+            if (kind.needsGeoPhoto && (kind != OutletRequestKind.INFO || form.outletId != null)) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note), takeLabel = R.string.out_req_capture_geo_photo, vendor = true)
             fieldErrors.forEach { FormError(errorText(it)) }
             if (kind == OutletRequestKind.INFO && onAddToRoute != null && form.outletId != null) {
                 FormLink(stringResource(R.string.out_req_route_add), onAddToRoute, Modifier.fillMaxWidth().testTag(RequestTags.ROUTE_ADD))
             }
         }
         FormBar(
-            BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, enabled = blockingReason == null && !saving, icon = AronIcons.Submit),
+            BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, enabled = blockingReason == null && !saving, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Save),
             reason = blockingReason,
         )
     }
@@ -253,13 +261,15 @@ private fun DetailLine(label: String, value: String, ink: androidx.compose.ui.gr
 private fun OutletSwitcher(rows: List<PickerRow>, selectedId: Long?, onPick: (OutletEntity) -> Unit, searchHint: String) {
     var letter by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
     val shown = remember(rows, letter) { if (letter == OutletPicker.ALL_CHIP) rows else rows.filter { it.chip == letter } }
-    val chosen = rows.firstOrNull { it.outlet.outletId == selectedId }?.let { PickItem(it.outlet.outletId.toString(), "● " + it.label) }
+    val chosen = rows.firstOrNull { it.outlet.outletId == selectedId }?.let { PickItem(it.outlet.outletId.toString(), it.label) }
     SearchPickerField(
-        stringResource(R.string.out_pick_retailer), searchHint, shown.map { PickItem(it.outlet.outletId.toString(), "● " + it.label) }, chosen,
+        stringResource(R.string.out_pick_retailer), searchHint, shown.map { PickItem(it.outlet.outletId.toString(), it.label) }, chosen,
         { p -> rows.firstOrNull { it.outlet.outletId.toString() == p.key }?.let { onPick(it.outlet) } }, SrRequestTags.OUTLET,
+        leadingDot = if (chosen != null) VendorOutletDot else null,
     )
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag(SrRequestTags.ALPHA), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        FormChip(stringResource(R.string.out_pick_all), letter == OutletPicker.ALL_CHIP, { letter = OutletPicker.ALL_CHIP }, Modifier.testTag(SrRequestTags.letter("all")))
-        OutletPicker.chips(rows).forEach { l -> FormChip(l, letter == l, { letter = l }, Modifier.testTag(SrRequestTags.letter(l))) }
-    }
+    // manual 44: the dark grey panel whose chips wrap over as many rows as they need, headed "All"
+    VendorLetterBar(
+        OutletPicker.chips(rows), letter, stringResource(R.string.out_pick_all), { letter = it },
+        Modifier.testTag(SrRequestTags.ALPHA), tagOf = { SrRequestTags.letter(it) },
+    )
 }

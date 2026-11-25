@@ -208,6 +208,7 @@
     <string name="pg_kpi_incomplete">Some routes have no KPI in this download or a brand list was cut: the percentages over several routes are not shown.</string>
     <string name="pg_kpi_unit_unknown">unit not clear</string>
     <string name="pg_kpi_brands_cut">The download was cut: some brands are not shown.</string>
+    <string name="pg_kpi_volume_left_out">A match or lighter brand whose figures the phone cannot match is not listed here; see it under Memo.</string>
     <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
     <string name="pg_kpi_on_memo">KPI on - Memo</string>
     <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>

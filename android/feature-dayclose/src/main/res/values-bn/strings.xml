@@ -35,6 +35,7 @@
     <string name="submit_dues_title">আপনি কি নিশ্চিত?</string>
     <string name="submit_dues_ask">আপনার এখনো %1$s টি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
     <string name="submit_dues_ask_v">আপনার এখনো %1$sটি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
+    <string name="submit_dues_ask_amount_v">আপনার এখনো %1$sটি রিটেইলারের কাছে %2$s বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
     <string name="submit_success_v">বিক্রয় সফল ভাবে জমা হয়েছে</string>
     <string name="submit_ok">ওকে</string>
     <string name="submit_type_media_meta">ছবির তথ্য</string>

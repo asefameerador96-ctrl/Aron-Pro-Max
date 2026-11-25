@@ -1621,7 +1621,7 @@ exit 0
         self.assertNotIn("\n    if:", block, "the gates job runs on every push and pull request")
         for needle in ("tools/ci/install-tool.sh", "tools/ci/test_gates.py", "gitleaks git --no-banner --redact --exit-code 1",
                        "--gitleaks-ignore-path tools/ci/gitleaksignore", "--config tools/ci/gitleaks.toml", "tools/ci/migrations-check.sh",
-                       '"${CHECK_BASE}" squawk', 'git merge-base "${BEFORE}" "${GITHUB_SHA}"',
+                       '"${b}" squawk', 'tools/ci/migrations-base.sh', 'git merge-base "${BEFORE}" "${GITHUB_SHA}"',
                        "tools/ci/contract-breaking.sh", "fetch-depth: 0"):
             self.assertIn(needle, block)
         tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")

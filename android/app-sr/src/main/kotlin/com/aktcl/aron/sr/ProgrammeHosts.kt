@@ -418,7 +418,7 @@ internal suspend fun readKpi(day: SrDay): KpiLoad = withContext(Dispatchers.IO) 
 fun KpiDashboardHost(day: SrDay, locale: UiLocale, offline: Boolean = false, onSeeAll: (com.aktcl.aron.feature.programmes.KpiKind) -> Unit = {}) {
     val load = rememberAsyncLoad(locale) { readKpi(day) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        if (page.data == null) KpiHost(day)
+        if (page.data == null) KpiHost(day, onSeeAllBrands = { onSeeAll(com.aktcl.aron.feature.programmes.KpiKind.VOLUME) })
         else com.aktcl.aron.feature.programmes.KpiDashboardScreen(page.data, locale, volumeToday = page.volumeToday, memoToday = page.memoToday, unconfirmedEarlier = page.unconfirmed, offline = offline, onSeeAll = onSeeAll)
     }
 }

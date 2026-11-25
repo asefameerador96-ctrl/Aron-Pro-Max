@@ -175,9 +175,21 @@ class KpiModelTest {
 
     // cheap low: an unresolved brand whose visible SKUs are matches is not listed under cigarette sales
     @Test fun anUnresolvedMatchBrandIsNotInTheCigaretteList() {
-        val fig = route(kpi(listOf(brand(3, 130, 0, 5, 0))))
-        val d = KpiModel.build(listOf(fig), names, mapOf(3L to "match"), emptyMap())!!
-        assertTrue(d.volumeBrands.none { it.brandId == 3L })
+        // brand 3 sends 130 dozen but its mapped SKU holds only 100: a gap, so the brand is unresolved (no category) yet the tree says its SKUs are matches
+        val t950 = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":950,"std_target":"100.000","std_unit":"dozen","memo_target":0}"""
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$t950],"achievement_mtd":[],"kpi":${kpi(listOf(brand(3, 130, 0, 5, 0)))}}""")!!
+        val d = KpiModel.build(listOf(fig), names, mapOf(3L to "match"), mapOf(950L to 3L))!!
+        assertNull(d.brands.single().category) // really the unresolved path
+        assertTrue(d.volumeBrands.none { it.brandId == 3L }) // left out of the cigarette list
+        assertEquals(listOf(3L), d.brands.map { it.brandId }) // still present in the memo list
+        assertTrue(d.volumeLeftOut) // and the screen says so
+    }
+
+    @Test fun aHalfUnitGapIsNoLongerForgivenTheToleranceIsAlwaysZero() {
+        // the SKU target 2000.500 is fractional; the brand's sent target 2001 used to pass the half-unit allowance, now any difference is unresolved
+        val t = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.500","std_unit":"stick","memo_target":0}"""
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$t],"achievement_mtd":[],"kpi":${kpi(listOf(brand(1, 2001, 0, 50, 0)))}}""")!!
+        assertNull(KpiModel.build(listOf(fig), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single().category)
     }
 
     @Test fun theExactQuotientCrossesADisplayBoundaryWhereTruncatedThousandthsWouldNot() {

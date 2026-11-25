@@ -160,6 +160,6 @@ fun JourneyScreen(j: Journey, modifier: Modifier = Modifier) {
 
 /** `12 packets` or `12 packets + 5 sticks`: whole entry units with the base-unit remainder (signed, never dropped). */
 @Composable
-private fun kpiFigure(whole: Long, remBase: Long, categoryCode: String, unit: String, unitLabel: (String) -> String): String =
+internal fun kpiFigure(whole: Long, remBase: Long, categoryCode: String, unit: String, unitLabel: (String) -> String): String =
     localizedNumber(whole) + " " + unitLabel(unit) +
         if (remBase == 0L) "" else " " + com.aktcl.aron.core.ui.remWithUnit(remBase, unitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(categoryCode)))

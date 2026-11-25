@@ -179,6 +179,11 @@ jobs:
             echo "CONTRACT_BASE=${contract}"
           } >> "${GITHUB_ENV}"
           echo "gitleaks range: ${range:-whole history}; gate base: ${check}; contract base: ${contract}"
+          # Migration base (D-CI-MIGRATIONS-BASE-01): on a lane branch the merge-base with the integration branch (what is shipped),
+          # else the gate base. The script fails loudly instead of guessing.
+          mig_lines="$(tools/ci/migrations-base.sh "${check}")"
+          echo "MIGRATIONS_BASES=$(printf '%s\n' "${mig_lines}" | awk '{print $1}' | tr '\n' ' ')" >> "${GITHUB_ENV}"
+          while IFS= read -r l; do echo "migrations base: ${l%% *} (${l#* })"; done <<< "${mig_lines}"
       - name: Install gitleaks, oasdiff, squawk and osv-scanner (pinned, checksum-verified)
         run: |
           for t in gitleaks oasdiff squawk osv-scanner; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
@@ -244,24 +249,32 @@ jobs:
           fail-on-severity: high
       - name: Migrations (shipped ones unchanged, versions in order, squawk on the new ones)
         if: needs.changes.outputs.db == 'true'
-        run: tools/ci/migrations-check.sh "${CHECK_BASE}" squawk
+        run: |
+          # Every base the chooser printed must pass (criss-cross history can have several merge-bases); one failure fails the step.
+          rc=0
+          for b in ${MIGRATIONS_BASES}; do
+            echo "== comparing with ${b}"
+            tools/ci/migrations-check.sh "${b}" squawk || rc=1
+          done
+          exit "${rc}"
       - name: Contract breaking-change check (oasdiff)
-        if: needs.changes.outputs.contract == 'true'
+        # !cancelled(): runs even when the Migrations step above failed, so one red step does not hide the others (the job still ends red).
+        if: ${{ !cancelled() && needs.changes.outputs.contract == 'true' }}
         run: tools/ci/contract-breaking.sh "${CONTRACT_BASE:-${CHECK_BASE}}" oasdiff
       # Contract lint lives here since 2026-10-07 (CI audit s5 item 8: the tiny gate jobs folded into one; the required
       # check "Contract lint" is gone from tools/github-governance.ps1 in the same commit).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: needs.changes.outputs.contract == 'true'
+        if: ${{ !cancelled() && needs.changes.outputs.contract == 'true' }}
         with:
           node-version: "22"
       - name: contract/slices is current (generated from openapi.yaml by tools/slice-contract.py)
-        if: needs.changes.outputs.contract == 'true'
+        if: ${{ !cancelled() && needs.changes.outputs.contract == 'true' }}
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user pyyaml==6.0.2
           python3 tools/slice-contract.py --check
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
         # Exact version, no install scripts (AUD-SEC-05); a new version is a reviewed change here.
-        if: needs.changes.outputs.contract == 'true'
+        if: ${{ !cancelled() && needs.changes.outputs.contract == 'true' }}
         env:
           npm_config_ignore_scripts: "true"
         run: npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml

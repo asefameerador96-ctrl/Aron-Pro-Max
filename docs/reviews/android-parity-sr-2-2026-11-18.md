@@ -90,3 +90,51 @@ Rule 17 is clean: core-database and the gated lists are unchanged, and no new wr
 - low: MemoDetailView vendorLayout leaves out the discount line when it is zero. The landed totals card always showed the zero discount line ('zero too, as the manual p44 and the print show them'). The print is unaffected.
 - low: Personal data: a retailer's outlet line with an 11-digit mobile number from screenshot 59 is copied into the SalesJourney.kt comment, DECISIONS D-PAR-SR2-05 and the Sr2Shot.kt fixtures. A second mobile number from the screenshots and the manual's outlet/owner names (e.g. a full owner name from manual 44) are also in the fixtures. There is precedent: the same strings are in docs/ui-reference, and one of the numbers is already in landed android tests. But the repo is public. Prefer synthetic numbers in code and goldens.
 - low: No secret-shaped literals, no logging of sensitive values, no new permission, sensor, polling or network call, and no manifest change in the diff.
+
+## Re-review 2026-11-24 (head 9b9546a96b; fixes 7b361e54e9, 5535f6fa1e; merge of 664eb9161)
+Reviewers read the code; no Gradle run and no device in the review. Lane CI run 45464283514 green (lane's report).
+
+### b1-b2: PASS (blocking upheld: 0)
+
+I read the code at head 9b9546a96b, not the commit messages, and found no blocking defect in commit 7b361e54e9. I could not run the tests (read-only), so the new tests are judged by reading them.
+
+B1 is fixed. offerId, quickId and the quick-add `n` in SlideManual.kt are plain `remember`. There is no other rememberSaveable in SlideManual.kt, QcManual.kt or SaleRoute.kt apart from the unrelated `laterShown` flag, which is keyed by memoUuid. After a recreate the route starts on Entry with no stale pop-up. The new test recreates the host and reopens Slide later, and it would have failed against the old code.
+
+B2 is fixed on the SR path (vendorQc).
+- **Submitted QC:** Back sets the stage to Review and does not call restoreQc. restoreQc is also a no-op on a locked draft.
+- **Typed, unsubmitted QC:** Back asks the localized discard question first. No keeps everything and Yes runs the old Cancel path.
+- **Nothing typed:** Back leaves at once, dropping a QC-only sale or restoring qcBefore.
+- **Entry page open:** the child BackHandler takes priority and restores through the gated path.
+- **Kill-and-relaunch:** stage and the dialog flag are plain `remember`, so the route reopens on Entry. Unsubmitted QC is dropped by sanitizeQc in `start`, and submitted QC stays locked and reopens on Review.
+- **Batched restore:** it keeps other SKUs' rows and puts this SKU's opening rows back, with qty above 0 only. It is gated by `locked`, so it cannot duplicate or lose rows.
+
+The main gap is that the batched restore (onRestoreSku) has no test, and the QC tiles moved to a LazyRow without re-recorded goldens. Both are in the lows.
+
+Lows:
+- Batched restore is not proven by any test. SaleRoute's new onRestoreSku lambda (the one restoreQc that replaces the six setQc writes) is never driven. QcManualScreenTest line 88 clicks QcTags.CANCEL without passing onRestoreSku, so it covers only the old per-fault fallback. No SaleRoute test presses the entry-page cancel or Back-on-entry-page with a vm. Reading the code, the restore keeps other SKUs' rows (from the current draft), puts this SKU's opening counts back, and is gated by locked, so it loses and duplicates nothing. The commit's 'one restoreQc' claim is untested.
+- restoreQc rebuilds the QC list as other SKUs' rows followed by this SKU's opening rows. The cancelled SKU's rows therefore move to the end of the list. The values are right, but the order of QC rows can change. Harmless unless a print or sync order depends on it.
+- The lambda builds its list from the `draft` captured at the last recomposition. A setQc for another SKU still queued at the click would be overwritten. It cannot happen from the entry page, which edits one SKU, so the risk is theoretical. A restore that takes the draft inside the flow's lock would be safer.
+- The Back-on-QC-tiles question is asked whenever review.qc is non-empty. That includes QC that was already in the draft when the rep opened QC from Review and was not typed this time. Yes then restores qcBefore, which is the same rows, so nothing is lost, but the 'discard everything entered' wording overstates it. Rows for SKUs missing from the catalog are dropped by review.qc, so they would not trigger the question.
+- The vendor Back tests type QC through s.vm.setQc directly, not through the QC entry UI. They prove the route's Back logic (ask, No keeps, Yes restores qcBefore, nothing typed leaves at once, submitted leaves with no restore and no notice). They do not prove that the tile or page UI writes to the same state. The submitted-QC test waits 500 ms of wall clock to prove that no notice appears. That is weak but valid.
+- B1 tests are real proofs. The host uses a plain remember stage like SaleRoute. Before the fix, the saved offerId/quickId would be consumed when Slide is composed again, and the SAVE or Discount node would reappear. Two older tests (the pop-up survives a recreate, the typed count survives a recreate) were replaced by their intended inverse. This is an intended behaviour change, not a weakening. Nothing in the diff is skipped or deleted otherwise.
+- SlideManual.kt and QcManual.kt still import rememberSaveable although it is no longer used there. This is harmless, but the imports are dead.
+- QcTiles changed from a horizontalScroll Row to a LazyRow with items keyed by skuId. No goldens were re-recorded in this commit, so a pixel difference in the QC tile goldens is unverified (no Gradle run was possible here).
+- No hardcoded user-facing strings were added. qc_confirm_title, qc_discard_message, sale_yes and sale_no all exist in values and values-bn. The dialog is built from stringResource.
+
+### b3-tests: PASS (blocking upheld: 0)
+
+Commit 5535f6fa1e fixes B3. I viewed the re-recorded golden srp1b_tasks_resolve_ask.png, which the head branch carries at the same 39078 bytes. It shows the dialog with the Bangla title "টাস্কটি সমাধান করবেন?", the outlet name Ruku Store, and the cancel and resolve buttons over a dimmed list. The test now triggers the card's custom accessibility action by tag. That tag and action exist in TaskScreen.kt (testTag TaskTags.resolve plus CustomAccessibilityAction), so the old click path that silently did nothing is replaced. The shot helper asserts the expected text with rule.onNodeWithText(expectText).assertExists() before capture. It is wired for tasksManualAsk ("টাস্কটি সমাধান করবেন?") and settingsLogoutAsk ("আজকের বিক্রয় জমা দেওয়া হয়নি"). Both strings exist in values-bn/strings.xml (tsk_resolve_confirm_title, set_submit_warning_title), and the English tsk_resolve_confirm_title is also present. Neither commit added an @Ignore or deleted an assertion in the screenshot tests. The 7b361e54e9 test diffs only swap the B1 survive-recreate tests for inverted ones and add vendorQc route tests. The B2 production code uses stringResource(R.string.qc_confirm_title) and stringResource(R.string.qc_discard_message), with both en and bn entries. I found no hardcoded user-facing strings in the added main-source code.
+
+Lows:
+- The B1 fix removed two tests (theOfferPopupSurvivesARecreate, theQuickAddDialogKeepsItsTypedCountAcrossARecreate) and replaced them with two inverted tests: the dialog does not reopen on a later Slide, and Save writes nothing. This follows the intended behaviour change (plain remember), so it is not a weakening. It does reduce coverage of the dialog being re-shown after a recreate while it is open, which the new design drops on purpose.
+- The settingsLogoutAsk golden (srp1b_settings_logout_ask) was not re-recorded in 5535f6fa1e. Only an expectText assertion was added. The golden should already have shown the dialog because the click path was a plain text click, but I did not diff that image. D-PAR-SR2-09 says an audit found the others fine.
+- expectText uses assertExists on a literal Bangla string inside the test sources. This is test-only text and not user-facing, but it duplicates the string resources tsk_resolve_confirm_title and set_submit_warning_title, so it breaks if the copy changes.
+- The customActions helper invokes actions.first(). That is correct only while the resolve action is the first and only custom action on the card.
+
+### merge: PASS (blocking upheld: 0)
+
+Merge 9b9546a96b (parents 5535f6fa1e and 664eb9161a) conflicted only in DECISIONS.md, and the resolution is clean. There are no conflict markers. Comparing sorted unique line sets, nothing from either parent is missing from the merged file. The lane's D-PAR-SR2-01..09 entries are kept alongside the integration entries. Against 664eb9161, only 3 non-android files differ: DECISIONS.md (13 added lines, 0 removed), docs/requests/android-parity-sr.md (11 added) and docs/status/android-parity-sr-2.md (new). There are no server, db/migrations, web, contract or packages differences, and no deletions. Five files were changed on both sides since the merge base: DECISIONS.md, the two app-sr strings.xml files, SearchPicker.kt and SaleRoute.kt. In each, the diff against 664eb9161 contains only additions (the lane's strings, the leadingDot parameter, the QC/Slide vendor wiring with the QC Back discard dialog), so no integration line was reverted. There are no duplicate string resource names in any Android strings.xml. I did not re-verify the B1-B3 fixes themselves, because this lens covered the merge only.
+
+Lows:
+- Pre-existing duplicate decision IDs in DECISIONS.md (D-AGATE-25, D-LEAD-CONTRACT-112-01, D-PAR-AMO-02/04, D-PAR-SR1-02, D-SALE-ZERO-PRICE-01, D-SRFIX-01/03/04, D-TSO-MAN-04). They are identical on both parents, so the merge did not introduce them.
+- The android/ diff against 664eb9161 is large (about 100 files, including new golden PNGs). It is all lane work that the integration branch does not have yet, not a revert. I did not review its content, because the lens was the merge only.

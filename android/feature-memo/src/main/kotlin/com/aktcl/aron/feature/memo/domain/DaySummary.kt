@@ -61,6 +61,17 @@ data class DaySummary(
 
 object DaySummaryCalculator {
     /**
+     * The order the SR's Summary SCREEN lists categories in (manual 39): cigarette, bidi, lighter, match, then any other. It is applied only by
+     * the SR host through [inCategoryOrder]; [compute] keeps its original (alphabetical) order, so the AMO's summary and the PRINTED summary,
+     * which read [compute]'s result, are unchanged (lead gate finding 3).
+     */
+    val VENDOR_CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
+
+    /** [summary] with its category rows listed in [order] (others after, by code, then unit). Every figure is untouched; only the listing moves. */
+    fun inCategoryOrder(summary: DaySummary, order: List<String> = VENDOR_CATEGORY_ORDER): DaySummary =
+        summary.copy(categories = summary.categories.sortedWith(compareBy({ order.indexOf(it.categoryCode).let { i -> if (i < 0) order.size else i } }, { it.categoryCode }, { it.unitKey })))
+
+    /**
      * Aggregates the day's live memos. A memo that another memo supersedes (an edit) is dropped, so an edited sale is counted once.
      * [issuedBase] and [qcReturnBase] come from the stock tracker; the return column is `issued - sold - qc_return`.
      * Every total is an exact integer sum of stored values; the grand total is the sum of memo nets (docs/24 s7.6).

@@ -53,6 +53,22 @@ class MemoViewModelTest {
         assertFalse(v.state.value.canMarkPaid); assertEquals(0, v.state.value.outletDueMtk)
     }
 
+    // finding 2 (vendor path): the partly-paid memo records ONLY the remaining due, once, and a relaunch over the same store cannot record it again
+    @Test fun markPaidRecordsTheRemainingDueOnceAndARelaunchDoesNotRecordItAgain() {
+        val f = Fake(credit); val v = vm(f)
+        v.open("m1")
+        assertEquals("the memo value is not what is settled", 84_000, credit.netMtk.toInt())
+        assertEquals(50_000, v.state.value.remainingDueMtk)
+        v.markPaid(); v.markPaid() // a double tap
+        assertEquals(1, f.writes.size); assertEquals(50_000, f.writes.single().amountMtk)
+        // the app is killed and relaunched: a new view model over the same stored collection finds nothing left to pay
+        val v2 = vm(f)
+        v2.open("m1")
+        assertFalse(v2.state.value.canMarkPaid); assertEquals(0L, v2.state.value.remainingByMemo["m1"])
+        v2.markPaid()
+        assertEquals(1, f.writes.size)
+    }
+
     // SRM-B-20: a stored collection shows the "marked as paid" modal until OK; it comes from state, so it survives a recomposition
     @Test fun aStoredMarkPaidRaisesThePaidModalOnceAndOkClearsIt() {
         val f = Fake(credit); val v = vm(f)

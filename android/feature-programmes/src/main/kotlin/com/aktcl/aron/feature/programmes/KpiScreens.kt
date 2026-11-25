@@ -55,6 +55,7 @@ object KpiTags {
     const val CUT = "kpi_cut"
     const val CPR = "kpi_cpr"
     const val INCOMPLETE = "kpi_incomplete"
+    const val LEFT_OUT = "kpi_volume_left_out"
     fun section(kind: KpiKind) = "kpi_section_${kind.name.lowercase()}"
     fun seeAll(kind: KpiKind) = "kpi_see_all_${kind.name.lowercase()}"
     fun today(kind: KpiKind) = "kpi_today_${kind.name.lowercase()}"
@@ -300,6 +301,7 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
             }
         }
         Text(stringResource(R.string.pg_kpi_fmc_brands), Modifier.fillMaxWidth().background(look.card).padding(horizontal = 12.dp, vertical = 10.dp), style = TextStyle(fontSize = 14.sp, color = look.inkMuted))
+        if (kind == KpiKind.VOLUME && data.volumeLeftOut) Note(stringResource(R.string.pg_kpi_volume_left_out), KpiTags.LEFT_OUT)
         Column(Modifier.fillMaxWidth().background(look.card)) {
             if (kind == KpiKind.BLM) data.categories.forEach { c ->
                 BrandRow(KpiTags.category(c.categoryCode), categoryName(c.categoryCode), stringResource(R.string.pg_tgt_target) + " " + KpiModel.qtyText(c.pair.target, locale) + " " + unitWord(c.pair.target.unitKey),

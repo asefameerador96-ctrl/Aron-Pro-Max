@@ -48,6 +48,8 @@ data class KpiData(
      * The brands of the cigarette volume list: cigarette brands, and brands whose unit the phone cannot tell (a dash and a note) unless the tree says their visible SKUs are matches, lighters or bidi: such a
      * brand is not listed under cigarette sales.
      */
+    /** True when the cigarette volume list leaves out a brand whose SKUs are matches, lighters or bidi and whose figures the phone cannot match to its tree: the screen says so in a short note. */
+    val volumeLeftOut: Boolean get() = brands.any { it.category == null && it.visibleCategory != null && it.visibleCategory != "cigarette" }
     val volumeBrands: List<KpiBrandRow> get() = brands.filter { it.category == "cigarette" || (it.category == null && (it.visibleCategory == null || it.visibleCategory == "cigarette")) }
 }
 
@@ -103,7 +105,7 @@ object KpiModel {
     }
 
     /**
-     * [category] when the SKUs of the route(s) that the product tree maps to the brand add up to the brand's sent volume (target and achieved, within the rounding of one base unit per SKU), else null.
+     * [category] when the SKUs of the route(s) that the product tree maps to the brand add up to the brand's sent volume (target and achieved, exactly), else null.
      * With no tree ([skuBrand] empty) the category is taken as given.
      */
     private fun resolvedCategory(b: KpiBrand, category: String?, figures: List<RouteFigures>, skuBrand: Map<Long, Long>): String? {
@@ -112,10 +114,8 @@ object KpiModel {
         val skus = skuBrand.filterValues { it == b.brandId }.keys
         val targetMilli = figures.sumOf { f -> f.targets.filter { it.skuId in skus }.sumOf { it.targetMilli } }
         val achieved = figures.sumOf { f -> f.achievement.filter { it.skuId in skus }.sumOf { it.qtyBase } }
-        // the server's figures are exact integers of base units (std_target is the Decimal3 of qty_base and the brand target is the sum of the same quantities), so ANY gap is an unmapped SKU: tolerance 0.
-        // Only a fractional mapped target (a dozen counted in parts) can make the server round its brand sum to a whole base unit: then, and only then, half a base unit of rounding is allowed.
-        val allowed = if (targetMilli % 1000L == 0L) 0L else 500L
-        return if (kotlin.math.abs(targetMilli - b.volumeTarget * 1000L) <= allowed && achieved == b.volumeAchieved) category else null
+        // the server's figures are exact integers of base units (std_target is the Decimal3 of qty_base and the brand target is the sum of the same quantities), so ANY gap is an unmapped SKU: tolerance 0, no half-unit allowance.
+        return if (targetMilli == b.volumeTarget * 1000L && achieved == b.volumeAchieved) category else null
     }
 
     /** One brand summed over the routes that carry it (a single route returns it as sent). */

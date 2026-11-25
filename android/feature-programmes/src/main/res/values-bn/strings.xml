@@ -208,6 +208,7 @@
     <string name="pg_kpi_incomplete">এই ডাউনলোডে কিছু রুটের কেপিআই নেই অথবা ব্র্যান্ডের তালিকা কাটা: একাধিক রুটের শতকরা হার দেখানো হচ্ছে না।</string>
     <string name="pg_kpi_unit_unknown">একক স্পষ্ট নয়</string>
     <string name="pg_kpi_brands_cut">ডাউনলোড কাটা হয়েছে: কিছু ব্র্যান্ড দেখানো হয়নি।</string>
+    <string name="pg_kpi_volume_left_out">যে ম্যাচ বা লাইটার ব্র্যান্ডের হিসাব ফোন মেলাতে পারেনি সেটি এখানে নেই; মেমো তালিকায় দেখুন।</string>
     <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
     <string name="pg_kpi_on_memo">KPI on - Memo</string>
     <string name="pg_kpi_on_blm">KPI on - BLM Sales</string>

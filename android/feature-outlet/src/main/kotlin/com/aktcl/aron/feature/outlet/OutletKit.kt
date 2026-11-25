@@ -182,7 +182,11 @@ internal fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit, mod
 }
 
 /** One action of the tagged bar: the test tag names the button for the host's tests. */
-internal class BarAction(val text: String, val onClick: () -> Unit, val tag: String? = null, val enabled: Boolean = true, val icon: ImageVector? = null)
+internal class BarAction(
+    val text: String, val onClick: () -> Unit, val tag: String? = null, val enabled: Boolean = true, val icon: ImageVector? = null,
+    /** The kit glyph drawn before the label in [FormBar] (the manual's Save floppy on the SR outlet forms). */
+    val glyph: com.aktcl.aron.core.ui.aron.ButtonGlyph? = null,
+)
 
 /**
  * The action bar of the outlet screens (android-glass s6.7): the `ActionBar` recipe, 80 dp (104 with a reason), the
