@@ -535,3 +535,12 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 ## 2026-11-25 16:00 UTC
 - Train 138 LANDED and DEPLOYED: INT 6cee5275a2, integration run 45644189128 green (383 e2e, 0 flaky), deploy 45646532945 real, smoke passed and its sale was accepted (not held by the new kind rule), live build 6cee5275a2 (lead's own read). Not verified: migrate/start-up consoles; the 30 s note on a screen; stored rows on dev against the kind rule (count query prepared, not run).
 - Lanes released: targets server pushes 740ee423c (lows); programmes pushes lows + per-route reading (accepted) + device-walk list. Train 139 (Android) after the lead's review of the programmes delta on ec48c3684d.
+
+## 2026-11-25 16:48 UTC
+- Train 139 (lane/lead-train139 3707212bb9 = INT 6cee5275a2 + docs + programmes b38ea3405e, Android only): lane CI 45652195725 18/18 green, GO sent.
+- Next: server train 140 = INT after 139 + docs + lane/sr-targets-server 3705b9ac6e (detail text only, PASS). After 140 both lanes have nothing open: T-KPI4 handover written; A-PROG5 writing its handover.
+- Owed to the owner in the evening report: device-walk list docs/status/sr-programmes-device-walk.md (on INT after train 139).
+
+## 2026-11-25 17:00 UTC
+- Train 139 LANDED: INT a6d449ab6f (Android only), integration run 45657587039 green, deploy skipped by design, live build stays 6cee5275a2. APK aron-release-signed-dev-2598 42,059,297 B. Size gate: sr +9.9..+10.9 % (universal +6.3 %), amo +8.6..+9.6 % (universal +5.3 %), tso -0.7..-1.4 %; warnings only (owner item 18 open). Device-walk list on INT: docs/status/sr-programmes-device-walk.md. Nothing walked on a device.
+- Train 140 being built (server, targets lane 3705b9ac6e).
