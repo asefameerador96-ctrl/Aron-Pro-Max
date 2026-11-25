@@ -1,10 +1,14 @@
 # Lane android-sr-programmes (A-PROG1) status
 
+## SCREEN 50 DECISION (lead ruling A, 2026-11-25)
+Screen 50 (Route STD and memo target) is COVERED by the existing Astha target screen (`SrScreen.ASTHA_TARGET`, Route tab): month chips, the STD table per brand (target, achievement, remaining, %, in packets/dozens/boxes per rule 5) and the Memo tab with the one "All Brand" row. The manual-50 layout is shown by the goldens `astha_target_bn_std`, `astha_target_bn_memo` (and `astha_target_bn_fetched_month`, `astha_target_bn_font20`) and the tests in `AsthaScreensTest` (STD/Memo sub-tabs, month chips). NOT built: "select several months": it goes to the owner as a question (sum of fully held months only vs a single month as today). No code change for screen 50.
+
 ## A-PROG4 ROUND 2, SCREEN 21 (2026-11-25; LOCAL commit, NOT pushed: the lead holds the branch for train 130 at 10ee37388)
 - Screen 21 outlet target: `OutletTargetModel` (feature-programmes; `RouteSnapshot.campaigns` of the outlet, rows in phone units, category totals as an exact sum in the category's own unit, % once from raw), `OutletTargetPopup`/`OutletTargetPopupBody` (the pop-up: six server figures + closed day; phone lines separate) and `OutletTargetScreen` (the page: SKU table + totals). Host `OutletTargetHost`/`readOutletTarget` (app-sr, offline from the bundle). The call-start question's "today's target" (SaleHost) now opens the real pop-up (loading / failed / empty / cut states) with a "View SKU targets" button to the new `SrScreen.OUTLET_TARGET` (parent VISIT).
 - The parity lane's feature-sale `OutletTargetPopup`/`OutletTargetPage`/`OutletTarget` are now UNUSED by the app (still used by their own tests and goldens in SrParity1bMoreTests): left for the lead to retire, not removed here.
 - Lows from the merge review: older-server brand page says "The server has not sent the KPI figures yet" (not "no KPI is set"); `kpiKind` is rememberSaveable; golden `kpi_brands_bn_volume_left_out` (+ `kpi_brands_bn_not_sent`).
 - DELIBERATE DECISION (lead, merge review): with server KPI figures the KPI tile shows the manual's dashboard (screen 60) only; the day strip and the two money cards of the earlier KPI screen stay on Home / the fallback and are not repeated under the dashboard. A bundle without a kpi section keeps the earlier screen.
+- Look (lead, directive 14a): the pop-up is now `OutletTargetPopupCard` in the parity pop-up's look (lavender rounded box, bold outlet, accent campaign line, hairline rows, full-width purple Okay; Sunlight solid). Remaining visual differences to the parity pop-up: figure text is 15/16 sp (parity: Material default 16 sp), an extra closed-day line under the campaign, a text button "View SKU targets" above Okay, notes for the phone's own lines. The parity feature-sale OutletTargetPopup/Page/OutletTarget and their goldens are NOT deleted; screen 21 now fully covers the pop-up (the page has no parity golden).
 - New goldens: outlet_target_{bn,en}_page*, outlet_target_*_popup*, kpi_brands_bn_volume_left_out, kpi_brands_bn_not_sent. No existing golden changed.
 
 ## A-PROG4 ROUND 1 (2026-11-25): merged INT 2d64ac3f87 (train 129). SrApp.kt: real screens SKU_TARGET, KPI/KPI_BRANDS, STAR replace the parity hook screens TARGET_HOOK and BRAND_KPI (removed); the Home target card Details opens SKU_TARGET; the older-server fallback KpiHost stays (its See all brands opens KPI_BRANDS). Removed dead hook code: feature-memo ProgrammeHook.kt, ProgrammeHookTest, BrandKpiContent, KpiDashboardTags.BRAND_SCREEN, unused hook_*/kpi_brand_* strings; Sr2Shot hook_target_bn, hook_kpi_bn, kpi_brand_bn and goldens sr2_hook_target_bn, sr2_hook_kpi_bn, sr2_kpi_brand_bn (all covered by the real screens). Lows: KpiModel.resolvedCategory tolerance 0 (test aHalfUnitGap...), anUnresolvedMatchBrand... exercises the unresolved path, note pg_kpi_volume_left_out on the Brand wise volume list. Round 2 (screens 21, 50) next.
@@ -32,7 +36,7 @@ UNITS: packets (20s/10s), matches dozens, lighters boxes of 25 (`FieldQty`, exac
 
 ### NOT BUILT (next session)
 - Screen 21: outlet target + campaign STD/memo pop-up (`RouteSnapshot.campaigns`, `campaignsTruncated`).
-- Screen 50: route STD/memo by brand.
+- Screen 50: route STD/memo by brand: SEE A-PROG4 ROUND 2 (covered by the Astha target screen; this line was stale).
 - Absence warning; KPI brand detail page; Star "today" line.
 Reuse `RouteFigures`, `FigureFrame`, `SkuTargetModel`, `KpiModel`; see per-round entries below for why each rule exists.
 

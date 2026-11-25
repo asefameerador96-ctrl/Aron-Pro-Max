@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,18 +69,30 @@ fun OutletTargetPopup(
     /** The read has not finished (loading) or failed (error): the dialog says so instead of the empty state. */
     loading: Boolean = false, failed: Boolean = false,
 ) {
-    val look = LocalAronLook.current
-    AlertDialog(
-        onDismissRequest = onOkay, modifier = modifier.testTag(OutletTargetTags.POPUP), containerColor = look.card, titleContentColor = look.ink, textContentColor = look.ink,
-        title = { Text(outletLabel, style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = look.ink)) },
-        text = { OutletTargetPopupBody(data, locale, offline, loading, failed) },
-        confirmButton = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (onDetails != null && data != null && data.campaigns.isNotEmpty()) AronSolidButton(stringResource(R.string.pg_ot_details), onDetails, Modifier.fillMaxWidth().testTag(OutletTargetTags.DETAILS))
-                AronSolidButton(stringResource(R.string.pg_ot_okay), onOkay, Modifier.fillMaxWidth().testTag(OutletTargetTags.OKAY))
-            }
-        },
-    )
+    androidx.compose.ui.window.Dialog(onDismissRequest = onOkay) {
+        OutletTargetPopupCard(outletLabel, data, locale, onOkay, modifier, offline, onDetails, loading, failed)
+    }
+}
+
+/**
+ * The pop-up as the old SR shows it (manual 21 left, the owner's screenshot; same look as the parity lane's pop-up): a lavender rounded box, the outlet in bold, the campaign line in the accent colour, the
+ * figures between hairlines and a full-width purple Okay (Sunlight: a solid surface). Also what the goldens capture, since a dialog window is not part of the root.
+ */
+@Composable
+fun OutletTargetPopupCard(
+    outletLabel: String, data: OutletTargetData?, locale: UiLocale, onOkay: () -> Unit, modifier: Modifier = Modifier, offline: Boolean = false, onDetails: (() -> Unit)? = null,
+    loading: Boolean = false, failed: Boolean = false,
+) {
+    val c = com.aktcl.aron.core.ui.LocalAronColors.current
+    Column(
+        modifier.fillMaxWidth().testTag(OutletTargetTags.POPUP).clip(RoundedCornerShape(28.dp)).background(if (c.sunlight) c.surfaceSolid else com.aktcl.aron.core.ui.AronLook.LavenderPanel).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(outletLabel, style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = c.textPrimary))
+        OutletTargetPopupBody(data, locale, offline, loading, failed, Modifier.weight(1f, fill = false))
+        if (onDetails != null && data != null && data.campaigns.isNotEmpty()) com.aktcl.aron.core.ui.aron.AronTextButton(stringResource(R.string.pg_ot_details), onDetails, Modifier.fillMaxWidth().testTag(OutletTargetTags.DETAILS))
+        AronSolidButton(stringResource(R.string.pg_ot_okay), onOkay, Modifier.fillMaxWidth().testTag(OutletTargetTags.OKAY))
+    }
 }
 
 /** The body of the pop-up (also what the goldens capture, since a dialog window is not part of the root): the notes, then each campaign's figures, or the loading, failed or empty state. */
@@ -102,7 +113,7 @@ fun OutletTargetPopupBody(data: OutletTargetData?, locale: UiLocale, offline: Bo
 private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
     val look = LocalAronLook.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(campaignName(c, locale), style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = look.purple))
+        Text(campaignName(c, locale), style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = com.aktcl.aron.core.ui.LocalAronColors.current.accent))
         Note(if (c.fromFirst) stringResource(R.string.pg_tgt_through_first) else stringResource(R.string.pg_tgt_through, LoyaltyModel.dateText(c.throughDate, locale)), OutletTargetTags.THROUGH)
         Figure(c.programmeId, "std_t", stringResource(R.string.pg_ot_std_target), OutletTargetModel.countText(c.std.target, locale))
         Figure(c.programmeId, "std_a", stringResource(R.string.pg_ot_std_ach), OutletTargetModel.countText(c.std.achieved, locale))
@@ -131,7 +142,7 @@ private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
             Text(label, Modifier.weight(1f), style = TextStyle(fontSize = 15.sp, color = look.ink))
             Text(value, style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = look.ink, textAlign = TextAlign.End))
         }
-        HorizontalDivider(color = look.rowRule)
+        HorizontalDivider()
     }
 }
 
