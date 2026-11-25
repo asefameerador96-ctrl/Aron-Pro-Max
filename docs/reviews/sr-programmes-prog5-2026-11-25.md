@@ -53,3 +53,64 @@ Lows:
 - Bidi-only coded brand: cat='bidi', so volume is null and volumeBp is the server's %. categoryVolumes=[bidi null]. It is not in volumeBrands (no cigarette entry), and volumeLeftOut is false because categoryVolumes is not empty, so it drops out of the cigarette Volume list with no note. This matches the old tree path for a 'bidi' category. In the MEMO list the row shows the memo target with the server's single-unit volume % beside it, which makes sense. Nothing prints a dash next to a %.
 - Readability: the line 'Target 100 packet · Bidi — · Other — - KPI Today —' puts the em-dash for unknown right before the ' - ' of the line template. It is not wrong, but a user could misread it.
 - The literal ' (' + … + ')' around pg_kpi_unit_unknown (KpiScreens.kt:321) was already there before this round and was not touched. The new separator and part strings are all resources: pg_kpi_part_cigarette, _bidi, _other, _sep and _unknown are present in both values and values-bn, and no ' · ' literal is left in KpiScreens.kt.
+
+
+# Slice 2 (cbd39e2447): outlet target uses the per-outlet cut flag; one lighter rule, 2026-11-25: PASS
+
+Reviewers read code and the golden only. Lane CI run 45602462680 18/18 (lane's report).
+
+## version-inference: PASS
+
+I checked these at cbd39e2447: RouteFigures.perOutletCut (campaigns.any { truncated != null }), OutletTargetModel.build (routeCut = globalTruncated && !perOutlet(route); outletCut = perOutlet && c.truncated == true; incomplete = skuMissing || routeCut || outletCut; stdUnit null on either cut; achievedPartial = routeCut), the screen, readRouteFigures/ReferenceRepository section storage, and server SrCampaigns.kt plus RouteCampaign.yaml. The member and the all-SKU figures arrive in the same server commit aba1b10ec8, and the member is absent from the 0cf576b41a contract as 1.26.0 only.
+(1) Old server, route flag false: perOutlet false, nothing cut, everything complete, as before.
+(2) Old server, flag true because A has 22 SKUs: perOutlet false, so routeCut is true for A and B. Achievement and Remaining are dashed, totals dashed, today lines say "may be incomplete", STD unit word off, route note. This is byte-for-byte the earlier behaviour. OutletTargetData.routeCut = views.any(achievedPartial) equals the old default truncated whenever views exist.
+(3) New server, A flagged: perOutlet true. A shows Achievement and Remaining as sent, phone totals dashed, today lines "may be incomplete", STD unit word off, outlet note. B is complete and has its unit word, which is right because the server computes over all SKUs.
+(4) New server, cap only, nothing flagged: perOutlet false, so every outlet reads the conservative old way and nothing partial is shown as complete.
+(5) New server, flagged for a hidden second campaign: treated as an outlet cut, so it is conservative on figures. The note text is a low.
+(6) The inference is per route (f.perOutletCut is paired with each campaign), while the route flag `truncated` is global. A global flag can only add cuts, never remove them, so one route's flag cannot make another route's outlets complete. An old route never carries the member. For an outlet on both an old cut route and a new route, distinctBy keeps the first. If that is the old one it is dashed. If it is the new one, it holds the newer server's all-SKU figure.
+(7) Route sections are never merged. A full apply clears all sections, a delta replaces whole route.<id> sections with putSection, and editSection only adds open_memos. So a cached older section cannot mix with a newer one inside one RouteFigures.
+I found no state where an old server's partial achieved figure is shown as complete. "May be incomplete" is applied wherever the phone's table is cut (route cut, outlet cut or a missing SKU), and the STD unit word is off for a flagged outlet. The lighter rule (lighterPair) is applied the same way to brand rows, BLM category rows and coded categories: box only when every pack factor is 25, otherwise pieces, never added across units. No test was deleted or weakened (one KpiScreens assertion became stricter). The new strings are in res for EN and BN. The new golden image shows what its name says.
+
+Lows:
+- Case (5), a new server flagging an outlet because a second active campaign is not shown (its table is not cut): the page and the pop-up now show pg_ot_cut_outlet, "The SKU list of this outlet was cut...". That gives the wrong reason, and it drops the old note's warning that the outlet may have "one more campaign, than shown". No figure is wrong: totals are dashed, today lines say "may be incomplete", and the STD unit word is off, which is more cautious than needed. But the rep is no longer told a campaign may be missing. Suggest wording for the outlet note that covers both causes (OutletTargetScreen.kt:114/216, strings.xml pg_ot_cut_outlet).
+- pg_ot_cut_outlet (EN and BN) says "the STD and memo figures above". On the page (CampaignTable) no STD or memo figures are shown at all. In the pop-up the note sits above the figures, not below them. Copy only.
+- Golden fixture outlet_target_bn_page_outlet_cut uses view(incomplete = true).copy(outletCut = true). The screenshot helper's last positional argument sets achievedPartial = incomplete = true, a state the model never produces (outletCut implies achievedPartial false). The page does not render achievedPartial, so the image shows what its name says (the outlet note, rows as sent, totals dashed, golden checked). The fixture should still set achievedPartial = false.
+- No screen test or golden covers the pop-up (CampaignFigures) for an outletCut view showing STD/memo Achievement and Remaining as sent (300/700, 4/6). Only the model test nW3 asserts achievedPartial false. The new OutletTargetScreenTest is named 'KeepsAchievement' but renders the page, which has no achievement figures.
+- For a cut outlet stdUnitKey is null, so the pop-up also shows pg_ot_std_mixed ("STD adds base units of different SKUs"). That may not be true when every sent SKU is in sticks. This behaved the same way for route cuts before this push.
+
+## lighter-tests: PASS
+
+No blocking finding on the checked claims; I read the diff and `git show` of the revision only and ran no builds or tests.
+
+**lighterPair**
+- Every lighter site goes through it: `build()` BLM category rows, `categoryVolume` (coded categories) and `brandVolume` (brand rows).
+- Pack 25 only gives boxes through `pairFromPacks`.
+- Any entry with a pack factor other than 25, pure 10 or a 25/10 mix, gives pieces. The piece figure is the server's total target and achieved times 1000, so a mix is counted once. Target and achieved use the same unit.
+- `bp` is passed through, so the percentage path is unchanged.
+- Empty packs, or per-pack figures that do not add up to the total, keep the old fallback to base-unit pieces.
+- The old brand-row behaviour (pack 10 shown as 'boxes' via 100/10) is fixed.
+
+**Outlet cut logic**
+- A route counts as 1.26.0 only when some entry has a non-null `truncated`. The parser reads `o.bool("truncated")`, which the lane says gives null for an absent or null member.
+- Old route: `routeCut` equals the route flag, `achievedPartial` equals `routeCut`, `incomplete` and `stdUnit` are as before, and the data-level `routeCut` default equals `truncated`. Old-server behaviour is unchanged.
+- New route, entry flagged true: Achievement and Remaining stay as sent, the phone's totals and today lines are dashed or marked incomplete, the STD unit word is off, and the per-outlet note appears.
+- New route, entry unflagged, null or false: complete, even when the route flag is true because another outlet was cut. This matches the server (SrCampaigns.kt sets the flag per entry and counts the flagged outlets into the route flag).
+- Outlet absent from the answer on a cut route: the empty answer with the cut note (nW6).
+
+**Tests**
+- The `OutletTargetModelTest` additions nW1 to nW6 assert what the lane lists, with concrete figures (std 1000/300/700, memo 10/4/6, totals null, pct 24, stdUnit "stick" when not cut).
+- KpiModelTest c12 covers the old tree path and coded entries, pack 10 giving pieces and pack 25 giving boxes, for both brand and category rows.
+- The one removed test line in the diff is the Bangla row substring check. It was replaced with the whole exact line, which is stronger. No assertion was weakened or deleted.
+- The new KpiScreensTest cases feed server JSON through `RouteFigures.parse` and `KpiModel.build` into the screen. They assert the exact lines 'Target 100 packet · 30 dozen - KPI Today —' and 'Target 100 piece'.
+
+**Golden and strings**
+- outlet_target_bn_page_outlet_cut.png shows the per-outlet note, the SKU rows, and the cigarette, lighter and match totals and percentage lines as dashes, with nothing clipped. It does not show Achievement or Remaining because the page has no STD rows. Those are on the pop-up, which has no outlet-cut golden (see the lows).
+- `pg_ot_cut_outlet` is present in both values and values-bn. No hardcoded strings were added.
+
+Lows:
+- The new note pg_ot_cut_outlet (values and values-bn) says the STD and memo figures are 'above' (উপরের). On the target PAGE (OutletTargetScreen) no STD or memo figures are shown at all, and in the pop-up the note sits above the figures, not below them. The golden outlet_target_bn_page_outlet_cut shows exactly this: the note points at figures that are not on the page. The wording is misleading, but it does not print a wrong figure.
+- The same note says 'The SKU list of this outlet was cut'. The server also sets the per-entry flag when another active campaign of the outlet is not shown (moreThanOne in SrCampaigns.kt) while the SKU table is complete. In that case the note describes the wrong cause. The old pg_ot_cut text named both causes. The phone dashes the totals either way, so this is conservative.
+- No screenshot and no UI test shows Achievement and Remaining as figures for an outlet-cut entry. The only new golden is the page (no STD rows) and the only new screen test, aCutOutletOfANewServerKeepsAchievementAndNamesWhatIsPartial, asserts the note tag and text only. The behaviour is covered at model level (nW3: achievedPartial false, std 1000/300/700 and memo 10/4/6 as sent, stdUnitKey null, totals null) and by the unchanged CampaignFigures code (std_a, std_r, memo_a and memo_r dash only on achievedPartial). A pop-up golden or a tagged-figure assertion with outletCut=true, routeCut=false would close the gap. Likewise the old-server, flag-null/false and empty-cut cases are tested only in OutletTargetModelTest (nW1, nW4, nW6), not on the screen.
+- In RouteFigures.kt the new KDoc for perOutletCut was inserted between the existing '/** The month of the figures ... */' comment and `val month`. The month comment is now detached from the property it describes. Cosmetic only.
+- A bundle that mixes routes can read conservatively. The route flag is any() over all routes, while perOutletCut is per route, so a route without flagged entries in a bundle where another route's list was cut is read the old way (dashed). That is safe, not a wrong figure.
+- The Bangla note writes 'SKU' in Latin script while neighbouring strings use এসকেইউ. This matches pg_ot_cut and pg_ot_std_mixed, so it is consistent with existing practice.
