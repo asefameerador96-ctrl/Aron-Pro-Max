@@ -100,6 +100,7 @@ class IngestRulesCheckerTest {
     private fun JsonObject.s(k: String) = this[k]!!.jsonPrimitive.content
     private fun JsonObject.p(k: String, v: JsonElement) = JsonObject(this + ("payload" to JsonObject(this["payload"]!!.jsonObject + (k to v))))
 
+    // NO test in this class may revoke, log out or disable the session or the user: every test shares this token.
     private var cachedToken: String? = null   // one login per class: the per-username login limiter allows 10 per window and this class has more tests than that
 
     private suspend fun HttpClient.token(): String {
@@ -310,6 +311,32 @@ class IngestRulesCheckerTest {
         client.ok(token, batch(fam))
         assertEquals(1, count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$memo'"), "still one item for the memo after the family is resent")
         assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
+    }
+
+    private fun detailOf(uuid: String) = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT detail FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) ORDER BY id LIMIT 1").bind("c", uuid).mapTo(String::class.java).one() }
+
+    @Test
+    fun checkerTheKindDetailCarriesTheMemoUuidAndEveryProblemOnBothPathsAndWithExcessChildren() = testApplication {
+        app()
+        val token = client.token()
+        // header first (record path), wrong on BOTH the kind and the money equation (paid + due != net): both are in one detail, behind the memo uuid
+        val both = memoFamily(twoLines()).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("zero_sale")).p("paid_mtk", JsonPrimitive(1)) }
+        val bm = both[1].s("client_uuid")
+        client.ok(token, batch(both.take(2)))
+        val d1 = detailOf(bm)
+        assertTrue(d1.startsWith("memo $bm: "), d1); assertTrue("memo_kind_lines: zero_sale memo states line_count 2" in d1 && "paid_mtk + due_mtk" in d1, d1)
+        // the whole family (family path): the same lead and the kind problem
+        val fam = memoFamily(twoLines()).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("zero_sale")) }
+        val fm = fam[1].s("client_uuid")
+        client.ok(token, batch(fam))
+        val d2 = detailOf(fm)
+        assertTrue(d2.startsWith("memo $fm: memo_kind_lines: "), d2)
+        // more children than the header states AND a wrong kind (line_count 1 with kind zero_sale, two lines sent): the exceed branch carries the kind problem too
+        val excess = memoFamily(twoLines(), lineCount = 1, grossDelta = -twoLines()[1].let { it.qty * it.price }).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("zero_sale")) }
+        val em = excess[1].s("client_uuid")
+        client.ok(token, batch(excess))
+        val d3 = detailOf(em)
+        assertTrue(d3.startsWith("memo $em: memo_kind_lines: zero_sale memo states line_count 1; children"), d3)
     }
 
     // F-SYS-062 / s7.4 "line_count = the number of child records": more lines than the header states, all in one batch.

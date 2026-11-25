@@ -1375,7 +1375,7 @@ class IngestService(
         }
 
         // 8. Money (F-SYS-062, s7.4): a memo family whose equations fail is quarantined whole, before anything is stored.
-        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload))?.let { why ->
+        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload, r.clientUuid))?.let { why ->
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
