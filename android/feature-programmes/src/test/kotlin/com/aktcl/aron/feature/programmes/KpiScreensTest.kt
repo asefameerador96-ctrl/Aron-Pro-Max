@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -82,6 +83,26 @@ class KpiScreensTest {
     @Test fun noKpiIsTheEmptyState() {
         show(AppLanguage.EN) { KpiDashboardScreen(null, it, offline = true) }
         compose.onNodeWithTag(KpiTags.EMPTY).assertIsDisplayed(); compose.onNodeWithTag(KpiTags.OFFLINE).assertExists()
+    }
+
+    @Test fun brandWiseKpiWithoutServerKpiSaysTheServerHasNotSentItNeverNoKpiIsSet() {
+        show(AppLanguage.EN) { BrandKpiScreen(null, KpiKind.VOLUME, it) }
+        compose.onNodeWithTag(KpiTags.EMPTY).assertIsDisplayed()
+        compose.onNodeWithText("The server has not sent the KPI figures yet.", substring = true).assertExists()
+        assertEquals(0, compose.onAllNodesWithText("No KPI is set for this month.").fetchSemanticsNodes().size)
+    }
+
+    @Test fun theVolumeListNamesAnOmittedMatchOrLighterBrandAndTheMemoListDoesNot() {
+        val left = data!!.copy(brands = data.brands + KpiBrandRow(77, BrandName("Safe Match", null), null, null, null, 5, null, null, 0, "match"))
+        show(AppLanguage.EN) { BrandKpiScreen(left, KpiKind.VOLUME, it) }
+        compose.onNodeWithTag(KpiTags.LEFT_OUT).assertExists()
+        compose.onNodeWithText("A match or lighter brand whose figures the phone cannot match is not listed here; see it under Memo.").assertExists()
+    }
+
+    @Test fun theMemoListHasNoLeftOutNote() {
+        val left = data!!.copy(brands = data.brands + KpiBrandRow(77, BrandName("Safe Match", null), null, null, null, 5, null, null, 0, "match"))
+        show(AppLanguage.EN) { BrandKpiScreen(left, KpiKind.MEMO, it) }
+        assertEquals(0, compose.onAllNodesWithTag(KpiTags.LEFT_OUT).fetchSemanticsNodes().size)
     }
 
     @Test fun brandWiseKpiShowsTheSummaryCardTheBrandsAndADashForKpiTodayUntilDefined() {

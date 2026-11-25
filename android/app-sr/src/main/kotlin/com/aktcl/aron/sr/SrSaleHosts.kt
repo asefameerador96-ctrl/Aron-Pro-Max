@@ -51,7 +51,9 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onOpenStock: (() -> Unit)? = null, onSaleBarTitle: (SaleBarTitle) -> Unit = {}) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onOpenStock: (() -> Unit)? = null, onSaleBarTitle: (SaleBarTitle) -> Unit = {},
+    /** The language of the figures of the target pop-up and the opening of the outlet's SKU target page (manual 21). */
+    locale: com.aktcl.aron.rules.UiLocale = com.aktcl.aron.rules.UiLocale.BN, onOutletTarget: ((Long) -> Unit)? = null) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -141,9 +143,16 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         }
         if (startFirst) com.aktcl.aron.feature.outlet.StartCallFirstDialog(onOk = { startFirst = false })
         if (showTarget) {
-            // the outlet's target for the month is not in the bundle yet (contract outlet_targets[], TRAIN 2): the popup says so
-            com.aktcl.aron.feature.sale.ui.OutletTargetPopup(
-                outletRow?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) }.orEmpty(), target = null, onOkay = { showTarget = false },
+            // manual 21 (left): the outlet's campaign target of the bundle, the server's figures as sent with their closed day; this phone's own sales are separate lines
+            var load by remember(v.outletId) { mutableStateOf<TargetPopupLoad>(TargetPopupLoad.Loading) }
+            LaunchedEffect(v.outletId) {
+                load = try { TargetPopupLoad.Done(readOutletTarget(day, v.outletId)) } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { TargetPopupLoad.Failed }
+            }
+            val l = load
+            com.aktcl.aron.feature.programmes.OutletTargetPopup(
+                outletRow?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) }.orEmpty(), (l as? TargetPopupLoad.Done)?.data, locale, onOkay = { showTarget = false },
+                offline = !day.isOnline(), onDetails = onOutletTarget?.let { open -> { showTarget = false; open(v.outletId) } },
+                loading = l is TargetPopupLoad.Loading, failed = l is TargetPopupLoad.Failed,
             )
         }
         return
@@ -481,4 +490,12 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
             }
         }
     }
+}
+
+
+/** What the outlet target pop-up has read so far: loading, the campaigns (null: none for the outlet) or a failed read. */
+private sealed interface TargetPopupLoad {
+    data object Loading : TargetPopupLoad
+    data object Failed : TargetPopupLoad
+    data class Done(val data: com.aktcl.aron.feature.programmes.OutletTargetData?) : TargetPopupLoad
 }
