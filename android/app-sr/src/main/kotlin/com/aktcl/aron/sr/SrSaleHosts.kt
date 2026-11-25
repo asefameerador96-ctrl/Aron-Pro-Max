@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onOpenStock: (() -> Unit)? = null) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onOpenStock: (() -> Unit)? = null, onSaleBarTitle: (SaleBarTitle) -> Unit = {}) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -169,12 +169,18 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     LaunchedEffect(v.visitUuid) { skuStats = kit.skuStats(v.outletId) }
     val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
     val route = day.dayData.collectAsState().value.route
+    // the bar title follows the sale's stage (manuals 25, 26, 33); the frame is the host's, so the stage is reported up
+    var qcStage by remember(v.visitUuid) { mutableStateOf(com.aktcl.aron.feature.sale.ui.SaleStage.Entry) }
+    var qcEntryOpen by remember(v.visitUuid) { mutableStateOf(false) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleBarTitle(SaleBarTitle.SALE) } }
     Column(Modifier.fillMaxSize()) {
         // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1): as the retailer pill on the list
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
             vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
-            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats, onOpenStock = onOpenStock, // the open call stays open: Home's Sale tile returns to it, the draft is kept
+            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats, vendorQc = true, onOpenStock = onOpenStock, // the open call stays open: Home's Sale tile returns to it, the draft is kept
+            onStage = { stage -> qcStage = stage; onSaleBarTitle(saleBarTitle(stage, qcEntryOpen)) },
+            onQcEntryPage = { open -> qcEntryOpen = open; onSaleBarTitle(saleBarTitle(qcStage, open)) },
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(
                 outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
@@ -284,10 +290,10 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                     // the selector and letter bar, the category quantities, the banner with Print and Edit in a row, the "marked as paid" modal
                     outletName = outletLabel(sel.memo.outletId), dashedDueBox = true, dueSideBySide = true, subtotalQuantities = true, letterFilter = true,
                     switcher = MemoSwitcher(
-                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), st.remainingByMemo[it.memoUuid] ?: it.dueMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
+                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), st.remainingByMemo[it.memoUuid] ?: it.dueMtk, it.totalMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
                     ),
                     detailBanner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true,
-                    paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone,
+                    paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone, vendorLayout = true, // P-SR2: manuals 36, 38
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.sr_lock_body)
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
@@ -331,7 +337,8 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val b = bundle
     if (b == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         // SRM-B-22: the category rows in the app language, never the raw codes
-        SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } })
+        // the vendor's category order is a display choice of the SR screen only; the bundle (and so the print) keeps the original order
+        SummaryScreen(com.aktcl.aron.feature.memo.domain.DaySummaryCalculator.inCategoryOrder(b.summary), kit::skuName, onPrint = { day.printSummary(b) }, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } })
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -356,7 +363,7 @@ fun SubmitHost(day: SrDay, onSupport: (() -> Unit)? = null) {
         seen = st.seen, rejectedReadFailed = st.rejectedReadFailed, onMarkUnseen = vm::markUnseen, onSupport = onSupport, refusedNotShown = st.refusedNotShown, onShowMore = vm::showMoreRefused,  onRetryRead = vm::refresh, onMarkSeen = vm::markSeen, onSendAgain = vm::sendAgain, outbox = st.outbox, // D-AGATE-04
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
         business = st.business, serverBusiness = st.serverBusiness, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } },
-        vendorDialogs = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)
+        vendorDialogs = true, srDuesInDialog = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)
     )
 }
 
@@ -375,9 +382,23 @@ fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
     }
 }
 
-/** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */
+/** What the SR frame's bar says while the sale flow is up: "বিক্রয়" by default, then "QC", "QC এন্ট্রি" or "স্লাইড" (R1). */
+enum class SaleBarTitle { SALE, QC, QC_ENTRY, SLIDE }
+
+internal fun saleBarTitle(stage: com.aktcl.aron.feature.sale.ui.SaleStage, qcEntryOpen: Boolean): SaleBarTitle = when {
+    stage == com.aktcl.aron.feature.sale.ui.SaleStage.Slide -> SaleBarTitle.SLIDE
+    stage == com.aktcl.aron.feature.sale.ui.SaleStage.Qc -> if (qcEntryOpen) SaleBarTitle.QC_ENTRY else SaleBarTitle.QC
+    else -> SaleBarTitle.SALE
+}
+
+/**
+ * The KPI tile's page. Lead ruling 2026-11-13 (owner question R2): the tile opens the vendor's KPI Dashboard (manual 60), not the
+ * plain strip, and "See all brands" opens Brand wise KPI (manual 61). Everything the strip computed — outlets visited, the strike
+ * rate, non-visit, no-sale, and issue and current stock per category — is carried into the dashboard for real; the programme
+ * figures say "later". The two money cards of F-SR-069 stay under it, so no figure the rep had has been taken away.
+ */
 @Composable
-fun KpiHost(day: SrDay) {
+fun KpiHost(day: SrDay, onSeeAllBrands: () -> Unit) {
     var data by remember { mutableStateOf<Pair<com.aktcl.aron.feature.memo.domain.KpiStrip, com.aktcl.aron.feature.memo.domain.HomeMoney>?>(null) }
     LaunchedEffect(Unit) { data = day.sale.kpi() }
     val cats = mapOf(
@@ -385,13 +406,25 @@ fun KpiHost(day: SrDay) {
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
     val units = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
+    val month = remember(day) { srKpiMonth(day.businessDate()) }
     val loaded = data
     if (loaded == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val (strip, money) = loaded
-        KpiStripView(strip, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it })
+        com.aktcl.aron.feature.memo.ui.KpiDashboardContent(
+            strip, month, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it }, onSeeAllBrands = onSeeAllBrands,
+        )
         MoneyCardsView(money, categoryLabel = { cats[it] ?: it })
     }
 }
+
+/** The dashboard's month line from the Dhaka business date: the month as written, the day of the month and the days it has. */
+internal fun srKpiMonth(businessDate: String): com.aktcl.aron.feature.memo.ui.KpiMonth? = runCatching {
+    val d = java.time.LocalDate.parse(businessDate)
+    com.aktcl.aron.feature.memo.ui.KpiMonth(
+        d.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH) + " " + d.year,
+        d.dayOfMonth, d.lengthOfMonth(),
+    )
+}.getOrNull()
 
 /** Sale edit (F-SR-033): the gate and a fresh fix first, then the reason, then the pre-filled sale route; Print supersedes the memo. */
 @Composable

@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
@@ -63,7 +64,7 @@ class SrRequestFlowTest {
             SrOutletRequestContent(form, emptySet(), clusters, outlets, GeoPhotoState(), saving = false, savedDialog = false, onChange = { form = it }, onPickOutlet = {}, onShutter = {}, onSave = {}, onSavedOk = {})
         }
         compose.onNodeWithTag(SearchPickerTags.field(SrRequestTags.CLUSTER)).assertExists()
-        compose.onNodeWithText("ক্লাস্টার নির্বাচন করুন").assertExists()
+        compose.onNodeWithText("ক্লাস্টার নির্বাচন করুন").assertExists() // the landed picker speaks the label once (restored by D-PAR-SR2-08)
         compose.onNodeWithTag(SearchPickerTags.field(SrRequestTags.CLUSTER)).performClick()
         compose.onNodeWithText("জায়গা সার্চ করুন").assertExists()
         compose.onNodeWithTag(SearchPickerTags.DIALOG_SEARCH).performTextInput("lake")

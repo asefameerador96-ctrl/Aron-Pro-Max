@@ -84,15 +84,62 @@ class MemoManualScreensTest {
         compose.onNodeWithText("Avon-20S").assertExists()
     }
 
-    @Test fun switcherNamesTheOutletWithItsDueAndOpensAnotherMemo() {
+    // the memo total (291.50) and the REMAINING due (191.50, after 100.00 was collected) differ on purpose: Mark paid records the remaining
+    @Test fun switcherNamesTheOutletWithItsTotalAndTheRemainingDueAndOpensAnotherMemo() {
         var picked: String? = null
-        val sw = MemoSwitcher(listOf(MemoSwitchOption("m1", "Tasmin (1618415)", 29_150_000), MemoSwitchOption("m2", "Milon Store (2663519)", 0)), "m1") { picked = it }
+        val sw = MemoSwitcher(listOf(MemoSwitchOption("m1", "Tasmin (1618415)", 191_500, 291_500), MemoSwitchOption("m2", "Milon Store (2663519)", 0)), "m1") { picked = it }
         show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, switcher = sw) }
         compose.onNodeWithText("Tasmin (1618415)").assertExists()
-        compose.onNodeWithText("Due 29,150.00 ৳", substring = true).assertExists()
+        // P-SR2 (manual 38) kept, with the amount the rep will settle: ": <memo value> ৳", then "Due <remaining> ৳" in red, never a bare "Due"
+        compose.onNodeWithText(": 291.50 ৳", substring = true).assertExists()
+        compose.onNodeWithText("Due 191.50", substring = true).assertExists()
+        compose.onNodeWithText("Due").assertDoesNotExist()
         compose.onNodeWithText("Tasmin (1618415)").performClick()
         compose.onNodeWithText("Milon Store (2663519)").performClick()
         assertEquals("m2", picked)
+    }
+
+    // total 291.50, 100.00 already collected: the memo's value and the remaining due are different numbers
+    private val partlyPaid = StoredMemo("m1", "sr1-261112-001", 1, "2026-11-12", "2026-11-12T04:00:00.000Z", null, listOf(MemoItem(1, 291, 1_000, 291_500, qtyEntered = 291, unitEntered = "stick")), emptyList(), emptyList(), 291_500, 0, 0, 0, 291_500, 100_000, 191_500)
+
+    private fun vendor(remainingMtk: Long, onPaid: () -> Unit) = show {
+        MemoDetailView(MemoMenu.detail(partlyPaid), true, remainingMtk, { names.getValue(it) }, {}, {}, onPaid, skuCategory = { cats[it] }, outletName = "Tasmin (1618415)", vendorLayout = true, letterFilter = true, subtotalQuantities = true)
+    }
+
+    @Test fun vendorLayoutHasNoHeaderCardTheMinusLinesAndTheDueBoxWithItsOneTapButton() {
+        vendor(191_500) {}
+        compose.onNodeWithText("Tasmin (1618415)").assertDoesNotExist() // no selector and no header card without a switcher
+        compose.onNodeWithText("Price").assertExists() // "দাম" without the taka sign
+        compose.onNodeWithText("Total QC").assertExists()
+        compose.onNodeWithText("Grand total").assertExists()
+        compose.onNodeWithText("Total discount").assertDoesNotExist() // the zero discount line stays off the screen (deferred programme)
+    }
+
+    // finding 1 of the lead's gate: the due box names the REMAINING due, not the memo total, so the rep sees what Mark paid will record
+    @Test fun vendorDueBoxShowsTheRemainingDueNotTheTotal() {
+        vendor(191_500) {}
+        compose.onNodeWithText("Due 191.50", substring = true).performScrollTo().assertExists()
+    }
+
+    // finding 2: confirm, then exactly one write; the confirm text carries the amount; a second tap on a dismissed dialog cannot write again
+    @Test fun vendorMarkPaidNeedsTheConfirmNamesTheAmountAndWritesExactlyOnce() {
+        var paid = 0
+        vendor(191_500) { paid++ }
+        compose.onNodeWithText("Mark paid").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Are you sure?").assertExists() // the confirm step comes before any write
+        compose.onNodeWithText("Settle the whole remaining due of 191.50", substring = true).assertExists() // the amount the rep is about to record
+        assertEquals(0, paid)
+        compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
+        assertEquals(1, paid)
+        compose.onNodeWithText("Are you sure?").assertDoesNotExist()
+    }
+
+    @Test fun vendorMarkPaidDismissedWritesNothing() {
+        var paid = 0
+        vendor(191_500) { paid++ }
+        compose.onNodeWithText("Mark paid").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("No").performClick(); compose.waitForIdle()
+        assertEquals(0, paid)
     }
 
     @Test fun bannerShowsOnTheDetailAndPrintAndEditShareARow() {

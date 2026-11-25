@@ -149,13 +149,16 @@ fun SettingsContent(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // the reference tiles (screenshot 63/64): language drop-down, PDA টু সাপোর্ট, Update Configuration, লগ আউট
+            // The reference tiles in the owner's own order (screenshots 63 and 64): row 1 is the language drop-down,
+            // PDA টু সাপোর্ট and লগ আউট; the green Update Configuration tile opens row 2 at the left. Each carries its own
+            // art, as the manual draws it. Three to a row, dropping to two and then one as the font grows, so a long Bangla
+            // label reflows instead of clipping.
             val tiles = buildList<@Composable (Modifier) -> Unit> {
                 add { m -> LanguageTile(language, onLanguageSelect, m) }
-                onSupport?.let { go -> add { m -> AronTile(stringResource(R.string.set_support), painterResource(CoreR.drawable.aron_art_settings), go, m.testTag(SettingsTags.SUPPORT)) } }
+                onSupport?.let { go -> add { m -> AronTile(stringResource(R.string.set_support), painterResource(R.drawable.home_art_pda_support), go, m.testTag(SettingsTags.SUPPORT)) } }
                 add { m ->
                     AronTile(
-                        stringResource(R.string.set_logout), null,
+                        stringResource(R.string.set_logout), painterResource(R.drawable.home_art_logout),
                         {
                             if (submitPending == null) confirm = true
                             else scope.launch {
@@ -170,18 +173,19 @@ fun SettingsContent(
                 onUpdateConfig?.let { run ->
                     add { m ->
                         AronTile(
-                            stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(CoreR.drawable.aron_art_settings),
+                            stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(R.drawable.home_art_update_config),
                             { if (!configBusy) { configRunning = true; scope.launch { try { configResult = run() } finally { configRunning = false } } } },
                             m.testTag(SettingsTags.UPDATE_CONFIG),
                         )
                     }
                 }
             }
-            // three to a row as the manual's Settings page (63): language, support and log out; the extra update tile wraps to the next row
-            tiles.chunked(3).forEach { row ->
+            val scale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+            val columns = if (scale >= AronTokens.Size.OneColumnFontScale) 1 else if (scale >= 1.3f) 2 else 3
+            tiles.chunked(columns).forEach { group ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { t -> t(Modifier.weight(1f)) }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    group.forEach { t -> t(Modifier.weight(1f)) }
+                    repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             // display: the sun switch and the photo rule

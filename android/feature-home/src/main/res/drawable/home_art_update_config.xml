@@ -1,0 +1,62 @@
+<!--
+  The fourth Settings tile of the owner's manual (screenshot 64, row 2 left): a green round badge with a white gear and a
+  download arrow — "Update Configuration". Drawn here, in feature-home, because core-ui belongs to another lane.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- the round badge -->
+    <path
+        android:pathData="M24,2a22,22 0 1,0 0.01,0z"
+        android:fillColor="#FF2E9E44" />
+    <!-- the gear: a ring of eight teeth around a hollow centre -->
+    <path
+        android:pathData="M24,10m-4,0a4,4 0 1,1 8,0a4,4 0 1,1 -8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M24,38m-4,0a4,4 0 1,1 8,0a4,4 0 1,1 -8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M10,24m-4,0a4,4 0 1,1 8,0a4,4 0 1,1 -8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M38,24m-4,0a4,4 0 1,1 8,0a4,4 0 1,1 -8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M14.1,14.1m-3.4,0a3.4,3.4 0 1,1 6.8,0a3.4,3.4 0 1,1 -6.8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M33.9,14.1m-3.4,0a3.4,3.4 0 1,1 6.8,0a3.4,3.4 0 1,1 -6.8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M14.1,33.9m-3.4,0a3.4,3.4 0 1,1 6.8,0a3.4,3.4 0 1,1 -6.8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M33.9,33.9m-3.4,0a3.4,3.4 0 1,1 6.8,0a3.4,3.4 0 1,1 -6.8,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M24,24m-11,0a11,11 0 1,1 22,0a11,11 0 1,1 -22,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M24,24m-7.5,0a7.5,7.5 0 1,1 15,0a7.5,7.5 0 1,1 -15,0"
+        android:fillColor="#FF2E9E44" />
+    <!-- the download arrow in the gear's hollow centre -->
+    <path
+        android:pathData="M24,18.5v8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M20.6,23.4l3.4,3.4l3.4,-3.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M19.5,29.5h9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round" />
+</vector>

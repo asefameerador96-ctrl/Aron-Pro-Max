@@ -176,6 +176,11 @@ fun SalesSubmitScreen(
     today: String? = null,
     /** Row 66 (AMO): the due warning and the success message are modal dialogs over the table, as the vendor shows them; the SR keeps its own. */
     vendorDialogs: Boolean = false,
+    /**
+     * The SR's dues flow (manual 40): no inline dues box (the dialog asks on Submit), and that dialog states the count AND the amount owed. SR only:
+     * the AMO also sets [vendorDialogs] and keeps its inline box, which is where it shows the amount (lead gate finding 4).
+     */
+    srDuesInDialog: Boolean = false,
     /** SRM-B-29: with [vendorDialogs], the check-out hint stays under the table once the success modal is closed (the SR; the AMO keeps its own). */
     checkoutHint: Boolean = false,
     /** SRM-B-25: the business figures (device vs server) in place of the record-count rows; the gate notices above still name any record-count mismatch. */
@@ -265,7 +270,8 @@ fun SalesSubmitScreen(
                         Notice.Info,
                     )
                 }
-                gate.duesWarning?.let { d ->
+                // P-SR2 (manual 40): the SR's screen has no warning box for dues; it asks in the dialog, with the amount, when Submit is tapped (the AMO keeps the box)
+                if (!srDuesInDialog) gate.duesWarning?.let { d ->
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
@@ -295,7 +301,13 @@ fun SalesSubmitScreen(
         }
         if (vendorDialogs && duesAsk) {
             VendorDialog(
-                warn = true, message = stringResource(R.string.submit_dues_ask_v, localizedNumber((gate.duesWarning?.retailersWithDues ?: 0).toLong())),
+                warn = true,
+                message = gate.duesWarning.let { d ->
+                    val count = localizedNumber((d?.retailersWithDues ?: 0).toLong())
+                    // the SR sees the amount owed before it submits; the AMO's dialog keeps its wording (its inline box carries the amount)
+                    if (srDuesInDialog && d != null) stringResource(R.string.submit_dues_ask_amount_v, count, Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN))
+                    else stringResource(R.string.submit_dues_ask_v, count)
+                },
                 onDismiss = { duesAsk = false },
             ) {
                 AronYesButton(stringResource(R.string.submit_yes), { duesAsk = false; hold = true })
