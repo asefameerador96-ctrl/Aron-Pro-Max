@@ -251,4 +251,22 @@ class SrCampaignsBundleTest {
             assertTrue(whole.rows.all { it["truncated"]!!.jsonPrimitive.content == "false" })
         } finally { x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p") }
     }
+
+    @Test
+    fun aBundleWithMoreThan150CampaignOutletsSaysOutletsAreMissing() {
+        // bundle level: 151 cloned outlets on the route (plus o1) enrolled in the campaign; the cap is 150, the lowest outlet ids pass
+        x("INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel, lat, lng, location_basis, location_confirmed, status, visit_sequence) SELECT 'TC'||g, 'Cap clone '||g, 'Owner', zone_id, route_id, cluster_id, channel, lat, lng, location_basis, location_confirmed, 'active', 100 + g FROM app.outlet, generate_series(1, 151) g WHERE id = $o1")
+        val clones = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE code LIKE 'TC%' ORDER BY id").mapTo(Long::class.java).list() }
+        assertEquals(151, clones.size)
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0c6', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val b = "'00000000-0000-4000-8000-00000000b0c6'"
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) SELECT $programme, DATE '2027-01-01', id, 10, 1, $b FROM app.outlet WHERE code LIKE 'TC%'")
+        try {
+            val r = bundle().full.routes.single { it.route_id == route }
+            assertEquals(150, r.campaigns!!.size, "the list is cut at the outlet cap")
+            assertEquals(true, r.campaigns_outlets_truncated, "outlets are missing: the route says so")
+            assertEquals(true, r.campaigns_truncated, "and the OR flag is true")
+            assertTrue(r.campaigns!!.all { it.jsonObject["truncated"]!!.jsonPrimitive.content == "false" }, "no shown outlet is itself cut")
+        } finally { x("DELETE FROM app.outlet_campaign_target WHERE outlet_id IN (SELECT id FROM app.outlet WHERE code LIKE 'TC%')"); x("DELETE FROM app.outlet WHERE code LIKE 'TC%'") }
+    }
 }

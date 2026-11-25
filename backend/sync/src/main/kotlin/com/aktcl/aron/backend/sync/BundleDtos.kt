@@ -311,7 +311,7 @@ data class RouteSnapshot(
     val campaigns: List<JsonObject>? = null,
     /** True only when campaign outlets (over 150) or an outlet's campaign SKUs (over 20) were cut; absent otherwise (never silent). */
     val campaigns_truncated: Boolean? = null,
-    /** Contract 1.27.0 (optional): true only when the route's campaign OUTLET LIST was cut by the 150-outlet cap (outlets are missing); absent otherwise. `campaigns_truncated` stays the OR of every cut. */
+    /** Contract 1.27.0 (optional): `true` when the route's campaign OUTLET LIST was cut by the 150-outlet cap (outlets are missing), `null` otherwise (never false; the bundle JSON writes the null). `campaigns_truncated` stays the OR of every cut. */
     val campaigns_outlets_truncated: Boolean? = null,
     /** True only when `targets` or `achievement_mtd` had more than 500 rows and were cut (never silent); absent otherwise. */
     val targets_truncated: Boolean? = null,

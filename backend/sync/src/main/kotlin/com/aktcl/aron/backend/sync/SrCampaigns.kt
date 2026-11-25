@@ -66,11 +66,13 @@ object SrCampaigns {
         return outletsByRoute.mapValues { (routeId, _) ->
             val ids = chosen[routeId].orEmpty()
             val asOfRoute = ids.take(maxOutlets).mapNotNull { outletAt[it] }.maxOrNull() ?: Instant.EPOCH   // informational: the newest received_at among the memos read for this route's campaign outlets
+            var anyCut = false   // the per-outlet cut flags, carried directly into the route flag (never read back from the JSON)
             val rows = ids.take(maxOutlets).map { oid ->
                 val c = camps.getValue(oid)
                 val skus = shown[oid].orEmpty()
                 val achievedStd = skuTargets[oid].orEmpty().sumOf { sold[oid to it[2]] ?: 0L }   // ALL the campaign's SKUs, not only the ones listed below
                 val cut = (skuTargets[oid]?.size ?: 0) > maxSkus || oid in moreThanOne
+                if (cut) anyCut = true
                 buildJsonObject {
                     put("outlet_id", oid); put("programme_id", c.programmeId); put("label_en", c.en); put("label_bn", c.bn?.let { JsonPrimitive(it) } ?: JsonNull)
                     put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOfRoute.wire())
@@ -80,7 +82,7 @@ object SrCampaigns {
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })
                 }
             }
-            Result(rows, ids.size > maxOutlets || rows.any { it["truncated"]?.toString() == "true" }, ids.size > maxOutlets)
+            Result(rows, ids.size > maxOutlets || anyCut, ids.size > maxOutlets)
         }
     }
 }

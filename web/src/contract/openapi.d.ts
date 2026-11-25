@@ -7219,7 +7219,7 @@ export interface components {
             campaigns?: components["schemas"]["RouteCampaign"][] | null;
             /** @description True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional. */
             campaigns_truncated?: boolean | null;
-            /** @description True (present only when true) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional. */
+            /** @description True or null (never false) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Null or absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional. */
             campaigns_outlets_truncated?: boolean | null;
             /** @description True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional. */
             targets_truncated?: boolean | null;
