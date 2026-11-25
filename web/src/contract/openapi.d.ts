@@ -7155,13 +7155,13 @@ export interface components {
             /** @description The programme unit divisor: base units divided by it give the programme unit of `target`, `std`, `lms` (default 1). Contract 1.26.0, optional. */
             unit_divisor?: number | null;
             /**
-             * @description The SKU category whose SALE lines the STD and LMS count (the programme rule `sku_category`, default match). Absent when `sku_ids` lists the SKUs. With `sku_ids` and `unit_divisor` it lets the phone show "today on this phone" for the Star as a separate, labelled figure, never added into `std`. Contract 1.26.0, optional.
+             * @description The SKU category whose SALE lines the STD and LMS count (the programme rule `sku_category`, default match). Absent when `sku_ids` lists the SKUs, and absent when the rule names a category outside this enum (the server logs it; the STD then counts no SKU). With `sku_ids` and `unit_divisor` it lets the phone show "today on this phone" for the Star as a separate, labelled figure, never added into `std`. Contract 1.26.0, optional.
              * @enum {string|null}
              */
             sku_category?: "cigarette" | "bidi" | "match" | "lighter" | null;
-            /** @description The explicit SKU ids the STD and LMS count (the programme rule `sku_ids`), present only when the rules list them; then `sku_category` is absent. Contract 1.26.0, optional. */
+            /** @description The explicit SKU ids the STD and LMS count (the programme rule `sku_ids`), present only when the rules list them; then `sku_category` is absent. The list is cleaned on the server (distinct, existing in the catalogue) and ordered ASCENDING BY ID. Contract 1.26.0, optional. */
             sku_ids?: components["schemas"]["Id"][] | null;
-            /** @description True when the rule lists more than 500 SKUs and `sku_ids` holds the first 500 (the STD itself counts all of them); absent otherwise. Contract 1.26.0, optional. */
+            /** @description True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. Contract 1.26.0, optional. */
             sku_ids_truncated?: boolean | null;
             /** @description Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`. */
             lmwd: number;

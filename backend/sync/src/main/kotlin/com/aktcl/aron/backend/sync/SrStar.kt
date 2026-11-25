@@ -13,6 +13,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import org.jdbi.v3.core.Handle
+import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -27,10 +28,24 @@ import java.time.YearMonth
  * (the programme contract allows scalar rule values only): `slab1_label`, `slab1_min_bp`, `slab1_amount_mtk` .. `slab6_*`; `status1_min_bp`, `status1_en`,
  * `status1_bn` .. `status4_*`. Achieved slab = by the actual achievement (STD / target); projected amount = by the projection. The amounts are SHOWN, never
  * applied to a memo. Nothing here is written by a device; the phone may recompute with the same rules.
+ *
+ * The SKU rule is CLEANED before it is used or carried: `sku_ids` is read as a comma list, kept only when an id is >= 1 and exists in the catalogue ([SrMemoFigures.Dim]), made
+ * distinct and sorted ASCENDING BY ID (the one documented order of `sku_ids` on the wire). The 500 cap and `sku_ids_truncated` count that CLEANED list; the STD counts every cleaned id.
+ * When the rule lists ids but none survives the cleaning, the rule falls back to the category (as when the rule text cannot be read) and the fact is logged. `sku_category` is
+ * carried only when it is one of [CATEGORIES] (the contract enum); any other value is omitted from the row and logged, and the STD then counts no SKU.
  */
 object SrStar {
     /** The most SKU ids carried in `sku_ids` of one Star row (the STD itself counts every listed SKU). */
     const val MAX_SKU_IDS = 500
+
+    /** The SKU categories of the contract enum (`RouteStar.sku_category`). */
+    val CATEGORIES = setOf("cigarette", "bidi", "match", "lighter")
+
+    private val log = LoggerFactory.getLogger("aron.sr-star")
+
+    /** The cleaned explicit SKU list of a rule text: distinct, `>= 1`, present in [known], ascending by id; empty when the rule has no usable id. */
+    fun cleanSkuIds(rule: String?, known: (Long) -> Boolean): List<Long> =
+        rule?.split(',')?.mapNotNull { it.trim().toLongOrNull() }.orEmpty().filter { it >= 1 && known(it) }.distinct().sorted()
 
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
@@ -64,8 +79,13 @@ object SrStar {
             val rules = parseRules(p.rules)
             val divisor = rules.num("unit_divisor")?.takeIf { it >= 1 } ?: 1L
             val category = rules.str("sku_category") ?: "match"
-            val ids = rules.str("sku_ids")?.split(',')?.mapNotNull { it.trim().toLongOrNull() }.orEmpty()
-            val accept: (Long) -> Boolean = if (ids.isNotEmpty()) { sku -> sku in ids } else { sku -> dim.skus[sku]?.category == category }
+            val categoryOnWire = category.takeIf { it in CATEGORIES }
+            if (categoryOnWire == null) log.warn("programme {} route {}: sku_category '{}' is not one of {}; omitted from the row, the STD counts no SKU", p.id, routeId, category, CATEGORIES)
+            val idRule = rules.str("sku_ids")
+            val ids = cleanSkuIds(idRule) { it in dim.skus }
+            if (idRule != null && ids.isEmpty()) log.warn("programme {} route {}: sku_ids lists no usable SKU; the category rule '{}' applies", p.id, routeId, category)
+            val idSet = ids.toHashSet()
+            val accept: (Long) -> Boolean = if (ids.isNotEmpty()) { sku -> sku in idSet } else { sku -> dim.skus[sku]?.category == category }
             // STD: this month's accepted memos through the last closed day ([SrMemoFigures], same snapshot as every other figure); LMS: last month, same filters.
             val std = figures[routeId]?.sold(accept) ?: 0L
             val lms = lastMonth[routeId]?.sold(accept) ?: 0L
@@ -91,7 +111,7 @@ object SrStar {
                 put("lmwd", c.last_month_working_days); put("wd", c.working_days); put("ewd", days.elapsed)
                 // WHICH SKUs the STD counts, so the phone can show "today on this phone" as a separate, labelled figure (never added into `std`): the explicit SKU list when the rules give one, else the category
                 put("unit_divisor", divisor)
-                if (ids.isNotEmpty()) { put("sku_ids", buildJsonArray { ids.take(MAX_SKU_IDS).forEach { add(JsonPrimitive(it)) } }); if (ids.size > MAX_SKU_IDS) put("sku_ids_truncated", true) } else put("sku_category", category)
+                if (ids.isNotEmpty()) { put("sku_ids", buildJsonArray { ids.take(MAX_SKU_IDS).forEach { add(JsonPrimitive(it)) } }); if (ids.size > MAX_SKU_IDS) put("sku_ids_truncated", true) } else if (categoryOnWire != null) put("sku_category", categoryOnWire)
                 put("target", d3(res.targetMilli)); put("std", d3(res.stdMilli)); put("projection", d3(res.projectionMilli)); put("achievement_bp", l(res.achievementBp))
                 put("lms", d3(res.lmsMilli)); put("lmads", d3(res.lmadsMilli)); put("pads", d3(res.padsMilli)); put("growth_bp", l(res.growthBp))
                 put("status_en", st.en); put("status_bn", st.bn)
