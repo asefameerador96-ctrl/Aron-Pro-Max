@@ -1519,3 +1519,74 @@ Lows:
 - The new Star test calls SrStar.load/SrTargets.load directly on a plain handle, not through BundleService.inSnapshot. That is fine for a unit check, but it does not show the new members inside the bundle snapshot (the extended bundle test covers only the category branch).
 - AmoManualContractTest: only the version pin changed (versionIs1250 -> versionIs1260, 1.25.0 -> 1.26.0, with history text added). Nothing is weakened and no test is deleted. Both changed test classes add tests and remove none.
 - Wall clock: both test classes use a fixed AronClock (2027-01-03T02:00Z) and literal dates. DB now() appears only as voided_at and an insert timestamp, where only its presence matters, so the results do not depend on the wall clock. The new campaign test cleans up by tombstoning its memo lines rather than deleting them, which matches the existing convention.
+
+
+# Confirming T1 pass on 45cb7ec4dc (T-KPI4 round 1), 2026-11-25: PASS
+
+Two Opus reviewers read the diff against aba1b10ec8; nothing built or run by them. Lane CI run 45578041351 green (lane's report); the Migrations step was skipped there because no db file changed.
+
+## star-consistency: PASS
+
+Verdict PASS, no blocking findings. I checked SrStar.kt at 45cb7ec4dc for each rule shape. One accept set feeds STD, LMS and the projection (StarProgress.compute takes std/lms from the same accept), and the same set decides what goes on the wire.
+
+- **(a) Valid explicit list:** accept = membership of the cleaned ids, and sku_ids carries the same ids in ascending order.
+- **(b) List with duplicates, zero/negative and unknown ids:** cleanSkuIds drops non-numeric, < 1 and not-in-dim ids, removes duplicates and sorts. The cleaned list feeds both accept and the wire. Unknown ids could never match a sale line anyway, so dropping them does not change the STD.
+- **(c) List with no usable id:** accept falls back to `dim.skus[sku]?.category == category`, the same branch as having no list, and sku_category goes on the wire when it is in the enum. The fallback is logged.
+- **(d) No list, valid category:** the category rule is used and sku_category is sent.
+- **(e) No list, category outside the enum:** accept compares against the raw string. The V0003 CHECK limits app.sku.category_code to cigarette/bidi/lighter/match, so the raw string matches no SKU. The STD is truly 0 and the row omits sku_category, which is consistent.
+- **(f) More than 500 cleaned ids:** the STD counts every cleaned id while the wire carries the first 500 ascending plus sku_ids_truncated. The cap now counts the cleaned list, as the contract text says.
+
+The catalogue check reads SrMemoFigures.Dim, which is already loaded. BundleService.kt:546 passes the bundle's own dim and figures, so there is no new query and nothing outside the snapshot or unbounded.
+
+The contract change is description text only and stays 1.26.0. The OpenAPI file, the slice and openapi.d.ts agree.
+
+The tests are strengthened, not weakened:
+- The explicit-list test now seeds sales in the window (700 on the listed cigarette, 40 on the listed match), an unlisted match SKU with 9000, and a sale on the bundle date, and asserts std = 740.000.
+- New tests cover the cleaning and fallback, the cap at 500 and 501 (with duplicates and unknown ids not counted towards it), and an out-of-enum versus a valid category.
+- SrCampaignsBundleTest adds the per-outlet truncated assertion in the second-campaign branch, and a new test combines a cut 22-SKU table with a second campaign. That test proves the two cut SKUs count (12) and the second campaign's SKUs do not.
+
+The low findings are mainly test coverage gaps and one contract wording gap for a row that carries neither field.
+
+Lows:
+- (e) An out-of-enum sku_category with no usable id list gives a row with neither sku_ids nor sku_category. The phone then has no SKU set for 'today on this phone'. The contract says sku_category is absent and the STD counts no SKU, but it never says what the phone should do when both fields are absent (show nothing). Consider a sentence in the RouteStar description.
+- aCategoryOutsideTheContractEnumIsOmittedNeverSentAndAValidOneRides asserts std = 0.000 without seeding any sale in the window, so it would also pass if the accept function counted every SKU. The property holds only because the app.sku CHECK in V0003 (category_code IN the four) means no SKU can carry 'cigar'. Seeding one sale in the window would make the test prove what its name says.
+- theSkuListIsCleanedBeforeTheCapAndCarriedAscending checks only the wire list. It does not check that the STD of the cleaned rule (or of the all-unusable fallback, MBLS-NOIDS) counts the same set. The code uses one accept set, so this is coverage, not a bug.
+- (f) More than 500 cleaned ids: the STD counts every listed SKU while the phone gets 500 ids and sku_ids_truncated = true, so a phone-side 'today' figure can undercount SKUs it was not sent. This is disclosed by the flag and the contract, and it is unchanged from the reviewed design. The phone must treat the flag as 'local figure incomplete'.
+- A sku_ids rule given as a JSON array or number-array (not a comma string) reads as null through str(), so the rule silently falls to the category with no log. The programme contract allows scalar rule values only, so this is minor.
+- Both log.warn calls fire on every bundle build for every affected route. With a misconfigured programme across many routes that is repeated noise. Programme id, route id and the category string are not personal data or secrets, and the raw sku_ids text is not logged.
+
+## tests-4: PASS
+
+Head 45cb7ec4dc on top of aba1b10ec8 (read-only review): nothing blocking.
+
+Explicit-list test. Bundle date 2026-12-10 cuts at through = 2026-12-09.
+- The listed cigarette (700, 12-03) and the listed match SKU (40, 12-05) are inside the window.
+- The unlisted match SKU (9000, 12-04) is inside the window but not listed. The cigarette sale of 5000 on 12-10 is outside.
+- setUp's December memos (12-10 and 12-31, on the first match SKU, which is also the listed one) are both outside the window.
+- The fixture stores qty_base = qty (pack_factor 1) and the rule sets unit_divisor 1, so STD = 740 gives "740.000".
+- The default `match` category rule would give 40 + 9000 = 9040, so the test tells the two rules apart.
+- The cigarette SKU really is outside the default category.
+
+Code. cleanSkuIds trims each entry, then keeps only longs >= 1 that exist in dim.skus. dim.skus is the in-memory catalogue already read for the bundle, so no new query is added. It then makes the list distinct and sorts it.
+- The cap and the flag count the cleaned list.
+- accept() and the wire both use the same cleaned `ids`. When `ids` is empty, the STD uses the category rule and the wire carries that same category if it is in the enum. Otherwise the wire carries neither, and the STD is 0, because the V0003 CHECK limits category_code to exactly the four enum values.
+- So the STD set and the set sent to the phone match in every case except the documented, flagged >500 case.
+
+Contract. Only description text changed, still 1.26.0. The slice size 5811 in INDEX.md matches the file.
+
+Tests. No assertion was removed or weakened; the old explicit-list checks are kept, with the order now ascending, and the STD assertion is added.
+- The cleaning, 500/501/500+100 and enum tests prove what their names say.
+- The new second-campaign per-outlet `truncated` assertion covers the moreThanOne branch.
+- The combined 22-SKU + second-campaign test recomputes to 12 STD, 2 memos and 2188 remaining.
+- No wall clock is used: AronClock is fixed, and DB now() appears only in received_at and voided_at.
+
+Low items are listed separately. The main ones are the bad-category test's vacuous STD == 0 assertion (no in-window sales) and a misleading warning text when sku_ids are present.
+
+Lows:
+- SrStarBundleTest.aCategoryOutsideTheContractEnumIsOmittedNeverSentAndAValidOneRides: the assertion std == "0.000" ("and the STD counts no SKU") proves nothing. Bundle date 2026-12-10 gives the window 2026-12-01..09. The setUp December memos fall on 2026-12-10 and 2026-12-31, and the explicit-list test voids its own memos in `finally`, so a VALID category would also give 0.000. The test name does not claim the STD part, which is why this is low. Seeding one in-window sale (for example a match SKU on 2026-12-05) would make it prove something. The code is still consistent: the V0003 CHECK limits app.sku.category_code to exactly the four enum values, so an off-enum rule category can never match a SKU.
+- SrStar.kt: when sku_category is outside the enum but sku_ids holds usable ids, the warning still says 'the STD counts no SKU'. That is false, because the explicit list applies. The wire is correct (sku_ids is sent and sku_category is absent, so the two agree); only the log text is wrong.
+- SrStar.kt logging: both warnings fire on every bundle build for every route of a misconfigured programme. At fleet size that is one line per rep per build. The admin-typed category text is echoed with no length cap. It is programme configuration, not personal data or a secret, so the logging rule holds; deduplicating the warning or truncating the echoed text would help.
+- sku_ids_truncated (>500 cleaned ids): the STD counts every cleaned id while the phone receives only the first 500 in ascending order, so the two sets differ. This is the documented, flagged behaviour from the earlier round, and the change does not widen it. The flag now counts the cleaned list. theCapCountsTheCleanedListAt500And501 pins 500 (with junk and duplicates), 501, and 500 valid + 100 unknown; the old code would have flagged that last case at 600 raw entries.
+- SrCampaignsBundleTest.aCutTableWithASecondCampaignNeverCountsASkuOutsideTheChosenCampaign: the figures check out against the fixture. The chosen campaign has 22 SKUs at OFFSET 3, so skuA and skuC are not in it. Its sales are skus[20]=7 and skus[21]=5, giving STD 12 and 2 memos. The 5000 of skuA (setUp, 2027-01-02, o2) and the 300 of skuC belong to the second campaign and would give 5312 if they were mixed in. remaining = 2200 - 12 = 2188 is asserted. Two gaps: `truncated` is true here from both conditions (SKU cut and moreThanOne), so it does not separate them; and memo remaining (9 - 2 = 7) is not asserted.
+- aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne: the new per-outlet `truncated` assertion does test the moreThanOne branch on its own, since o1 has only 2 SKU targets, well under the cap of 20.
+- Explicit-list test: LMS is not asserted. Under the list, LMS would include setUp m7 (2026-11-30, matchSku = listedMatch, 55555), which is another number that would separate the list rule from the category rule. Like the cleaning and cap tests, it calls SrStar.load directly on a plain handle rather than through the bundle snapshot.
