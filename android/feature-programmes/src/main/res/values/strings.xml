@@ -264,7 +264,10 @@
     <string name="pg_ot_cat_cigarette">Cigarette</string>
     <string name="pg_ot_cat_bidi">Bidi</string>
     <string name="pg_ot_sku_missing">Some SKUs of this target are not on this phone\'s list: they are not shown.</string>
-    <string name="pg_ot_today_phone">Today on this phone: %1$s STD, %2$s memo (not in the figures above)</string>
+    <string name="pg_ot_today_phone">Today on this phone: %1$s memo (not in the figures above)</string>
     <string name="pg_ot_failed">The target could not be read from this phone.</string>
     <string name="pg_kpi_not_sent">The server has not sent the KPI figures yet. They will show here once your phone has the next update.</string>
+    <string name="pg_ot_today_cat">Today on this phone, %3$s: %1$s %2$s (not in the figures above)</string>
+    <string name="pg_ot_cut">The download was cut: this outlet may have more SKUs, or one more campaign, than shown. The totals are not shown.</string>
+    <string name="pg_ot_total_ach">%1$s achievement of the target quantity: %2$s</string>
 </resources>

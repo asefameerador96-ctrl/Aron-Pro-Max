@@ -96,19 +96,20 @@ class SrOutletTargetScreenshotTests {
     private val totals = listOf(
         OutletTargetTotal("cigarette", "packet", 1_100_000, 320_000, 20, 28), OutletTargetTotal("lighter", "box", 100_000, 50_000, 25, 50), OutletTargetTotal("match", "dozen", 24_000, 6_000, 1, 25),
     )
-    private fun view(label: String = "Super Star Low", labelBn: String? = "সুপার স্টার লো", today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fromFirst: Boolean = false) = OutletCampaignView(
-        1, label, labelBn, "2026-11", if (fromFirst) "2026-10-31" else "2026-11-17", "2026-11-18T01:00:00Z", fromFirst, CampaignFigure(1000, 300, 700), CampaignFigure(10, 4, 6), rows, totals, false, today, unconfirmed, 0,
+    private fun view(label: String = "Super Star Low", labelBn: String? = "সুপার স্টার লো", today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fromFirst: Boolean = false, cats: List<com.aktcl.aron.feature.programmes.OutletTodayCategory> = emptyList(), incomplete: Boolean = false) = OutletCampaignView(
+        1, label, labelBn, "2026-11", if (fromFirst) "2026-10-31" else "2026-11-17", "2026-11-18T01:00:00Z", fromFirst, CampaignFigure(1000, 300, 700), CampaignFigure(10, 4, 6), rows, if (incomplete) totals.map { it.copy(targetNum = null, soldNum = null, pct = null) } else totals, false, today, unconfirmed, 0, cats, incomplete,
     )
     private val data get() = OutletTargetData(listOf(view()), false)
-    private val phone = LocalToday(400, 3, 40_000, mapOf(20 to 400L))
+    private val phone = LocalToday(65, 3, 40_000, mapOf(20 to 40L))
+    private val phoneCats = listOf(com.aktcl.aron.feature.programmes.OutletTodayCategory("cigarette", "packet", 2_000, 1), com.aktcl.aron.feature.programmes.OutletTodayCategory("lighter", "box", 1_000, 1))
     private val label = "রুকু স্টোর (২০৩৪)"
     private val callLabel = "Ruku Store (2681268-01778553683-Agora Goli, Gulshan-2)"
 
     @Test fun outlet_target_bn_page() = shot("outlet_target_bn_page") { Frame { OutletTargetScreen(label, "রুট ৭", data, UiLocale.BN) } }
     @Test fun outlet_target_en_page() = shot("outlet_target_en_page", AppLanguage.EN) { Frame { OutletTargetScreen("Ruku Store (2034)", "Route 7", data, UiLocale.EN) } }
-    @Test fun outlet_target_bn_page_phone_lines() = shot("outlet_target_bn_page_phone_lines") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(today = phone, unconfirmed = 2)), false), UiLocale.BN) } }
+    @Test fun outlet_target_bn_page_phone_lines() = shot("outlet_target_bn_page_phone_lines") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(today = phone, unconfirmed = 2, cats = phoneCats)), false), UiLocale.BN) } }
     @Test fun outlet_target_bn_page_sunlight() = shot("outlet_target_bn_page_sunlight", sunlight = true) { Frame { OutletTargetScreen(label, "রুট ৭", data, UiLocale.BN) } }
-    @Test fun outlet_target_bn_page_font20() = shot("outlet_target_bn_page_font20", fontScale = 2.0f) { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(today = phone, unconfirmed = 2)), false), UiLocale.BN) } }
+    @Test fun outlet_target_bn_page_font20() = shot("outlet_target_bn_page_font20", fontScale = 2.0f) { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(today = phone, unconfirmed = 2, cats = phoneCats)), false), UiLocale.BN) } }
     @Test fun outlet_target_bn_page_long_name() = shot("outlet_target_bn_page_long_name") {
         Frame { OutletTargetScreen("অত্যন্ত দীর্ঘ নামের একটি আউটলেট যার নাম কয়েক লাইনে ভাঙবে (৯৯৯৯)", "অত্যন্ত দীর্ঘ রুটের নাম - ঢাকা উত্তর", OutletTargetData(listOf(view(labelBn = "অত্যন্ত দীর্ঘ নামের একটি ক্যাম্পেইন যা কয়েক লাইনে ভাঙবে")), false), UiLocale.BN) }
     }
@@ -117,8 +118,10 @@ class SrOutletTargetScreenshotTests {
     @Test fun outlet_target_bn_page_cut() = shot("outlet_target_bn_page_cut") { Frame { OutletTargetScreen(label, null, OutletTargetData(emptyList(), true), UiLocale.BN) } }
     @Test fun outlet_target_en_page_offline() = shot("outlet_target_en_page_offline", AppLanguage.EN) { Frame { OutletTargetScreen("Ruku Store (2034)", null, data, UiLocale.EN, offline = true) } }
 
+    @Test fun outlet_target_bn_page_cut_rows() = shot("outlet_target_bn_page_cut_rows") { Frame { OutletTargetScreen(label, "রুট ৭", OutletTargetData(listOf(view(incomplete = true)), true), UiLocale.BN) } }
+    @Test fun outlet_target_en_popup_cut() = shot("outlet_target_en_popup_cut", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(incomplete = true)), true), UiLocale.EN, {}) } }
     @Test fun outlet_target_bn_popup() = shot("outlet_target_bn_popup") { PopupFrame { OutletTargetPopupCard(callLabel, data, UiLocale.BN, {}, onDetails = {}) } }
-    @Test fun outlet_target_en_popup_phone_lines() = shot("outlet_target_en_popup_phone_lines", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(today = phone, unconfirmed = 2)), false), UiLocale.EN, {}, offline = true) } }
+    @Test fun outlet_target_en_popup_phone_lines() = shot("outlet_target_en_popup_phone_lines", AppLanguage.EN) { PopupFrame { OutletTargetPopupCard("Ruku Store (2034)", OutletTargetData(listOf(view(today = phone, unconfirmed = 2, cats = phoneCats)), false), UiLocale.EN, {}, offline = true) } }
     @Test fun outlet_target_bn_popup_font20() = shot("outlet_target_bn_popup_font20", fontScale = 2.0f) { PopupFrame { OutletTargetPopupCard(callLabel, data, UiLocale.BN, {}, onDetails = {}) } }
     @Test fun outlet_target_bn_popup_empty() = shot("outlet_target_bn_popup_empty") { PopupFrame { OutletTargetPopupCard(callLabel, null, UiLocale.BN, {}) } }
     @Test fun outlet_target_bn_popup_loading() = shot("outlet_target_bn_popup_loading") { PopupFrame { OutletTargetPopupCard(callLabel, null, UiLocale.BN, {}, loading = true) } }

@@ -40,6 +40,9 @@ object OutletTargetTags {
     const val EMPTY_CUT = "ot_empty_cut"
     const val LOADING = "ot_loading"
     const val FAILED = "ot_failed"
+    const val CUT = "ot_cut"
+    fun totalPct(categoryCode: String) = "ot_total_pct_$categoryCode"
+    fun todayCat(programmeId: Long, categoryCode: String) = "ot_today_${programmeId}_$categoryCode"
     const val OFFLINE = "ot_offline"
     const val THROUGH = "ot_through"
     const val UNCONFIRMED = "ot_unconfirmed"
@@ -104,7 +107,10 @@ fun OutletTargetPopupBody(data: OutletTargetData?, locale: UiLocale, offline: Bo
         if (loading) com.aktcl.aron.core.ui.aron.AronLoadingCard(stringResource(com.aktcl.aron.core.ui.R.string.core_ui_loading), Modifier.testTag(OutletTargetTags.LOADING))
         else if (failed) Text(stringResource(R.string.pg_ot_failed), Modifier.testTag(OutletTargetTags.FAILED), style = TextStyle(fontSize = 16.sp, color = look.ink))
         else if (data == null || data.campaigns.isEmpty()) EmptyText(data?.truncated == true)
-        else data.campaigns.forEach { CampaignFigures(it, locale) }
+        else {
+            if (data.truncated) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
+            data.campaigns.forEach { CampaignFigures(it, locale) }
+        }
     }
 }
 
@@ -115,9 +121,10 @@ private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(campaignName(c, locale), style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = com.aktcl.aron.core.ui.LocalAronColors.current.accent))
         Note(if (c.fromFirst) stringResource(R.string.pg_tgt_through_first) else stringResource(R.string.pg_tgt_through, LoyaltyModel.dateText(c.throughDate, locale)), OutletTargetTags.THROUGH)
-        Figure(c.programmeId, "std_t", stringResource(R.string.pg_ot_std_target), OutletTargetModel.countText(c.std.target, locale))
-        Figure(c.programmeId, "std_a", stringResource(R.string.pg_ot_std_ach), OutletTargetModel.countText(c.std.achieved, locale))
-        Figure(c.programmeId, "std_r", stringResource(R.string.pg_ot_std_rem), OutletTargetModel.countText(c.std.remaining, locale))
+        val stick = stringResource(R.string.pg_tgt_unit_stick) // STD is the standard stick list: its unit is named next to the figure
+        Figure(c.programmeId, "std_t", stringResource(R.string.pg_ot_std_target), OutletTargetModel.countText(c.std.target, locale) + " " + stick)
+        Figure(c.programmeId, "std_a", stringResource(R.string.pg_ot_std_ach), OutletTargetModel.countText(c.std.achieved, locale) + " " + stick)
+        Figure(c.programmeId, "std_r", stringResource(R.string.pg_ot_std_rem), OutletTargetModel.countText(c.std.remaining, locale) + " " + stick)
         Figure(c.programmeId, "memo_t", stringResource(R.string.pg_ot_memo_target), OutletTargetModel.countText(c.memo.target, locale))
         Figure(c.programmeId, "memo_a", stringResource(R.string.pg_ot_memo_ach), OutletTargetModel.countText(c.memo.achieved, locale))
         Figure(c.programmeId, "memo_r", stringResource(R.string.pg_ot_memo_rem), OutletTargetModel.countText(c.memo.remaining, locale))
@@ -127,10 +134,15 @@ private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
 
 @Composable private fun PhoneLines(c: OutletCampaignView, locale: UiLocale) {
     val look = LocalAronLook.current
-    if (!c.today.isEmpty) Text(
-        stringResource(R.string.pg_ot_today_phone, OutletTargetModel.countText(c.today.qtyBase, locale), OutletTargetModel.countText(c.today.memoCount, locale)),
-        Modifier.testTag(OutletTargetTags.today(c.programmeId)), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium),
-    )
+    val st = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium)
+    // this phone's own sales since the closed day: the memo count, and the quantities PER CATEGORY in the category's own unit (never one number across packets, boxes and dozens)
+    if (c.today.memoCount > 0L) Text(stringResource(R.string.pg_ot_today_phone, OutletTargetModel.countText(c.today.memoCount, locale)), Modifier.testTag(OutletTargetTags.today(c.programmeId)), style = st)
+    c.todayByCategory.forEach { t ->
+        Text(
+            stringResource(R.string.pg_ot_today_cat, OutletTargetModel.totalText(t.num, t.den, locale), unitWord(t.unitKey), categoryWord(t.categoryCode)),
+            Modifier.testTag(OutletTargetTags.todayCat(c.programmeId, t.categoryCode)), style = st,
+        )
+    }
     if (c.unconfirmedEarlier > 0) Note(countText(R.plurals.pg_tgt_unconfirmed, c.unconfirmedEarlier, locale), OutletTargetTags.UNCONFIRMED)
     if (c.forkLeftOut > 0) Note(countText(R.plurals.pg_tgt_fork, c.forkLeftOut, locale), OutletTargetTags.FORK)
 }
@@ -185,6 +197,7 @@ fun OutletTargetScreen(outletLabel: String, routeLine: String?, data: OutletTarg
             Box(Modifier.fillMaxWidth().heightIn(min = 140.dp), contentAlignment = Alignment.Center) { EmptyText(data?.truncated == true) }
             return@Column
         }
+        if (data.truncated) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
         data.campaigns.forEach { CampaignTable(it, locale) }
     }
 }
@@ -208,8 +221,13 @@ private fun CampaignTable(c: OutletCampaignView, locale: UiLocale) {
         HorizontalDivider(color = look.rowRule)
         c.totals.forEach { t ->
             Line(
-                categoryWord(t.categoryCode), OutletTargetModel.totalText(t.targetNum, t.den, locale), OutletTargetModel.totalText(t.soldNum, t.den, locale), OutletTargetModel.percentText(t.pct, locale),
+                categoryWord(t.categoryCode), OutletTargetModel.totalText(t.targetNum, t.den, locale), OutletTargetModel.totalText(t.soldNum, t.den, locale), "",
                 header = true, unit = unitWord(t.unitKey), tag = OutletTargetTags.total(t.categoryCode),
+            )
+            // the percentage is of the target quantity in base units: its own labelled row, so it is not read against the packet figures above it
+            Text(
+                stringResource(R.string.pg_ot_total_ach, categoryWord(t.categoryCode), OutletTargetModel.percentText(t.pct, locale)),
+                Modifier.testTag(OutletTargetTags.totalPct(t.categoryCode)), style = TextStyle(fontSize = 13.sp, color = look.inkMuted),
             )
         }
         PhoneLines(c, locale)

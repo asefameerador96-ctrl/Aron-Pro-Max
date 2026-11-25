@@ -460,11 +460,11 @@ internal suspend fun readOutletTarget(day: SrDay, outletId: Long): com.aktcl.aro
     val acked = day.programmes.ackedBeforeRequest()
     val mine = routeIds.toSet()
     val memosByMonth = figures.flatMap { it.campaigns }.filter { it.outletId == outletId }.map { it.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
-    com.aktcl.aron.feature.programmes.OutletTargetModel.build(figures, outletId, skus) { c ->
+    com.aktcl.aron.feature.programmes.OutletTargetModel.build(figures, outletId, skus) { c, keep ->
         val memos = memosByMonth[c.month].orEmpty()
         val campaignSkus = c.skus.map { it.skuId }.toSet()
         com.aktcl.aron.feature.programmes.FigureFrame.of(
-            memos, c.month, c.throughDate, c.asOf, acked, memoIn = { it.outletId == outletId && (it.routeId == null || it.routeId in mine) }, lineIn = { it.skuId in campaignSkus },
+            memos, c.month, c.throughDate, c.asOf, acked, memoIn = { it.outletId == outletId && (it.routeId == null || it.routeId in mine) }, lineIn = { it.skuId in campaignSkus && keep(it.skuId) },
         )
     }
 }

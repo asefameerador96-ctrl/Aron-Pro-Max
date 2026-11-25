@@ -1,5 +1,11 @@
 # Lane android-sr-programmes (A-PROG1) status
 
+## A-PROG4 SCREEN 21 REVIEW ROUND (lead review of f3f0aec98, 2026-11-25)
+- O1: "today on this phone" is per category in the category's own unit (`OutletTodayCategory`, exact numerator over the pack denominator; frame called once per SKU), plus the memo count; never one number across categories (tests: 2 packets of a 20s SKU + 1 box of lighters; two pack sizes = 5 packets).
+- O2: a cut list (`campaigns_truncated`) shows the cut note on non-empty data (page and pop-up) and dashes the category totals and their %; a missing/invalid SKU (unknown, negative quantity, unit rule fails) drops that row only and also dashes the totals. Goldens `outlet_target_bn_page_cut_rows`, `outlet_target_en_popup_cut`.
+- Lows: the category % is on its own labelled row ("achievement of the target quantity", base-unit basis kept), STD figures in the pop-up carry the unit word "stick", `totalText` guards overflow, `EntryUnits.resolve` guarded per row.
+- Size gate (sub-agent read of the f3f0aec98 run log): sr-release arm64-v8a +10.6 %, armeabi-v7a +11.4 %, x86_64 +10.3 %, x86 +10.5 %, universal +6.6 % (warn above +5 %, fail +15 %); amo about +10 %, tso about -0.5 %.
+
 ## SCREEN 50 DECISION (lead ruling A, 2026-11-25)
 Screen 50 (Route STD and memo target) is COVERED by the existing Astha target screen (`SrScreen.ASTHA_TARGET`, Route tab): month chips, the STD table per brand (target, achievement, remaining, %, in packets/dozens/boxes per rule 5) and the Memo tab with the one "All Brand" row. The manual-50 layout is shown by the goldens `astha_target_bn_std`, `astha_target_bn_memo` (and `astha_target_bn_fetched_month`, `astha_target_bn_font20`) and the tests in `AsthaScreensTest` (STD/Memo sub-tabs, month chips). NOT built: "select several months": it goes to the owner as a question (sum of fully held months only vs a single month as today). No code change for screen 50.
 

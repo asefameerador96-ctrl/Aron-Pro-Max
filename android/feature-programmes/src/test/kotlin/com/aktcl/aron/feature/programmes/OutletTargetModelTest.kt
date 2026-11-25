@@ -18,7 +18,7 @@ class OutletTargetModelTest {
         902L to SkuInfo(902, "Safe Match", null, "match", "dozen", 1, "dozen"),
         903L to SkuInfo(903, "Lighter", null, "lighter", "piece", 25, "box"),
     )
-    private val noFrame: (RouteCampaign) -> FigureFrame = { c -> FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(0, 0, 0, emptyMap()), 0, 0) }
+    private val noFrame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, _ -> FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(0, 0, 0, emptyMap()), 0, 0) }
 
     @Test fun theServerFiguresAreShownAsSentAndTheRowsInPhoneUnits() {
         val d = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120) + "," + sku(901, 300, 100) + "," + sku(902, 24, 6) + "," + sku(903, 100, 50))))), 5, skus, noFrame)!!
@@ -31,7 +31,7 @@ class OutletTargetModelTest {
         assertEquals(listOf("cigarette", "cigarette", "lighter", "match"), c.rows.map { it.categoryCode }) // cigarette, lighter, match as the manual lists
     }
 
-    @Test fun aCategoryTotalIsTheExactSumInItsOwnUnitNeverMixedPackSticks() {
+    @Test fun aCategoryTotalIsTheExactSumInItsOwnUnitAndItsPercentIsOfTheBaseQuantity() {
         val d = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120) + "," + sku(901, 300, 100))))), 5, skus, noFrame)!!
         val t = d.campaigns.single().totals.single()
         assertEquals("packet", t.unitKey)
@@ -62,7 +62,7 @@ class OutletTargetModelTest {
     }
 
     @Test fun thePhonesOwnLinesAreCarriedSeparatelyAndNeverChangeTheServerFigure() {
-        val frame: (RouteCampaign) -> FigureFrame = { c -> FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(40, 2, 40_000, mapOf(20 to 40L)), 3, 1) }
+        val frame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, _ -> FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(40, 2, 40_000, mapOf(20 to 40L)), 3, 1) }
         val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120))))), 5, skus, frame)!!.campaigns.single()
         assertEquals(CampaignFigure(1000, 300, 700), c.std) // untouched
         assertEquals(40L, c.today.qtyBase); assertEquals(3, c.unconfirmedEarlier); assertEquals(1, c.forkLeftOut)
@@ -72,5 +72,59 @@ class OutletTargetModelTest {
     @Test fun theFirstOfTheMonthWindowIsMarked() {
         val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0), through = "2026-10-31")))), 5, skus, noFrame)!!.campaigns.single()
         assertTrue(c.fromFirst)
+    }
+
+    // O1 (lead review): today on this phone is per category in the field unit, never one number across categories
+    @Test fun todayOnThisPhoneIsPerCategoryInEachCategorysOwnUnitNeverOneNumber() {
+        // 2 packets of a 20s SKU (40 sticks) + 1 box of lighters (25 pieces): the old line read "65 STD"
+        val frame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, keep ->
+            val q = when { keep(900) -> 40L; keep(903) -> 25L; else -> 0L }
+            FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(q, 2, 0, emptyMap()), 0, 0)
+        }
+        val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(903, 100, 0))))), 5, skus, frame)!!.campaigns.single()
+        val cats = c.todayByCategory.associateBy { it.categoryCode }
+        assertEquals(listOf("cigarette", "lighter"), c.todayByCategory.map { it.categoryCode })
+        assertEquals("2", OutletTargetModel.totalText(cats.getValue("cigarette").num, cats.getValue("cigarette").den, UiLocale.EN)); assertEquals("packet", cats.getValue("cigarette").unitKey)
+        assertEquals("1", OutletTargetModel.totalText(cats.getValue("lighter").num, cats.getValue("lighter").den, UiLocale.EN)); assertEquals("box", cats.getValue("lighter").unitKey)
+    }
+
+    @Test fun todayWithTwoPackSizesIsAnExactSumOfPackets() {
+        // 40 sticks of a 20s SKU = 2 packets, 30 sticks of a 10s SKU = 3 packets: 5 packets
+        val frame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, keep ->
+            val q = when { keep(900) -> 40L; keep(901) -> 30L; else -> 0L }
+            FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(q, 1, 0, emptyMap()), 0, 0)
+        }
+        val t = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(901, 300, 0))))), 5, skus, frame)!!.campaigns.single().todayByCategory.single()
+        assertEquals("5", OutletTargetModel.totalText(t.num, t.den, UiLocale.EN))
+    }
+
+    // O2: a cut list or a missing SKU must not read as complete
+    @Test fun aCutListDashesTheCategoryTotalsAndTheirPercentButKeepsTheRows() {
+        val d = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120))), truncated = true)), 5, skus, noFrame)!!
+        val c = d.campaigns.single()
+        assertTrue(d.truncated); assertTrue(c.incomplete)
+        assertEquals(24L, c.rows.single().pct) // the row is the server's own figure
+        val t = c.totals.single(); assertNull(t.targetNum); assertNull(t.soldNum); assertNull(t.pct)
+        assertEquals("—", OutletTargetModel.totalText(t.targetNum, t.den, UiLocale.EN))
+    }
+
+    @Test fun aMissingSkuAlsoDashesTheTotals() {
+        val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120) + "," + sku(999, 10, 0))))), 5, skus, noFrame)!!.campaigns.single()
+        assertTrue(c.skuMissing); assertTrue(c.incomplete); assertNull(c.totals.single().pct)
+    }
+
+    @Test fun aNegativeSoldQuantityDropsThatRowNotTheWholeReadAndMarksTheListIncomplete() {
+        val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 120) + "," + sku(901, 300, -5))))), 5, skus, noFrame)!!.campaigns.single()
+        assertEquals(listOf(900L), c.rows.map { it.skuId }); assertTrue(c.incomplete); assertNull(c.totals.single().targetNum)
+    }
+
+    @Test fun aSkuWhoseUnitRuleFailsDropsThatRowOnly() {
+        val bad = skus + (904L to SkuInfo(904, "Odd", null, "cigarette", "stick", 0, "packet"))
+        val c = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(904, 10, 0))))), 5, bad, noFrame)!!.campaigns.single()
+        assertEquals(listOf(900L), c.rows.map { it.skuId }); assertTrue(c.incomplete)
+    }
+
+    @Test fun anOverflowingTotalIsADashNotAWrongNumber() {
+        assertEquals("—", OutletTargetModel.totalText(1_000L, Long.MAX_VALUE, UiLocale.EN))
     }
 }

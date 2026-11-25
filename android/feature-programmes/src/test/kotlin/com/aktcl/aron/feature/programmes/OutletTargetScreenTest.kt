@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -33,9 +34,9 @@ class OutletTargetScreenTest {
         OutletTargetSku(900, "Maxim", "ম্যাক্সিম", "cigarette", "packet", 20, 500_000, 120_000, 24),
         OutletTargetSku(902, "Safe Match", null, "match", "dozen", 1, 24_000, 6_000, 25),
     )
-    private fun view(today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fork: Int = 0, fromFirst: Boolean = false, skuMissing: Boolean = false, label: String = "Super Star Low") = OutletCampaignView(
+    private fun view(today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fork: Int = 0, fromFirst: Boolean = false, skuMissing: Boolean = false, label: String = "Super Star Low", cats: List<OutletTodayCategory> = emptyList(), incomplete: Boolean = skuMissing) = OutletCampaignView(
         1, label, "সুপার স্টার লো", "2026-11", "2026-11-17", "2026-11-18T01:00:00Z", fromFirst, CampaignFigure(1000, 300, 700), CampaignFigure(10, 4, 6), rows,
-        listOf(OutletTargetTotal("cigarette", "packet", 1_100_000, 320_000, 20, 28), OutletTargetTotal("match", "dozen", 24_000, 6_000, 1, 25)), skuMissing, today, unconfirmed, fork,
+        (if (incomplete) listOf(OutletTargetTotal("cigarette", "packet", null, null, 20, null), OutletTargetTotal("match", "dozen", null, null, 1, null)) else listOf(OutletTargetTotal("cigarette", "packet", 1_100_000, 320_000, 20, 28), OutletTargetTotal("match", "dozen", 24_000, 6_000, 1, 25))), skuMissing, today, unconfirmed, fork, cats, incomplete,
     )
     private fun data(v: OutletCampaignView = view()) = OutletTargetData(listOf(v), false)
 
@@ -51,17 +52,22 @@ class OutletTargetScreenTest {
         compose.onNodeWithTag(OutletTargetTags.POPUP).assertIsDisplayed()
         compose.onNodeWithText("Super Star Low (November)").assertExists()
         compose.onNodeWithText("Server figures through 2026-11-17").assertExists()
-        compose.onNodeWithTag(OutletTargetTags.figure(1, "std_t")).assertExists(); compose.onNodeWithText("1,000").assertExists(); compose.onNodeWithText("300").assertExists(); compose.onNodeWithText("700").assertExists()
+        compose.onNodeWithTag(OutletTargetTags.figure(1, "std_t")).assertExists(); compose.onNodeWithText("1,000 stick").assertExists(); compose.onNodeWithText("300 stick").assertExists(); compose.onNodeWithText("700 stick").assertExists() // the unit of STD is named
         compose.onNodeWithText("Remaining Memo").assertExists()
         assertEquals(0, compose.onAllNodesWithTag(OutletTargetTags.today(1)).fetchSemanticsNodes().size)
     }
 
     @Test fun thePhonesOwnLinesAreSeparateAndLabelled() {
-        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(today = LocalToday(40, 2, 40_000, mapOf(20 to 40L)), unconfirmed = 3, fork = 1)), it, {}) }
+        val cats = listOf(OutletTodayCategory("cigarette", "packet", 2_000, 1), OutletTodayCategory("lighter", "box", 1_000, 1))
+        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(today = LocalToday(65, 2, 40_000, mapOf(20 to 40L)), unconfirmed = 3, fork = 1, cats = cats)), it, {}) }
         compose.onNodeWithTag(OutletTargetTags.today(1)).assertExists()
-        compose.onNodeWithText("Today on this phone: 40 STD, 2 memo (not in the figures above)").assertExists()
+        compose.onNodeWithText("Today on this phone: 2 memo (not in the figures above)").assertExists()
+        // per category in the category's own unit; there is no single "65 STD" across packets and boxes
+        compose.onNodeWithText("Today on this phone, Cigarette: 2 packet (not in the figures above)").assertExists()
+        compose.onNodeWithText("Today on this phone, Lighter: 1 box (not in the figures above)").assertExists()
+        assertEquals(0, compose.onAllNodesWithText("65", substring = true).fetchSemanticsNodes().size)
         compose.onNodeWithTag(OutletTargetTags.UNCONFIRMED).assertExists(); compose.onNodeWithTag(OutletTargetTags.FORK).assertExists()
-        compose.onNodeWithText("1,000").assertExists() // the server figure is unchanged
+        compose.onNodeWithText("1,000 stick").assertExists() // the server figure is unchanged
     }
 
     @Test fun noCampaignIsTheEmptyStateAndACutDownloadSaysItMayBeMissing() {
@@ -92,6 +98,7 @@ class OutletTargetScreenTest {
         compose.onNodeWithTag(OutletTargetTags.percent(900)).assertExists(); compose.onNodeWithTag(OutletTargetTags.percent(900)).assert(androidx.compose.ui.test.hasText("24%"))
         compose.onNodeWithText("25").assertExists() // 500 sticks = 25 packets
         compose.onNodeWithTag(OutletTargetTags.total("cigarette")).assertExists(); compose.onNodeWithTag(OutletTargetTags.total("match")).assertExists()
+        compose.onNodeWithText("Cigarette achievement of the target quantity: 28%").assertExists() // the % has its own labelled row
         compose.onNodeWithText("Route 7").assertExists()
     }
 
@@ -115,11 +122,28 @@ class OutletTargetScreenTest {
     @Test fun thePopupTakesTheBanglaCampaignNameFromTheLocale() {
         show(AppLanguage.BN) { OutletTargetPopup("X", data(), it, {}) }
         compose.onNodeWithText("সুপার স্টার লো", substring = true).assertExists()
-        compose.onNodeWithText("১,০০০").assertExists()
+        compose.onNodeWithText("১,০০০", substring = true).assertExists()
     }
 
     @Test fun aLongBanglaNameAtFontScaleTwoStillShowsEveryFigure() {
         show(AppLanguage.BN, fontScale = 2.0f) { OutletTargetScreen("আউটলেটের একটি খুব লম্বা নাম যা কয়েক লাইনে ভাঙবে (১২৩৪৫)", "রুট ৭ - খুব লম্বা রুটের নাম", data(view(label = "x")), it) }
         compose.onNodeWithTag(OutletTargetTags.row(900)).assertExists(); compose.onNodeWithTag(OutletTargetTags.total("match")).assertExists()
+    }
+
+    // O2: a cut list says so on non-empty data and does not read as complete
+    @Test fun aCutListSaysSoOnThePageAndThePopupWhenThereAreRows() {
+        show(AppLanguage.EN) { OutletTargetScreen("X", null, OutletTargetData(listOf(view(incomplete = true)), true), it) }
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
+        compose.onNodeWithText("Cigarette achievement of the target quantity: —").assertExists() // the % of a cut list is a dash
+    }
+
+    @Test fun theCutNoteShowsInThePopupWithFigures() {
+        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true)), true), it, {}) }
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists(); compose.onNodeWithText("1,000 stick").assertExists()
+    }
+
+    @Test fun noCutNoteWhenTheListIsWhole() {
+        show(AppLanguage.EN) { OutletTargetScreen("X", null, data(), it) }
+        assertEquals(0, compose.onAllNodesWithTag(OutletTargetTags.CUT).fetchSemanticsNodes().size)
     }
 }
