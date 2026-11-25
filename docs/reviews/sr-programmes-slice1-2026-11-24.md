@@ -433,3 +433,39 @@ Lows:
 - The Home Match Program tile now opens StarHost and is still gated by the match_program flag (HomeTile alwaysShown = false, unchanged). With the flag on and no star section the screen shows the empty-state text, where it used to show Coming Soon. The flag-off and no-star-section paths are not covered by a new app-sr test. SrComingSoonTest still passes by reading, since it only checks the title list and parents, and SrNav.parent(STAR) falls to HOME with no test for it.
 - The StarScreenTest empty-state test is named 'noStarIsTheEmptyStateAndTruncationAndOfflineAreSaid' but covers only empty plus offline; truncation is in a separate test, so the name overstates it. StarScreen shows the offline line even when empty (golden star_bn_empty), which reads slightly oddly ('showing last download') with nothing downloaded.
 - The offline and empty-state strings pg_star_lm_open, pg_star_empty and pg_star_truncated are Bangla in values-bn and English in values, which is right. Labels such as Target, STD, LMWD and 'SR Name:' are identical English in both locales (deliberate, matching the manual's English screen), so a Bangla user gets English labels beside Bangla digits.
+
+
+# Final recheck, head a9be020c06, 2026-11-25: PASS
+
+Reviewers read the code and the golden only; no Gradle run, no device.
+
+## p1-exact: PASS
+
+I checked every claim against a9be020c06. P1: resolvedCategory in KpiModel.kt now needs achieved == volumeAchieved exactly, and the target must match to the milli whenever the mapped target is whole. On the server, the brand volume_target (SrKpi: sum(t.qty_base)) and each SKU std_target (SrTargets: decimal3 of bigint qty_base) come from the same integer column, so a pure brand matches exactly and is never wrongly dashed. Any gap of one unit or more leaves the brand unresolved: brandVolume and volumeBp are then null, which shows as a dash plus the 'unit unknown' note (KpiScreens ~l.309), never a mixed figure. The test with volume_target 2002 / achieved 302 and by_pack [{20,2000,300},{1,2,2}] exists and asserts category, volumeTarget and volumeBp are null. The gap-1 test asserts category null, and the exact 2000/300 case asserts cigarette. The fractional half-unit exception cannot be reached with integer server data (V0096 qty_base is bigint), and its stated reason is wrong; logged as low. volumeBrands now keeps out an unresolved brand whose tree category is match, lighter or bidi, using visibleCategory = brandCategory[brandId] (single-category visible SKUs only). An unresolved brand with a cigarette, mixed or unknown visible category still shows with a dash. The excluded brands stay in data.brands (memo list) and in the BLM totals. The new test for this does not actually exercise the unresolved path (low). P2: StarScreenTest.aFigureTheServerCouldNotComputeIsADashNeverZero now passes ach = null and asserts dashes for ACHIEVEMENT, PROJECTION, PADS and GROWTH. A new test asserts the LMADS and GROWTH dashes. No test was weakened, deleted or ignored. The star_bn_no_figures golden (viewed) shows EWD ০ with dashes for Projection, Achievement, LMADS, PADS and Growth, and Target ২০.০০, STD ২.৮৩ and LMS ১২.২৫ in Bangla digits. It shows what its name says. No new hardcoded strings.
+
+Lows:
+- KpiModel.kt resolvedCategory: the 'fractional mapped target allows 500 milli' branch can never fire on real server data. SrTargets reads app.route_monthly_target.qty_base as a bigint (V0096: `qty_base bigint`), and decimal3(...) of a whole number always ends in .000. So targetMilli % 1000 is always 0 and allowed is always 0. The code comment says the server 'rounds its brand sum', but that is wrong: SrKpi sums the same bigint qty_base, so nothing is rounded. If fractional targets ever did reach the phone, the branch would be a hole. Example: mapped 2000.500 against a sent volume_target of 2001 from an unmapped 1-unit SKU with 0 sold gives |2000500 - 2001000| = 500, which is within the allowance, so the brand would resolve as cigarette while mixed. Suggested fix: drop the branch (tolerance 0 always) or cover it with a test. Not blocking, because normal integer data cannot reach it.
+- KpiModelTest.anUnresolvedMatchBrandIsNotInTheCigaretteList does not test what its name says. It passes skuBrand = emptyMap(), so resolvedCategory returns the given category 'match' and the brand is RESOLVED (category == "match", not null). It passes only because resolved match brands were never in volumeBrands. The new visibleCategory filter (category null, visibleCategory "match") is never run. To test it, give a skuBrand map plus a target or achievement gap so the category comes back null, then assert both that the brand is absent from volumeBrands and that it is still present in brands.
+- The P1 tests check model fields, not the displayed result. gap2 asserts category, volumeTarget and volumeBp are null. gap1 asserts only category == null. The exact case asserts only category == "cigarette" and never checks that volumeTarget is 100 packets (2000 sticks / 20) or volumeBp. No screen test shows the dash plus the 'unit unknown' note in place of '102 packets' / 15.08 %. The nulls do lead to the dash by code (brandVolume returns null for a null category, and the volumeBp branch does too), so the behaviour is right but the regression is pinned only at model level.
+- An unresolved brand whose visible SKUs are match, lighter or bidi is now left out of the brand volume list without a note on that page. It is still on the memo list (data.brands) and inside the server's BLM category totals, so it does not vanish from every list. A short note on the volume list would make the omission visible.
+
+## p2-star: PASS
+
+I checked this against the diff 613676b30c..a9be020c06, the screen code at a9be020c06 and the PNG. P2 is fixed.
+
+- **Both test fixtures:** StarScreenTest and SrStarScreenshotTests now take `ach: Long? = 3_683` and `lmads: Long? = 471` as parameters. These are passed in the achievementBp and lmadsMilli positions, where the values were hard-coded before.
+- **star_bn_no_figures fixture:** it now uses `ewd = 0, projection = null, ach = null, lmads = null, pads = null, growth = null`.
+- **aFigureTheServerCouldNotComputeIsADashNeverZero:** it passes `ach = null` and asserts the dash on StarTags.ACHIEVEMENT. It still asserts the dash on PROJECTION, PADS and GROWTH.
+- **New test, aMonthWithNoLastMonthWorkingDaysShowsADashForLmads:** it asserts the dash on StarTags.LMADS and GROWTH.
+- **No assertion was removed or weakened,** and no test was deleted or @Ignore'd.
+- **Rendering path:**
+  - The ACHIEVEMENT node renders `Percent.text(s.achievementBp, 2, locale)` (StarScreen.kt:134). `shared/rules/.../Percent.kt:43` returns DASH ("—", U+2014) for null, with no "%" added.
+  - The LMADS node renders `StarFormat.decimal(s.lmadsMilli, locale)` (StarScreen.kt:140), which returns Percent.DASH for null.
+  - So `hasAnyDescendant(hasText("—"))` (an exact match) checks the actual value text.
+- **Re-recorded PNG** (android/ui-screenshots/src/test/screenshots/star_bn_no_figures.png): the dash is shown in Projection, Achievement, LMADS, PADS and Growth, and the slab and projected amount show "— Tk". There is no percentage and no 0 in any of those cells. Target ২০.০০, STD ২.৮৩ and LMS ১২.২৫ are still shown, and the header reads EWD: ০ as expected.
+
+Both low-priority notes concern only the synthetic test fixtures and do not affect the fix.
+
+Lows:
+- The LMADS test drives lmads = null with ewd left at 10, so it is a synthetic fixture: it checks that the screen draws a dash, not that the server sends null for LMADS. That is fine for a UI test, but no server-side contract test is cited here.
+- The star_bn_no_figures golden uses ewd = 0 and also nulls LMADS (lmads = null), which really comes from last month's working days and not from EWD. So the fixture puts two separate 'cannot compute' cases into one golden. That is acceptable, but the name 'no_figures' covers both.
