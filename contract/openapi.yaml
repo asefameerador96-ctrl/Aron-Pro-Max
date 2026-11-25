@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.26.0
+  version: 1.27.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -10732,7 +10732,7 @@ components:
         month: { $ref: '#/components/schemas/Month' }
         through_date: { $ref: '#/components/schemas/BusinessDate' }
         as_of: { $ref: '#/components/schemas/Timestamp' }
-        truncated: { type: [boolean, 'null'], description: 'True (present only when true) when THIS outlet''s `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign''s SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional.' }
+        truncated: { type: [boolean, 'null'], description: 'SENT ON EVERY ENTRY from 1.27.0 (true or false; absent from an older server, so its presence tells the phone this is a 1.26+ route). True when THIS outlet''s `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign''s SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap; `campaigns_outlets_truncated` says the outlet list itself was cut. Contract 1.26.0 (always sent from 1.27.0), optional.' }
         std: { $ref: '#/components/schemas/CampaignFigure' }
         memo: { $ref: '#/components/schemas/CampaignFigure' }
         skus:
@@ -10757,7 +10757,7 @@ components:
         sold_qty_base: { type: integer, format: int64, minimum: 0 }
     RouteStar:
       type: object
-      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0.'
+      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. A row with neither `sku_ids` nor `sku_category` (the programme names a category outside the enum and lists no usable SKU) gives the phone no SKU rule: it shows no "today on this phone" line for the Star. Contract 1.24.0.'
       required: [programme_id, programme_code, name_en, name_bn, month, through_date, as_of, sr_name, sr_code, route_name, lmwd, wd, ewd, target, std, projection, achievement_bp, lms, lmads, pads, growth_bp, status_en, status_bn, achieved_slab, slab_amount_mtk, projected_slab, projected_amount_mtk]
       additionalProperties: false
       properties:
@@ -10774,7 +10774,7 @@ components:
         unit_divisor: { type: [integer, 'null'], minimum: 1, description: 'The programme unit divisor: base units divided by it give the programme unit of `target`, `std`, `lms` (default 1). Contract 1.26.0, optional.' }
         sku_category: { type: [string, 'null'], enum: [cigarette, bidi, match, lighter, null], description: 'The SKU category whose SALE lines the STD and LMS count (the programme rule `sku_category`, default match). Absent when `sku_ids` lists the SKUs, and absent when the rule names a category outside this enum (the server logs it; the STD then counts no SKU). With `sku_ids` and `unit_divisor` it lets the phone show "today on this phone" for the Star as a separate, labelled figure, never added into `std`. Contract 1.26.0, optional.' }
         sku_ids: { type: [array, 'null'], maxItems: 500, items: { $ref: '#/components/schemas/Id' }, description: 'The explicit SKU ids the STD and LMS count (the programme rule `sku_ids`), present only when the rules list them; then `sku_category` is absent. The list is cleaned on the server (distinct, existing in the catalogue) and ordered ASCENDING BY ID. Contract 1.26.0, optional.' }
-        sku_ids_truncated: { type: [boolean, 'null'], description: 'True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. Contract 1.26.0, optional.' }
+        sku_ids_truncated: { type: [boolean, 'null'], description: 'True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. When true, the phone''s local "today on this phone" figure is incomplete (it can only match the 500 SKUs carried). Contract 1.26.0, optional.' }
         lmwd: { type: integer, minimum: 0, maximum: 31, description: 'Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`.' }
         wd: { type: integer, minimum: 0, maximum: 31, description: Working days of the month. }
         ewd: { type: integer, minimum: 0, maximum: 31, description: 'Elapsed working days under the single day-count convention (SkuProgress.dayCounts) of the calendar anchor, `max(through_date + 1, the 1st of the bundle month)`; 0 when the window is empty (the 1st of the month), and the figures that divide by it are then null, never zero.' }
@@ -10855,6 +10855,7 @@ components:
           items: { $ref: '#/components/schemas/RouteCampaign' }
           description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.'
         campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional.' }
+        campaigns_outlets_truncated: { type: [boolean, 'null'], description: 'True or null (never false) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Null or absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional.' }
         targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional.' }
         star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional.' }
         star:

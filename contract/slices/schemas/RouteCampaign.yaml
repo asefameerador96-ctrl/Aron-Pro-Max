@@ -39,10 +39,12 @@ RouteCampaign:
       type:
       - boolean
       - 'null'
-      description: True (present only when true) when THIS outlet's `skus` table is cut at the SKU cap or another
+      description: SENT ON EVERY ENTRY from 1.27.0 (true or false; absent from an older server, so its presence
+        tells the phone this is a 1.26+ route). True when THIS outlet's `skus` table is cut at the SKU cap or another
         active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's
         SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level
-        `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional.
+        `campaigns_truncated` stays the OR of these and the outlet cap; `campaigns_outlets_truncated` says the outlet
+        list itself was cut. Contract 1.26.0 (always sent from 1.27.0), optional.
     std:
       $ref: '#/components/schemas/CampaignFigure'
     memo:

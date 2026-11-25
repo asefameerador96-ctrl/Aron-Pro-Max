@@ -27,8 +27,8 @@ object SrCampaigns {
     const val MAX_SKUS = 20
     const val MAX_OUTLETS = 150
 
-    /** The campaign outlets of one route in outlet-id order; [truncated] when more than the outlet cap or an outlet with more than the SKU cap existed (never silent). */
-    class Result(val rows: List<JsonObject>, val truncated: Boolean)
+    /** The campaign outlets of one route in outlet-id order; [truncated] when more than the outlet cap or an outlet with more than the SKU cap existed (never silent); [outletsTruncated] only when the OUTLET LIST itself was cut by the outlet cap (outlets are missing), whatever the per-outlet flags say. */
+    class Result(val rows: List<JsonObject>, val truncated: Boolean, val outletsTruncated: Boolean = false)
     fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, through: LocalDate, maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
         val all = outletsByRoute.values.flatten().distinct()
         if (all.isEmpty()) return emptyMap()
@@ -66,21 +66,23 @@ object SrCampaigns {
         return outletsByRoute.mapValues { (routeId, _) ->
             val ids = chosen[routeId].orEmpty()
             val asOfRoute = ids.take(maxOutlets).mapNotNull { outletAt[it] }.maxOrNull() ?: Instant.EPOCH   // informational: the newest received_at among the memos read for this route's campaign outlets
+            var anyCut = false   // the per-outlet cut flags, carried directly into the route flag (never read back from the JSON)
             val rows = ids.take(maxOutlets).map { oid ->
                 val c = camps.getValue(oid)
                 val skus = shown[oid].orEmpty()
                 val achievedStd = skuTargets[oid].orEmpty().sumOf { sold[oid to it[2]] ?: 0L }   // ALL the campaign's SKUs, not only the ones listed below
                 val cut = (skuTargets[oid]?.size ?: 0) > maxSkus || oid in moreThanOne
+                if (cut) anyCut = true
                 buildJsonObject {
                     put("outlet_id", oid); put("programme_id", c.programmeId); put("label_en", c.en); put("label_bn", c.bn?.let { JsonPrimitive(it) } ?: JsonNull)
                     put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOfRoute.wire())
-                    if (cut) put("truncated", true)   // only when true: this outlet's SKU table is cut, or another active campaign of the outlet is not shown
+                    put("truncated", cut)   // contract 1.27.0: sent on EVERY entry (true or false), so its presence tells the phone this is a 1.26+ route; true = this outlet's SKU table is cut, or another active campaign of the outlet is not shown (about 18 bytes raw per outlet)
                     put("std", figure(c.std.setScale(0, java.math.RoundingMode.HALF_UP).toLong(), achievedStd))
                     put("memo", figure(c.memo.toLong(), memos[oid] ?: 0L))
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })
                 }
             }
-            Result(rows, ids.size > maxOutlets || rows.any { it["truncated"] != null })
+            Result(rows, ids.size > maxOutlets || anyCut, ids.size > maxOutlets)
         }
     }
 }

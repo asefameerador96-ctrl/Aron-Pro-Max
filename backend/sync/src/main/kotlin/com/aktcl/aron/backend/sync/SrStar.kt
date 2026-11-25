@@ -74,16 +74,22 @@ object SrStar {
         // last month's sold quantity of every Star route in ONE read (was one query per route)
         // cut at the last CLOSED day like every other window: when last month is not closed yet (a bundle built ahead on its last day), LMS holds its closed days only and `lmwd` counts the same days
         val lastMonth = SrMemoFigures.forRoutes(h, progs.keys, last.atDay(1), minOf(last.atEndOfMonth(), through))
+        val warned = HashSet<Pair<Long, String>>()
         return progs.mapValues { (routeId, p) ->
             val info = routes.getValue(routeId)
             val rules = parseRules(p.rules)
             val divisor = rules.num("unit_divisor")?.takeIf { it >= 1 } ?: 1L
             val category = rules.str("sku_category") ?: "match"
             val categoryOnWire = category.takeIf { it in CATEGORIES }
-            if (categoryOnWire == null) log.warn("programme {} route {}: sku_category '{}' is not one of {}; omitted from the row, the STD counts no SKU", p.id, routeId, category, CATEGORIES)
             val idRule = rules.str("sku_ids")
             val ids = cleanSkuIds(idRule) { it in dim.skus }
-            if (idRule != null && ids.isEmpty()) log.warn("programme {} route {}: sku_ids lists no usable SKU; the category rule '{}' applies", p.id, routeId, category)
+            // each misconfiguration is logged ONCE per programme per bundle build (this call), not once per route that carries it
+            fun warnOnce(kind: String, msg: String, vararg args: Any?) { if (warned.add(p.id to kind)) log.warn(msg, *args) }
+            if (categoryOnWire == null) {
+                if (ids.isNotEmpty()) warnOnce("category", "programme {}: sku_category '{}' is not one of {}; omitted from the row, the STD still counts the {} listed sku_ids", p.id, category, CATEGORIES, ids.size)
+                else warnOnce("category", "programme {}: sku_category '{}' is not one of {}; omitted from the row, the STD counts no SKU", p.id, category, CATEGORIES)
+            }
+            if (idRule != null && ids.isEmpty()) warnOnce("ids", "programme {}: sku_ids lists no usable SKU; the category rule '{}' applies", p.id, category)
             val idSet = ids.toHashSet()
             val accept: (Long) -> Boolean = if (ids.isNotEmpty()) { sku -> sku in idSet } else { sku -> dim.skus[sku]?.category == category }
             // STD: this month's accepted memos through the last closed day ([SrMemoFigures], same snapshot as every other figure); LMS: last month, same filters.
