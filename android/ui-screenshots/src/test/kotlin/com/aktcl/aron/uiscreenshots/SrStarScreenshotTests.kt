@@ -90,5 +90,8 @@ class SrStarScreenshotTests {
     @Test fun star_en_slab_reached() = shot("star_en_slab_reached", AppLanguage.EN) { Frame { StarScreen(listOf(star(slabName = "Gold", slab = 1_500_000, projected = 2_000_000)), UiLocale.EN) } }
     @Test fun star_bn_last_month_open() = shot("star_bn_last_month_open") { Frame { StarScreen(listOf(star(through = "2026-10-28")), UiLocale.BN) } }
     @Test fun star_bn_no_figures() = shot("star_bn_no_figures") { Frame { StarScreen(listOf(star(ewd = 0, projection = null, ach = null, lmads = null, pads = null, growth = null)), UiLocale.BN) } }
+    // contract 1.26.0: "today on this phone" under the server's figures, separate from them
+    @Test @Config(qualifiers = "bn-w360dp-h1100dp") fun star_bn_today() = shot("star_bn_today") { Frame { StarScreen(listOf(star()), UiLocale.BN, today = listOf(com.aktcl.aron.feature.programmes.StarToday(50, 12, 2, 0, false))) } }
+    @Test @Config(qualifiers = "bn-w360dp-h1100dp") fun star_en_today_partial_unconfirmed() = shot("star_en_today_partial_unconfirmed", AppLanguage.EN) { Frame { StarScreen(listOf(star()), UiLocale.EN, today = listOf(com.aktcl.aron.feature.programmes.StarToday(50, 12, 2, 2, true))) } }
     @Test fun star_bn_empty() = shot("star_bn_empty") { Frame { StarScreen(emptyList(), UiLocale.BN, offline = true) } }
 }

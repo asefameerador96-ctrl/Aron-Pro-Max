@@ -192,7 +192,16 @@ class OutletTargetScreenTest {
         val v = view(incomplete = true, stdUnit = null).copy(outletCut = true)
         show(AppLanguage.EN) { OutletTargetScreen("X", null, OutletTargetData(listOf(v), true, routeCut = false), it) }
         compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
-        compose.onNodeWithText("The SKU list of this outlet was cut", substring = true).assertExists()
+        compose.onNodeWithText("another campaign of this outlet is not shown", substring = true).assertExists()
         compose.onNodeWithText("The download of this route was cut", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun theOutletCutPopupShowsAchievementAndRemainingAsSentAndTheNoteNamesBothCausesWithoutSayingAbove() {
+        val v = view(incomplete = true, stdUnit = null).copy(outletCut = true) // achievedPartial stays false: a 1.26.0 server's STD and memo cover every SKU
+        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(v), true, routeCut = false), it, {}) }
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
+        compose.onNodeWithText("The SKU list of this outlet was cut, or another campaign of this outlet is not shown.", substring = true).assertExists()
+        compose.onNodeWithText("above", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("300", substring = true).assertExists(); compose.onNodeWithText("700", substring = true).assertExists() // achieved and remaining STD as sent, not dashes
     }
 }
