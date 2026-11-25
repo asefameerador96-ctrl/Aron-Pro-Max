@@ -481,3 +481,16 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Server follow-ups for T-KPI3 or a successor: campaign achievement over ALL campaign SKUs when the list is cut + a per-outlet cut flag; Star SKU list in the bundle; then the phone uses category_code.
 - Waiting: A-INT3 guard round on the APK size commit. Not restarted: L-A13 (loyalty merge round), A-GATE8 (small round).
 - Owner questions open (no owner message since 18 Nov): 1 to 18 as before; 19 one decimal vs whole numbers for stick SKUs; 20 multi-month selection on the target screen; 21 campaign STD per category vs one cross-category number. Plus the old Azure account (stated end 25 Nov; still serving deploys at 07:27 UTC today), laptop inventory, dump listing, device walk, portal brief.
+
+## 2026-11-25 08:15 UTC
+
+- **GO for train 132** sent: lane/lead-train132 7d12b16300 (lane CI 45568535116, 18/18 read by the lead). Android only.
+- **T-KPI3 retired** with a handover at 43606d20d (code aba1b10ec, contract 1.26.0; T1: campaign figures and contract PASS, one blocking test item on the Star STD + lows, docs/reviews/sr-targets-server-2026-11-18.md). Successor **T-KPI4 = session_014mnioN3zGmESJS59jfdbfn** on lane/sr-targets-server: round 1 = the Star STD test, SKU list cleaning and enum validation, campaign flag tests.
+- Active lanes: T-KPI4, A-INT3 (guard round, no report yet), integrator. Idle with passed work: none. Retired today: A-PROG3, A-PROG4, T-KPI3.
+- Next: verify train 132; T1 confirm T-KPI4's round, then a server train (contract 1.26.0); then a programmes successor to use category_code, the per-outlet cut flag and the Star SKU list on the phone.
+
+## 2026-11-25 08:25 UTC
+
+- **Train 132 LANDED**: INT 3b9f6e6883 (fast-forward of 7d12b16300 + row). Lane CI 45568535116 18/18; integration CI 45574176330 green with non-Android jobs skipped by the filter (lead's read); deploy #372 skipped by design (live build stays 2767ef1eaa). APK aron-release-signed-dev-2558 42,277,015 B (+0.04 %). Size gate: 10 warnings, no failure; sr-release armeabi-v7a +11.5 % (highest), arm64-v8a +10.6 %; amo about +10 %; tso -0.5 %.
+- Four trains today (129 to 132). On the integration branch now: CI migration gate (every merge-base), SR parity fixes, SR programme screens (SKU target, Home STD, KPI dashboard, brand-wise KPI, Lifting Star, outlet target page and pop-up), KPI by_pack category_code (contract 1.25.0).
+- Not verified for any of them: a device; migrate/start-up consoles; a live by_pack entry.
