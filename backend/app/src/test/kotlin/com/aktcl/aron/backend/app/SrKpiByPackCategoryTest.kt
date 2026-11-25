@@ -22,6 +22,7 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -78,6 +79,7 @@ class SrKpiByPackCategoryTest {
     fun aBrandThatMixesCategoriesHasOneEntryPerCategoryAndPackNeverSticksAndDozensInOne() {
         val cig = q("SELECT id FROM app.sku WHERE category_code = 'cigarette' ORDER BY id LIMIT 1"); val brand = brandOf(cig)
         val cigPack = q("SELECT base_per_pack FROM app.sku WHERE id = $cig").toInt()
+        assertNotEquals(1, cigPack, "the fixture's first cigarette SKU is a real pack (not 1): the mixed-brand checks below rely on it")
         val match = newSku("MIXMATCH", cig, "match", 1)   // a match SKU under the SAME brand, base_per_pack 1: the same pack_factor as a stick SKU of 1
         val cig1 = newSku("MIXCIG1", cig, "cigarette", 1)
         for ((sku, qty) in listOf(cig to 2000, match to 30, cig1 to 7)) x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2027-01-01', $qty, $batch)")
@@ -89,7 +91,17 @@ class SrKpiByPackCategoryTest {
         val m = one.single { it["category_code"]!!.jsonPrimitive.content == "match" }; val c1 = one.single { it["category_code"]!!.jsonPrimitive.content == "cigarette" }
         assertEquals(30L to 12L, m.l("target") to m.l("achieved"), "the match entry holds the match SKU only")
         assertEquals(7L to 3L, c1.l("target") to c1.l("achieved"), "the cigarette pack-1 entry holds the cigarette SKU only")
-        if (cigPack != 1) { val big = p.single { it.l("pack_factor") == cigPack.toLong() }; assertEquals("cigarette", big["category_code"]!!.jsonPrimitive.content); assertEquals(2000L to 400L, big.l("target") to big.l("achieved")) }
+        val big = p.single { it.l("pack_factor") == cigPack.toLong() }
+        assertEquals("cigarette", big["category_code"]!!.jsonPrimitive.content); assertEquals(2000L to 400L, big.l("target") to big.l("achieved"))
+        // the entries ADD UP to the brand's own volume (2000 + 30 + 7 = 2037 target, 400 + 12 + 3 = 415 achieved), and the documented order holds: category, then pack size
+        val k = kpi()
+        val brandRow = k["brands"]!!.jsonArray.map { it.jsonObject }.single { it["brand_id"]!!.jsonPrimitive.content == brand.toString() }
+        assertEquals(2037L to 415L, brandRow.l("volume_target") to brandRow.l("volume_achieved"), "the brand's volume is the sum of its three SKUs")
+        assertEquals(2037L to 415L, p.sumOf { it.l("target") } to p.sumOf { it.l("achieved") }, "the by_pack entries add up to the brand's volume_target / volume_achieved")
+        assertEquals(p.sortedWith(compareBy({ it["category_code"]!!.jsonPrimitive.content }, { it.l("pack_factor") })), p, "entries are ordered by category, then pack size")
+        // the KPI volume TOTAL counts cigarettes only: the 30 / 12 match dozens are not in it (2000 + 7 = 2007 target, 400 + 3 = 403 achieved)
+        val total = k["volume"]!!.jsonObject
+        assertEquals(2007L to 403L, total.l("target") to total.l("achieved"), "the volume total counts cigarette SKUs only")
         assertTrue(p.all { it["category_code"] != null }, "every entry names its category")
         // the BLM category rows carry the category too
         val cats = kpi()["categories"]!!.jsonArray.map { it.jsonObject }.single { it["category_code"]!!.jsonPrimitive.content == "match" }["by_pack"]!!.jsonArray.map { it.jsonObject }

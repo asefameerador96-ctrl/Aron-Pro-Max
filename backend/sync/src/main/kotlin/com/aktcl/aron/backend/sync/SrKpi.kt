@@ -108,11 +108,11 @@ object SrKpi {
               JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
              WHERE t.route_id = ANY(:r) AND t.month = :m GROUP BY t.route_id, b.id, s.category_code, s.base_per_pack
             """,
-        ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), PackKey(rs.getString(3) ?: "", rs.getInt(4)), rs.getLong(5)) }.list()
+        ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), PackKey(checkNotNull(rs.getString(3)) { "app.sku.category_code is NOT NULL: a SKU without a category cannot reach by_pack" }, rs.getInt(4)), rs.getLong(5)) }.list()
             .forEach { packOf(brandPacks, it[0] as Long, it[1] as Long, it[2] as PackKey)[0] = it[3] as Long }
         for ((route, f) in figures) for (l in f.lines) {
             val sku = dim.skus[l.skuId] ?: continue
-            if (sku.brandId != null && l.saleQty != 0L) packOf(brandPacks, route, sku.brandId, PackKey(sku.category ?: "", sku.basePerPack))[1] += l.saleQty
+            if (sku.brandId != null && l.saleQty != 0L) packOf(brandPacks, route, sku.brandId, PackKey(checkNotNull(sku.category) { "SKU ${l.skuId} has no category_code (the column is NOT NULL)" }, sku.basePerPack))[1] += l.saleQty
         }
         h.createQuery(
             "SELECT t.route_id, s.category_code, s.base_per_pack, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id WHERE t.route_id = ANY(:r) AND t.month = :m AND s.category_code IN ('match','lighter') GROUP BY 1, 2, 3",
@@ -125,7 +125,7 @@ object SrKpi {
             if ((c == "match" || c == "lighter") && l.saleQty != 0L) catPacks.getOrPut(route to c) { java.util.TreeMap() }.getOrPut(PackKey(c, sku.basePerPack)) { LongArray(2) }[1] += l.saleQty
         }
         fun packsJson(m: Map<PackKey, LongArray>?) = buildJsonArray {
-            m.orEmpty().forEach { (key, v) -> if (v[0] > 0 || v[1] > 0) add(buildJsonObject { put("pack_factor", key.pack); if (key.category.isNotEmpty()) put("category_code", key.category); put("target", v[0]); put("achieved", v[1]) }) }
+            m.orEmpty().forEach { (key, v) -> if (v[0] > 0 || v[1] > 0) add(buildJsonObject { put("pack_factor", key.pack); put("category_code", key.category); put("target", v[0]); put("achieved", v[1]) }) }
         }
 
         val monthRows = h.createQuery("SELECT route_id, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk FROM app.route_kpi_month WHERE route_id = ANY(:r) AND month = :m")
