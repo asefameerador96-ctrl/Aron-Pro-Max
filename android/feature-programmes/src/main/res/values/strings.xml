@@ -244,4 +244,27 @@
     <string name="pg_star_lm_open">Last month has not closed at this cut: LMS and LMADS are not final.</string>
     <string name="pg_star_empty">No Lifting Star target is set for this month.</string>
     <string name="pg_star_truncated">The route has more than one active programme: only the first is shown.</string>
+    <string name="pg_ot_title">Outlet target</string>
+    <string name="pg_ot_popup_title">Today\'s target</string>
+    <string name="pg_ot_tab">Target</string>
+    <string name="pg_ot_std_target">Target STD</string>
+    <string name="pg_ot_std_ach">Achievement STD</string>
+    <string name="pg_ot_std_rem">Remaining STD</string>
+    <string name="pg_ot_memo_target">Target Memo</string>
+    <string name="pg_ot_memo_ach">Achievement Memo</string>
+    <string name="pg_ot_memo_rem">Remaining Memo</string>
+    <string name="pg_ot_okay">Okay</string>
+    <string name="pg_ot_details">View SKU targets</string>
+    <string name="pg_ot_empty">No campaign target is set for this outlet.</string>
+    <string name="pg_ot_empty_cut">The download was cut, so this outlet\'s campaign target may be missing.</string>
+    <string name="pg_ot_col_sku">SKU</string>
+    <string name="pg_ot_col_target">Target</string>
+    <string name="pg_ot_col_sold">Sales</string>
+    <string name="pg_ot_col_pct">%</string>
+    <string name="pg_ot_cat_cigarette">Cigarette</string>
+    <string name="pg_ot_cat_bidi">Bidi</string>
+    <string name="pg_ot_sku_missing">Some SKUs of this target are not on this phone\'s list: they are not shown.</string>
+    <string name="pg_ot_today_phone">Today on this phone: %1$s STD, %2$s memo (not in the figures above)</string>
+    <string name="pg_ot_failed">The target could not be read from this phone.</string>
+    <string name="pg_kpi_not_sent">The server has not sent the KPI figures yet. They will show here once your phone has the next update.</string>
 </resources>
