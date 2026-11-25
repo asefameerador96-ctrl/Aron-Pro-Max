@@ -210,4 +210,79 @@ class KpiModelTest {
         val d = KpiModel.build(listOf(route(kpi(listOf(brand(1, 1000, 300, 50, 20))))), names, mapOf(1L to "bidi"))!!
         assertNull(d.brands.single().volumeTarget); assertEquals(emptyList<Long>(), d.volumeBrands.map { it.brandId }) // not in the cigarette list, no unit guessed
     }
+
+    // ---- contract 1.25.0: by_pack entries carry category_code; the category comes from the entries, not the product tree
+    private fun coded(vararg e: Triple<String, Int, Pair<Long, Long>>) = e.joinToString(",", "[", "]") { (c, f, ta) -> """{"pack_factor":$f,"category_code":"$c","target":${ta.first},"achieved":${ta.second}}""" }
+    private val mixedCoded = brand(1, 2030, 300, 50, 20, packs = coded(Triple("cigarette", 20, 2000L to 300L), Triple("match", 1, 30L to 0L)))
+
+    @Test fun c1_aMixedBrandShowsEachCategoryInItsOwnUnitInsteadOfUnitNotClear() {
+        val d = KpiModel.build(listOf(route(kpi(listOf(mixedCoded), vol = """{"target":2000,"achieved":300,"bp":1500}"""))), names, emptyMap())!!
+        val row = d.brands.single()
+        assertNull(row.category); assertNull(row.volumeTarget); assertNull(row.volumeBp) // still no one figure and no percentage that adds sticks to dozens
+        assertEquals(listOf("cigarette", "match"), row.categoryVolumes.map { it.categoryCode })
+        val cig = row.categoryVolumes[0].target!!; assertEquals("packet", cig.unitKey); assertEquals("100", KpiModel.qtyText(cig, UiLocale.EN))
+        val mat = row.categoryVolumes[1].target!!; assertEquals("dozen", mat.unitKey); assertEquals("30", KpiModel.qtyText(mat, UiLocale.EN))
+        assertEquals(listOf(1L), d.volumeBrands.map { it.brandId }); assertTrue(!d.volumeLeftOut)
+        // the cigarette Volume total uses the cigarette entry only: 2,000 sticks = 100 packets, never 2,030 sticks
+        assertEquals("packet", d.volume.target.unitKey); assertEquals("100", KpiModel.qtyText(d.volume.target, UiLocale.EN)); assertEquals("15", KpiModel.qtyText(d.volume.achieved, UiLocale.EN))
+    }
+
+    @Test fun c2_aPureBrandWithAnInactiveVariantResolvesFromItsEntriesWhereTheTreeCannot() {
+        // the tree maps only SKU 900 (2,000 sticks); the inactive 10s variant (100 sticks) is not in it: the tree rule says "unclear", the entries say cigarette
+        val t = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.000","std_unit":"stick","memo_target":0}"""
+        val b = brand(1, 2100, 300, 50, 20, packs = coded(Triple("cigarette", 10, 100L to 0L), Triple("cigarette", 20, 2000L to 300L)))
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$t],"kpi":${kpi(listOf(b), vol = """{"target":2100,"achieved":300,"bp":1428}""")}}""")!!
+        val row = KpiModel.build(listOf(fig), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single()
+        assertEquals("cigarette", row.category); assertEquals("packet", row.volumeTarget!!.unitKey)
+        assertEquals("110", KpiModel.qtyText(row.volumeTarget!!, UiLocale.EN)) // 100 packets of 20s + 10 packets of 10s, each over its own pack size
+        assertEquals(1428L, row.volumeBp)
+    }
+
+    @Test fun c3_aMixedBrandWithAnInactiveMatchVariantStillShowsBothCategories() {
+        val t = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.000","std_unit":"stick","memo_target":0}"""
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$t],"kpi":${kpi(listOf(mixedCoded), vol = """{"target":2000,"achieved":300,"bp":1500}""")}}""")!!
+        val row = KpiModel.build(listOf(fig), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single()
+        assertEquals(listOf("packet", "dozen"), row.categoryVolumes.map { it.target!!.unitKey })
+    }
+
+    @Test fun c4_aMatchOnlyOrLighterOnlyCodedBrandIsNotInTheCigaretteListAndNeedsNoTree() {
+        val m = brand(3, 30, 12, 10, 4, packs = coded(Triple("match", 1, 30L to 12L)))
+        val l = brand(4, 100, 0, 5, 0, packs = coded(Triple("lighter", 25, 100L to 0L)))
+        val d = KpiModel.build(listOf(route(kpi(listOf(mixedCoded, m, l), vol = """{"target":2000,"achieved":300,"bp":1500}"""))), names, emptyMap())!!
+        assertEquals(listOf(1L), d.volumeBrands.map { it.brandId }); assertTrue(!d.volumeLeftOut)
+        assertEquals("dozen", d.brands.first { it.brandId == 3L }.volumeTarget!!.unitKey)
+        assertEquals("4", KpiModel.qtyText(d.brands.first { it.brandId == 4L }.volumeTarget!!, UiLocale.EN)); assertEquals("box", d.brands.first { it.brandId == 4L }.volumeTarget!!.unitKey)
+        assertEquals("100", KpiModel.qtyText(d.volume.target, UiLocale.EN)) // the cigarette total ignores the match and lighter brands
+    }
+
+    @Test fun c5_entriesThatDoNotAddUpToTheBrandOrAMissingCodeFallBackToTheTreeRule() {
+        val off = brand(1, 2030, 300, 50, 20, packs = coded(Triple("cigarette", 20, 2000L to 300L))) // 30 short
+        val o = KpiModel.build(listOf(route(kpi(listOf(off)))), names, emptyMap())!!.brands.single()
+        assertTrue(o.categoryVolumes.isEmpty()); assertNull(o.volumeTarget)
+        // one entry without a code: the brand is not coded, so the tree rule decides (here a tree that cannot account for the whole brand: a dash)
+        val t = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.000","std_unit":"stick","memo_target":0}"""
+        val partial = brand(1, 2030, 300, 50, 20, packs = """[{"pack_factor":20,"category_code":"cigarette","target":2000,"achieved":300},{"pack_factor":1,"target":30,"achieved":0}]""")
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$t],"kpi":${kpi(listOf(partial))}}""")!!
+        val r = KpiModel.build(listOf(fig), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single()
+        assertTrue(r.categoryVolumes.isEmpty()); assertNull(r.volumeTarget)
+    }
+
+    @Test fun c6_withoutCategoryCodeTheTreeRuleIsUnchanged() {
+        val d = KpiModel.build(listOf(route(kpi(listOf(cigA, matchM, lighterL), vol = """{"target":1000,"achieved":300,"bp":3000}"""))), names, cats2)!!
+        assertTrue(d.brands.all { it.categoryVolumes.isEmpty() })
+        assertEquals(listOf(1L), d.volumeBrands.map { it.brandId }); assertEquals("50", KpiModel.qtyText(d.volume.target, UiLocale.EN))
+    }
+
+    @Test fun c7_severalRoutesKeepTheCategoriesApartWhenTheirPackSizesCollide() {
+        // both entries have pack_factor 1: a stick-sized cigarette and a match dozen must not merge into one 31
+        val b = brand(1, 31, 0, 5, 0, packs = coded(Triple("cigarette", 1, 1L to 0L), Triple("match", 1, 30L to 0L)))
+        val d = KpiModel.build(listOf(route(kpi(listOf(b), vol = """{"target":1,"achieved":0,"bp":0}""")), route(kpi(listOf(b), vol = """{"target":1,"achieved":0,"bp":0}"""))), names, emptyMap())!!
+        assertEquals(listOf("2", "60"), d.brands.single().categoryVolumes.map { KpiModel.qtyText(it.target!!, UiLocale.EN) })
+    }
+
+    @Test fun c8_categoryCodeIsParsedLowerCaseAndAbsentIsNull() {
+        val f = RouteFigures.parse("""{"route_id":7,"kpi":${kpi(listOf(brand(1, 20, 0, 1, 0, packs = """[{"pack_factor":20,"category_code":"Cigarette","target":20,"achieved":0}]""")))}}""")!!
+        assertEquals("cigarette", f.kpi!!.brands.single().byPack.single().categoryCode)
+        assertNull(RouteFigures.parse("""{"route_id":7,"kpi":${kpi(listOf(brand(1, 20, 0, 1, 0)))}}""")!!.kpi!!.brands.single().byPack.single().categoryCode)
+    }
 }

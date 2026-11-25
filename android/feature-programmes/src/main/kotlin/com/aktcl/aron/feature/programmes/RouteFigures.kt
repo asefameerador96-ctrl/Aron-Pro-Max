@@ -25,8 +25,11 @@ data class SentCalendar(
     fun dayCounts(convention: SkuProgress.DayConvention = SkuProgress.DEFAULT_CONVENTION): SkuProgress.DayCounts = SkuProgress.dayCounts(skuCalendar(), convention)
 }
 
-/** Target and achieved base units for one pack size (`KpiPackFigure`). */
-data class PackFigure(val packFactor: Int, val target: Long, val achieved: Long)
+/**
+ * Target and achieved base units for one pack size (`KpiPackFigure`). [categoryCode] is the SKU category of the entry (contract 1.25.0, lower case); null from an older server, which does not send it
+ * (the phone then resolves the category from its product tree, as before).
+ */
+data class PackFigure(val packFactor: Int, val target: Long, val achieved: Long, val categoryCode: String? = null)
 
 data class KpiTotal(val target: Long, val achieved: Long, val bp: Long?)
 
@@ -119,7 +122,7 @@ data class RouteFigures(
 
         private fun packs(o: JsonObject): List<PackFigure> = o.list("by_pack").mapNotNull { e ->
             val p = e as? JsonObject ?: return@mapNotNull null
-            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null)
+            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null, p.str("category_code")?.lowercase()?.takeIf { it.isNotBlank() })
         }
 
         private fun total(o: JsonObject?): KpiTotal? = o?.let { KpiTotal(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("bp")) }

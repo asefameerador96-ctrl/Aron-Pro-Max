@@ -129,4 +129,12 @@ class KpiScreensTest {
         show(AppLanguage.EN) { KpiDashboardScreen(inc, it) }
         compose.onNodeWithTag(KpiTags.INCOMPLETE).assertExists()
     }
+
+    @Test fun aMixedBrandOfA125ServerPrintsEachCategoryInItsOwnUnitNotUnitNotClear() {
+        val mixed = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("match", FieldQty(30_000, "dozen"))))
+        show(AppLanguage.EN) { BrandKpiScreen(data!!.copy(brands = data.brands + mixed), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target 100 packet · 30 dozen - KPI Today —").assertExists()
+        assertEquals(0, compose.onAllNodesWithTag(KpiTags.LEFT_OUT).fetchSemanticsNodes().size)
+    }
 }

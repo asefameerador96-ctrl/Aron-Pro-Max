@@ -110,6 +110,15 @@ class SrKpiScreenshotTests {
         Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi()!!.let { d -> d.copy(brands = d.brands + com.aktcl.aron.feature.programmes.KpiBrandRow(77, BrandName("Safe Match", "সেফ ম্যাচ"), null, null, null, 5, null, null, 0, "match")) }, KpiKind.VOLUME, UiLocale.BN) }
     }
     @Test fun kpi_brands_bn_not_sent() = shot("kpi_brands_bn_not_sent") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(null, KpiKind.VOLUME, UiLocale.BN) } }
+    // contract 1.25.0: a brand that mixes categories shows each in its own unit (cigarette packets, match dozens) instead of "unit not clear"
+    @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_mixed_categories() = shot("kpi_brands_bn_mixed_categories") {
+        Frame(ProgR.string.pg_kpi_brands_title) {
+            BrandKpiScreen(kpi()!!.let { d ->
+                d.copy(brands = d.brands + com.aktcl.aron.feature.programmes.KpiBrandRow(6, BrandName("Mixed Co", "মিক্সড কো"), null, null, null, 50, 4000, null, 0, null,
+                    listOf(com.aktcl.aron.feature.programmes.KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), com.aktcl.aron.feature.programmes.KpiCategoryVolume("match", FieldQty(30_000, "dozen")))))
+            }, KpiKind.VOLUME, UiLocale.BN)
+        }
+    }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_memo() = shot("kpi_brands_bn_memo") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.MEMO, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_en_blm() = shot("kpi_brands_en_blm", AppLanguage.EN) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.BLM, UiLocale.EN) } }
     @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun kpi_brands_bn_font20() = shot("kpi_brands_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }

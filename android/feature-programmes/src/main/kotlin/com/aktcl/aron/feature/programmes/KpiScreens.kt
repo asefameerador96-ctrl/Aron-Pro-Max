@@ -309,7 +309,9 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
             } else (if (kind == KpiKind.VOLUME) data.volumeBrands else data.brands).forEach { b ->
                 val cols = listOf(stringResource(R.string.pg_kpi_volume) to KpiModel.bpText(b.volumeBp, locale), stringResource(R.string.pg_kpi_memo) to KpiModel.bpText(b.memoBp, locale))
                 // every row prints its unit: the volume in the brand's own unit (a brand whose unit the phone cannot tell is a dash with a note), the memo target as a count of memos
-                val target = if (volumeFirst) b.volumeTarget?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) } ?: (Percent.DASH + " (" + stringResource(R.string.pg_kpi_unit_unknown) + ")")
+                val perCategory = b.categoryVolumes.mapNotNull { c -> c.target?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) } }
+                // a brand of several categories (a 1.25.0 server) shows each in its own unit, never added; the dot is a separator, not a sum
+                val target = if (volumeFirst) (if (b.volumeTarget == null && perCategory.isNotEmpty()) perCategory.joinToString(" · ") else b.volumeTarget?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) }) ?: (Percent.DASH + " (" + stringResource(R.string.pg_kpi_unit_unknown) + ")")
                 else Formats.integer(b.memoTarget, locale) + " " + unitWord("memo")
                 BrandRow(KpiTags.brand(b.brandId), b.name?.text(locale) ?: "#${b.brandId}", stringResource(R.string.pg_kpi_target_line, target, KpiModel.takaText(b.kpiTodayMtk, locale)), if (volumeFirst) cols else cols.reversed())
             }

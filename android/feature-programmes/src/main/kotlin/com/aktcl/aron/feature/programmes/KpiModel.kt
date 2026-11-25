@@ -24,7 +24,15 @@ data class KpiBrandRow(
     val brandId: Long, val name: BrandName?, val category: String?, val volumeTarget: FieldQty?, val volumeBp: Long?, val memoTarget: Long, val memoBp: Long?, val kpiTodayMtk: Long?, val kpiAllocMtk: Long,
     /** The category the product tree shows for the brand's visible SKUs, whether or not the brand's volume could be accounted for ([category] is null then). */
     val visibleCategory: String? = null,
+    /**
+     * Set only when the server sent `category_code` on every by_pack entry of the brand (contract 1.25.0): the brand's volume per category, each in its own unit, in category order. A mixed brand then shows
+     * every category instead of "unit not clear". Empty from an older server (the product-tree rule applies, unchanged).
+     */
+    val categoryVolumes: List<KpiCategoryVolume> = emptyList(),
 )
+
+/** One category of a brand's volume (a 1.25.0 server): [target] in the field unit, null where the unit is pending the owner (bidi) or the figure is not a valid quantity. */
+data class KpiCategoryVolume(val categoryCode: String, val target: FieldQty?)
 
 /** A BLM category row (match, lighter): target, achieved and percentage in the field unit (dozens of matches, boxes of 25 lighters). */
 data class KpiCategoryRow(val categoryCode: String, val pair: KpiPair)
@@ -49,8 +57,12 @@ data class KpiData(
      * brand is not listed under cigarette sales.
      */
     /** True when the cigarette volume list leaves out a brand whose SKUs are matches, lighters or bidi and whose figures the phone cannot match to its tree: the screen says so in a short note. */
-    val volumeLeftOut: Boolean get() = brands.any { it.category == null && it.visibleCategory != null && it.visibleCategory != "cigarette" }
-    val volumeBrands: List<KpiBrandRow> get() = brands.filter { it.category == "cigarette" || (it.category == null && (it.visibleCategory == null || it.visibleCategory == "cigarette")) }
+    val volumeLeftOut: Boolean get() = brands.any { it.categoryVolumes.isEmpty() && it.category == null && it.visibleCategory != null && it.visibleCategory != "cigarette" }
+    val volumeBrands: List<KpiBrandRow> get() = brands.filter {
+        // a brand with the server's per-category figures is listed under cigarette sales when it HAS cigarette volume (a match-only or lighter-only brand is not); an older server: the tree rule
+        if (it.categoryVolumes.isNotEmpty()) it.categoryVolumes.any { c -> c.categoryCode == "cigarette" }
+        else it.category == "cigarette" || (it.category == null && (it.visibleCategory == null || it.visibleCategory == "cigarette"))
+    }
 }
 
 object KpiModel {
@@ -74,11 +86,18 @@ object KpiModel {
         val merged = brandSums.values.map { merge(it) }
         // a brand's category counts only when the phone's product tree accounts for ALL of the brand's volume: the SKUs of the route that the tree maps to the brand must add up to the brand's sent target and
         // achieved (a SKU the tree cannot map, such as an inactive variant, may be of another category): else the brand is unresolved (no unit, no percentage)
-        val resolved = merged.associate { b -> b.brandId to resolvedCategory(b, brandCategory[b.brandId], figures, skuBrand) }
+        // a 1.25.0 server tags every by_pack entry with its SKU category: then the brand's categories come from the entries, not the tree (an inactive variant needs no tree entry); no tag: the tree rule below
+        val coded = merged.associate { b -> b.brandId to codedCategories(b) }
+        val resolved = merged.associate { b ->
+            val c = coded[b.brandId]
+            b.brandId to if (c != null) c.keys.singleOrNull() else resolvedCategory(b, brandCategory[b.brandId], figures, skuBrand)
+        }
         val volT = ks.sumOf { it.volume.target }; val volA = ks.sumOf { it.volume.achieved }
         val memT = ks.sumOf { it.memo.target }; val memA = ks.sumOf { it.memo.achieved }
         // the server's volume total is the CIGARETTE brands': the packet check uses the cigarette brands' packs only (never the packs of a match or lighter brand)
-        val cigarettePacks = merged.filter { resolved[it.brandId] == "cigarette" }.flatMap { it.byPack }.groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
+        // (a coded brand adds its cigarette entries only, so a mixed brand's matches never reach the packet check)
+        val cigarettePacks = merged.flatMap { b -> coded[b.brandId]?.get("cigarette") ?: if (coded[b.brandId] == null && resolved[b.brandId] == "cigarette") b.byPack else emptyList() }
+            .groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
         val volume = pairFromPacks(cigarettePacks, "packet", volT, volA, bp(volA, volT, k.volume.bp))
         val cal = routes.firstNotNullOfOrNull { it.calendar }
         val cats = ks.flatMap { it.categories }.groupBy { it.categoryCode }.map { (code, rows) ->
@@ -98,7 +117,11 @@ object KpiModel {
             merged.map { b ->
                 val cat = resolved[b.brandId]
                 // a brand with no single known category has no unit and so no volume percentage either (the figure may mix sticks and dozens)
-                KpiBrandRow(b.brandId, brandNames[b.brandId], cat, brandVolume(b, cat), if (cat == null) null else bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk, brandCategory[b.brandId])
+                val byCat = coded[b.brandId]
+                // coded brand: one category = its unit and the server's percentage; several = a figure per category (the one percentage would add sticks to dozens, so it is a dash)
+                val volume = if (byCat != null) byCat[cat]?.let { brandVolume(b.copy(byPack = it), cat) } else brandVolume(b, cat)
+                KpiBrandRow(b.brandId, brandNames[b.brandId], cat, volume, if (cat == null) null else bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk, brandCategory[b.brandId],
+                    byCat?.map { (code, packs) -> KpiCategoryVolume(code, categoryVolume(code, packs)) }.orEmpty())
             },
             ks.any { it.brandsTruncated }, through.take(7) < k.month, incomplete,
         )
@@ -118,11 +141,34 @@ object KpiModel {
         return if (targetMilli == b.volumeTarget * 1000L && achieved == b.volumeAchieved) category else null
     }
 
+    /**
+     * The brand's by_pack entries grouped by their category, in category order, when EVERY entry carries `category_code` and the entries add up to the brand's sent volume (target and achieved); else null (an
+     * older server, or figures that do not add up: the tree rule decides, never a guess).
+     */
+    private fun codedCategories(b: KpiBrand): Map<String, List<PackFigure>>? {
+        if (b.byPack.isEmpty() || b.byPack.any { it.categoryCode == null }) return null
+        if (b.byPack.sumOf { it.target } != b.volumeTarget || b.byPack.sumOf { it.achieved } != b.volumeAchieved) return null
+        return b.byPack.groupBy { it.categoryCode!! }.entries.sortedBy { categoryRank(it.key) }.associate { it.key to it.value } // a LinkedHashMap in category order
+    }
+
+    private fun categoryRank(code: String) = when (code) { "cigarette" -> 0; "match" -> 1; "lighter" -> 2; else -> 3 }
+
+    /** A category's target in its own unit (cigarette packets, match dozens, lighter boxes); null for bidi (unit pending the owner) or any other code. */
+    private fun categoryVolume(code: String, packs: List<PackFigure>): FieldQty? {
+        val t = packs.sumOf { it.target }; val a = packs.sumOf { it.achieved }
+        return when (code) {
+            "cigarette" -> pairFromPacks(packs, "packet", t, a, null).target
+            "match" -> FieldQty(t * 1000L, "dozen")
+            "lighter" -> pairFromPacks(packs, "box", t, a, null).target
+            else -> null
+        }
+    }
+
     /** One brand summed over the routes that carry it (a single route returns it as sent). */
     private fun merge(rows: List<KpiBrand>): KpiBrand {
         if (rows.size == 1) return rows.first()
         val f = rows.first()
-        val packs = rows.flatMap { it.byPack }.groupBy { it.packFactor }.map { (fac, l) -> PackFigure(fac, l.sumOf { it.target }, l.sumOf { it.achieved }) }
+        val packs = rows.flatMap { it.byPack }.groupBy { it.categoryCode to it.packFactor }.map { (key, l) -> PackFigure(key.second, l.sumOf { it.target }, l.sumOf { it.achieved }, key.first) }
         return f.copy(
             volumeTarget = rows.sumOf { it.volumeTarget }, volumeAchieved = rows.sumOf { it.volumeAchieved }, memoTarget = rows.sumOf { it.memoTarget }, memoAchieved = rows.sumOf { it.memoAchieved },
             kpiAllocMtk = rows.sumOf { it.kpiAllocMtk }, kpiTodayMtk = if (rows.all { it.kpiTodayMtk != null }) rows.sumOf { it.kpiTodayMtk!! } else null, byPack = packs,
