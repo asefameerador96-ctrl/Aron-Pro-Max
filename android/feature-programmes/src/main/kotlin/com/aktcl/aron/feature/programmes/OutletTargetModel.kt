@@ -21,7 +21,7 @@ data class OutletTargetSku(
 data class OutletTargetTotal(val categoryCode: String, val unitKey: String, val targetNum: Long?, val soldNum: Long?, val den: Long, val pct: Long?)
 
 /** What this phone sold of one category since the closed day, in the category's own unit (an exact numerator over [den], like [OutletTargetTotal]): never one number across categories. */
-data class OutletTodayCategory(val categoryCode: String, val unitKey: String, val num: Long, val den: Long)
+data class OutletTodayCategory(val categoryCode: String, val unitKey: String, val num: Long?, val den: Long)
 
 /**
  * One campaign of the outlet: the server's STD and memo figures as sent (through [throughDate]), the SKU table, and the phone's own lines kept separate ([today] for the memo count, [todayByCategory] for
@@ -32,6 +32,10 @@ data class OutletCampaignView(
     val std: CampaignFigure, val memo: CampaignFigure, val rows: List<OutletTargetSku>, val totals: List<OutletTargetTotal>, val skuMissing: Boolean,
     val today: LocalToday, val unconfirmedEarlier: Int, val forkLeftOut: Int,
     val todayByCategory: List<OutletTodayCategory> = emptyList(), val incomplete: Boolean = skuMissing,
+    /** The unit word of the server's STD figures when every SKU of the campaign is of ONE unit (stick, piece or dozen); null when units are counted together (the server's STD adds base units of every category). */
+    val stdUnitKey: String? = null,
+    /** True when the bundle cut the list: the server's achieved and remaining figures cover only the SKUs it sent, so they are partial (the targets are complete). */
+    val achievedPartial: Boolean = false,
 )
 
 /** The campaigns of one outlet; [truncated] when the bundle cut its campaign list (an outlet with none may still have one: the empty state says so). */
@@ -54,16 +58,22 @@ object OutletTargetModel {
             val skuMissing = rows.size != c.skus.size
             val incomplete = skuMissing || truncated
             val frame = frameOf(c) { true }
-            val todayCats = rows.groupBy { it.categoryCode }.mapNotNull { (code, rs) ->
-                val den = lcm(rs) ?: return@mapNotNull null
+            // one line per category AND unit (a 20s SKU in packets and a one-stick SKU in sticks are never added); an arithmetic overflow is a dash, not a vanished line
+            val todayCats = rows.groupBy { it.categoryCode to it.unitKey }.mapNotNull { (key, rs) ->
+                val den = lcm(rs) ?: return@mapNotNull OutletTodayCategory(key.first, key.second, null, 1L)
+                val qty = rs.map { frameOf(c) { id -> id == it.skuId }.today.qtyBase }
+                if (qty.all { it == 0L }) return@mapNotNull null
                 val num = runCatching {
-                    rs.fold(0L) { acc, r -> Math.addExact(acc, Math.multiplyExact(frameOf(c) { id -> id == r.skuId }.today.qtyBase * 1000L, den / r.factor)) }
-                }.getOrNull() ?: return@mapNotNull null
-                if (num == 0L) null else OutletTodayCategory(code, rs.first().unitKey, num, den)
-            }.sortedBy { categoryOrder(it.categoryCode) }
+                    rs.indices.fold(0L) { acc, i -> Math.addExact(acc, Math.multiplyExact(Math.multiplyExact(qty[i], 1000L), den / rs[i].factor)) }
+                }.getOrNull()
+                OutletTodayCategory(key.first, key.second, num, den)
+            }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { it.unitKey }))
+            // the server's STD adds base units of every category: its unit word is only true when all the campaign's SKUs share one base unit
+            val baseUnits = c.skus.map { skus[it.skuId]?.baseUnit }.distinct()
+            val stdUnit = baseUnits.singleOrNull()?.takeIf { it in setOf("stick", "piece", "dozen") }
             OutletCampaignView(
                 c.programmeId, c.labelEn, c.labelBn, c.month, c.throughDate, c.asOf, c.throughDate.take(7) < c.month,
-                c.std, c.memo, rows, totals(rows, incomplete), skuMissing, frame.today, frame.unconfirmedEarlier, frame.forkLeftOut, todayCats, incomplete,
+                c.std, c.memo, rows, totals(rows, incomplete), skuMissing, frame.today, frame.unconfirmedEarlier, frame.forkLeftOut, todayCats, incomplete, stdUnit, truncated,
             )
         }
         return OutletTargetData(views, truncated)
@@ -103,7 +113,7 @@ object OutletTargetModel {
 
     /** A category total (numerator over the common denominator, thousandths of base units) as entered units, one decimal half up; a dash when not computable (or when the arithmetic would overflow). */
     fun totalText(num: Long?, den: Long, locale: UiLocale): String {
-        if (num == null) return Percent.DASH
+        if (num == null || num < 0L) return Percent.DASH
         val d = runCatching { Math.multiplyExact(den, 1000L) }.getOrNull() ?: return Percent.DASH
         val t = Qty.tenths(num.coerceAtLeast(0L), d) ?: return Percent.DASH
         val frac = t % 10L

@@ -268,6 +268,10 @@
     <string name="pg_ot_failed">The target could not be read from this phone.</string>
     <string name="pg_kpi_not_sent">The server has not sent the KPI figures yet. They will show here once your phone has the next update.</string>
     <string name="pg_ot_today_cat">Today on this phone, %3$s: %1$s %2$s (not in the figures above)</string>
-    <string name="pg_ot_cut">The download was cut: this outlet may have more SKUs, or one more campaign, than shown. The totals are not shown.</string>
+    <string name="pg_ot_cut">The download of this route was cut: this outlet may have more SKUs, or one more campaign, than shown. Achievement, remaining and the totals are not shown.</string>
     <string name="pg_ot_total_ach">%1$s achievement of the target quantity: %2$s</string>
+    <string name="pg_ot_std_value">%1$s %2$s</string>
+    <string name="pg_ot_std_mixed">Sticks, pieces and dozens are counted together in STD (server figure).</string>
+    <string name="pg_ot_today_phone_partial">Today on this phone: %1$s memo (may be incomplete; not in the figures above)</string>
+    <string name="pg_ot_today_cat_partial">Today on this phone, %3$s: %1$s %2$s (may be incomplete; not in the figures above)</string>
 </resources>

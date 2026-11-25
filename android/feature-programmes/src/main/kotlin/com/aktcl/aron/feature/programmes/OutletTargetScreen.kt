@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronSolidButton
+import com.aktcl.aron.rules.Percent
 import com.aktcl.aron.rules.UiLocale
 
 object OutletTargetTags {
@@ -41,8 +42,9 @@ object OutletTargetTags {
     const val LOADING = "ot_loading"
     const val FAILED = "ot_failed"
     const val CUT = "ot_cut"
+    const val STD_MIXED = "ot_std_mixed"
     fun totalPct(categoryCode: String) = "ot_total_pct_$categoryCode"
-    fun todayCat(programmeId: Long, categoryCode: String) = "ot_today_${programmeId}_$categoryCode"
+    fun todayCat(programmeId: Long, categoryCode: String, unitKey: String) = "ot_today_${programmeId}_${categoryCode}_$unitKey"
     const val OFFLINE = "ot_offline"
     const val THROUGH = "ot_through"
     const val UNCONFIRMED = "ot_unconfirmed"
@@ -121,26 +123,37 @@ private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(campaignName(c, locale), style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = com.aktcl.aron.core.ui.LocalAronColors.current.accent))
         Note(if (c.fromFirst) stringResource(R.string.pg_tgt_through_first) else stringResource(R.string.pg_tgt_through, LoyaltyModel.dateText(c.throughDate, locale)), OutletTargetTags.THROUGH)
-        val stick = stringResource(R.string.pg_tgt_unit_stick) // STD is the standard stick list: its unit is named next to the figure
-        Figure(c.programmeId, "std_t", stringResource(R.string.pg_ot_std_target), OutletTargetModel.countText(c.std.target, locale) + " " + stick)
-        Figure(c.programmeId, "std_a", stringResource(R.string.pg_ot_std_ach), OutletTargetModel.countText(c.std.achieved, locale) + " " + stick)
-        Figure(c.programmeId, "std_r", stringResource(R.string.pg_ot_std_rem), OutletTargetModel.countText(c.std.remaining, locale) + " " + stick)
+        // the server's STD adds base units of every category: a unit word only when the campaign has ONE unit; otherwise a short note says they are counted together
+        val std: @Composable (Long, Boolean) -> String = { n, partial -> stdText(c, n, partial, locale) }
+        if (c.stdUnitKey == null) Note(stringResource(R.string.pg_ot_std_mixed), OutletTargetTags.STD_MIXED)
+        Figure(c.programmeId, "std_t", stringResource(R.string.pg_ot_std_target), std(c.std.target, false))
+        // a cut list: the server's achieved covers only the SKUs it sent, so achieved and remaining are a dash (the target is complete)
+        Figure(c.programmeId, "std_a", stringResource(R.string.pg_ot_std_ach), std(c.std.achieved, c.achievedPartial))
+        Figure(c.programmeId, "std_r", stringResource(R.string.pg_ot_std_rem), std(c.std.remaining, c.achievedPartial))
         Figure(c.programmeId, "memo_t", stringResource(R.string.pg_ot_memo_target), OutletTargetModel.countText(c.memo.target, locale))
-        Figure(c.programmeId, "memo_a", stringResource(R.string.pg_ot_memo_ach), OutletTargetModel.countText(c.memo.achieved, locale))
-        Figure(c.programmeId, "memo_r", stringResource(R.string.pg_ot_memo_rem), OutletTargetModel.countText(c.memo.remaining, locale))
+        Figure(c.programmeId, "memo_a", stringResource(R.string.pg_ot_memo_ach), if (c.achievedPartial) Percent.DASH else OutletTargetModel.countText(c.memo.achieved, locale))
+        Figure(c.programmeId, "memo_r", stringResource(R.string.pg_ot_memo_rem), if (c.achievedPartial) Percent.DASH else OutletTargetModel.countText(c.memo.remaining, locale))
+        if (c.skuMissing) Note(stringResource(R.string.pg_ot_sku_missing), OutletTargetTags.SKU_MISSING)
         PhoneLines(c, locale)
     }
 }
 
+@Composable private fun stdText(c: OutletCampaignView, n: Long, partial: Boolean, locale: UiLocale): String =
+    if (partial) Percent.DASH else c.stdUnitKey?.let { stringResource(R.string.pg_ot_std_value, OutletTargetModel.countText(n, locale), stringResource(unitWordRes(it))) } ?: OutletTargetModel.countText(n, locale)
+
 @Composable private fun PhoneLines(c: OutletCampaignView, locale: UiLocale) {
     val look = LocalAronLook.current
     val st = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium)
-    // this phone's own sales since the closed day: the memo count, and the quantities PER CATEGORY in the category's own unit (never one number across packets, boxes and dozens)
-    if (c.today.memoCount > 0L) Text(stringResource(R.string.pg_ot_today_phone, OutletTargetModel.countText(c.today.memoCount, locale)), Modifier.testTag(OutletTargetTags.today(c.programmeId)), style = st)
+    // this phone's own sales since the closed day: the memo count, and the quantities PER CATEGORY and unit in that unit (never one number across packets, boxes and dozens);
+    // on a cut list or after a dropped row they are true for the SKUs the phone knows only, and say so
+    if (c.today.memoCount > 0L) Text(
+        stringResource(if (c.incomplete) R.string.pg_ot_today_phone_partial else R.string.pg_ot_today_phone, OutletTargetModel.countText(c.today.memoCount, locale)),
+        Modifier.testTag(OutletTargetTags.today(c.programmeId)), style = st,
+    )
     c.todayByCategory.forEach { t ->
         Text(
-            stringResource(R.string.pg_ot_today_cat, OutletTargetModel.totalText(t.num, t.den, locale), unitWord(t.unitKey), categoryWord(t.categoryCode)),
-            Modifier.testTag(OutletTargetTags.todayCat(c.programmeId, t.categoryCode)), style = st,
+            stringResource(if (c.incomplete) R.string.pg_ot_today_cat_partial else R.string.pg_ot_today_cat, OutletTargetModel.totalText(t.num, t.den, locale), unitWord(t.unitKey), categoryWord(t.categoryCode)),
+            Modifier.testTag(OutletTargetTags.todayCat(c.programmeId, t.categoryCode, t.unitKey)), style = st,
         )
     }
     if (c.unconfirmedEarlier > 0) Note(countText(R.plurals.pg_tgt_unconfirmed, c.unconfirmedEarlier, locale), OutletTargetTags.UNCONFIRMED)
@@ -171,9 +184,10 @@ private fun CampaignFigures(c: OutletCampaignView, locale: UiLocale) {
     Text(text, Modifier.testTag(tag), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium))
 }
 
-@Composable private fun unitWord(key: String): String = stringResource(
-    when (key) { "packet" -> R.string.pg_tgt_unit_packet; "box" -> R.string.pg_tgt_unit_box; "dozen" -> R.string.pg_tgt_unit_dozen; "piece" -> R.string.pg_tgt_unit_piece; else -> R.string.pg_tgt_unit_stick },
-)
+private fun unitWordRes(key: String): Int =
+    when (key) { "packet" -> R.string.pg_tgt_unit_packet; "box" -> R.string.pg_tgt_unit_box; "dozen" -> R.string.pg_tgt_unit_dozen; "piece" -> R.string.pg_tgt_unit_piece; else -> R.string.pg_tgt_unit_stick }
+
+@Composable private fun unitWord(key: String): String = stringResource(unitWordRes(key))
 
 @Composable private fun categoryWord(code: String) = stringResource(
     when (code) { "cigarette" -> R.string.pg_ot_cat_cigarette; "bidi" -> R.string.pg_ot_cat_bidi; "match" -> R.string.pg_kpi_cat_match; else -> R.string.pg_kpi_cat_lighter },

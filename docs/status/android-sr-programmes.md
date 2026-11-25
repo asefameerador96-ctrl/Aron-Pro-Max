@@ -1,5 +1,9 @@
 # Lane android-sr-programmes (A-PROG1) status
 
+## A-PROG4 SCREEN 21 RECHECK ROUND (lead recheck of 6f24199dd)
+- R1: the STD unit word is printed only when every campaign SKU has ONE base unit (`stdUnitKey`); otherwise no word and the note "Sticks, pieces and dozens are counted together in STD (server figure)". R2: on a cut list Achievement and Remaining (STD and Memo) are dashes, Target is kept (`achievedPartial`). R3: today lines per category AND unit, never added (a 20s SKU in packets and a one-stick SKU in sticks are two lines). R4: on an incomplete list the today lines say "may be incomplete"; the pop-up shows the dropped-row note. Lows: STD value through a format resource, cut wording "download of this route was cut", an overflowed today line is a dash, a negative numerator is a dash.
+- Goldens: ADDED outlet_target_en_popup_one_unit; RE-RECORDED outlet_target_bn_page_cut_rows, _bn_popup, _bn_popup_font20, _en_popup_cut, _en_popup_phone_lines.
+
 ## A-PROG4 SCREEN 21 REVIEW ROUND (lead review of f3f0aec98, 2026-11-25)
 - O1: "today on this phone" is per category in the category's own unit (`OutletTodayCategory`, exact numerator over the pack denominator; frame called once per SKU), plus the memo count; never one number across categories (tests: 2 packets of a 20s SKU + 1 box of lighters; two pack sizes = 5 packets).
 - O2: a cut list (`campaigns_truncated`) shows the cut note on non-empty data (page and pop-up) and dashes the category totals and their %; a missing/invalid SKU (unknown, negative quantity, unit rule fails) drops that row only and also dashes the totals. Goldens `outlet_target_bn_page_cut_rows`, `outlet_target_en_popup_cut`.

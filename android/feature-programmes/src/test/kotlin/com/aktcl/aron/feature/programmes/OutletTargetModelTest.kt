@@ -17,6 +17,7 @@ class OutletTargetModelTest {
         901L to SkuInfo(901, "Avon 10s", null, "cigarette", "stick", 10, "packet"),
         902L to SkuInfo(902, "Safe Match", null, "match", "dozen", 1, "dozen"),
         903L to SkuInfo(903, "Lighter", null, "lighter", "piece", 25, "box"),
+        905L to SkuInfo(905, "Single stick", null, "cigarette", "stick", 1, "stick"),
     )
     private val noFrame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, _ -> FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(0, 0, 0, emptyMap()), 0, 0) }
 
@@ -127,4 +128,34 @@ class OutletTargetModelTest {
     @Test fun anOverflowingTotalIsADashNotAWrongNumber() {
         assertEquals("—", OutletTargetModel.totalText(1_000L, Long.MAX_VALUE, UiLocale.EN))
     }
+
+    // R1: the STD unit word only when the whole campaign has one base unit
+    @Test fun theStdUnitWordIsNamedOnlyWhenEveryCampaignSkuHasOneBaseUnit() {
+        val one = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(901, 300, 0))))), 5, skus, noFrame)!!.campaigns.single()
+        assertEquals("stick", one.stdUnitKey)
+        val mixed = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(903, 100, 0))))), 5, skus, noFrame)!!.campaigns.single()
+        assertNull(mixed.stdUnitKey) // 40 sticks + 25 pieces would read "65 stick"
+        val dozens = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(902, 24, 0))))), 5, skus, noFrame)!!.campaigns.single()
+        assertEquals("dozen", dozens.stdUnitKey)
+    }
+
+    // R2: a cut list: achieved is partial
+    @Test fun aCutListMarksAchievedAndRemainingPartialButAWholeListDoesNot() {
+        assertTrue(OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0))), truncated = true)), 5, skus, noFrame)!!.campaigns.single().achievedPartial)
+        assertEquals(false, OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0))))), 5, skus, noFrame)!!.campaigns.single().achievedPartial)
+    }
+
+    // R3: one line per category AND unit
+    @Test fun aTwentiesSkuAndAOneStickSkuInOneCategoryAreNeverAddedIntoSevenPackets() {
+        val frame: (RouteCampaign, (Long) -> Boolean) -> FigureFrame = { c, keep ->
+            val q = when { keep(900) -> 40L; keep(905) -> 5L; else -> 0L } // 2 packets of 20s and 5 loose sticks
+            FigureFrame(c.month, c.throughDate, c.asOf, false, LocalToday(q, 2, 0, emptyMap()), 0, 0)
+        }
+        val cats = OutletTargetModel.build(listOf(route(listOf(campaign(skus = sku(900, 500, 0) + "," + sku(905, 100, 0))))), 5, skus, frame)!!.campaigns.single().todayByCategory
+        assertEquals(listOf("packet", "stick"), cats.map { it.unitKey }.sorted())
+        val p = cats.first { it.unitKey == "packet" }; val k = cats.first { it.unitKey == "stick" }
+        assertEquals("2", OutletTargetModel.totalText(p.num, p.den, UiLocale.EN)); assertEquals("5", OutletTargetModel.totalText(k.num, k.den, UiLocale.EN))
+    }
+
+    @Test fun aNegativeNumeratorIsADash() { assertEquals("—", OutletTargetModel.totalText(-1L, 1L, UiLocale.EN)) }
 }

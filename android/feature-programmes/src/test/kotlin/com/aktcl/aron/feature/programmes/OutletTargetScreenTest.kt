@@ -34,9 +34,9 @@ class OutletTargetScreenTest {
         OutletTargetSku(900, "Maxim", "ম্যাক্সিম", "cigarette", "packet", 20, 500_000, 120_000, 24),
         OutletTargetSku(902, "Safe Match", null, "match", "dozen", 1, 24_000, 6_000, 25),
     )
-    private fun view(today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fork: Int = 0, fromFirst: Boolean = false, skuMissing: Boolean = false, label: String = "Super Star Low", cats: List<OutletTodayCategory> = emptyList(), incomplete: Boolean = skuMissing) = OutletCampaignView(
+    private fun view(today: LocalToday = LocalToday(0, 0, 0, emptyMap()), unconfirmed: Int = 0, fork: Int = 0, fromFirst: Boolean = false, skuMissing: Boolean = false, label: String = "Super Star Low", cats: List<OutletTodayCategory> = emptyList(), incomplete: Boolean = skuMissing, stdUnit: String? = "stick", partial: Boolean = false) = OutletCampaignView(
         1, label, "সুপার স্টার লো", "2026-11", "2026-11-17", "2026-11-18T01:00:00Z", fromFirst, CampaignFigure(1000, 300, 700), CampaignFigure(10, 4, 6), rows,
-        (if (incomplete) listOf(OutletTargetTotal("cigarette", "packet", null, null, 20, null), OutletTargetTotal("match", "dozen", null, null, 1, null)) else listOf(OutletTargetTotal("cigarette", "packet", 1_100_000, 320_000, 20, 28), OutletTargetTotal("match", "dozen", 24_000, 6_000, 1, 25))), skuMissing, today, unconfirmed, fork, cats, incomplete,
+        (if (incomplete) listOf(OutletTargetTotal("cigarette", "packet", null, null, 20, null), OutletTargetTotal("match", "dozen", null, null, 1, null)) else listOf(OutletTargetTotal("cigarette", "packet", 1_100_000, 320_000, 20, 28), OutletTargetTotal("match", "dozen", 24_000, 6_000, 1, 25))), skuMissing, today, unconfirmed, fork, cats, incomplete, stdUnit, partial,
     )
     private fun data(v: OutletCampaignView = view()) = OutletTargetData(listOf(v), false)
 
@@ -140,6 +140,44 @@ class OutletTargetScreenTest {
     @Test fun theCutNoteShowsInThePopupWithFigures() {
         show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true)), true), it, {}) }
         compose.onNodeWithTag(OutletTargetTags.CUT).assertExists(); compose.onNodeWithText("1,000 stick").assertExists()
+    }
+
+    // R1: the STD unit word is only true when the campaign has one unit
+    @Test fun stdFiguresCarryNoUnitWordWhenUnitsAreCountedTogetherAndANoteSaysSo() {
+        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(stdUnit = null)), it, {}) }
+        compose.onNodeWithTag(OutletTargetTags.STD_MIXED).assertExists()
+        compose.onNodeWithText("Sticks, pieces and dozens are counted together in STD (server figure).").assertExists()
+        compose.onNodeWithText("1,000").assertExists() // no "stick" after the number
+        assertEquals(0, compose.onAllNodesWithText("1,000 stick").fetchSemanticsNodes().size) // the number carries no unit word
+    }
+
+    @Test fun aOneUnitCampaignNamesItsUnit() {
+        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(stdUnit = "dozen")), it, {}) }
+        compose.onNodeWithText("1,000 dozen").assertExists(); assertEquals(0, compose.onAllNodesWithTag(OutletTargetTags.STD_MIXED).fetchSemanticsNodes().size)
+    }
+
+    // R2: a cut list keeps the target and dashes achievement and remaining (STD and memo)
+    @Test fun aCutListKeepsTheTargetAndDashesAchievementAndRemaining() {
+        show(AppLanguage.EN) { OutletTargetPopup("X", OutletTargetData(listOf(view(incomplete = true, partial = true)), true), it, {}) }
+        compose.onNodeWithText("1,000 stick").assertExists() // target STD kept
+        assertEquals(4, compose.onAllNodesWithText("—").fetchSemanticsNodes().size) // achievement and remaining, STD and memo
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
+    }
+
+    // R3/R4: the same-unit guard and the "may be incomplete" wording
+    @Test fun todayLinesOfDifferentUnitsInOneCategoryAreSeparateLinesAndAnIncompleteListSaysSo() {
+        val cats = listOf(OutletTodayCategory("cigarette", "packet", 2_000, 1), OutletTodayCategory("cigarette", "stick", 5_000, 1))
+        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(today = LocalToday(45, 2, 0, emptyMap()), cats = cats, incomplete = true, skuMissing = true)), it, {}) }
+        compose.onNodeWithText("Today on this phone, Cigarette: 2 packet (may be incomplete; not in the figures above)").assertExists()
+        compose.onNodeWithText("Today on this phone, Cigarette: 5 stick (may be incomplete; not in the figures above)").assertExists()
+        compose.onNodeWithText("Today on this phone: 2 memo (may be incomplete; not in the figures above)").assertExists()
+        compose.onNodeWithTag(OutletTargetTags.SKU_MISSING).assertExists() // the pop-up names the dropped row too
+    }
+
+    @Test fun anOverflowedTodayLineIsADashNotAVanishedLine() {
+        val cats = listOf(OutletTodayCategory("cigarette", "packet", null, 1))
+        show(AppLanguage.EN) { OutletTargetPopup("X", data(view(cats = cats)), it, {}) }
+        compose.onNodeWithText("Today on this phone, Cigarette: — packet (not in the figures above)").assertExists()
     }
 
     @Test fun noCutNoteWhenTheListIsWhole() {
