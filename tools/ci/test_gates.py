@@ -382,6 +382,32 @@ class InstallScripts(unittest.TestCase):
         self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text())
 
 
+class OkhttpPslScan(unittest.TestCase):
+    """The PublicSuffixDatabase.list asset is dropped from the phone APKs; main sources must not need it."""
+
+    def scan(self, rel, body):
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "android" / rel
+            f.parent.mkdir(parents=True)
+            f.write_text(body)
+            r = subprocess.run([sys.executable, str(HERE / "okhttp-psl-scan.py"), t], capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    def test_each_banned_use_in_main_fails(self):
+        for body in ("val d = url.topPrivateDomain()", "OkHttpClient.Builder().cookieJar(jar)", "val j = JavaNetCookieJar(m)"):
+            rc, out = self.scan("core-x/src/main/kotlin/A.kt", body)
+            self.assertEqual(rc, 1, body)
+            self.assertIn("A.kt:1", out)
+
+    def test_clean_main_and_test_sources_pass(self):
+        self.assertEqual(self.scan("core-x/src/main/kotlin/A.kt", "val c = OkHttpClient.Builder().build()")[0], 0)
+        self.assertEqual(self.scan("core-x/src/test/kotlin/A.kt", "x.cookieJar(jar)")[0], 0)
+
+    def test_real_repository_is_clean(self):
+        r = subprocess.run([sys.executable, str(HERE / "okhttp-psl-scan.py"), str(ROOT)], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+
 class PlaywrightChromium(unittest.TestCase):
     """The Web job's browser step never hangs (run 37691144739 hung in apt-get update): capped download with one
     retry, apt only when a library is missing, the preinstalled Chrome as the fallback, an error without one."""

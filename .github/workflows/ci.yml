@@ -190,6 +190,10 @@ jobs:
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
       - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
         run: python3 tools/ci/test_gates.py
+      - name: OkHttp public-suffix asset stays unused (no topPrivateDomain or cookie jar in phone main sources)
+        run: python3 tools/ci/okhttp-psl-scan.py .
+      - name: Vector pathData minifier self-test (lossless; tools/pathdata-minify.py)
+        run: python3 tools/pathdata-minify.py self-test
       - name: TSO APK owner-name copy self-test (D-TSO-MAN-42)
         run: python3 tools/ci/test_tso_apk_copy.py
       - name: AMO APK owner-name copy self-test (D-AMO-MAN-16)

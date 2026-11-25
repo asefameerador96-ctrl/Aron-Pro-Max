@@ -10,7 +10,7 @@
     android:viewportWidth="48"
     android:viewportHeight="48">
     <!-- the round badge -->
-    <path android:pathData="M24,2a22,22 0 1,0 0.01,0z">
+    <path android:pathData="M24 2a22 22 0 1 0 .01 0z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:startX="24" android:startY="2" android:endX="24" android:endY="46"
@@ -22,37 +22,37 @@
     </path>
     <!-- globe (upper left): outline, equator and meridian -->
     <path
-        android:pathData="M16,15m-7,0a7,7 0 1,1 14,0a7,7 0 1,1 -14,0"
+        android:pathData="M16 15m-7 0a7 7 0 1 1 14 0a7 7 0 1 1-14 0"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
     <path
-        android:pathData="M9,15h14"
+        android:pathData="M9 15h14"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.4" />
     <path
-        android:pathData="M16,8c3.2,3.9 3.2,10.1 0,14c-3.2,-3.9 -3.2,-10.1 0,-14z"
+        android:pathData="M16 8c3.2 3.9 3.2 10.1 0 14c-3.2-3.9-3.2-10.1 0-14z"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.4" />
     <!-- monitor (lower right): screen, neck and foot -->
     <path
-        android:pathData="M27,24h11a1.5,1.5 0 0,1 1.5,1.5v7a1.5,1.5 0 0,1 -1.5,1.5h-11a1.5,1.5 0 0,1 -1.5,-1.5v-7a1.5,1.5 0 0,1 1.5,-1.5z"
+        android:pathData="M27 24h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-11a1.5 1.5 0 0 1-1.5-1.5v-7a1.5 1.5 0 0 1 1.5-1.5z"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
     <path
-        android:pathData="M32.5,34v3"
+        android:pathData="M32.5 34v3"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
     <path
-        android:pathData="M29,37h7"
+        android:pathData="M29 37h7"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
     <!-- the arrow from the globe to the monitor -->
     <path
-        android:pathData="M11,29h9"
+        android:pathData="M11 29h9"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
     <path
-        android:pathData="M20,29l-2.6,-2.3M20,29l-2.6,2.3"
+        android:pathData="M20 29l-2.6-2.3M20 29l-2.6 2.3"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.6" />
 </vector>
