@@ -103,8 +103,7 @@ object KpiModel {
         val cats = ks.flatMap { it.categories }.groupBy { it.categoryCode }.map { (code, rows) ->
             val t = rows.sumOf { it.volumeTarget }; val a = rows.sumOf { it.volumeAchieved }
             val packs = rows.flatMap { it.byPack }.groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
-            val unit = if (code == "match") "dozen" else "box"
-            KpiCategoryRow(code, pairFromPacks(packs, unit, t, a, bp(a, t, rows.first().volumeBp)))
+            KpiCategoryRow(code, if (code == "match") pairFromPacks(packs, "dozen", t, a, bp(a, t, rows.first().volumeBp)) else lighterPair(packs, t, a, bp(a, t, rows.first().volumeBp)))
         }.sortedBy { if (it.categoryCode == "match") 0 else 1 }
         val allocated = if (ks.all { it.allocatedMtk != null }) ks.sumOf { it.allocatedMtk!! } else null
         val achievedMtk = if (ks.all { it.achievedMtk != null }) ks.sumOf { it.achievedMtk!! } else null
@@ -160,7 +159,7 @@ object KpiModel {
             "cigarette" -> pairFromPacks(packs, "packet", t, a, null).target
             "match" -> FieldQty(t * 1000L, "dozen")
             // a box is 25 pieces: another pack size is shown in pieces with their word, never as boxes
-            "lighter" -> if (packs.all { it.packFactor == 25 }) pairFromPacks(packs, "box", t, a, null).target else FieldQty(t * 1000L, "piece")
+            "lighter" -> lighterPair(packs, t, a, null).target
             else -> null // bidi (unit pending the owner) or an unknown category: the screen prints the category with a dash, never leaves it out
         }
     }
@@ -202,9 +201,17 @@ object KpiModel {
     private fun brandVolume(b: KpiBrand, category: String?): FieldQty? = when (category) {
         "cigarette" -> pairFromPacks(b.byPack, "packet", b.volumeTarget, b.volumeAchieved, null).target // bidi volume is not shown: its unit is pending the owner (docs/21), a dash with a note
         "match" -> FieldQty(b.volumeTarget * 1000L, "dozen")
-        "lighter" -> pairFromPacks(b.byPack, "box", b.volumeTarget, b.volumeAchieved, null).target
+        "lighter" -> lighterPair(b.byPack, b.volumeTarget, b.volumeAchieved, null).target
         else -> null
     }
+
+    /**
+     * THE lighter rule (one place): a box is 25 pieces, so the figure is in boxes only when every entry has pack_factor 25; any other pack size (or a mix) is shown in pieces with their word, never as boxes.
+     * With no per-pack entries the base-unit fallback of [pairFromPacks] applies (pieces).
+     */
+    private fun lighterPair(packs: List<PackFigure>, target: Long, achieved: Long, bp: Long?): KpiPair =
+        if (packs.isNotEmpty() && packs.any { it.packFactor != 25 }) KpiPair(FieldQty(target * 1000L, "piece"), FieldQty(achieved * 1000L, "piece"), bp)
+        else pairFromPacks(packs, "box", target, achieved, bp)
 
     /** [q] as text ("73,900", "1.5"): one decimal, rounded once from the exact quotient, trailing ".0" dropped, digits per [locale]. */
     fun qtyText(q: FieldQty, locale: UiLocale): String {

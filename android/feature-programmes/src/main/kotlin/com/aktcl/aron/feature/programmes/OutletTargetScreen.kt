@@ -110,7 +110,8 @@ fun OutletTargetPopupBody(data: OutletTargetData?, locale: UiLocale, offline: Bo
         else if (failed) Text(stringResource(R.string.pg_ot_failed), Modifier.testTag(OutletTargetTags.FAILED), style = TextStyle(fontSize = 16.sp, color = look.ink))
         else if (data == null || data.campaigns.isEmpty()) EmptyText(data?.truncated == true)
         else {
-            if (data.truncated) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
+            if (data.routeCut) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
+            else if (data.campaigns.any { it.outletCut }) Note(stringResource(R.string.pg_ot_cut_outlet), OutletTargetTags.CUT)
             data.campaigns.forEach { CampaignFigures(it, locale) }
         }
     }
@@ -211,7 +212,8 @@ fun OutletTargetScreen(outletLabel: String, routeLine: String?, data: OutletTarg
             Box(Modifier.fillMaxWidth().heightIn(min = 140.dp), contentAlignment = Alignment.Center) { EmptyText(data?.truncated == true) }
             return@Column
         }
-        if (data.truncated) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
+        if (data.routeCut) Note(stringResource(R.string.pg_ot_cut), OutletTargetTags.CUT)
+        else if (data.campaigns.any { it.outletCut }) Note(stringResource(R.string.pg_ot_cut_outlet), OutletTargetTags.CUT)
         data.campaigns.forEach { CampaignTable(it, locale) }
     }
 }

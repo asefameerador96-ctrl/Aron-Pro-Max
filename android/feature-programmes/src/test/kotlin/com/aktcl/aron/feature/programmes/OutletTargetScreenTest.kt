@@ -187,4 +187,12 @@ class OutletTargetScreenTest {
         show(AppLanguage.EN) { OutletTargetScreen("X", null, data(), it) }
         assertEquals(0, compose.onAllNodesWithTag(OutletTargetTags.CUT).fetchSemanticsNodes().size)
     }
+
+    @Test fun aCutOutletOfANewServerKeepsAchievementAndNamesWhatIsPartial() {
+        val v = view(incomplete = true, stdUnit = null).copy(outletCut = true)
+        show(AppLanguage.EN) { OutletTargetScreen("X", null, OutletTargetData(listOf(v), true, routeCut = false), it) }
+        compose.onNodeWithTag(OutletTargetTags.CUT).assertExists()
+        compose.onNodeWithText("The SKU list of this outlet was cut", substring = true).assertExists()
+        compose.onNodeWithText("The download of this route was cut", substring = true).assertDoesNotExist()
+    }
 }

@@ -306,4 +306,15 @@ class KpiModelTest {
         val f = RouteFigures.parse("""{"route_id":7,"kpi":${kpi(listOf(brand(1, 20, 0, 1, 0, packs = """[{"pack_factor":20,"category_code":" Cigarette ","target":20,"achieved":0}]""")))}}""")!!
         assertEquals("cigarette", f.kpi!!.brands.single().byPack.single().categoryCode)
     }
+
+    @Test fun c12_oneLighterRuleEverywhereBrandRowsAndBlmCategoryRowsSayBoxOnlyAtPackSize25() {
+        val lighter10 = brand(4, 100, 0, 5, 0, packs = """[{"pack_factor":10,"target":100,"achieved":0}]""") // no category_code: the older-server path with the tree
+        val cats = """[{"category_code":"lighter","volume_target":100,"volume_achieved":0,"volume_bp":null,"by_pack":[{"pack_factor":10,"target":100,"achieved":0}]}]"""
+        val d = KpiModel.build(listOf(route(kpi(listOf(cigA, lighter10), vol = """{"target":1000,"achieved":300,"bp":3000}""", cats = cats))), names, cats2)!!
+        val brand = d.brands.first { it.brandId == 4L }.volumeTarget!!; assertEquals("piece", brand.unitKey); assertEquals("100", KpiModel.qtyText(brand, UiLocale.EN))
+        val cat = d.categories.single { it.categoryCode == "lighter" }.pair.target; assertEquals("piece", cat.unitKey); assertEquals("100", KpiModel.qtyText(cat, UiLocale.EN))
+        // pack size 25 stays boxes on both paths
+        val d25 = KpiModel.build(listOf(route(kpi(listOf(cigA, lighterL), vol = """{"target":1000,"achieved":300,"bp":3000}""", cats = cats.replace("\"pack_factor\":10", "\"pack_factor\":25")))), names, cats2)!!
+        assertEquals("box", d25.brands.first { it.brandId == 4L }.volumeTarget!!.unitKey); assertEquals("box", d25.categories.single { it.categoryCode == "lighter" }.pair.target.unitKey)
+    }
 }
