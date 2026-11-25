@@ -134,16 +134,33 @@ class SrStarBundleTest {
         } finally { listOf(1 to "2026-12-03", 2 to "2026-12-05", 3 to "2026-12-04", 4 to "2026-12-10").forEach { (n, d) -> fx.void(u(n), d) } }   // synced rows are tombstoned: last month's figure of the other tests stays as it was
     }
 
+    /** In-window (2026-12-02) one-line sale memos of the route, one per (sku, qty); voided afterwards so the other tests' last-month figure stays as it was. [base] keeps the uuids apart. */
+    private fun withSales(base: Int, vararg sales: Pair<Long, Int>, body: () -> Unit) {
+        val o = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr, seqStart = 800 + base)
+        val us = sales.indices.map { "00000000-0000-4000-8000-0000000e%04d".format(base + it) }
+        sales.forEachIndexed { i, (sku, qty) -> fx.memo(us[i], route, o, "2026-12-02", listOf(SrMemoFixture.L(sku, qty))) }
+        try { body() } finally { us.forEach { fx.void(it, "2026-12-02") } }
+    }
+
     @Test
     fun theSkuListIsCleanedBeforeTheCapAndCarriedAscending() {
         val real = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku ORDER BY id DESC LIMIT 3").mapTo(Long::class.java).list() }   // unordered on purpose
         val rule = " ,0,-5,${real[0]},abc,${real[2]},${real[0]},999999999, ${real[1]},${real[2]}"
-        starUnder("MBLS-CLEAN", "{\"sku_ids\":\"$rule\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
-            assertEquals(real.sorted(), ids(star), "distinct, existing in the catalogue, >= 1, ascending by id; junk and unknown ids dropped"); assertEquals(null, star!!["sku_ids_truncated"])
+        val other = q("SELECT min(id) FROM app.sku")   // a SKU that is NOT on the list (the list holds the three highest ids)
+        val match = q("SELECT id FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 1"); val cigarette = q("SELECT id FROM app.sku WHERE category_code = 'cigarette' ORDER BY id LIMIT 1")
+        withSales(10, real[0] to 11, real[2] to 22, other to 500) {
+            starUnder("MBLS-CLEAN", "{\"sku_ids\":\"$rule\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(real.sorted(), ids(star), "distinct, existing in the catalogue, >= 1, ascending by id; junk and unknown ids dropped"); assertEquals(null, star!!["sku_ids_truncated"])
+                assertEquals("33.000", star.s("std"), "the STD counts exactly the cleaned list: 11 + 22, not the 500 of the SKU that is off the list")
+            }
         }
-        // a list with no usable id falls back to the category rule (which then rides) instead of an empty explicit list
-        starUnder("MBLS-NOIDS", "{\"sku_ids\":\"0,abc,999999999\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
-            assertEquals(null, assertNotNull(star)["sku_ids"]); assertEquals("match", star.s("sku_category"))
+        // a list with no usable id falls back to the category rule (which then rides) instead of an empty explicit list, and the STD follows the category
+        withSales(20, match to 40, cigarette to 900) {
+            starUnder("MBLS-NOIDS", "{\"sku_ids\":\"0,abc,999999999\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(null, assertNotNull(star)["sku_ids"]); assertEquals("match", star.s("sku_category"))
+                assertEquals("40.000", star.s("std"), "the category rule counts the match sale only, not the cigarette sale")
+            }
         }
     }
 
@@ -171,9 +188,16 @@ class SrStarBundleTest {
 
     @Test
     fun aCategoryOutsideTheContractEnumIsOmittedNeverSentAndAValidOneRides() {
-        starUnder("MBLS-BADCAT", "{\"sku_category\":\"cigar\",\"unit_divisor\":1}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
-            assertNotNull(star); assertEquals(null, star["sku_category"], "an unknown category is omitted, never sent out of the enum"); assertEquals(null, star["sku_ids"])
-            assertEquals("0.000", star.s("std"), "and the STD counts no SKU")
+        val match = q("SELECT id FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 1"); val cigarette = q("SELECT id FROM app.sku WHERE category_code = 'cigarette' ORDER BY id LIMIT 1")
+        withSales(30, match to 40, cigarette to 900) {   // sales exist in the window, so a std of 0 proves the rule counts nothing
+            starUnder("MBLS-BADCAT", "{\"sku_category\":\"cigar\",\"unit_divisor\":1}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertNotNull(star); assertEquals(null, star["sku_category"], "an unknown category is omitted, never sent out of the enum"); assertEquals(null, star["sku_ids"])
+                assertEquals("0.000", star.s("std"), "and the STD counts no SKU although 940 were sold in the window")
+            }
+            // with an explicit list the off-enum category is ignored on the wire and the STD DOES count the listed SKUs
+            starUnder("MBLS-BADCAT-IDS", "{\"sku_category\":\"cigar\",\"sku_ids\":\"$cigarette\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(listOf(cigarette), ids(star)); assertEquals(null, star!!["sku_category"]); assertEquals("900.000", star.s("std"))
+            }
         }
         for (c in listOf("cigarette", "bidi", "match", "lighter")) starUnder("MBLS-C-$c", "{\"sku_category\":\"$c\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star -> assertEquals(c, assertNotNull(star).s("sku_category")) }
     }

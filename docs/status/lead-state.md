@@ -515,3 +515,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Seven trains today (129 to 135).
 - T-KPI4: 4aee68ef54 passed T1 (contract 1.27.0); told to push its three follow-ups (2e6053443) so train 136 carries one head; short confirming pass, then train 136 (server).
 - A-PROG5: slice 3 (Lifting Star today line) sent back with two blocking wiring items (route-less memos on every route's Star; category map from active SKUs only); rides the next Android train after the recheck.
+
+## 2026-11-25 13:10 UTC
+- Train 136 LANDED: INT 382c729a08 (Android only, Lifting Star today line). Integration run 45617240748 green, deploy 45619784383 skipped by design, live build stays da7fd7b1f5. APK aron-release-signed-dev-2582 42,056,037 B (+4,540 B on train 135). Nothing walked on a device.
+- Train 137 being built: INT + docs + lane/sr-targets-server 9ee153683c (contract 1.27.0, 0 migrations). Wait for its lane CI, then GO.
+- Agreed with T-KPI4, not built: memo kind and lines must agree, quarantine on mismatch (T1 review before landing). Dash-drill 30 s vs 60 s: lane reports evidence first.
+- A-PROG5 may push its held round (9be601ff9 local) now that 136 has landed.
