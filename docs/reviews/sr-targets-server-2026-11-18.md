@@ -1590,3 +1590,79 @@ Lows:
 - SrCampaignsBundleTest.aCutTableWithASecondCampaignNeverCountsASkuOutsideTheChosenCampaign: the figures check out against the fixture. The chosen campaign has 22 SKUs at OFFSET 3, so skuA and skuC are not in it. Its sales are skus[20]=7 and skus[21]=5, giving STD 12 and 2 memos. The 5000 of skuA (setUp, 2027-01-02, o2) and the 300 of skuC belong to the second campaign and would give 5312 if they were mixed in. remaining = 2200 - 12 = 2188 is asserted. Two gaps: `truncated` is true here from both conditions (SKU cut and moreThanOne), so it does not separate them; and memo remaining (9 - 2 = 7) is not asserted.
 - aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne: the new per-outlet `truncated` assertion does test the moreThanOne branch on its own, since o1 has only 2 SKU targets, well under the cap of 20.
 - Explicit-list test: LMS is not asserted. Under the list, LMS would include setUp m7 (2026-11-30, matchSku = listedMatch, 55555), which is another number that would separate the list rule from the category rule. Like the cleaning and cap tests, it calls SrStar.load directly on a plain handle rather than through the bundle snapshot.
+
+# c59291c016 (T-KPI4 round 2: tests, log text, contract wording), 2026-11-25: PASS (lead's own read)
+
+Against the integration branch da7fd7b1f5 the only production change is in SrStar.kt logging: each misconfiguration is logged once per programme per bundle build, and the off-enum category warning says the STD still counts the listed sku_ids when a list exists. The accept function, the figures and the wire fields are untouched. RouteStar description text gains two sentences; contract stays 1.26.0. Tests now assert the STD in the cleaning, fallback and off-enum cases (lane's report; test file diff 40 lines, not re-run here). Lane CI run 45596209542 green (lane's report; Migrations step skipped because no db file changed). Rides the next server train; nothing depends on it.
+
+
+# T1 check of 4aee68ef54 (truncated on every campaign entry, campaigns_outlets_truncated; contract 1.27.0), 2026-11-25: PASS
+
+Two Opus reviewers read the diff against the integration branch e56764a5c3 and both phone builds (e56764a5c3 and cbd39e2447); nothing built or run by them. Lane CI run 45607049194 18/18 (lane's report), Migrations step ran with one merge-base.
+
+## compat: PASS
+
+PASS on compatibility. I checked every claim against the code at 4aee68ef54, e56764a5c3 and cbd39e2447. The server change (SrCampaigns.kt:77, :83; BundleService.kt:585) adds no query: the same two reads run inside the existing snapshot, and SrStar.kt changes only logging.
+
+**Present outlets are complete on the server whether or not the route is capped.** The outlet cap only chooses which outlets are listed. For every listed outlet, the achieved STD is summed over all of that outlet's campaign SKUs (`skuTargets[oid]`, not the 20 shown), and the memo count comes from the full pair list. `truncated` is true only when that outlet's SKU table is cut or a second campaign is hidden (`cut = size > maxSkus || oid in moreThanOne`).
+
+What each phone shows under the new server:
+
+| Server state | Integration phone (e56764a5c3), present outlet | cbd39e2447 phone, present outlet | Outlet missing because of the cap |
+|---|---|---|---|
+| No cut | Full figures (it never reads the per-entry flag; unchanged) | `perOutletCut` is true (every entry has a non-null false), nothing cut, full figures. Before this change it got the same through the absent-flag path. | Not applicable |
+| Outlet A with 22 SKUs | Every outlet dashed (conservative, unchanged) | A: outletCut, so STD and memo shown (complete on the server), category totals dashed, pg_ot_cut_outlet note. Other outlets: complete. | Not applicable |
+| Second campaign not shown | Same as the row above | Same as the row above | Not applicable |
+| Over the 150-outlet cap, no outlet cut | Every present outlet dashed (unchanged) | Treats the route as 1.26.0+ with no outlet cut and shows full figures. Those figures are complete, as shown above. With a 1.26.0 server this phone dashed them conservatively; the change makes it correct and less conservative, never falsely complete. | Both phones: `mine` is empty and campaigns_truncated is true, so `OutletTargetData(empty, true)` gives the empty answer with the cut note. The route-level campaigns_truncated is still honoured on both. |
+| Capped route and a cut outlet | Every present outlet dashed | Cut outlet as in the 22-SKU row; uncut outlets complete | Empty answer with the cut note |
+
+**Contract consistency holds across all files.**
+- RouteCampaign.truncated is optional and [boolean, null] in the yaml slice and openapi.yaml, `truncated?: boolean | null` in the d.ts, and not in `required`.
+- The phone parsers read it as `Boolean?` through `o.bool`, so an older server that omits it still parses.
+- campaigns_outlets_truncated is [boolean, null] and optional in RouteSnapshot.yaml, openapi.yaml and the d.ts. It is `Boolean? = null` in both WireDtos.kt and BundleDtos.kt.
+- The old WireDtos still parses the new member, because WireJson and RouteFigures' lenient parser both set `ignoreUnknownKeys = true`; neither phone parser consumes it.
+- A new optional member in additionalProperties: false objects is additive, so a minor bump to 1.27.0 is right. It matches openapi.yaml, INDEX.md and the renamed version test (`versionIs1270`).
+- INDEX byte sizes match the files: RouteCampaign 1964, RouteSnapshot 8548, RouteStar 6147.
+
+**Tests are not weakened.** The one changed assertion (null to false for an uncut entry) follows the new shape. The new test proves both flags and the OR at the SrCampaigns level.
+
+No blocking state found.
+
+Lows:
+- Wire shape vs contract wording: the bundle is encoded with ResponseJson (backend/platform/.../Http.kt:55, explicitNulls = true), so the null value of `campaigns_outlets_truncated` is sent on EVERY route as "campaigns_outlets_truncated":null (about 34 bytes raw per route). The contract and DTO KDoc say "present only when true" / "absent otherwise". This is the same convention as the existing campaigns_truncated, targets_truncated and star_truncated, and the [boolean, null] type allows it, so nothing breaks. The wording and the byte estimate should still say null-or-true.
+- Added bytes: `"truncated":false,` is 18 bytes raw on every campaign entry, so at most 150 x 18 = 2.7 KB raw per capped route; it gzips to almost nothing. Add the route-level null above. Because the new member changes the per-route section hash (BundleDelta.kt:141), every phone re-downloads its route sections once after deploy. That is a one-time delta, not a size regression.
+- Test gap: the new test everyEntryCarriesTruncatedAndTheRouteSaysWhenOutletsThemselvesAreMissing proves `outletsTruncated` only by calling SrCampaigns.load directly (maxOutlets = 1). The BundleService mapping `campaigns_outlets_truncated = outletsTruncated.takeIf { it }` is proven end to end only for the null case, not for true. A bundle-level assertion would close this. The name of the test is otherwise accurate.
+- SrCampaigns Result: the OR now tests `it["truncated"]?.toString() == "true"` on the JsonPrimitive. This is correct, but `cut` is already computed per row, so carrying it directly would be less fragile.
+- No phone reads campaigns_outlets_truncated yet. Both phone builds still rely on campaigns_truncated (the OR) for an outlet missing from the list, which is correct. The new member is purely informational today.
+
+## server-tests: PASS
+
+Reviewed SrCampaigns.kt, BundleService.kt, BundleDtos.kt, WireDtos.kt, the three contract files plus the web d.ts, and SrCampaignsBundleTest at 4aee68ef54, against e56764a5c3. I also read both phone consumers (e56764a5c3 and cbd39e2447). Nothing blocking.
+
+(1) outletsTruncated is true exactly when `ids.size > maxOutlets`, where ids is the route's campaign outlets after the one-campaign-per-outlet pick, sorted. This is the same expression that already fed the OR. campaigns_truncated is still the OR in every case it was before. The old code had `ids.size > maxOutlets || rows.any { it["truncated"] != null }` and emitted the member only when true. The new code has `|| rows.any { it["truncated"]?.toString() == "true" }`, and JsonPrimitive(true).toString() is "true", so the two are equivalent. The per-entry `cut` expression is unchanged.
+
+(2) BundleService emits the new member with `.takeIf { it }`, so it is present only when true. No new query was added. The only change is a mapping of the Result already computed inside the same snapshot handle (BundleService line 544 is unchanged). SrMemoFigures, skuTargets and the camps queries are untouched.
+
+(3) Bytes added: `"truncated":false,` is 18 bytes raw per uncut outlet. That is at most about 2.7 KB raw at 150 outlets and about 1.26 KB at the 70-outlet dense budget case, and it gzips to almost nothing. The existing size test copies every member of the real row, so it now counts the new member too. The route member adds about 35 bytes, and only when true.
+
+(4) The contract change is additive. The new member is optional `[boolean, 'null']` in openapi.yaml and RouteSnapshot.yaml, with identical text in the web d.ts. It is a nullable defaulted field in both BundleDtos.RouteSnapshot and the shared WireDtos.RouteSnapshot (`Boolean? = null`, so phone parsing does not break). RouteCampaign.truncated keeps its type and stays optional. The version is 1.27.0 in openapi.yaml, INDEX.md and AmoManualContractTest. The RouteStar.yaml and d.ts RouteStar text changes are the already-reviewed description round.
+
+(5) Phones:
+- e56764a5c3 (landed) ignores per-entry truncated and dashes on campaigns_truncated. That flag is unchanged, so behaviour is identical.
+- cbd39e2447 parses truncated with `booleanOrNull`, so false is non-null and perOutletCut is true. On a route cut only by the outlet cap, the shown outlets now carry false and are shown complete. That is correct: their tables and figures are whole, and the figures cover every route's memos at the outlet. An outlet beyond the cap is absent, and the phone shows the empty answer with the cut note. An outlet with truncated = true is still dashed. The second-campaign case is still flagged true per entry. Neither phone build shows a partial figure as complete.
+
+(6) Tests:
+- everyEntryCarriesTruncated... would fail against the old behaviour: the `!!` on an absent member throws, and Result.outletsTruncated does not exist there, so it would not compile.
+- It covers: an uncut outlet is false; the route member is absent when nothing is cut; maxOutlets = 1 over the campaign outlets o1 and o2 keeps only o1, with the shown row false, outletsTruncated true and truncated true; uncapped gives 2 rows, both flags false and every entry false.
+- The second-campaign test adds the null assertion on the new member.
+- One assertion changed from null to false, which is the intended behaviour change and makes the test stronger, not weaker. No test was deleted.
+
+(7) `git diff c59291c016 4aee68ef54` on SrStar.kt is empty, and SrStarBundleTest is also unchanged since c59291c016.
+
+Relevant files: /home/user/Aron-Pro-Max/backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrCampaigns.kt, /home/user/Aron-Pro-Max/backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/BundleService.kt, /home/user/Aron-Pro-Max/backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrCampaignsBundleTest.kt.
+
+Lows:
+- The route-level wire member `campaigns_outlets_truncated` = true is only proven on SrCampaigns.Result (capped.outletsTruncated via a direct load with maxOutlets = 1). No test goes through bundle() to check that BundleService's `campaigns[r.routeId]?.outletsTruncated?.takeIf { it }` mapping puts true on the RouteSnapshot. The bundle-level checks only assert the absent (null) cases. The mapping is a one-line mirror of the existing campaigns_truncated line, so the risk is small, but the test name says 'the route says', and at the route level only the Result is checked.
+- The new test reuses o2 with skuA. The class set-up already sells 5000 of skuA at o2 (a non-campaign outlet until now), so in the 'whole' load o2's achieved STD is not zero. No assertion depends on that figure, so this is harmless. A reader may still be surprised by it.
+- The batch row 00000000-0000-4000-8000-00000000b0c5 is inserted ON CONFLICT DO NOTHING and never deleted. That matches the b0c4 pattern in the other tests, so it is consistent but leaves a row behind.
+- The 1.27.0 RouteCampaign.truncated text says 'its presence tells the phone this is a 1.26+ route'. Strictly, a 1.26.0 server sends it only on cut entries, so presence marks a 1.26+ route and absence on every entry marks a pre-1.27 route. cbd39e2447's perOutletCut KDoc still describes the 1.26.0 rule. That is accurate but could mention that 1.27.0 sends the member always. This is a docs nit only.
