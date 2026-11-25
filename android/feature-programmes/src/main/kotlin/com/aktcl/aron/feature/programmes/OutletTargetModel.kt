@@ -61,7 +61,7 @@ object OutletTargetModel {
         if (mine.isEmpty()) return if (truncated) OutletTargetData(emptyList(), true) else null
         val order = skus.keys.withIndex().associate { it.value to it.index }
         val views = mine.sortedBy { it.first.programmeId }.map { (c, perOutlet, routeFlag) ->
-            // a 1.26.0 route (some entry carries the flag): only an entry with its own flag is cut. Any other route: the route flag cuts every outlet, as before.
+            // a new-style route (the outlets marker, or the member on EVERY entry: RouteFigures.perOutletCut): only an entry with its own flag is cut. Any other route (older server, a cached 1.26.0 bundle): this route's flag cuts every outlet of the route, as before.
             val routeCut = routeFlag && !perOutlet
             val outletCut = perOutlet && c.truncated == true
             // a SKU the phone does not know, a negative quantity or a unit rule that fails drops THAT row only (never the whole read); the list is then incomplete and its totals are a dash
