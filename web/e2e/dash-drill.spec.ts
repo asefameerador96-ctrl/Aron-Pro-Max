@@ -1,5 +1,5 @@
 // Completion pass: role extras on the home, drill-downs from the cards (scope and date kept in the URL), CSV export and the
-// refresh rule (no faster than 60 s, nothing while the tab is hidden).
+// refresh rule (no faster than 30 s, REFRESH_MS, D-NIGHT-SYNC-01; nothing while the tab is hidden).
 import { expect, test, type Page } from "@playwright/test";
 import { loginOk, resetMock, hydrated } from "./helpers";
 
