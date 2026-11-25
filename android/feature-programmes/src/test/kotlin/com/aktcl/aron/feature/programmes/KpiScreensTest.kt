@@ -129,4 +129,45 @@ class KpiScreensTest {
         show(AppLanguage.EN) { KpiDashboardScreen(inc, it) }
         compose.onNodeWithTag(KpiTags.INCOMPLETE).assertExists()
     }
+
+    @Test fun aMixedBrandOfA125ServerPrintsEachCategoryInItsOwnUnitNotUnitNotClear() {
+        val mixed = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("match", FieldQty(30_000, "dozen"))))
+        show(AppLanguage.EN) { BrandKpiScreen(data!!.copy(brands = data.brands + mixed), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target 100 packet · 30 dozen - KPI Today —").assertExists()
+        assertEquals(0, compose.onAllNodesWithTag(KpiTags.LEFT_OUT).fetchSemanticsNodes().size)
+    }
+
+    @Test fun aBidiOrUnknownCategoryIsPrintedWithItsWordAndADashNeverLeftOut() {
+        val b = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("bidi", null), KpiCategoryVolume("gift", null)))
+        show(AppLanguage.EN) { BrandKpiScreen(data!!.copy(brands = data.brands + b), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target 100 packet · Bidi — · Other — - KPI Today —").assertExists()
+    }
+
+    @Test fun theSamePartsInBanglaUseTheResourceWordsAndSeparator() {
+        val b = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("bidi", null)))
+        show(AppLanguage.BN) { BrandKpiScreen(data!!.copy(brands = data.brands + b), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target ১০০ প্যাকেট · বিড়ি — - KPI Today —").assertExists() // the whole line, exact
+    }
+
+    // from the server JSON through KpiModel.build() into the screen: a mixed coded brand, exact text
+    private fun screenOf(brands: List<String>, cats: String = "[]", vol: String = """{"target":2000,"achieved":300,"bp":1500}""") = KpiModel.build(listOf(RouteFigures.parse(
+        """{"route_id":7,"kpi":{"month":"2026-11","through_date":"2026-11-17","as_of":"x","allocated_mtk":5700000,"achieved_mtk":null,"achievement_bp":null,"volume":$vol,"memo":{"target":100,"achieved":30,"bp":3000},
+          "brands":[${brands.joinToString(",")}],"brands_truncated":false,"categories":$cats,"cpr":null}}""")!!), mapOf(1L to BrandName("Mixed Co", null), 4L to BrandName("Lighter Co", null)), emptyMap())
+    private fun coded(vararg e: String) = """{"brand_id":1,"volume_target":2030,"volume_achieved":300,"volume_bp":null,"memo_target":50,"memo_achieved":20,"memo_bp":4000,"kpi_alloc_mtk":100000,"kpi_today_mtk":null,"by_pack":[${e.joinToString(",")}]}"""
+
+    @Test fun aMixedCodedBrandFromTheServerJsonPrintsExactTextOnTheScreen() {
+        val b = coded("""{"pack_factor":20,"category_code":"cigarette","target":2000,"achieved":300}""", """{"pack_factor":1,"category_code":"match","target":30,"achieved":0}""")
+        show(AppLanguage.EN) { BrandKpiScreen(screenOf(listOf(b)), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target 100 packet · 30 dozen - KPI Today —").assertExists()
+    }
+
+    @Test fun aLighterOfPackSizeTenIsPiecesOnTheBrandRowAndOnTheBlmRowButBoxesAtTwentyFive() {
+        val l10 = """{"brand_id":4,"volume_target":100,"volume_achieved":0,"volume_bp":0,"memo_target":5,"memo_achieved":0,"memo_bp":0,"kpi_alloc_mtk":100000,"kpi_today_mtk":null,"by_pack":[{"pack_factor":10,"category_code":"lighter","target":100,"achieved":0}]}"""
+        val cat10 = """[{"category_code":"lighter","volume_target":100,"volume_achieved":0,"volume_bp":null,"by_pack":[{"pack_factor":10,"target":100,"achieved":0}]}]"""
+        show(AppLanguage.EN) { BrandKpiScreen(screenOf(listOf(coded("""{"pack_factor":20,"category_code":"cigarette","target":2030,"achieved":300}"""), l10), cats = cat10), KpiKind.BLM, it) }
+        compose.onNodeWithText("Target 100 piece").assertExists() // BLM lighter row: pieces, not boxes
+    }
 }
