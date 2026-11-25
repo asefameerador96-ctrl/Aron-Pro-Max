@@ -60,7 +60,7 @@ class KpiModelTest {
         val a = route(kpi(listOf(brand(1, 1000, 300, 50, 20)), cpr = """{"target_bp":5000,"alloc_mtk":600000,"achieved_bp":null}"""))
         val b = route(kpi(listOf(brand(1, 1000, 100, 50, 10))))
         val one = KpiModel.build(listOf(a), names)!!; assertEquals(5000L, one.cprTargetBp); assertNull(one.cprAchievedBp)
-        val two = KpiModel.build(listOf(a, b), names)!!
+        val two = KpiModel.build(listOf(a, b), names, cats1)!!
         assertEquals(2000L, two.brands.single().volumeBp) // (300+100)/(1000+1000) = 20.00 %
         assertEquals(3000L, two.brands.single().memoBp); assertNull(two.cprTargetBp)
         assertEquals(11_400_000L, two.allocatedMtk)
@@ -108,7 +108,7 @@ class KpiModelTest {
         val mixed = brand(1, 2030, 300, 50, 20, packs = """[{"pack_factor":20,"target":2000,"achieved":300},{"pack_factor":1,"target":30,"achieved":0}]""")
         val d = KpiModel.build(listOf(route(kpi(listOf(mixed), vol = """{"target":2000,"achieved":300,"bp":1500}"""))), names, emptyMap())!!
         val row = d.brands.single()
-        assertNull(row.category); assertNull(row.volumeTarget) // never "Target 130"
+        assertNull(row.category); assertNull(row.volumeTarget); assertNull(row.volumeBp) // never "Target 130", and no percentage built from sticks plus dozens
         assertEquals(listOf(1L), d.volumeBrands.map { it.brandId }) // it stays in the cigarette list, with the dash and the note
         assertEquals("stick", d.volume.target.unitKey) // and the cigarette total is not guessed from its packs: base units with their word
     }
@@ -130,5 +130,47 @@ class KpiModelTest {
         val b = brand(1, 200, 0, 5, 0, packs = """[{"pack_factor":12,"target":200,"achieved":0}]""")
         val d = KpiModel.build(listOf(route(kpi(listOf(b), vol = """{"target":200,"achieved":0,"bp":0}"""))), names, cats1)!!
         assertEquals("16.7", KpiModel.qtyText(d.volume.target, UiLocale.EN))
+    }
+
+    // lead recheck of 593f81a52: a brand with no resolved unit has no volume percentage either (single route and several)
+    @Test fun aMixedOrUnresolvedBrandHasNoVolumePercentOnOneRouteOrTwo() {
+        val mixed = brand(1, 2030, 300, 50, 20, packs = """[{"pack_factor":20,"target":2000,"achieved":300},{"pack_factor":1,"target":30,"achieved":0}]""")
+        val one = KpiModel.build(listOf(route(kpi(listOf(mixed)))), names, emptyMap())!!
+        assertNull(one.brands.single().volumeBp); assertEquals(null, one.brands.single().category)
+        val two = KpiModel.build(listOf(route(kpi(listOf(mixed))), route(kpi(listOf(mixed)))), names, emptyMap())!!
+        assertNull(two.brands.single().volumeBp)
+        assertEquals(4000L, two.brands.single().memoBp)
+    }
+
+    // the tree cannot map every SKU of the brand (an inactive variant): the brand is unresolved, not its visible category
+    @Test fun aBrandWithASkuTheProductTreeCannotMapIsUnresolved() {
+        val target = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.000","std_unit":"stick","memo_target":0}"""
+        val cigAndHidden = brand(1, 2030, 300, 50, 20, packs = """[{"pack_factor":20,"target":2000,"achieved":300},{"pack_factor":1,"target":30,"achieved":0}]""") // the extra 30 is an inactive match SKU
+        val fig = RouteFigures.parse("""{"route_id":7,"targets":[$target],"kpi":${kpi(listOf(cigAndHidden))}}""")!!
+        val d = KpiModel.build(listOf(fig), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!
+        assertNull(d.brands.single().category); assertNull(d.brands.single().volumeTarget); assertNull(d.brands.single().volumeBp) // never "Target 130 packet"
+        // when the mapped SKUs account for the whole brand the category stands
+        val sold = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"achieved_qty_base":300,"memo_count":1,"as_of":"x"}"""
+        val whole = RouteFigures.parse("""{"route_id":7,"targets":[$target],"achievement_mtd":[$sold],"kpi":${kpi(listOf(brand(1, 2000, 300, 50, 20)))}}""")!!
+        assertEquals("cigarette", KpiModel.build(listOf(whole), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single().category)
+    }
+
+    @Test fun theExactQuotientCrossesADisplayBoundaryWhereTruncatedThousandthsWouldNot() {
+        // 1 stick of 30s (0.0333 packet) + 1 stick of 60s (0.01667) = exactly 0.05 -> 0.1 at display; thousandths truncated first (0.033 + 0.016 = 0.049) would show 0.0
+        val b = brand(1, 2, 0, 5, 0, packs = """[{"pack_factor":30,"target":1,"achieved":0},{"pack_factor":60,"target":1,"achieved":0}]""")
+        val d = KpiModel.build(listOf(route(kpi(listOf(b), vol = """{"target":2,"achieved":0,"bp":0}"""))), names, cats1)!!
+        assertEquals("0.1", KpiModel.qtyText(d.volume.target, UiLocale.EN))
+    }
+
+    @Test fun aNegativeQuantityIsADashAndNeverCrashesOnOneRouteOrSeveral() {
+        assertEquals("—", KpiModel.qtyText(FieldQty(-5_000, "packet"), UiLocale.EN))
+        val bad = kpi(listOf(brand(1, 1000, 300, 50, 20)), vol = """{"target":1000,"achieved":-5,"bp":null}""")
+        val one = KpiModel.build(listOf(route(bad)), names, cats1)!!; assertNull(one.volume.bp)
+        val two = KpiModel.build(listOf(route(bad), route(bad)), names, cats1)!!; assertNull(two.volume.bp) // no Percent.bp on a negative sum: no crash
+    }
+
+    @Test fun bidiVolumeIsNotShownItsUnitIsPending() {
+        val d = KpiModel.build(listOf(route(kpi(listOf(brand(1, 1000, 300, 50, 20))))), names, mapOf(1L to "bidi"))!!
+        assertNull(d.brands.single().volumeTarget); assertEquals(emptyList<Long>(), d.volumeBrands.map { it.brandId }) // not in the cigarette list, no unit guessed
     }
 }

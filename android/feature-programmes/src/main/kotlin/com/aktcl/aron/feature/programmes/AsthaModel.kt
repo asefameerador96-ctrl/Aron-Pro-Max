@@ -134,7 +134,7 @@ object AsthaModel {
     }
 
     /** sku id -> its brand node id: the SKU's variant node, walked up the product tree to the brand level; SKUs whose chain has no brand are left out. */
-    private fun skuBrands(productsJson: String?): Map<Long, Long> {
+    fun skuBrands(productsJson: String?): Map<Long, Long> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         val parents = (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
             val o = n as? JsonObject ?: return@mapNotNull null

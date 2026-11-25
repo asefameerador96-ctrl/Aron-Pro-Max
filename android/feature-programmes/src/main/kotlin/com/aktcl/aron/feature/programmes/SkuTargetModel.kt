@@ -67,12 +67,12 @@ object SkuTargetModel {
      * The STD of the Home card: the achieved and target of the CIGARETTE SKUs in thousandths of base sticks (STD is the standard stick list; matches in dozens and lighters in pieces are not summed into
      * it), or null when there is no cigarette target (the card shows a dash, never a made-up figure).
      */
-    fun homeStd(data: SkuTargetData?): Pair<Long, Long>? {
+    fun homeStd(data: SkuTargetData?): Pair<Long?, Long>? {
         if (data == null || data.truncated) return null // a cut list gives a partial total: a dash, not a wrong percentage
         val cig = data?.rows?.filter { it.categoryCode == "cigarette" }.orEmpty()
         if (cig.isEmpty()) return null
-        if (cig.any { it.achievedMilli == null }) return null // an invalid achieved figure: a dash, never a partial total
-        return cig.sumOf { it.achievedMilli!! } to cig.sumOf { it.targetMilli }
+        // an invalid (negative) achieved figure makes the achieved total a dash (null) but the valid target stays: never a partial total
+        return (if (cig.any { it.achievedMilli == null }) null else cig.sumOf { it.achievedMilli!! }) to cig.sumOf { it.targetMilli }
     }
 
     /** [milli] thousandths of base units as entered units ("25", "3.5"), one decimal half up, trailing ".0" dropped, grouped, digits per [locale]. */

@@ -102,7 +102,7 @@ class SkuTargetModelTest {
         val r = d.rows.single() // the negative target of SKU 900 gives no row
         assertEquals(903L, r.skuId); assertNull(r.achievedMilli); assertNull(r.remainingMilli); assertNull(r.achievementPct)
         assertEquals("—", SkuTargetModel.qtyText(r.achievedMilli, r.factor, UiLocale.EN))
-        assertNull(SkuTargetModel.homeStd(d)) // an invalid achieved figure: no partial Home total
+        assertEquals(null to 100_000L, SkuTargetModel.homeStd(d)) // an invalid achieved figure: the achieved total is a dash, the valid target stays
     }
 
     @Test fun aDayCountOfZeroIsADashNotZero() {

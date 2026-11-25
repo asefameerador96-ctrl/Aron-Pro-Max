@@ -393,7 +393,7 @@ internal data class KpiLoad(val data: com.aktcl.aron.feature.programmes.KpiData?
 /** The KPI of the bundle's routes (`route.<id>`: `kpi`, `calendar`) with the brand names of the product tree and the figure frame of this phone's memos (cigarette volume and memo count). */
 internal suspend fun readKpi(day: SrDay): KpiLoad = withContext(Dispatchers.IO) {
     val (figures, routeIds) = readRouteFigures(day)
-    val data = com.aktcl.aron.feature.programmes.KpiModel.build(figures, com.aktcl.aron.feature.programmes.AsthaModel.brands(day.reference.section("products")), com.aktcl.aron.feature.programmes.AsthaModel.brandCategories(day.reference.section("products")))
+    val data = com.aktcl.aron.feature.programmes.KpiModel.build(figures, com.aktcl.aron.feature.programmes.AsthaModel.brands(day.reference.section("products")), com.aktcl.aron.feature.programmes.AsthaModel.brandCategories(day.reference.section("products")), com.aktcl.aron.feature.programmes.AsthaModel.skuBrands(day.reference.section("products")))
     if (data == null) return@withContext KpiLoad(null, null, null, 0)
     val memos = day.programmes.memosOfMonth(data.month)
     val acked = day.programmes.ackedBeforeRequest()
@@ -404,9 +404,13 @@ internal suspend fun readKpi(day: SrDay): KpiLoad = withContext(Dispatchers.IO) 
     val vol = com.aktcl.aron.feature.programmes.FigureFrame.of(memos, data.month, data.throughDate, data.asOf, acked, memoIn, lineIn = { it.skuId in cigarettes }).today
     // today's packets: each pack size divided by its own factor (never a stick sum of mixed pack sizes)
     // exact: each pack size over its own factor on a common denominator, rounded once at display
-    val den = vol.byPack.keys.fold(1L) { acc, f -> acc / gcdOf(acc, f.toLong()) * f }
-    val packets = vol.byPack.entries.sumOf { (f, q) -> q * (den / f) }
-    KpiLoad(data, com.aktcl.aron.feature.programmes.KpiToday(com.aktcl.aron.feature.programmes.FieldQty(packets, "packet", den), vol.memoCount), com.aktcl.aron.feature.programmes.KpiToday(null, all.today.memoCount), all.unconfirmedEarlier)
+    // (a pack size of 0 or below is not a pack: no today figure; checked arithmetic: an overflow is no figure either)
+    val volumeToday = runCatching {
+        require(vol.byPack.keys.all { it > 0 })
+        val den = vol.byPack.keys.fold(1L) { acc, f -> Math.multiplyExact(acc / gcdOf(acc, f.toLong()), f.toLong()) }
+        com.aktcl.aron.feature.programmes.FieldQty(vol.byPack.entries.fold(0L) { sum, (f, q) -> Math.addExact(sum, Math.multiplyExact(q, den / f)) }, "packet", den)
+    }.getOrNull()
+    KpiLoad(data, com.aktcl.aron.feature.programmes.KpiToday(volumeToday, vol.memoCount), com.aktcl.aron.feature.programmes.KpiToday(null, all.today.memoCount), all.unconfirmedEarlier)
 }
 
 /** KPI Dashboard of the SR (manual 60): the downloaded KPI figures. A bundle with no KPI section (an older server) keeps the earlier KPI screen (the day's own strip and money cards). */
