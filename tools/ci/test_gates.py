@@ -383,25 +383,38 @@ class InstallScripts(unittest.TestCase):
 
 
 class OkhttpPslScan(unittest.TestCase):
-    """The PublicSuffixDatabase.list asset is dropped from the phone APKs; main sources must not need it."""
+    """The PublicSuffixDatabase.list asset is dropped from the phone APKs; shipping sources must not need it."""
 
-    def scan(self, rel, body):
+    def scan(self, rel, body, min_files="1"):
         with tempfile.TemporaryDirectory() as t:
             f = Path(t) / "android" / rel
             f.parent.mkdir(parents=True)
             f.write_text(body)
-            r = subprocess.run([sys.executable, str(HERE / "okhttp-psl-scan.py"), t], capture_output=True, text=True)
+            r = subprocess.run([sys.executable, str(HERE / "okhttp-psl-scan.py"), t, min_files], capture_output=True, text=True)
             return r.returncode, r.stdout
 
     def test_each_banned_use_in_main_fails(self):
-        for body in ("val d = url.topPrivateDomain()", "OkHttpClient.Builder().cookieJar(jar)", "val j = JavaNetCookieJar(m)"):
+        for body in ("val d = url.topPrivateDomain()", "OkHttpClient.Builder().cookieJar(jar)", "val j = JavaNetCookieJar(m)",
+                     "b.apply { cookieJar(jar) }", "b.cookieJar (jar)", "b\n  .cookieJar\n  (jar)", "Cookie.parse(u, s)",
+                     "okhttp3.Cookie.parseAll(u, h)", "Cookie . parse(u, s)", "import okhttp3.internal.publicsuffix.PublicSuffixDatabase"):
             rc, out = self.scan("core-x/src/main/kotlin/A.kt", body)
             self.assertEqual(rc, 1, body)
-            self.assertIn("A.kt:1", out)
+            self.assertIn("A.kt:", out)
+
+    def test_debug_and_benchmark_sources_are_scanned(self):
+        for sset in ("debug", "benchmark", "benchmarkProfile"):
+            self.assertEqual(self.scan("app-x/src/%s/kotlin/A.kt" % sset, "x.cookieJar(jar)")[0], 1, sset)
 
     def test_clean_main_and_test_sources_pass(self):
-        self.assertEqual(self.scan("core-x/src/main/kotlin/A.kt", "val c = OkHttpClient.Builder().build()")[0], 0)
-        self.assertEqual(self.scan("core-x/src/test/kotlin/A.kt", "x.cookieJar(jar)")[0], 0)
+        self.assertEqual(self.scan("core-x/src/main/kotlin/A.kt", "val c = OkHttpClient.Builder().build(); val j = c.cookieJar")[0], 0)
+        self.assertEqual(self.scan("core-x/src/test/kotlin/A.kt", "x.cookieJar(jar)", "0")[0], 0, "test sources are not scanned")
+        self.assertEqual(self.scan("core-x/src/androidTest/kotlin/A.kt", "x.cookieJar(jar)", "0")[0], 0)
+
+    def test_too_few_files_is_never_clean(self):
+        rc, out = self.scan("core-x/src/main/kotlin/A.kt", "val a = 1", "2")
+        self.assertEqual(rc, 1)
+        self.assertIn("only 1", out)
+        self.assertEqual(self.scan("core-x/src/test/kotlin/A.kt", "val a = 1", "1")[0], 1, "an empty shipping tree fails")
 
     def test_real_repository_is_clean(self):
         r = subprocess.run([sys.executable, str(HERE / "okhttp-psl-scan.py"), str(ROOT)], capture_output=True, text=True)

@@ -6,8 +6,9 @@
   pathdata-minify.py check-git REV [PATH] compare every changed xml between REV and the working tree
   pathdata-minify.py self-test
 
-Only the text form changes: leading zeros dropped (0.5 -> .5), trailing zeros dropped, repeated command
-letters dropped (except M/m, where a repeat means lineto), minimal separators. No value is rounded.
+Only the text form changes: leading zeros dropped (0.5 -> .5), trailing zeros dropped, minimal separators.
+Explicit command letters are kept as written (an implicit repeat is never introduced or removed; M followed by
+numbers stays an implicit lineto). No value is rounded. Arc flags are written with a separator.
 """
 import re, subprocess, sys
 from decimal import Decimal
@@ -33,6 +34,8 @@ def parse(d):
         else:
             if cmd is None:
                 raise ValueError('number before command: ' + d[:40])
+            if cmd.lower() == 'z':
+                raise ValueError('number after z: ' + d[max(0, i - 20):i + 20])
             k = ARGS[cmd.lower()]
             args = []
             for j in range(k):
@@ -83,6 +86,8 @@ def minify(d):
             if c in 'zZ':
                 cur = None
         else:
+            if cmd is None or cmd.lower() == 'z':
+                raise ValueError('number after z or before any command: ' + d[max(0, i - 20):i + 20])
             k = ARGS[cmd.lower()]
             raws = []
             for j in range(k):
@@ -154,6 +159,16 @@ def self_test():
         m = minify(c)
         assert same(c, m), (c, m)
         assert len(m) <= len(c) or 'a' in c, (c, m)
+    assert minify('a1,1 0 10.5,.5') == 'a1 1 0 1 0 .5.5', minify('a1,1 0 10.5,.5')
+    assert minify('A 2.0,2 0 0,1 5,5') == 'A2 2 0 0 1 5 5', minify('A 2.0,2 0 0,1 5,5')
+    for bad in ('M1,2z3', 'M1,2 z 3,4'):
+        for f in (parse, minify):
+            try:
+                f(bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('number after z accepted by %s: %s' % (f.__name__, bad))
     assert minify('M0.50,1.0L2,3 4,5z') == 'M.5 1L2 3 4 5z', minify('M0.50,1.0L2,3 4,5z')
     assert not same('M1,2L3,4', 'M1,2L3,5')
     assert not same('M1,2 3,4', 'M1,2M3,4')       # implicit lineto vs second moveto must differ

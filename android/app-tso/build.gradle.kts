@@ -69,7 +69,12 @@ android {
         localeFilters += listOf("en", "bn")
         // OkHttp's public-suffix list (about 42 KB download): only HttpUrl.topPrivateDomain() reads it, and no phone code calls that
         // and no CookieJar is installed (default NO_COOKIES), so the asset is never opened (docs/status/apk-size-2026-11-18.md).
-        ignoreAssetsPatterns += "!PublicSuffixDatabase.list"
+        // += on the empty default list would REPLACE aapt's default ignore patterns, so they are listed explicitly
+        // (aapt: !.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~), then the one extra pattern.
+        ignoreAssetsPatterns += listOf(
+            "!.svn", "!.git", "!.ds_store", "!*.scc", ".*", "<dir>_*", "!CVS", "!thumbs.db", "!picasa.ini", "!*~",
+            "!PublicSuffixDatabase.list",
+        )
     }
     packaging {
         // APK size (docs/31, the +15 % gate): native libraries ship deflated and are extracted at install (about 1.2 MB less to
