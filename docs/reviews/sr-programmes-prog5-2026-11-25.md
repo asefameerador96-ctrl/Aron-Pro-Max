@@ -223,3 +223,13 @@ Lows sent to the lane for its next round:
 Star round 3: pass by reading (dash for unknown-only, "at least" for mixed, true 0.00 kept, short-count note only when the server cut the SKU list). Lows: "at least" before a dash is possible with a malformed divisor; a fork plus an unknown SKU shows a dash where a lower bound would do (safe direction); f4 and the failed-read assertions pass on the earlier code too.
 
 Blocking (contract lens, upheld by three Opus refuters): a bundle from the 1.26.0 server (train 133) for a route with more than 150 campaign outlets and at least one entry carrying truncated=true is read as new-style, because perOutletCut is true as soon as ANY entry has the member. The outlets flag is absent, so an outlet with no entry gets "No campaign target is set for this outlet" although the list was cut. Before this diff it got the cut note; the test that pinned it (old nW6) was removed. Fix: a route is new-style only when campaigns_outlets_truncated is present or EVERY entry carries the member; otherwise the old route-flag rule. Restore the old-payload test. Cases (a) to (g) of the 1.27.0 reading are right.
+
+# ec48c3684d (old/new bundle detection fix), 2026-11-25: PASS, 0 blocking (2 read-only lenses)
+
+Note: a first run of this recheck read the previous head because the lead had not fetched the branch; that run is void. This result is from the run pinned to ec48c3684d.
+
+Truth table over servers 1.25, 1.26 and 1.27 and every cut combination: no payload gives a complete figure for a cut entry, and none gives the definite "no campaign target" answer for an outlet missing from a cut list. A route is read as new-style only with the outlets marker or when every entry carries the member; the one shape that cannot be told apart (every entry cut, route flag set, no marker) takes the cautious note. Older payloads read as before (nW10 restored; nX1 would fail on the previous head). The only callers are RouteFigures and OutletTargetModel. Nothing was run by the reviewers; lane CI 45641349999 green by the lane's report.
+
+Lows: orphan KDoc above perOutletCut and two stale KDoc lines; no test for two routes of different shapes in one list; a malformed entry dropped by the parser can change the reading (as before this diff).
+
+Not verified: any of this on a device or against a live 1.27.0 bundle.

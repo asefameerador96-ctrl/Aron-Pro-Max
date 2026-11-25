@@ -526,3 +526,8 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Train 137 LANDED and DEPLOYED: INT 5f4efb7ee1, integration run 45627670190 green (383 e2e, 0 flaky), deploy 45630824536 real, SR slice smoke passed, live build 5f4efb7ee1 (lead's own health read). Contract 1.27.0 live. Not verified: migrate and start-up consoles (not in the log); the 1.27.0 members in a live response.
 - Programmes lane: 355bfe83d8 PASS (review file); round 3 local 93f0ed57 (dash / lower bound, short-count note); told to merge INT, consume 1.27.0 flags, push once. Next Android train = that head after review.
 - Targets server lane: released to push web commits (dash-drill test anchored on the page's own 30 s interval, copy "every 30 seconds" en+bn) then the zero_sale pair (6e508d489, 358a677f8) for T1 review. Web-only train from sha W; zero_sale lands only after the lead's checker pass.
+
+## 2026-11-25 15:25 UTC
+- Programmes lane ec48c3684d PASS (f2a9669dd8 failed on a cached 1.26.0 bundle shape; fixed). Next Android train (139) = INT after 138 + docs + ec48c3684d.
+- Train 138 (lane/lead-train138 24b10ffbaa: dash-drill + 30 s copy + zero_sale rule) in lane CI; GO when green. Targets server lane holds 740ee423c locally (lows; discard-only finding pinned by a test).
+- Lesson: fetch the lane branch with the explicit refspec BEFORE every checker workflow and pin the full sha in the prompt.
