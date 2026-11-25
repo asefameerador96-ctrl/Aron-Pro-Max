@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
 <!-- Astha tile (D-PAR-SR1-06, sr/home-1-tiles.webp): a round dark badge with a gold rim, a red-and-gold crest and two red beads. Drawn here; the vendor raster is not copied. -->
-<path android:fillColor="#FFD9A93A" android:pathData="M24,2A22,22 0 1,0 24,46A22,22 0 1,0 24,2Z"/>
-<path android:fillColor="#FF3B1A0F" android:pathData="M24,5A19,19 0 1,0 24,43A19,19 0 1,0 24,5Z"/>
-<path android:fillColor="#FFE03B2F" android:pathData="M11,27A5,5 0 1,0 11,37A5,5 0 1,0 11,27Z"/>
-<path android:fillColor="#FFE03B2F" android:pathData="M37,27A5,5 0 1,0 37,37A5,5 0 1,0 37,27Z"/>
-<path android:fillColor="#FF8E1F18" android:strokeColor="#FFF2C75C" android:strokeWidth="1.2" android:pathData="M24,8L33,11V19C33,24 29,28 24,30C19,28 15,24 15,19V11Z"/>
-<path android:fillColor="#FFF2C75C" android:pathData="M24,24C20,21 18,19 18,16.5C18,14.8 19.3,13.6 20.9,13.6C22.2,13.6 23.3,14.3 24,15.4C24.7,14.3 25.8,13.6 27.1,13.6C28.7,13.6 30,14.8 30,16.5C30,19 28,21 24,24Z"/>
-<path android:fillColor="#FFF2C75C" android:pathData="M12,32.5C17,30 31,30 36,32.5L35,36C30,34 18,34 13,36Z"/>
-<path android:fillColor="#FFF2C75C" android:pathData="M18,38h12v2.4h-12z"/>
+<path android:fillColor="#FFD9A93A" android:pathData="M24 2A22 22 0 1 0 24 46 22 22 0 1 0 24 2Z"/>
+<path android:fillColor="#FF3B1A0F" android:pathData="M24 5A19 19 0 1 0 24 43 19 19 0 1 0 24 5Z"/>
+<path android:fillColor="#FFE03B2F" android:pathData="M11 27A5 5 0 1 0 11 37 5 5 0 1 0 11 27Z"/>
+<path android:fillColor="#FFE03B2F" android:pathData="M37 27A5 5 0 1 0 37 37 5 5 0 1 0 37 27Z"/>
+<path android:fillColor="#FF8E1F18" android:strokeColor="#FFF2C75C" android:strokeWidth="1.2" android:pathData="M24 8L33 11V19C33 24 29 28 24 30 19 28 15 24 15 19V11Z"/>
+<path android:fillColor="#FFF2C75C" android:pathData="M24 24C20 21 18 19 18 16.5 18 14.8 19.3 13.6 20.9 13.6 22.2 13.6 23.3 14.3 24 15.4 24.7 14.3 25.8 13.6 27.1 13.6 28.7 13.6 30 14.8 30 16.5 30 19 28 21 24 24Z"/>
+<path android:fillColor="#FFF2C75C" android:pathData="M12 32.5C17 30 31 30 36 32.5L35 36C30 34 18 34 13 36Z"/>
+<path android:fillColor="#FFF2C75C" android:pathData="M18 38h12v2.4h-12z"/>
 </vector>
