@@ -17,7 +17,12 @@ data class StarToday(
     val unknownSku: Boolean = false,
     /** True when the bundle gives this Star no route id: the phone cannot tell which memos are on it, so the line is a dash, never 0. */
     val noRoute: Boolean = false,
-)
+) {
+    /** The phone sold a SKU it cannot place after the closed day and counted NO line of the programme: the quantity and the memo count are unknown, a dash (never 0.00). */
+    val unknownDash: Boolean get() = unknownSku && qtyBase == 0L && memoCount == 0L
+    /** The phone counted some lines of the programme AND sold a SKU it cannot place: the figures are a lower bound, shown as "at least". */
+    val lowerBound: Boolean get() = unknownSku && !unknownDash
+}
 
 object StarTodayModel {
     /**
@@ -73,11 +78,11 @@ object StarTodayModel {
         }
 
     /** The memo phrase of the line ("1 memo", "2 memos"): the count, or a dash when the memos could not be read. */
-    fun memoCountText(t: StarToday, locale: UiLocale): String = if (t.failed || t.noRoute) Percent.DASH else Formats.integer(t.memoCount, locale)
+    fun memoCountText(t: StarToday, locale: UiLocale): String = if (t.failed || t.noRoute || t.unknownDash) Percent.DASH else Formats.integer(t.memoCount, locale)
 
     /** [t]'s quantity in the programme unit as two decimals, rounded ONCE half up from the exact quotient ("2.50"); a dash when it cannot be computed (a divisor below 1, a negative quantity, an overflow). */
     fun qtyText(t: StarToday, locale: UiLocale): String {
-        if (t.failed || t.noRoute || t.divisor < 1L || t.qtyBase < 0L) return Percent.DASH
+        if (t.failed || t.noRoute || t.unknownDash || t.divisor < 1L || t.qtyBase < 0L) return Percent.DASH
         val h = runCatching { Math.addExact(Math.multiplyExact(t.qtyBase, 200L), t.divisor) / Math.multiplyExact(t.divisor, 2L) }.getOrNull() ?: return Percent.DASH // hundredths, half up
         return Formats.integer(h / 100L, locale) + Formats.digits("." + (h % 100L).toString().padStart(2, '0'), locale)
     }

@@ -202,4 +202,45 @@ class StarTodayTest {
         show(AppLanguage.EN, star(cat = "match"), t)
         compose.onNodeWithText("Today on this phone: — STD, — (this download has no route for this Star, so this phone cannot tell which memos are on it)").assertExists()
     }
+
+    // ---- round 3: an unknown SKU makes the quantity a dash or a visible lower bound; a cut list also makes the unconfirmed count possibly short
+    @Test fun f1_aLiveTipOfOnlyUnresolvedSkusIsADashNotZeroAndAMixedDayIsALowerBound() {
+        val figs = listOf(routeFigures(7, """"sku_category":"match","unit_divisor":12"""))
+        val onlyUnknown = StarTodayModel.forRoutes(figs, category, { listOf(memoOn("u", 7, 77L to 6L)) }, emptySet())[0]!!
+        assertTrue(onlyUnknown.unknownSku); assertTrue(onlyUnknown.unknownDash); assertTrue(!onlyUnknown.lowerBound)
+        assertEquals("—", StarTodayModel.qtyText(onlyUnknown, UiLocale.EN)); assertEquals("—", StarTodayModel.memoCountText(onlyUnknown, UiLocale.EN))
+        val mixed = StarTodayModel.forRoutes(figs, category, { listOf(memoOn("u", 7, 77L to 6L), memoOn("k", 7, 1L to 50L)) }, emptySet())[0]!!
+        assertTrue(mixed.lowerBound); assertTrue(!mixed.unknownDash); assertEquals("4.17", StarTodayModel.qtyText(mixed, UiLocale.EN)) // a lower bound: the 77 sale may add more
+        val clean = StarTodayModel.forRoutes(figs, category, { listOf(memoOn("k", 7, 1L to 50L)) }, emptySet())[0]!!
+        assertTrue(!clean.unknownSku && !clean.lowerBound && !clean.unknownDash)
+        val none = StarTodayModel.forRoutes(figs, category, { emptyList() }, emptySet())[0]!!
+        assertEquals("0.00", StarTodayModel.qtyText(none, UiLocale.EN)) // nothing sold and nothing unknown: a real zero
+    }
+
+    @Test fun f1b_theScreenShowsADashOrAnAtLeastLineNeverAnExactZero() {
+        show(AppLanguage.EN, star(cat = "match", divisor = 12), StarToday(0, 12, 0, 0, incomplete = false, unknownSku = true))
+        compose.onNodeWithText("Today on this phone: — STD, — (may be incomplete; not in the STD above)").assertExists()
+    }
+
+    @Test fun f1c_aLowerBoundIsLabelledAtLeast() {
+        show(AppLanguage.EN, star(cat = "match", divisor = 12), StarToday(50, 12, 2, 0, incomplete = false, unknownSku = true))
+        compose.onNodeWithText("Today on this phone: at least 4.17 STD, at least 2 memos (may be incomplete; not in the STD above)").assertExists()
+    }
+
+    @Test fun f2_aCutSkuListSaysTheUnconfirmedCountMayAlsoBeShortEvenAtZero() {
+        show(AppLanguage.EN, star(ids = listOf(1), idsCut = true), StarToday(0, 1, 0, 0, incomplete = true))
+        compose.onNodeWithTag(StarTags.UNCONFIRMED_SHORT).assertExists()
+        compose.onNodeWithText("The count of earlier-day memos not confirmed yet may also be short: the programme lists more SKUs than this phone received.").assertExists()
+        assertEquals(0, compose.onAllNodesWithTag(StarTags.UNCONFIRMED).fetchSemanticsNodes().size) // no count line at 0, only the warning
+    }
+
+    @Test fun f2b_noShortNoteWhenTheListWasNotCut() {
+        show(AppLanguage.EN, star(cat = "match"), StarToday(12, 12, 1, 2, incomplete = false))
+        assertEquals(0, compose.onAllNodesWithTag(StarTags.UNCONFIRMED_SHORT).fetchSemanticsNodes().size)
+    }
+
+    @Test fun f4_theFailedLineShowsDashesInBanglaToo() {
+        show(AppLanguage.BN, star(cat = "match"), StarToday(0, 1, 0, 0, false, failed = true))
+        compose.onNodeWithText("আজ এই ফোনে: — STD, — (এই ফোন এখন মেমো পড়তে পারেনি)").assertExists()
+    }
 }

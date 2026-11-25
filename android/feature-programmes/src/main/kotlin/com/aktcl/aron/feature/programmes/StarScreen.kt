@@ -59,6 +59,7 @@ object StarTags {
     const val UNCONFIRMED = "star_unconfirmed"
     const val REASON_LIST = "star_reason_list"
     const val REASON_SKU = "star_reason_sku"
+    const val UNCONFIRMED_SHORT = "star_unconfirmed_short"
 }
 
 object StarFormat {
@@ -165,14 +166,20 @@ fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Mo
         }
         // this phone's own sales since the closed day, SEPARATE from the server's STD (never added to it) and only when the row names the SKUs it counts
         if (today != null) Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val memos = if (today.failed || today.noRoute) Percent.DASH else pluralStringResource(R.plurals.pg_star_today_memos, today.memoCount.coerceIn(0L, 1_000_000L).toInt(), StarTodayModel.memoCountText(today, locale))
+            val dash = today.failed || today.noRoute || today.unknownDash
+            val memosPhrase = if (dash) Percent.DASH else pluralStringResource(R.plurals.pg_star_today_memos, today.memoCount.coerceIn(0L, 1_000_000L).toInt(), StarTodayModel.memoCountText(today, locale))
+            // a SKU the phone cannot place with some lines counted: the figures are a lower bound ("at least"), never presented as exact
+            val qty = StarTodayModel.qtyText(today, locale).let { if (today.lowerBound) stringResource(R.string.pg_star_at_least, it) else it }
+            val memos = if (today.lowerBound) stringResource(R.string.pg_star_at_least, memosPhrase) else memosPhrase
             Text(
-                stringResource(if (today.failed) R.string.pg_star_today_failed else if (today.noRoute) R.string.pg_star_today_no_route else if (today.incomplete || today.unknownSku) R.string.pg_star_today_partial else R.string.pg_star_today, StarTodayModel.qtyText(today, locale), memos),
+                stringResource(if (today.failed) R.string.pg_star_today_failed else if (today.noRoute) R.string.pg_star_today_no_route else if (today.incomplete || today.unknownSku) R.string.pg_star_today_partial else R.string.pg_star_today, qty, memos),
                 Modifier.testTag(StarTags.TODAY), style = TextStyle(fontSize = 14.sp, color = look.ink),
             )
             // each reason apart: the server cut the programme's SKU list, or this phone sold a SKU it does not know
             if (today.incomplete) Text(stringResource(R.string.pg_star_reason_list), Modifier.testTag(StarTags.REASON_LIST), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium))
             if (today.unknownSku) Text(stringResource(R.string.pg_star_reason_sku), Modifier.testTag(StarTags.REASON_SKU), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium))
+            // the server cut the programme's SKU list: the count of unconfirmed earlier-day memos can be short too
+            if (today.incomplete) Text(stringResource(R.string.pg_star_unconfirmed_short), Modifier.testTag(StarTags.UNCONFIRMED_SHORT), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium))
             if (today.unconfirmedEarlier > 0) Text(
                 pluralStringResource(R.plurals.pg_tgt_unconfirmed, today.unconfirmedEarlier, Formats.integer(today.unconfirmedEarlier.toLong(), locale)),
                 Modifier.testTag(StarTags.UNCONFIRMED), style = TextStyle(fontSize = 13.sp, color = look.purple, fontWeight = FontWeight.Medium),

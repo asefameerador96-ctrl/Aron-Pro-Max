@@ -257,6 +257,8 @@
         <item quantity="one">%1$s memo</item>
         <item quantity="other">%1$s memos</item>
     </plurals>
+    <string name="pg_star_at_least">at least %1$s</string>
+    <string name="pg_star_unconfirmed_short">The count of earlier-day memos not confirmed yet may also be short: the programme lists more SKUs than this phone received.</string>
     <string name="pg_star_empty">No Lifting Star target is set for this month.</string>
     <string name="pg_star_truncated">The route has more than one active programme: only the first is shown.</string>
     <string name="pg_ot_title">Outlet target</string>
