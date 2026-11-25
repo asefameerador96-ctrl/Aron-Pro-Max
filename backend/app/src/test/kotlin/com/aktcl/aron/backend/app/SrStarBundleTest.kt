@@ -11,6 +11,7 @@ import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.backend.sync.BundleService
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.StarProgress
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -88,6 +89,93 @@ class SrStarBundleTest {
         assertEquals("2027-01", s.s("month")); assertEquals("2027-01-02", s.s("through_date")); assertEquals("MBLS", s.s("programme_code"))
         assertEquals(Instant.parse("2027-01-03T01:00:00Z"), Instant.parse(s.s("as_of")!!))
         assertEquals(fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT name FROM app.route WHERE id = $route").mapTo(String::class.java).one() }, s.s("route_name"), "the Star row carries the route's own name")
+        // contract 1.26.0: the SKU rule of the STD rides with the row so the phone can show "today on this phone" separately (never added into std)
+        assertEquals("1000", s.s("unit_divisor"), "the programme's unit divisor"); assertEquals("match", s.s("sku_category"), "the category rule")
+        assertEquals(null, s["sku_ids"], "no explicit SKU list: sku_ids is absent and sku_category carries the rule")
+    }
+
+    /** The Star row of [route] for [date] (cut at the day before) under a programme whose rules are [rules]; the programme and its target are removed afterwards. */
+    private fun starUnder(code: String, rules: String, date: LocalDate, month: String, body: (JsonObject?) -> Unit) {
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0e2', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val p = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status, rules) VALUES ('superstar', '$code', 'Star $code', DATE '2026-12-01', DATE '2026-12-31', 'active', '$rules') RETURNING id")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($p, $route, DATE '$month', 20.000, '00000000-0000-4000-8000-00000000b0e2')")
+        try {
+            val zone = q("SELECT zone_id FROM app.route WHERE id = $route")
+            body(
+                fresh.db.jdbi.withHandle<JsonObject?, Exception> { h ->
+                    val sn = com.aktcl.aron.backend.sync.SrTargets.load(h, mapOf(route to zone), date, clock.now(), null).getValue(route)
+                    com.aktcl.aron.backend.sync.SrStar.load(h, mapOf(route to com.aktcl.aron.backend.sync.SrStar.RouteInfo("Route", null, null, sn.calendar)), date, date.minusDays(1))[route]
+                },
+            )
+        } finally { x("DELETE FROM app.route_programme_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p") }
+    }
+    private fun ids(star: JsonObject?) = (assertNotNull(star)["sku_ids"] as JsonArray).map { it.jsonPrimitive.content.toLong() }
+
+    @Test
+    fun anExplicitSkuListIsCarriedInsteadOfTheCategoryAndTheStdCountsExactlyThoseSkus() {
+        val date = LocalDate.parse("2026-12-10")   // through 2026-12-09: the window is 2026-12-01..09
+        val match = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 2").mapTo(Long::class.java).list() }
+        val cigarette = q("SELECT id FROM app.sku WHERE category_code = 'cigarette' ORDER BY id LIMIT 1")
+        val listedMatch = match[0]; val unlistedMatch = match[1]
+        // listed: one match SKU and one CIGARETTE (NOT in the default category `match`); unlisted: another match SKU (IN the default category)
+        val o = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr, seqStart = 700)
+        val u = { n: Int -> "00000000-0000-4000-8000-0000000f%04d".format(n) }
+        fx.memo(u(1), route, o, "2026-12-03", listOf(SrMemoFixture.L(cigarette, 700)))        // listed, not in the category: COUNTS
+        fx.memo(u(2), route, o, "2026-12-05", listOf(SrMemoFixture.L(listedMatch, 40)))       // listed and in the category: COUNTS
+        fx.memo(u(3), route, o, "2026-12-04", listOf(SrMemoFixture.L(unlistedMatch, 9000)))   // unlisted, in the default category: does NOT count
+        fx.memo(u(4), route, o, "2026-12-10", listOf(SrMemoFixture.L(cigarette, 5000)))       // the bundle date: never counts
+        try {
+            starUnder("MBLS-IDS", "{\"sku_ids\":\"$cigarette,$listedMatch\",\"unit_divisor\":1}", date, "2026-12-01") { star ->
+                assertEquals(listOf(cigarette, listedMatch).sorted(), ids(star), "the explicit list is carried, ascending by id"); assertEquals(null, star!!["sku_category"], "and the category is absent")
+                assertEquals("1", star.s("unit_divisor"))
+                assertEquals("740.000", star.s("std"), "STD = 700 (listed cigarette) + 40 (listed match); the 9000 of the unlisted match SKU of the default category is out, so a category rule would give 9040")
+            }
+        } finally { listOf(1 to "2026-12-03", 2 to "2026-12-05", 3 to "2026-12-04", 4 to "2026-12-10").forEach { (n, d) -> fx.void(u(n), d) } }   // synced rows are tombstoned: last month's figure of the other tests stays as it was
+    }
+
+    @Test
+    fun theSkuListIsCleanedBeforeTheCapAndCarriedAscending() {
+        val real = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku ORDER BY id DESC LIMIT 3").mapTo(Long::class.java).list() }   // unordered on purpose
+        val rule = " ,0,-5,${real[0]},abc,${real[2]},${real[0]},999999999, ${real[1]},${real[2]}"
+        starUnder("MBLS-CLEAN", "{\"sku_ids\":\"$rule\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+            assertEquals(real.sorted(), ids(star), "distinct, existing in the catalogue, >= 1, ascending by id; junk and unknown ids dropped"); assertEquals(null, star!!["sku_ids_truncated"])
+        }
+        // a list with no usable id falls back to the category rule (which then rides) instead of an empty explicit list
+        starUnder("MBLS-NOIDS", "{\"sku_ids\":\"0,abc,999999999\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+            assertEquals(null, assertNotNull(star)["sku_ids"]); assertEquals("match", star.s("sku_category"))
+        }
+    }
+
+    @Test
+    fun theCapCountsTheCleanedListAt500And501() {
+        x("INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type, entry_unit_default, report_unit, report_factor, sort, status) SELECT 'TB'||g, variant_id, 'bidi', 'Bulk '||g, 'TB'||g, base_unit, base_per_pack, pack_type, entry_unit_default, report_unit, report_factor, sort, 'active' FROM app.sku, generate_series(1, 501) g WHERE id = (SELECT min(id) FROM app.sku WHERE category_code = 'cigarette')")
+        try {
+            val bulk = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku WHERE code LIKE 'TB%' ORDER BY id").mapTo(Long::class.java).list() }
+            assertEquals(501, bulk.size)
+            val junk = "0,999999999,${bulk[0]},${bulk[1]}"   // duplicates and unknown ids must not count towards the cap
+            // 500 distinct existing ids (plus junk and duplicates that clean away): all carried, not truncated
+            starUnder("MBLS-500", "{\"sku_ids\":\"${bulk.take(500).reversed().joinToString(",")},$junk\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(bulk.take(500), ids(star), "500 cleaned ids, ascending"); assertEquals(null, star!!["sku_ids_truncated"], "500 is not over the cap")
+            }
+            // 501 distinct existing ids: the first 500 ascending are carried and the flag says so
+            starUnder("MBLS-501", "{\"sku_ids\":\"${bulk.reversed().joinToString(",")}\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(bulk.take(500), ids(star), "the first 500 of the cleaned list, ascending"); assertEquals(true, star!!["sku_ids_truncated"]!!.jsonPrimitive.content.toBoolean())
+            }
+            // 500 real ids plus 100 unknown ones: the cap counts the cleaned list, so no flag
+            starUnder("MBLS-500X", "{\"sku_ids\":\"${bulk.take(500).joinToString(",")},${(900_000_000L until 900_000_100L).joinToString(",")}\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+                assertEquals(500, ids(star).size); assertEquals(null, star!!["sku_ids_truncated"], "unknown ids never count towards the cap")
+            }
+        } finally { x("DELETE FROM app.sku WHERE code LIKE 'TB%'") }
+    }
+
+    @Test
+    fun aCategoryOutsideTheContractEnumIsOmittedNeverSentAndAValidOneRides() {
+        starUnder("MBLS-BADCAT", "{\"sku_category\":\"cigar\",\"unit_divisor\":1}", LocalDate.parse("2026-12-10"), "2026-12-01") { star ->
+            assertNotNull(star); assertEquals(null, star["sku_category"], "an unknown category is omitted, never sent out of the enum"); assertEquals(null, star["sku_ids"])
+            assertEquals("0.000", star.s("std"), "and the STD counts no SKU")
+        }
+        for (c in listOf("cigarette", "bidi", "match", "lighter")) starUnder("MBLS-C-$c", "{\"sku_category\":\"$c\"}", LocalDate.parse("2026-12-10"), "2026-12-01") { star -> assertEquals(c, assertNotNull(star).s("sku_category")) }
     }
 
     @Test

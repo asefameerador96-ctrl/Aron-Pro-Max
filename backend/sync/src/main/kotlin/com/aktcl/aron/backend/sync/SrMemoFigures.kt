@@ -88,7 +88,9 @@ object SrMemoFigures {
 
     /**
      * The sale lines of the given (outlet, SKU) pairs for `[from, through]`, by outlet (every route's memos at the outlet count: the campaign target is the outlet's),
-     * and the newest `received_at` among them per outlet. Only the pairs asked for are read, so a figure can never count a SKU the table does not show.
+     * and the newest `received_at` among them per outlet. Only the pairs asked for are read (a join on the pair list), so another campaign's SKU at the same outlet is never counted.
+     * The caller passes ALL the SKU targets of the chosen campaign per outlet, not only the SKUs its (cut) table shows: the figure covers the whole campaign. BOUND: the pair list is
+     * (outlets of the bundle's routes with a campaign, at most 150 per route) x (SKU targets of the chosen campaign of each outlet); the SKU table on the wire is cut at 20, the pair list is not.
      */
     fun forOutletPairs(h: Handle, pairs: List<Pair<Long, Long>>, from: LocalDate, through: LocalDate): Pair<List<OutletLine>, Map<Long, Instant>> {
         if (pairs.isEmpty() || through.isBefore(from)) return emptyList<OutletLine>() to emptyMap()
