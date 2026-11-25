@@ -508,3 +508,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - **Train 134 LANDED**: INT e56764a5c3 (fast-forward of 0a03c0af61 + row). Lane CI 45593725977 18/18; integration CI 45598409642 all green (lead's read); both new gate steps ran on both runs ("okhttp public-suffix scan: clean (581 files)", "self-test ok"); deploy #374 skipped by design (live build stays da7fd7b1f5, train 133). APK aron-release-signed-dev-2570 42,047,128 B (229,942 B smaller, -0.54 %). Size gate: sr arm64-v8a +9.8 %, armeabi-v7a +10.6 %; amo +8.6 to +9.6 %; tso about -1.3 %. Baseline untouched; owner item 18 still open.
 - Six trains today (129 to 134). Not verified for any: a device; identical rendering of the minified icons beyond the numeric path comparison and the screenshot job's verdict; the asset's absence inside the CI-built APKs (lane's local listing only).
 - A-PROG5: slice 1 passed at 0cf576b41a (rides the next Android train with slice 2); slice 2 being built. T-KPI4: c59291c01 passed, rides the next server train. A-SIZE1: done, idle.
+
+## 2026-11-25 12:20 UTC
+
+- **Train 135 LANDED**: INT 5d4e76b179 (fast-forward of becf6c0a7a + row). Lane CI 45605234246 18/18 with ONE flaky e2e test (382 passed, 1 flaky; a Haiku reader is identifying it; the train changes no web file); integration CI 45610153982 green, non-Android jobs skipped by the filter (lead's read); deploy #375 skipped by design (live build da7fd7b1f5, train 133). APK aron-release-signed-dev-2578 42,051,497 B. Size gate sr arm64-v8a +9.9 %, armeabi-v7a +10.7 %.
+- Seven trains today (129 to 135).
+- T-KPI4: 4aee68ef54 passed T1 (contract 1.27.0); told to push its three follow-ups (2e6053443) so train 136 carries one head; short confirming pass, then train 136 (server).
+- A-PROG5: slice 3 (Lifting Star today line) sent back with two blocking wiring items (route-less memos on every route's Star; category map from active SKUs only); rides the next Android train after the recheck.
