@@ -89,7 +89,9 @@ test("auto-refresh does not poll faster than its 30 s interval", async ({ page }
   });
   await page.goto("/overview");
   const mountedAt = () => page.evaluate(() => (window as unknown as { __refreshMountedAt?: number }).__refreshMountedAt ?? null);
-  await expect.poll(mountedAt, { timeout: 15_000 }).not.toBeNull();
+  await expect
+    .poll(mountedAt, { timeout: 15_000, message: "the page registered no 30 000 ms interval within 15 s: the auto-refresh interval is not 30 s (REFRESH_MS, D-NIGHT-SYNC-01) or the refresh did not mount" })
+    .not.toBeNull();
   const mount = (await mountedAt())!;
   // stop the clock a little after the mount, so the advance below is exact (a running clock keeps moving while the calls travel)
   await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 500));
@@ -97,6 +99,8 @@ test("auto-refresh does not poll faster than its 30 s interval", async ({ page }
   const paused = await page.evaluate(() => Date.now());
   expect(paused - mount).toBeLessThan(15_000);
   await page.clock.runFor(mount + 29_999 - paused);
+  // `reads` counts EVERY non-prefetch RSC request to /overview, whatever timer or event issued it (this interval, another interval or timeout, a focus or visibility
+  // handler): any data read other than the one at mount + 30 s makes this assertion fail.
   expect(reads).toBe(0);
   await page.clock.runFor(1_000);
   await expect.poll(() => reads).toBeGreaterThan(0);
