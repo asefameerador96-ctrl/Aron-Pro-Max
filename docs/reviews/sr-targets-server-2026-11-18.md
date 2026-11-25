@@ -1692,3 +1692,7 @@ Decision and outcome code are unchanged for every memo header payload (kind ok/w
 Lows: when a money member is missing the detail is the bare "unreadable money member" without the uuid or the kind problem, so the KDoc sentence "every problem found, the same on both paths" is too wide; one section of the new test passed before the change too.
 
 Rides the next server train (140) after Android train 139.
+
+# 3705b9ac6e (delta on 691b18fe5f), 2026-11-25: PASS (lead's own read)
+
+recordMismatch memo branch: the money members are read in their own runCatching, so a missing member gives "unreadable money member" joined with the kind problem under the "memo <uuid>: " lead. A missing member was a non-null result before and is one now: decision and code unchanged. Lane CI 45655020874 green by the lane's report; not run by the lead. Head for server train 140.
