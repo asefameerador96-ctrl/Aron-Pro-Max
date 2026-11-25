@@ -79,7 +79,8 @@ test("auto-refresh does not poll faster than its 30 s interval", async ({ page }
   const start = await page.evaluate(() => Date.now());
   let reads = 0;
   page.on("request", (r) => {
-    if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/overview") reads++;
+    // a data READ is a non-prefetch RSC request (router.refresh); the router's link prefetches fire once at hydration, they are not polling
+    if (r.headers()["rsc"] === "1" && !r.headers()["next-router-prefetch"] && new URL(r.url()).pathname === "/overview") reads++;
   });
   await page.goto("/overview");
   await page.clock.runFor(Math.max(0, start + 30_000 - (await page.evaluate(() => Date.now()))));
