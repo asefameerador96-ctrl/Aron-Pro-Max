@@ -1,9 +1,11 @@
 RouteStar:
   type: object
-  description: Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3
+  description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3
     in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth
     signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown,
-    never applied to a memo. Contract 1.24.0.
+    never applied to a memo. A row with neither `sku_ids` nor `sku_category` (the programme names a category outside
+    the enum and lists no usable SKU) gives the phone no SKU rule: it shows no "today on this phone" line for the
+    Star. Contract 1.24.0.'
   required:
   - programme_id
   - programme_code
@@ -103,7 +105,8 @@ RouteStar:
       - boolean
       - 'null'
       description: True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids`
-        holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. Contract
+        holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. When true,
+        the phone's local "today on this phone" figure is incomplete (it can only match the 500 SKUs carried). Contract
         1.26.0, optional.
     lmwd:
       type: integer

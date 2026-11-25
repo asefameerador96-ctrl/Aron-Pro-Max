@@ -7140,7 +7140,7 @@ export interface components {
             /** Format: int64 */
             sold_qty_base: number;
         };
-        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0. */
+        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. A row with neither `sku_ids` nor `sku_category` (the programme names a category outside the enum and lists no usable SKU) gives the phone no SKU rule: it shows no "today on this phone" line for the Star. Contract 1.24.0. */
         RouteStar: {
             programme_id: components["schemas"]["Id"];
             programme_code: string;
@@ -7161,7 +7161,7 @@ export interface components {
             sku_category?: "cigarette" | "bidi" | "match" | "lighter" | null;
             /** @description The explicit SKU ids the STD and LMS count (the programme rule `sku_ids`), present only when the rules list them; then `sku_category` is absent. The list is cleaned on the server (distinct, existing in the catalogue) and ordered ASCENDING BY ID. Contract 1.26.0, optional. */
             sku_ids?: components["schemas"]["Id"][] | null;
-            /** @description True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. Contract 1.26.0, optional. */
+            /** @description True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. When true, the phone's local "today on this phone" figure is incomplete (it can only match the 500 SKUs carried). Contract 1.26.0, optional. */
             sku_ids_truncated?: boolean | null;
             /** @description Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`. */
             lmwd: number;
