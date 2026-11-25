@@ -426,3 +426,24 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - L-A13 690a43fb6 PASS; rides the next server train after merging INT. T-KPI3 lows round local (b611dd910).
 - A-INT3 size reductions 026037794: only ~45 KB per app; sr +7.3 %, amo +8.6 %; owner decision 18 (reset baseline or keep the warning). The OkHttp public-suffix asset drop needs a short check before it lands.
 - Owner list: 17 decisions + item 18; laptop inventory; dump listing (attachment did not arrive); device walk tomorrow; portal brief.
+
+## 2026-11-18 21:25 UTC
+
+- **Train 127 migration proof** (ops-diagnose run 44398163195, window 20:44..21:10Z, green, no failed section): migrate execution caj-aron-dev-migrate-byiz9bk: pre-flight nothing to do (V0191, V0199 not pending), flyway validated 191, current version 0209, migrating to 0210, 0211, 0212, 0213, 'applied 4, now at 0213', about 2.6 s. PostgreSQL log in the window: 0 ERROR/FATAL, no lock waits, no cancelled statements. API: 0 ERROR/WARN rows; two ProbeFailed warnings at 21:01:54 and 21:01:59 while the new revision started, ready at 21:02:10. Worker: revision --0000247 running, 1 replica; ONE WARN row from logger aron.main at 20:50:51 (text withheld by design, cause unknown); KEDA ScaledObjectCheckFailed warnings during the roll. Plain 'error line' rows at each container start (1 migrate, 1 API, 4 worker): unexplained, same pattern as on train 125; to read from a private terminal.
+- Train 128 (Android) with the integrator: lane/lead-train128 68b105cfcd.
+
+## 2026-11-18 21:40 UTC
+
+- **Train 128 LANDED** (Android only): INT 664eb9161. Lane ci 44398259383 green (19 rows, no re-run; e2e 382 passed, 1 FLAKY, name being read), INT ci 44400812349 (#2523) green, deploy #368 skipped by design, health stays on 71941f7fc. APK aron-release-signed-dev-2523 42,156,877 B (+1,464 B). Goldens: 3 modified, 1 added as expected. Size gate: same 10 warnings (sr +8.0..8.8 %, amo +9.4..10.6 %). The five gate test classes could not be confirmed by name in the CI log (tasks executed, build successful): A-GATE8 asked to print a per-class summary.
+- After-landing: A-PROG3 starts the target/KPI/Star screens in slices; P-SR2b merges INT and pushes its three fixes, then re-review; A-GATE8 small round (sweep blind spots, summary line); P-SR1b done, idle.
+- CI gate flaw found via T-KPI3: lane migrations base = last green run of the branch, never moves; contract steps skipped behind it. Fix assigned to INFRA1 (lane/ci-migrations-base, D-CI-MIGRATIONS-BASE-01), T1 check by the lead before landing.
+- Next server train: T-KPI3 372acbd58 (lows) + L-A13 (after its merge round), both need a short check.
+
+## 2026-11-24 18:55 UTC
+
+- **Stall 18 Nov 21:40 to 24 Nov 18:00 UTC: weekly usage limit.** The allowance that reset on 17 Nov was spent in about 28 hours (eight lanes in parallel plus large checker workflows). Nothing was lost on origin; unpushed local lane commits may be gone if containers were replaced (P-SR2b 7b361e54, 5535f6fa; A-PROG3 c67e47548, f9ee09dea): lanes told to check and redo.
+- **Pacing rule from now (D-LEAD-PACE-03, lead's own):** at most THREE lanes working at once; one train per day unless a blocking fix needs more; checker workflows sized to the diff (one lens + refuters for small rounds; full panels only for T1 code); the two-hourly check stays silent and cheap. Review the rule when a get_session read shows the week more than half unused at mid-week.
+- Wave 1 (running): P-SR2b (push the three review fixes after merging INT), A-PROG3 (slice 1 of target/KPI/Star/campaign screens), INFRA1 (state of the CI migrations-base fix; readiness note for the new Azure account, no Azure access).
+- Wave 2 (after wave 1 reports): T-KPI3 372acbd58 short check + dash-perf measurement fix; L-A13 merge round; A-GATE8 small round; A-INT3 026037794 short check. Then one server train and one Android train.
+- P-SR1b shows "needs input: confirm push of 6e5ace77 despite the lead's do-not-push": left as is; the lead's instruction stands until the next Android train is planned.
+- Owner rows open: old Azure account end stated as "maybe 25 November" (tomorrow), laptop inventory not received, dump listing not received, 17 decisions + item 18, device walk, portal brief. Reminder delivered today (it was due 19 Nov and sat in the queue during the stall).
