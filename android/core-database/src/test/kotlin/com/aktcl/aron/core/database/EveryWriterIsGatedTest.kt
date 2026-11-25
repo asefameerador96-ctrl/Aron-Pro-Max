@@ -62,18 +62,37 @@ class EveryWriterIsGatedTest {
     private val funHeadRegex = Regex("""\n\s*(?:(?:private|internal|public|override|protected|open|operator|tailrec|infix|inline|suspend|abstract|external)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")
 
     /**
-     * D-AGATE-32 (blind spot closed): the DAO write methods are DERIVED from the DAO sources (`@Insert`, `@Update`, `@Delete`, `@Upsert`, and an `@Query` that starts with INSERT, UPDATE, DELETE or
-     * REPLACE; the annotation may be on the line before the function), so a write method added to a DAO later is discovered with no edit here. A call `.name(` of one of them in a main source file
-     * outside the DAO package marks that file as a writer, with or without a transaction and with or without the outbox. HEURISTIC, honestly: a method of ANOTHER class with the same name would
-     * mark its file too (a false positive is named on a list, never silently ignored); a write through reflection or a raw `execSQL` / `compileStatement` is not seen (the second marker below
-     * finds those so that none exists outside the DAO package).
+     * D-AGATE-32/35 (blind spot closed): the DAO write methods are DERIVED from the DAO sources, so a write method added to a DAO later is discovered with no edit here. Comments are removed
+     * first. A function is a write when (1) it carries `@Insert`, `@Update`, `@Delete` or `@Upsert`; or (2) a `@Query` whose SQL starts with INSERT, UPDATE, DELETE or REPLACE, written with one to three
+     * quote characters (`"..."` or `"""..."""`), any whitespace or newlines, a trailing comma before the closing parenthesis, ANOTHER annotation between the `@Query` and the `fun`, and any visibility
+     * or other modifier (`protected`, `internal`, `public`, `abstract`, `open`, `suspend`); or (3) it is a CONCRETE (non-annotated) function whose body calls a function found by (1) or (2): ONE level
+     * only (`applyAck` calls `applyAckUnchecked`; a wrapper of a wrapper is not found). The match between the `@Query` and its `fun` may not cross another `fun`.
+     * REMAINING LIMITS, honestly: SQL built by a template or by concatenation (a `$` or `+` before the verb), a `@RawQuery`, a statement that starts with `WITH`, a write through reflection, and a
+     * DAO outside `core-database/.../dao/` are NOT found. A same-named method of ANOTHER class marks its file as a writer (a false positive is named on a list, never silently ignored).
      */
-    private val daoWriteAnnotation = Regex("""(@(?:Insert|Update|Delete|Upsert)\b(?:\([^)]*\))?|@Query\(\s*"\s*(?:INSERT|UPDATE|DELETE|REPLACE)[^"]*"\s*\))\s*(?:abstract\s+|open\s+)*(?:suspend\s+)?fun\s+(\w+)""", RegexOption.IGNORE_CASE)
+    private val daoWriteAnnotation = Regex(
+        """@(?:Insert|Update|Delete|Upsert)\b(?:\([^)]*\))?(?:(?!\bfun\b)[\s\S])*?\bfun\s+(\w+)|@Query\(\s*"{1,3}\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b(?:(?!\bfun\b)[\s\S])*?\bfun\s+(\w+)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun stripComments(src: String) = src.replace(Regex("""/\*[\s\S]*?\*/"""), "").replace(Regex("""(?m)^\s*//.*$"""), "")
 
     private fun daoWriteNames(): Set<String> {
         val dir = root().resolve("core-database/src/main/kotlin/com/aktcl/aron/core/database/dao")
-        val names = dir.listFiles { f -> f.extension == "kt" }.orEmpty().flatMap { f -> daoWriteAnnotation.findAll(f.readText()).map { it.groupValues[2] }.toList() }.toSet()
-        assertTrue("the DAO scan found only ${names.size} write methods: it is broken", names.size >= 40)
+        val sources = dir.listFiles { f -> f.extension == "kt" }.orEmpty().map { stripComments(it.readText()) }
+        val annotated = sources.flatMap { src -> daoWriteAnnotation.findAll(src).map { it.groupValues[1].ifEmpty { it.groupValues[2] } }.toList() }.toSet()
+        // one level: a concrete function whose body calls an annotated write (every `fun` head to the next head is a body; an annotated or abstract one has no call of a write in it)
+        val head = Regex("""\bfun\s+(?:<[^>]+>\s*)?(\w+)\(""")
+        val wrappers = HashSet<String>()
+        for (src in sources) {
+            val heads = head.findAll(src).toList()
+            heads.forEachIndexed { i, m ->
+                val body = src.substring(m.range.last, heads.getOrNull(i + 1)?.range?.first ?: src.length)
+                if (m.groupValues[1] !in annotated && annotated.any { Regex("""\b$it\(""").containsMatchIn(body) }) wrappers += m.groupValues[1]
+            }
+        }
+        val names = annotated + wrappers
+        assertTrue("the DAO scan found only ${names.size} write methods: it is broken", names.size >= 50)
         return names
     }
 
@@ -102,7 +121,6 @@ class EveryWriterIsGatedTest {
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncEngine.kt" to "sync bookkeeping (acks, digest, counters)",
         // D-AGATE-32: files the DIRECT-DAO discovery (no transaction, no outbox) found. Every one writes the key-value table `sync_meta`, the outbox bookkeeping or the schema, never a field record.
         "app-amo/src/main/kotlin/com/aktcl/aron/amo/RoomCallTargetsStore.kt" to "call-targets cache in sync_meta (a read model of the server's answer)",
-        "app-tso/src/main/kotlin/com/aktcl/aron/tso/TicketsHost.kt" to "drops the local mirror keys of tickets and events the server already answers (sync_meta); the ticket save itself is TicketDevice.save, gated (photo-claim sweep)",
         "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/RouteDayLock.kt" to "the server's void of a submit cycle recorded in sync_meta (a sync result, not a field act)",
         "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/LocalPurge.kt" to "retention purge of rows already acknowledged by the server (raw SQL; its own purge rules)",
         "core-database/src/main/kotlin/com/aktcl/aron/core/database/Migration9To10.kt" to "schema migration (raw SQL, runs once at database open)",
@@ -111,7 +129,21 @@ class EveryWriterIsGatedTest {
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncRules.kt" to "removes ack-resolution stash keys in sync_meta",
         "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncWork.kt" to "purge cutoff and purge date markers in sync_meta",
         "feature-attendance/src/main/kotlin/com/aktcl/aron/feature/attendance/DayCloseFailed.kt" to "failed-close counters in sync_meta (they drive the lock-out page, they are not a record)",
-        "feature-dayclose/src/main/kotlin/com/aktcl/aron/feature/dayclose/RoomDayAdapters.kt" to "marks a refused outbox row unseen (sync bookkeeping)",
+    )
+
+    /**
+     * D-AGATE-35: files that are NOT exempt as a whole: only the NAMED functions may write without the gate, each with its reason, so a later ungated write in another function of the same file is
+     * reported by [everyWriteOfAFilePartlyExemptIsInANamedFunction]. Names are unique per file (a stale or duplicated name fails).
+     */
+    private val namedFunctionWriters = mapOf(
+        "feature-dayclose/src/main/kotlin/com/aktcl/aron/feature/dayclose/RoomDayAdapters.kt" to mapOf(
+            "markUnseen" to "undo of 'seen' on a refused outbox family (sync bookkeeping: the entry returns to the count)",
+            "markSeen" to "marks a refused outbox family seen (sync bookkeeping)",
+            "sendAgain" to "puts rows the phone gave up on back to pending with the SAME uuid, payload and signature: a resend of an existing record, never a new one",
+        ),
+        "app-tso/src/main/kotlin/com/aktcl/aron/tso/TicketsHost.kt" to mapOf(
+            "drop" to "drops the local mirror keys of tickets and events the server already answers (sync_meta, read model); the ticket save is TicketDevice.save, gated",
+        ),
     )
 
     private fun root(): File = listOf(File("."), File("android"), File("..")).first { File(it, "core-database/src/main").isDirectory || File(it, "android/core-database/src/main").isDirectory }
@@ -126,10 +158,26 @@ class EveryWriterIsGatedTest {
     @Test fun everyWriteSourceIsOnANamedList() {
         val found = discovered()
         assertTrue("the discovery found only ${found.size} files: it is broken", found.size >= 8)
-        val unknown = found - gatedFiles - systemWriters.keys
+        val unknown = found - gatedFiles - systemWriters.keys - namedFunctionWriters.keys
         assertEquals("these files write (outbox insert, a Room write transaction or a direct DAO write) but are on neither list: gate them (ActionGate.requireOpen() first) and add them to gatedFiles, or add them to systemWriters WITH a reason: $unknown", emptySet<String>(), unknown)
         val stale = (systemWriters.keys - found)
         assertEquals("a stale system allow-list hides a renamed writer: $stale", emptySet<String>(), stale)
+    }
+
+    @Test fun everyWriteOfAFilePartlyExemptIsInANamedFunction() {
+        val bad = ArrayList<String>(); val stale = ArrayList<String>()
+        for ((rel, named) in namedFunctionWriters) {
+            val src = stripComments(file(rel)); val heads = funHeadRegex.findAll(src).toList()
+            val writing = HashSet<String>()
+            heads.forEachIndexed { i, m ->
+                if (writeMarker.containsMatchIn(src.substring(m.range.first, heads.getOrNull(i + 1)?.range?.first ?: src.length))) writing += m.groupValues[1]
+            }
+            bad += (writing - named.keys).map { "${rel.substringAfterLast('/')}.$it" }
+            stale += (named.keys - writing).map { "${rel.substringAfterLast('/')}.$it" }
+            for (n in named.keys) assertEquals("$rel: $n must be declared once", 1, heads.count { it.groupValues[1] == n })
+        }
+        assertEquals("these functions write (DAO write, outbox insert or transaction) and are not named, with a reason: $bad", emptyList<String>(), bad)
+        assertEquals("these named functions no longer write (stale exemption): $stale", emptyList<String>(), stale)
     }
 
     @Test fun everyGatedFileCallsTheGate() {
@@ -239,7 +287,9 @@ class EveryWriterIsGatedTest {
      */
     @Test fun theDirectDaoDiscoveryKnowsTheBlindSpotMethods() {
         val names = daoWriteNames()
-        for (n in listOf("insertFix", "insertMemo", "clearPhoneMarks", "deleteMeta", "putMeta", "markMemoPrinted", "upsertJob", "markRefusedUnseen", "returnToPending")) assertTrue("the DAO scan must know $n", n in names)
+        for (n in listOf("insertFix", "insertMemo", "clearPhoneMarks", "deleteMeta", "putMeta", "markMemoPrinted", "upsertJob", "markRefusedUnseen", "returnToPending",
+            // D-AGATE-35: triple-quoted multi-line @Query, trailing comma, `protected abstract`, a concrete wrapper
+            "applyResolution", "requeueRetryExhausted", "setSlipPrinted", "applyAckUnchecked", "applyAck", "resendAckedSince", "resendDigestBuckets", "markRefusedSeen", "reapplyLocalResolutions")) assertTrue("the DAO scan must know $n", n in names)
         // a read method must never be taken for a writer
         for (n in listOf("meta", "tasks", "jobs", "phoneMarks", "clusterCreates")) assertFalse("$n is a read", n in names)
         assertTrue("a direct call is a marker", writeMarker.containsMatchIn("capture.insertFix(row)"))
