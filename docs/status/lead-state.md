@@ -457,3 +457,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - **Reviewer workflows:** agents that ran shell experiments stalled on approvals three times. Reviewers are now read-only (git show/diff, Grep, Read); the lead runs experiments itself from a script file in the scratchpad.
 - Active lanes now: T-KPI3, A-PROG4 (waiting), integrator. Wave 2 still to start: L-A13 merge round, A-GATE8 small round, A-INT3 026037794 short check.
 - Owner: no message since 18 Nov. Open: old Azure account (stated end 25 Nov), laptop inventory, dump listing, decisions 1 to 19 (19 = one decimal vs whole numbers for stick SKUs), device walk, portal brief.
+
+## 2026-11-25 04:10 UTC
+
+- **Train 129 LANDED**: INT 2d64ac3f87 (one push, fast-forward of a47b861f2e + train row). Integration CI 45540278299: 18 of 18 jobs green (lead's own read of the jobs API), e2e 383 passed, 0 flaky. Deploy #369 (run 45542056072) ran for real (unexpected: no server change; the integrator guesses the ci.yml change made every area run) and succeeded: 0 migrations, worker 0 restarts, SR slice smoke passed. Health read by the lead at 04:07: ok, build 2d64ac3f87. APK aron-release-signed-dev-2540 42,200,310 B (+0.10 % on train 128).
+- **Lead's miss:** the train branch had no lane CI run before the GO (two quick pushes to lane/lead-train129; no run on a47b861f2e). The integration run was the first proof. From now on the GO message names the lane CI run of the train head, or says explicitly that none is required.
+- Not verified: migrate and start-up consoles (not in the log), the size gate warning table, anything on a device.
+- Told after the landing: A-PROG4 (round 1: merge, SrApp.kt conflict, three lows), T-KPI3 (merge, test lows, dash-perf evidence attachment; T1 passed at 780820b1a, short confirming pass on the final diff), INFRA1 (follow-up: empty-list guard, lint only files absent from every base).
+- Next trains: server train = T-KPI3 (contract 1.25.0) + L-A13 merge round (not yet restarted) + INFRA1 follow-up; Android train = A-PROG4 round 1 (+ A-GATE8 small round, A-INT3 size commit when checked).
