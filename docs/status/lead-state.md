@@ -531,3 +531,7 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Programmes lane ec48c3684d PASS (f2a9669dd8 failed on a cached 1.26.0 bundle shape; fixed). Next Android train (139) = INT after 138 + docs + ec48c3684d.
 - Train 138 (lane/lead-train138 24b10ffbaa: dash-drill + 30 s copy + zero_sale rule) in lane CI; GO when green. Targets server lane holds 740ee423c locally (lows; discard-only finding pinned by a test).
 - Lesson: fetch the lane branch with the explicit refspec BEFORE every checker workflow and pin the full sha in the prompt.
+
+## 2026-11-25 16:00 UTC
+- Train 138 LANDED and DEPLOYED: INT 6cee5275a2, integration run 45644189128 green (383 e2e, 0 flaky), deploy 45646532945 real, smoke passed and its sale was accepted (not held by the new kind rule), live build 6cee5275a2 (lead's own read). Not verified: migrate/start-up consoles; the 30 s note on a screen; stored rows on dev against the kind rule (count query prepared, not run).
+- Lanes released: targets server pushes 740ee423c (lows); programmes pushes lows + per-route reading (accepted) + device-walk list. Train 139 (Android) after the lead's review of the programmes delta on ec48c3684d.
