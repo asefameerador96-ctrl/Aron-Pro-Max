@@ -434,17 +434,32 @@ fun BrandKpiHost(day: SrDay, locale: UiLocale, kind: com.aktcl.aron.feature.prog
 
 
 /** The Lifting Star snapshots of the bundle's routes (`route.<id>.star`, the server's figures as sent) and whether the bundle cut a list (`star_truncated`). */
-internal suspend fun readStars(day: SrDay): StarLoad = withContext(Dispatchers.IO) {
-    val (figures, _) = readRouteFigures(day)
+internal suspend fun readStars(day: SrDay): StarLoad = readStars(object : StarSource {
+    override suspend fun figures() = readRouteFigures(day).first
+    override suspend fun skuCategories() = day.reference.skuCategories()
+    override suspend fun ackedBeforeRequest() = day.programmes.ackedBeforeRequest()
+    override suspend fun memosOfMonth(month: String) = day.programmes.memosOfMonth(month)
+})
+
+/** What the Star read needs from the phone (a seam so the read is tested with a fake: no rule means no read, a failed read means a dash line). */
+internal interface StarSource {
+    suspend fun figures(): List<com.aktcl.aron.feature.programmes.RouteFigures>
+    suspend fun skuCategories(): Map<Long, String>
+    suspend fun ackedBeforeRequest(): Set<String>?
+    suspend fun memosOfMonth(month: String): List<com.aktcl.aron.feature.programmes.LocalMemo>
+}
+
+internal suspend fun readStars(src: StarSource): StarLoad = withContext(Dispatchers.IO) {
+    val figures = src.figures()
     val withStar = figures.filter { it.star != null }
     val rows = withStar.map { it.star!! }
     val model = com.aktcl.aron.feature.programmes.StarTodayModel
     // an older server names no SKUs: nothing is read for the line (no new failure path), no line
     val today = if (rows.none { model.hasRule(it) }) rows.map { null } else try {
         // the category of EVERY SKU the phone holds (not only the active ones), and this phone's memos of the Star months
-        val categories = day.reference.skuCategories()
-        val acked = day.programmes.ackedBeforeRequest()
-        val memosByMonth = rows.map { it.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
+        val categories = src.skuCategories()
+        val acked = src.ackedBeforeRequest()
+        val memosByMonth = rows.map { it.month }.distinct().associateWith { src.memosOfMonth(it) }
         model.forRoutes(withStar, categories, { memosByMonth[it].orEmpty() }, acked)
     } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) {
         rows.map { if (model.hasRule(it)) model.failedOf(it) else null } // a dash line, never a vanished one

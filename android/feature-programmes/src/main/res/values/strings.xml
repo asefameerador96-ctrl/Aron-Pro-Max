@@ -248,12 +248,17 @@
     <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
     <string name="pg_star_lm_open">Last month has not closed at this cut: LMS and LMADS are not final.</string>
     <string name="pg_star_today">Today on this phone: %1$s STD, %2$s (not in the STD above)</string>
-    <string name="pg_star_today_partial">Today on this phone: %1$s STD, %2$s (may be incomplete: the programme lists more SKUs than this phone received; not in the STD above)</string>
+    <string name="pg_star_today_partial">Today on this phone: %1$s STD, %2$s (may be incomplete; not in the STD above)</string>
+    <string name="pg_star_reason_list">The programme lists more SKUs than this phone received.</string>
+    <string name="pg_star_reason_sku">This phone sold a SKU it does not know; it may belong to this programme.</string>
+    <string name="pg_star_today_no_route">Today on this phone: %1$s STD, %2$s (this download has no route for this Star, so this phone cannot tell which memos are on it)</string>
     <string name="pg_star_today_failed">Today on this phone: %1$s STD, %2$s (this phone could not read its memos just now)</string>
     <plurals name="pg_star_today_memos">
         <item quantity="one">%1$s memo</item>
         <item quantity="other">%1$s memos</item>
     </plurals>
+    <string name="pg_star_at_least">at least %1$s</string>
+    <string name="pg_star_unconfirmed_short">The count of earlier-day memos not confirmed yet may also be short: the programme lists more SKUs than this phone received.</string>
     <string name="pg_star_empty">No Lifting Star target is set for this month.</string>
     <string name="pg_star_truncated">The route has more than one active programme: only the first is shown.</string>
     <string name="pg_ot_title">Outlet target</string>

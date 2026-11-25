@@ -13,7 +13,16 @@ data class StarToday(
     val qtyBase: Long, val divisor: Long, val memoCount: Long, val unconfirmedEarlier: Int, val incomplete: Boolean,
     /** True when the phone could not read its memos: the line is still shown, with dashes (never a vanished line, never a made-up 0). */
     val failed: Boolean = false,
-)
+    /** True when the phone sold, after the closed day, a SKU whose category it cannot resolve at all: it may belong to the programme (a reason apart from [incomplete], the server's own cut of the SKU list). */
+    val unknownSku: Boolean = false,
+    /** True when the bundle gives this Star no route id: the phone cannot tell which memos are on it, so the line is a dash, never 0. */
+    val noRoute: Boolean = false,
+) {
+    /** The phone sold a SKU it cannot place after the closed day and counted NO line of the programme: the quantity and the memo count are unknown, a dash (never 0.00). */
+    val unknownDash: Boolean get() = unknownSku && qtyBase == 0L && memoCount == 0L
+    /** The phone counted some lines of the programme AND sold a SKU it cannot place: the figures are a lower bound, shown as "at least". */
+    val lowerBound: Boolean get() = unknownSku && !unknownDash
+}
 
 object StarTodayModel {
     /**
@@ -31,9 +40,12 @@ object StarTodayModel {
     fun hasRule(star: RouteStar): Boolean = skuFilter(star) { null } != null
 
     /** The line for [star] from the phone's frame over the SKUs of [skuFilter]; [incomplete] adds a reason of the phone's own (a sale of a SKU whose category it cannot resolve). */
-    fun of(star: RouteStar, frame: FigureFrame, incomplete: Boolean = false): StarToday = StarToday(
-        frame.today.qtyBase, star.unitDivisor ?: 1L, frame.today.memoCount, frame.unconfirmedEarlier, star.skuIdsTruncated || incomplete,
+    fun of(star: RouteStar, frame: FigureFrame, unknownSku: Boolean = false, unconfirmed: Int = frame.unconfirmedEarlier): StarToday = StarToday(
+        frame.today.qtyBase, star.unitDivisor ?: 1L, frame.today.memoCount, unconfirmed, star.skuIdsTruncated, unknownSku = unknownSku,
     )
+
+    /** The line of a Star with no route id in the bundle: dashes. */
+    fun noRouteOf(star: RouteStar): StarToday = StarToday(0, star.unitDivisor ?: 1L, 0, 0, false, noRoute = true)
 
     /** The line of a row whose memos could not be read: dashes. */
     fun failedOf(star: RouteStar): StarToday = StarToday(0, star.unitDivisor ?: 1L, 0, 0, false, failed = true)
@@ -47,23 +59,30 @@ object StarTodayModel {
         figures.filter { it.star != null }.map { f ->
             val s = f.star!!
             val keep = skuFilter(s) { categories[it] } ?: return@map null
+            if (f.routeId == null) return@map noRouteOf(s) // no route, no memos can be told to be on this Star: a dash, never 0.00
             try {
                 val memos = memosOfMonth(s.month)
                 val mine: (LocalMemo) -> Boolean = { f.routeId != null && it.routeId == f.routeId }
                 val frame = FigureFrame.of(memos, s.month, s.throughDate, s.asOf, acked, memoIn = mine, lineIn = { keep(it.skuId) })
-                val unresolved = s.skuIds.isNullOrEmpty() && memos.any { m ->
-                    mine(m) && m.state != "rejected" && m.memoKind == "sale" && m.businessDate.take(7) == s.month && m.businessDate > s.throughDate && m.lines.any { it.lineKind == "sale" && it.skuId !in categories }
-                }
-                of(s, frame, unresolved)
+                // a category rule: a sale of a SKU the phone cannot resolve at all may belong to the programme. Only LIVE tips count (a superseded version, a voided memo, a rejected one is not the sale any more).
+                val byCategory = s.skuIds.isNullOrEmpty()
+                val live = memos.filter { mine(it) && it.state != "rejected" }
+                val dead = HashSet<String>().also { d -> live.forEach { m -> m.supersedes?.let { d += it }; m.voidOf?.let { d += it } } }
+                val tips = live.filter { it.voidOf == null && it.uuid !in dead && it.memoKind == "sale" && it.businessDate.take(7) == s.month }
+                fun unresolved(l: LocalMemoLine) = l.lineKind == "sale" && l.skuId !in categories
+                val unknown = byCategory && tips.any { m -> m.businessDate > s.throughDate && m.lines.any(::unresolved) }
+                // the unconfirmed count of earlier days covers the unresolved SKUs too, so it is not silently one short (a memo with both kinds of line is counted once)
+                val unconfirmed = if (byCategory) FigureFrame.of(memos, s.month, s.throughDate, s.asOf, acked, memoIn = mine, lineIn = { keep(it.skuId) || it.skuId !in categories }).unconfirmedEarlier else frame.unconfirmedEarlier
+                of(s, frame, unknown, unconfirmed)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) { failedOf(s) }
         }
 
     /** The memo phrase of the line ("1 memo", "2 memos"): the count, or a dash when the memos could not be read. */
-    fun memoCountText(t: StarToday, locale: UiLocale): String = if (t.failed) Percent.DASH else Formats.integer(t.memoCount, locale)
+    fun memoCountText(t: StarToday, locale: UiLocale): String = if (t.failed || t.noRoute || t.unknownDash) Percent.DASH else Formats.integer(t.memoCount, locale)
 
     /** [t]'s quantity in the programme unit as two decimals, rounded ONCE half up from the exact quotient ("2.50"); a dash when it cannot be computed (a divisor below 1, a negative quantity, an overflow). */
     fun qtyText(t: StarToday, locale: UiLocale): String {
-        if (t.failed || t.divisor < 1L || t.qtyBase < 0L) return Percent.DASH
+        if (t.failed || t.noRoute || t.unknownDash || t.divisor < 1L || t.qtyBase < 0L) return Percent.DASH
         val h = runCatching { Math.addExact(Math.multiplyExact(t.qtyBase, 200L), t.divisor) / Math.multiplyExact(t.divisor, 2L) }.getOrNull() ?: return Percent.DASH // hundredths, half up
         return Formats.integer(h / 100L, locale) + Formats.digits("." + (h % 100L).toString().padStart(2, '0'), locale)
     }

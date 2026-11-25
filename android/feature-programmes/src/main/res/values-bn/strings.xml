@@ -248,12 +248,17 @@
     <string name="pg_star_days">LMWD: %1$s | WD: %2$s | EWD: %3$s</string>
     <string name="pg_star_lm_open">গত মাস এই কাটঅফে শেষ হয়নি: LMS ও LMADS চূড়ান্ত নয়।</string>
     <string name="pg_star_today">আজ এই ফোনে: %1$s STD, %2$s (উপরের STD-তে নেই)</string>
-    <string name="pg_star_today_partial">আজ এই ফোনে: %1$s STD, %2$s (অসম্পূর্ণ হতে পারে: প্রোগ্রামে এই ফোনে পাওয়া SKU-র চেয়ে বেশি SKU আছে; উপরের STD-তে নেই)</string>
+    <string name="pg_star_today_partial">আজ এই ফোনে: %1$s STD, %2$s (অসম্পূর্ণ হতে পারে; উপরের STD-তে নেই)</string>
+    <string name="pg_star_reason_list">প্রোগ্রামে এই ফোনে পাওয়া SKU-র চেয়ে বেশি SKU আছে।</string>
+    <string name="pg_star_reason_sku">এই ফোন এমন একটি SKU বিক্রি করেছে যা সে চেনে না; এটি এই প্রোগ্রামের হতে পারে।</string>
+    <string name="pg_star_today_no_route">আজ এই ফোনে: %1$s STD, %2$s (এই ডাউনলোডে এই স্টারের রুট নেই, তাই কোন মেমো এর অন্তর্ভুক্ত তা এই ফোন বলতে পারে না)</string>
     <string name="pg_star_today_failed">আজ এই ফোনে: %1$s STD, %2$s (এই ফোন এখন মেমো পড়তে পারেনি)</string>
     <plurals name="pg_star_today_memos">
         <item quantity="one">%1$s মেমো</item>
         <item quantity="other">%1$s মেমো</item>
     </plurals>
+    <string name="pg_star_at_least">কমপক্ষে %1$s</string>
+    <string name="pg_star_unconfirmed_short">এখনো নিশ্চিত হয়নি এমন আগের দিনের মেমোর গণনাও কম হতে পারে: প্রোগ্রামে এই ফোনে পাওয়া SKU-র চেয়ে বেশি SKU আছে।</string>
     <string name="pg_star_empty">এ মাসের জন্য কোনো লিফটিং স্টার টার্গেট নেই।</string>
     <string name="pg_star_truncated">রুটে একাধিক সক্রিয় প্রোগ্রাম আছে: শুধু প্রথমটি দেখানো হচ্ছে।</string>
     <string name="pg_ot_title">আউটলেট টার্গেট</string>
