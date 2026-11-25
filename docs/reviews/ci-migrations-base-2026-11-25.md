@@ -84,3 +84,25 @@ Lows:
 - test_the_integration_branch_main_and_pull_requests_keep_the_gate_base ends with self.assertTrue(int_tip), which checks nothing.
 - Not a test issue: a lane push whose head equals the integration tip gets merge-base == GITHUB_SHA, so migrations-check compares HEAD with HEAD. That is correct because the content is exactly what is shipped, but unlike CONTRACT_BASE there is no guard or comment saying so.
 - Outside this lens, noted only: a lane that forked at V0213 and adds V0214 after INT has shipped V0215 stays green until it merges INT. The old last-green rule did not catch this either, so nothing got looser.
+
+## Confirming pass on the final diff (39ee78df50), 2026-11-25 02:55 UTC: PASS
+
+The reviewer workflow for this pass stalled twice (its agents' shell experiments waited on an approval nobody could give), so the lead did the confirming pass directly: read `tools/ci/migrations-base.sh` and the ci.yml loop on 39ee78df50, and ran the real scripts in a throwaway repository with criss-cross history (two merge-bases; linter stubbed so only the gate logic is judged). Results, all as required:
+
+| Case | Expected | Got |
+|---|---|---|
+| no edit | green | rc 0 (2 bases) |
+| lane edits the migration shipped at I0 | red | rc 1, red on the I0 base |
+| lane deletes it | red | rc 1 |
+| lane renumbers it V0004 to V0005 | red | rc 1 |
+| new migration reusing a shipped version | red | rc 1 on both bases |
+| new V0005 | green | rc 0 |
+| lane equals the integration tip | green | rc 0 (1 base) |
+| integration ref missing | loud failure | base script rc 1 with an error line |
+
+Lane CI run 45523434612 green (lane's report; not re-read). Not verified here: the run on GitHub with a real criss-cross lane.
+
+Lows for a follow-up (not holding the landing):
+- ci.yml loop: an empty `MIGRATIONS_BASES` would run zero checks and exit 0. Not reachable today (the chooser exits non-zero with no base and the step runs under `-e`), but the loop should fail on an empty list.
+- With several bases, a migration already shipped on the integration branch is "new" relative to the older base and is linted again by squawk there. This fails closed (possible false red on a lane whose history criss-crosses and whose shipped migration predates a squawk rule), never open. Lint only files absent from every base.
+- Known limit unchanged: the Migrations step is skipped when the changes filter says db=false.
