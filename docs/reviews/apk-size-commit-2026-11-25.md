@@ -25,3 +25,65 @@ Lows:
 - Packaging side effect to check: androidResources.ignoreAssetsPatterns starts empty, so '+= "!PublicSuffixDatabase.list"' makes the list exactly that one pattern. That probably replaces aapt's default ignore list ('!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~'). If so, hidden files and underscore-prefixed asset folders from libraries would now be packaged. This affects size or contents, not security. Diff the release APK asset listing before and after, or append the default patterns explicitly.
 - That the asset is absent from the APK was checked by hand by the lane ('confirmed absent from the APK'). No size or APK-content gate asserts it, and nothing asserts that no other asset was dropped. The benchmark and benchmarkProfile build types inherit the setting, which is fine.
 - Not knowable from source alone: (1) OkHttp 5.5.0 internals (the asset name PublicSuffixDatabase.list, the AssetPublicSuffixList loader via the androidx-startup context, and the throw-on-missing behaviour) come from upstream knowledge and are not in the repo. (2) Whether some transitive AAR calls topPrivateDomain or installs a jar on its own OkHttpClient. Evidence makes this unlikely: the phone dependencies in gradle/libs.versions.toml (firebase-messaging, play integrity, play-services-location, maps-compose, CameraX, Room, WorkManager, Hilt, argon2kt, sqlcipher) do not use OkHttp's PSL, and there is no Coil, Glide, Retrofit or Ktor client on the phone. (3) R8 does not strip or add assets, so it does not change this.
+
+
+# Guard round, head d122fbc295, 2026-11-25: PASS
+
+Reviewers read the diff against the integration branch; one parsed all pathData of the 81 changed drawables numerically (largest difference 0). Nothing built. Lane CI run 45584385085 18/18 (lane's report).
+
+## vectors-all: PASS
+
+PASS. I found no blocking issue in d122fbc295 against origin/claude/wonderful-thompson-k6ejnf. Only static checks were run, with git show, git diff and my own pure-python path parser.
+
+**Drawables.** 81 drawable XMLs differ, all under android/**/res/drawable*. I extracted the old and new `android:pathData` from each (about 600 strings in all) and parsed both with an independent SVG path parser. It handles implicit repeated commands, an M or m repeat becoming a lineto, run-together numbers such as `1.5.5` and `-.5`, exponents, and unseparated arc flags.
+- Every file has the same command sequence and argument counts.
+- The largest numeric difference is exactly 0.
+- With pathData masked, all 81 files are byte-identical, so no non-path attribute changed.
+- The look is unchanged.
+
+**Other changed files.**
+- The only non-drawable files that differ are ci.yml, the three app build.gradle.kts files, the two NoCookieJarTest.kt files, okhttp-psl-scan.py, test_gates.py and pathdata-minify.py.
+- tools/ci/apk-size-baseline.json is not in the diff.
+- No gate or test is loosened.
+- The security-relevant change is the removed OkHttp asset, covered below.
+
+**CI wiring.**
+- Both new steps, `python3 tools/ci/okhttp-psl-scan.py .` and `python3 tools/pathdata-minify.py self-test`, sit in the Repository gates job right after the existing `python3 tools/ci/test_gates.py` step.
+- The new steps have no `if:` condition, so they run on every run.
+- The step before them and the one after are unchanged, so no existing step is skipped.
+- Nothing in the diff removes or reorders existing steps.
+
+**Scan guard.**
+- The scan walks `Path(root,'android').rglob('*')` and keeps `.kt` and `.java` files under `src/main`. The repository has 807 main-source files, so it does not run vacuously.
+- Its self-test `OkhttpPslScan` writes a temporary `android/core-x/src/main/kotlin/A.kt` and checks that each banned token (`topPrivateDomain`, `.cookieJar(`, `JavaNetCookieJar`) exits 1 with `A.kt:1` in the output. It also checks that clean main sources and test sources exit 0.
+- `test_real_repository_is_clean` runs the scan on the real tree. git grep finds no banned token in android main sources.
+
+**Runtime hole.**
+- No hole lets the removed PublicSuffixDatabase.list asset be needed at runtime.
+- OkHttp is 5.5.0. The list is read only by `topPrivateDomain()` and by `Cookie.parse`, which runs only when a non-default CookieJar is installed.
+- Every phone `OkHttpClient` is built without one.
+
+**Minifier.** The tool's transformation cannot change a value, and its self-test does cover arc flags and run-together decimals. Details are in the lows below.
+
+Lows:
+- Gradle: `ignoreAssetsPatterns += "!PublicSuffixDatabase.list"` replaces aapt's default ignore list (.svn, .git, .DS_Store, thumbs.db, hidden dotfiles, *~) because the AGP default only applies when the list is empty. The status doc says the release APK entry list was diffed with and without the line and only the PSL asset changed, so there is no effect today. A stray dotfile or backup file added to an assets folder later would be packaged. Consider appending the defaults.
+- okhttp-psl-scan.py scans only android/**/src/main/**/*.kt and *.java. It skips the src/debug, src/benchmark and src/benchmarkProfile source sets, which ship in non-release builds only. It also misses a receiver-less `cookieJar(x)` call inside `apply {}`, a direct `Cookie.parse` or `Cookie.parseAll`, and a split `.\ncookieJar(` chain. A variant-only or differently written cookie jar would get past it.
+- NoCookieJarTest covers only AronApiClient.defaultOkHttp(), its newBuilder copy, the AronApiClient inner client and MediaHttpApi.blobClient. The inline OkHttpClient.Builder() in app-*/SessionModule.kt and core-sync/ContentAssets.kt is covered only by the text scan. Those clients do default to NO_COOKIES today. Both tests read private fields (`client`, `blobClient`) by reflection, so a rename makes the test fail rather than pass silently. The core-media test constructor arguments (ApiOrigin.parse, ClientIdentity(String){...}, MediaUploadAuth.token/refresh) match the sources.
+- tools/pathdata-minify.py self-test checks equivalence only through the tool's own parse(), so a parser bug would be shared by the check and the minifier. It does cover arc flags (`a1,1 0 10.5,.5`, `a22,22 0 1,0 0.01,0`), run-together decimals (`M10-5.5.5-.5H1.5V.25`), exponents, a `+` sign and `-0`. Only one case asserts exact output text. The docstring says repeated command letters are dropped, but minify() keeps every explicit letter. The effect is a missed saving, not a value change. My independent parser (below) found no mismatch.
+- pathdata-minify.py minify() emits a space after an arc flag followed by a number, for example `0 1 10`, instead of the shortest form. That is a missed saving only. The number rewrite (fmt) drops leading and trailing zeros and '+' without rounding, keeps a lone `-0` as `-0` (numerically equal), and leaves exponents as they were. The separator rule (a '-' sign, or a '.' after a number that already contains '.', is written with no separator; everything else gets a space) never merges two numbers, and arc flags are read as single characters. The parser would loop forever on a number after `z`, but only on malformed input, which would fail the tool's own check rather than change a value.
+
+## guards-ci: PASS
+
+Lens is clean; no blocking finding. okhttp-psl-scan.py walks android/ recursively from the root it is given. It keeps only files where the path segment after 'src' is 'main', checks .kt and .java, and fails with exit 1 on topPrivateDomain, `.cookieJar(` and JavaNetCookieJar. CI calls it with '.' from the checkout root in the always-run gates job, so it cannot find an empty tree there. The OkhttpPslScan self-test in tools/ci/test_gates.py plants each of the three patterns in a temporary android/core-x/src/main file and asserts rc 1 plus the file and line. It asserts rc 0 for a clean main file and for a banned use under src/test, and it runs the scan against the real repository. The two NoCookieJarTest files read the real production clients by reflection: AronApiClient.defaultOkHttp() and its newBuilder copy, AronApiClient's private `client`, and MediaHttpApi.blobClient. They check each is CookieJar.NO_COOKIES, and the constructor signatures match the code at d122fbc295. The remaining OkHttpClient construction sites (three SessionModule files, ContentAssets, SupportUpload, ApkDownloader) are covered only by the scan, and none installs a cookie jar. The ci.yml change adds two unconditional steps after the gate self-tests; no existing step's condition or order changed. apk-size-baseline.json and the size gate are untouched. Lows: the scan has no minimum-file-count check, the regex has small gaps, ignoreAssetsPatterns replaces aapt's default ignore list, and a failing new step skips the later gates in that run.
+
+Lows:
+- tools/ci/okhttp-psl-scan.py never checks that it scanned anything. If the root has no android/ directory, rglob returns nothing and the gate prints 'clean' with exit 0. In CI this does not happen: the gates job runs after actions/checkout with no working-directory override, and the step passes '.', which is the repo root. test_real_repository_is_clean also does not prove a non-zero file count. Suggest failing when fewer than about 100 .kt/.java files are scanned.
+- The scan regex has gaps. It misses a receiver-less `cookieJar(jar)` inside `apply {}` or `with(builder) {}`, `.cookieJar (` with a space, and a call split across lines. It also does not ban direct `Cookie.parse`/`Cookie.parseAll` (the NoCookieJarTest KDoc itself says these read the list) or direct `PublicSuffixDatabase` use. None of these appears at d122fbc295, so this is a hardening item, not a hole today.
+- NoCookieJarTest (core-network) covers AronApiClient.defaultOkHttp() and the private `client` copy inside AronApiClient. NoCookieJarTest (core-media) covers MediaHttpApi.blobClient. Both read the real production fields by reflection, so neither builds its own client. Five other phone construction sites have no unit test: the bare OkHttpClient.Builder() in app-sr, app-amo and app-tso SessionModule (lines 222, 202, 196), core-sync ContentAssets.kt:99, core-system SupportUpload.kt:60 (`blob`) and ApkDownloader.kt:39. The scan covers them all (all are under src/main and none calls `.cookieJar(`), and OkHttp's default is NO_COOKIES, so the risk is small. The only other source sets are test, androidTest and testContract, none of which ship in the APK.
+- ci.yml: the two new steps are in the `gates` job, which has `needs: changes` and no `if`, so they run on every push and every pull request. They sit right after 'Gate self-tests' and run unconditionally. No existing step's condition or relative order changed. Side effect: when either new step fails, the later gates in that job (gitleaks, OSV and the rest) are skipped by GitHub's default stop-on-failure behaviour for that run. The run is still red, so nothing passes vacuously.
+- app-sr, app-amo and app-tso build.gradle.kts set `androidResources.ignoreAssetsPatterns += "!PublicSuffixDatabase.list"`. In AGP, a non-empty ignoreAssetsPatterns replaces aapt's built-in default ignore list (.svn, .git, hidden files, *~, thumbs.db and so on) rather than adding to it. A stray hidden or backup file in an asset directory could therefore be packaged. This is a size and hygiene concern only; there is no security or parity impact. Consider listing the default patterns alongside the new one.
+- tools/ci/apk-size-baseline.json and the size gate script are unchanged in the diff. Only ci.yml (+4 lines), the three app build.gradle.kts files, the two tests, the drawables and the three tools/ files changed outside docs.
+
+# Hardening push, head f30ce2d2a6, 2026-11-25: PASS (lead's own pass on the 87-line diff)
+
+Read in full: tools/ci/okhttp-psl-scan.py (fails below 100 scanned files; the pattern now covers `cookieJar(` with or without a receiver, with a space or split across lines, `Cookie.parse` / `parseAll`, `PublicSuffixDatabase`, `topPrivateDomain`, `JavaNetCookieJar`; source sets main, debug and benchmark*), the three build files (aapt's ten default ignore patterns listed explicitly before the one added pattern), the baseline file (unchanged). The lead counted the files the scan would read on this head from the git tree: 581, the number the lane reported. Lane CI run 45587855597 green (lane's report); size gate sr arm64-v8a +9.8 %, armeabi-v7a +10.6 %. Not re-verified here: the APK entry-name diff (lane's local build) and the new self-tests' results (lane CI). Lands in the next Android train at this sha.
