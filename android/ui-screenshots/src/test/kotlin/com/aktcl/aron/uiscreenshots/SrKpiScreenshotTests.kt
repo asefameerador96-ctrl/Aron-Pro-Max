@@ -92,8 +92,9 @@ class SrKpiScreenshotTests {
             """{"route_id":7,"kpi":{"month":"2026-11","through_date":"$through","as_of":"2026-11-18T01:00:00Z","allocated_mtk":5700000,"achieved_mtk":null,"achievement_bp":null,
               "volume":{"target":141100,"achieved":41256,"bp":2923},"memo":{"target":1102,"achieved":395,"bp":3584},"brands":[${brands.joinToString(",")}],"brands_truncated":false,"categories":$cats,
               "cpr":{"target_bp":5000,"alloc_mtk":600000,"achieved_bp":null}},
-              "calendar":{"month":"2026-11","working_days":30,"elapsed_working_days_before_today":10,"remaining_working_days_after_today":20,"today_is_working":true,"last_month_working_days":26,"through_date":"$through","as_of":"x"}}""")!!),
-            mapOf(1L to BrandName("ARIS", "অ্যারিস"), 2L to BrandName("Avon", "অ্যাভন"), 3L to BrandName("ESSE", null), 4L to BrandName("Black Diamond", "ব্ল্যাক ডায়মন্ড"), 5L to BrandName("Supreme", null)))
+              "calendar":{"month":"2026-11","working_days":30,"elapsed_working_days_before_today":${if (through.take(7) < "2026-11") 0 else 10},"remaining_working_days_after_today":${if (through.take(7) < "2026-11") 25 else 20},"today_is_working":true,"last_month_working_days":26,"through_date":"$through","as_of":"x"}}""")!!),
+            mapOf(1L to BrandName("ARIS", "অ্যারিস"), 2L to BrandName("Avon", "অ্যাভন"), 3L to BrandName("ESSE", null), 4L to BrandName("Black Diamond", "ব্ল্যাক ডায়মন্ড"), 5L to BrandName("Supreme", null), 6L to BrandName("Mixed Co", null)),
+            mapOf(1L to "cigarette", 2L to "cigarette", 3L to "cigarette", 4L to "cigarette", 5L to "cigarette")) // brand 6 has no single category: its unit is not clear
     private val today = KpiToday(FieldQty(12_500, "packet"), 3)
 
     @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun kpi_dashboard_bn() = shot("kpi_dashboard_bn") { Frame(ProgR.string.pg_kpi_title) { KpiDashboardScreen(kpi(), UiLocale.BN, volumeToday = today, memoToday = KpiToday(null, 3), unconfirmedEarlier = 2) } }
@@ -103,6 +104,7 @@ class SrKpiScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun kpi_dashboard_bn_first_of_month() = shot("kpi_dashboard_bn_first_of_month") { Frame(ProgR.string.pg_kpi_title) { KpiDashboardScreen(kpi("2026-10-31"), UiLocale.BN) } }
     @Test fun kpi_dashboard_bn_empty() = shot("kpi_dashboard_bn_empty") { Frame(ProgR.string.pg_kpi_title) { KpiDashboardScreen(null, UiLocale.BN, offline = true) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_volume() = shot("kpi_brands_bn_volume") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }
+    @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_unit_unclear() = shot("kpi_brands_bn_unit_unclear") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(brands = listOf(brand(1, 21600, 4735, 119, 90), brand(6, 2030, 300, 50, 20, "null"))), KpiKind.VOLUME, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_memo() = shot("kpi_brands_bn_memo") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.MEMO, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_en_blm() = shot("kpi_brands_en_blm", AppLanguage.EN) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.BLM, UiLocale.EN) } }
     @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun kpi_brands_bn_font20() = shot("kpi_brands_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }

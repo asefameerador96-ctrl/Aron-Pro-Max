@@ -38,7 +38,7 @@ class KpiScreensTest {
           "volume":{"target":2000,"achieved":600,"bp":3000},"memo":{"target":100,"achieved":30,"bp":3000},"brands":[${brand(1, 1000, 300, 50, 20, "420000")},${brand(2, 1000, 300, 50, 10)}],
           "brands_truncated":false,"categories":$cats,"cpr":{"target_bp":5000,"alloc_mtk":600000,"achieved_bp":null}},
           "calendar":{"month":"2026-11","working_days":30,"elapsed_working_days_before_today":10,"remaining_working_days_after_today":20,"today_is_working":true,"last_month_working_days":26,"through_date":"2026-11-17","as_of":"x"}}""")!!),
-        mapOf(1L to BrandName("ARIS", "অ্যারিস"), 2L to BrandName("Avon", null)))
+        mapOf(1L to BrandName("ARIS", "অ্যারিস"), 2L to BrandName("Avon", null)), mapOf(1L to "cigarette", 2L to "cigarette"))
 
     private fun show(language: AppLanguage, content: @androidx.compose.runtime.Composable (UiLocale) -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
@@ -88,14 +88,14 @@ class KpiScreensTest {
         show(AppLanguage.EN) { BrandKpiScreen(data, KpiKind.VOLUME, it) }
         compose.onNodeWithText("KPI on - Cigarette Sales").assertExists(); compose.onNodeWithText("FMC BRANDS").assertExists()
         compose.onNodeWithTag(KpiTags.brand(1)).assertIsDisplayed()
-        compose.onNodeWithText("Target 50 - KPI Today ৳420").assertExists()
-        compose.onNodeWithText("Target 50 - KPI Today —").assertExists() // brand 2: the owner has not defined it
+        compose.onNodeWithText("Target 50 packet - KPI Today ৳420").assertExists() // the volume target in packets, the unit printed
+        compose.onNodeWithText("Target 50 packet - KPI Today —").assertExists() // brand 2: the owner has not defined it
     }
 
     @Test fun brandWiseKpiOnMemoShowsTheMemoTargetAndTitle() {
         show(AppLanguage.EN) { BrandKpiScreen(data, KpiKind.MEMO, it) }
         compose.onNodeWithText("KPI on - Memo").assertExists()
-        compose.onNodeWithText("Target 50 - KPI Today ৳420").assertExists() // the memo target (50), not the volume target
+        compose.onNodeWithText("Target 50 memo - KPI Today ৳420").assertExists() // the memo target (50 memos), not the volume target
     }
 
     @Test fun brandWiseKpiOnBlmListsTheCategories() {

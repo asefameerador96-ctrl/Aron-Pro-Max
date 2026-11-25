@@ -206,6 +206,7 @@
     <string name="pg_kpi_unit_memo">মেমো</string>
     <string name="pg_kpi_empty">এ মাসের জন্য কোনো কেপিআই নেই।</string>
     <string name="pg_kpi_incomplete">এই ডাউনলোডে কিছু রুটের কেপিআই নেই অথবা ব্র্যান্ডের তালিকা কাটা: একাধিক রুটের শতকরা হার দেখানো হচ্ছে না।</string>
+    <string name="pg_kpi_unit_unknown">একক স্পষ্ট নয়</string>
     <string name="pg_kpi_brands_cut">ডাউনলোড কাটা হয়েছে: কিছু ব্র্যান্ড দেখানো হয়নি।</string>
     <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
     <string name="pg_kpi_on_memo">KPI on - Memo</string>

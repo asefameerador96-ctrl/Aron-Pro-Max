@@ -1,20 +1,27 @@
 package com.aktcl.aron.feature.programmes
 
-import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.Percent
-import com.aktcl.aron.rules.QtyUnit
+import com.aktcl.aron.rules.Qty
 import com.aktcl.aron.rules.UiLocale
 
-/** A figure in the unit the field counts in: [milli] thousandths of [unitKey] (packet, box, dozen) or, when the packs cannot be told, of the base unit (stick, piece). */
-data class FieldQty(val milli: Long, val unitKey: String)
+/**
+ * A figure in the unit the field counts in, kept as an EXACT quotient: [num] / [den] of [unitKey] (packet, box, dozen) or, when the packs cannot be told, of the base unit (stick, piece). The default
+ * [den] of 1000 makes [num] thousandths. Nothing is rounded before the display ([KpiModel.qtyText] rounds once, to one decimal).
+ */
+data class FieldQty(val milli: Long, val unitKey: String, val den: Long = 1000L) {
+    val isPositive: Boolean get() = milli > 0L
+}
 
 /** One KPI figure pair: target, achieved and the percentage the server sent (null: the owner has not defined it or the target is 0: a dash). */
 data class KpiPair(val target: FieldQty, val achieved: FieldQty, val bp: Long?)
 
-/** A brand row of the KPI: the volume and memo percentages, the volume target and the KPI of today (null until the owner defines it: a dash). */
+/**
+ * A brand row of the KPI. [category] is the brand's category from the product tree the phone already has (`cigarette`, `match`, `lighter`...), or null when the brand mixes categories or the phone cannot
+ * resolve it: then [volumeTarget] is null (a dash with a note, never a number in a unit that may be wrong). The memo figures are counts and need no unit. KPI today is null until the owner defines it.
+ */
 data class KpiBrandRow(
-    val brandId: Long, val name: BrandName?, val volumeTarget: FieldQty, val volumeBp: Long?, val memoTarget: Long, val memoBp: Long?, val kpiTodayMtk: Long?, val kpiAllocMtk: Long,
+    val brandId: Long, val name: BrandName?, val category: String?, val volumeTarget: FieldQty?, val volumeBp: Long?, val memoTarget: Long, val memoBp: Long?, val kpiTodayMtk: Long?, val kpiAllocMtk: Long,
 )
 
 /** A BLM category row (match, lighter): target, achieved and percentage in the field unit (dozens of matches, boxes of 25 lighters). */
@@ -23,7 +30,8 @@ data class KpiCategoryRow(val categoryCode: String, val pair: KpiPair)
 /**
  * Screen 60 and 61 (KPI Dashboard, Brand wise KPI) from the server's `RouteSnapshot.kpi` as sent, complete through [throughDate] (the figures rule; nothing local is ever added). Money the owner has not
  * defined ([achievedMtk], [achievementBp], [KpiBrandRow.kpiTodayMtk]) stays null: the screens show a dash in the manual's layout, never a number made up here. [daysElapsed] and [workingDays] come from the
- * calendar the server sent (the month card's "10 / 30"); null when the bundle has no calendar.
+ * calendar the server sent (the month card's "10 / 30"); null when the bundle has no calendar. The cigarette volume list ([volumeBrands]) holds the cigarette brands and the brands whose category the
+ * phone cannot resolve (a dash and a note); match and lighter brands are not in it (their volume is the BLM categories).
  */
 data class KpiData(
     val month: String, val throughDate: String, val asOf: String?, val daysElapsed: Int?, val workingDays: Int?,
@@ -33,14 +41,18 @@ data class KpiData(
     val brands: List<KpiBrandRow>, val brandsTruncated: Boolean, val fromFirst: Boolean,
     /** Several routes and at least one has no KPI section or a cut brand list: the summed percentages would not be complete, so they are dashes and the page says so (never a partial figure presented as the server's). */
     val incomplete: Boolean = false,
-)
+) {
+    /** The brands of the cigarette volume list: cigarette brands and brands whose unit the phone cannot tell (shown with a dash and a note). */
+    val volumeBrands: List<KpiBrandRow> get() = brands.filter { it.category == null || it.category == "cigarette" }
+}
 
 object KpiModel {
     /**
      * The KPI of the route(s) of the bundle. One route (the usual case) passes the server's percentages through; several routes are summed per brand and the percentages recomputed with the shared
-     * [Percent.bp] (the CPR is shown only for a single route). Null when no route has a KPI section.
+     * [Percent.bp] of the raw sums (the CPR is shown only for a single route). [brandCategory] is brand id to the one category of its SKUs ([AsthaModel.brandCategories]; a mixed or unknown brand is absent).
+     * Null when no route has a KPI section.
      */
-    fun build(figures: List<RouteFigures>, brandNames: Map<Long, BrandName>): KpiData? {
+    fun build(figures: List<RouteFigures>, brandNames: Map<Long, BrandName>, brandCategory: Map<Long, String> = emptyMap()): KpiData? {
         val routes = figures.filter { it.kpi != null }
         if (routes.isEmpty()) return null
         val ks = routes.map { it.kpi!! }
@@ -51,15 +63,17 @@ object KpiModel {
         fun bp(a: Long, t: Long, sent: Long?): Long? = if (single) sent else if (incomplete) null else Percent.bp(a, t)
         val brandSums = LinkedHashMap<Long, MutableList<KpiBrand>>()
         ks.forEach { r -> r.brands.forEach { brandSums.getOrPut(it.brandId) { mutableListOf() } += it } }
-        val packBrands = brandSums.values.map { merge(it) }
+        val merged = brandSums.values.map { merge(it) }
         val volT = ks.sumOf { it.volume.target }; val volA = ks.sumOf { it.volume.achieved }
         val memT = ks.sumOf { it.memo.target }; val memA = ks.sumOf { it.memo.achieved }
-        val fromPacks = fieldTotals(packBrands, "packet", volT, volA)
+        // the server's volume total is the CIGARETTE brands': the packet check uses the cigarette brands' packs only (never the packs of a match or lighter brand)
+        val cigarettePacks = merged.filter { brandCategory[it.brandId] == "cigarette" }.flatMap { it.byPack }.groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
+        val volume = pairFromPacks(cigarettePacks, "packet", volT, volA, bp(volA, volT, k.volume.bp))
         val cal = routes.firstNotNullOfOrNull { it.calendar }
         val cats = ks.flatMap { it.categories }.groupBy { it.categoryCode }.map { (code, rows) ->
             val t = rows.sumOf { it.volumeTarget }; val a = rows.sumOf { it.volumeAchieved }
             val packs = rows.flatMap { it.byPack }.groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
-            val unit = EntryUnits.labelKey(code, if (code == "match") QtyUnit.DOZEN else QtyUnit.PACK)
+            val unit = if (code == "match") "dozen" else "box"
             KpiCategoryRow(code, pairFromPacks(packs, unit, t, a, bp(a, t, rows.first().volumeBp)))
         }.sortedBy { if (it.categoryCode == "match") 0 else 1 }
         val allocated = if (ks.all { it.allocatedMtk != null }) ks.sumOf { it.allocatedMtk!! } else null
@@ -68,11 +82,11 @@ object KpiModel {
         val through = ks.minOf { it.throughDate }
         return KpiData(
             k.month, through, ks.mapNotNull { it.asOf }.minOrNull(), cal?.dayCounts()?.elapsed, cal?.workingDays, allocated, achievedMtk, achievementBp,
-            KpiPair(fromPacks.first, fromPacks.second, bp(volA, volT, k.volume.bp)), KpiPair(FieldQty(memT * 1000L, "memo"), FieldQty(memA * 1000L, "memo"), bp(memA, memT, k.memo.bp)), cats,
+            volume, KpiPair(FieldQty(memT * 1000L, "memo"), FieldQty(memA * 1000L, "memo"), bp(memA, memT, k.memo.bp)), cats,
             if (single) k.cpr?.targetBp else null, if (single) k.cpr?.achievedBp else null, if (single) k.cpr?.allocMtk else null,
-            packBrands.map { b ->
-                val vt = brandQty(b)
-                KpiBrandRow(b.brandId, brandNames[b.brandId], vt, bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk)
+            merged.map { b ->
+                val cat = brandCategory[b.brandId]
+                KpiBrandRow(b.brandId, brandNames[b.brandId], cat, brandVolume(b, cat), bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk)
             },
             ks.any { it.brandsTruncated }, through.take(7) < k.month, incomplete,
         )
@@ -89,25 +103,40 @@ object KpiModel {
         )
     }
 
-    /** Thousandths of [unit] from the per-pack figures: each pack size divided by its own factor, then added (never a stick sum of mixed pack sizes); base units when the packs do not add up to the figure. */
+    /** The exact sum of the per-pack figures (each pack size over its own factor), as one quotient over the common denominator: nothing is rounded here. */
+    private fun packTotal(packs: List<PackFigure>, pick: (PackFigure) -> Long, unit: String): FieldQty {
+        val den = packs.map { it.packFactor.toLong() }.fold(1L) { acc, f -> acc / gcd(acc, f) * f }
+        return FieldQty(packs.sumOf { pick(it) * (den / it.packFactor) }, unit, den)
+    }
+
+    private fun gcd(a: Long, b: Long): Long = if (b == 0L) a else gcd(b, a % b)
+
+    /** The per-pack figures in [unit] when they add up to the sent figure; base units (sticks, pieces) when they do not. Never guessed. */
     private fun pairFromPacks(packs: List<PackFigure>, unit: String, target: Long, achieved: Long, bp: Long?): KpiPair {
         val exact = packs.isNotEmpty() && packs.sumOf { it.target } == target && packs.sumOf { it.achieved } == achieved
         if (!exact) return KpiPair(FieldQty(target * 1000L, baseUnitOf(unit)), FieldQty(achieved * 1000L, baseUnitOf(unit)), bp)
-        return KpiPair(FieldQty(packs.sumOf { it.target * 1000L / it.packFactor }, unit), FieldQty(packs.sumOf { it.achieved * 1000L / it.packFactor }, unit), bp)
+        return KpiPair(packTotal(packs, { it.target }, unit), packTotal(packs, { it.achieved }, unit), bp)
     }
 
     private fun baseUnitOf(unit: String) = when (unit) { "packet" -> "stick"; "box" -> "piece"; else -> unit }
 
-    private fun fieldTotals(brands: List<KpiBrand>, unit: String, t: Long, a: Long): Pair<FieldQty, FieldQty> {
-        val packs = brands.flatMap { it.byPack }.groupBy { it.packFactor }.map { (f, l) -> PackFigure(f, l.sumOf { p -> p.target }, l.sumOf { p -> p.achieved }) }
-        val p = pairFromPacks(packs, unit, t, a, null)
-        return p.target to p.achieved
+    /**
+     * A brand's volume target in its own unit, decided by the brand's category from the product tree: cigarette brands in packets (their per-pack figures divided by the pack size when they add up to the
+     * sent target, else sticks), matches in dozens, lighters in boxes (the same rule, else pieces). A brand whose category is unknown or mixed has no unit: null (a dash with a note).
+     */
+    private fun brandVolume(b: KpiBrand, category: String?): FieldQty? = when (category) {
+        "cigarette", "bidi" -> pairFromPacks(b.byPack, "packet", b.volumeTarget, b.volumeAchieved, null).target
+        "match" -> FieldQty(b.volumeTarget * 1000L, "dozen")
+        "lighter" -> pairFromPacks(b.byPack, "box", b.volumeTarget, b.volumeAchieved, null).target
+        else -> null
     }
 
-    private fun brandQty(b: KpiBrand): FieldQty = pairFromPacks(b.byPack, "packet", b.volumeTarget, b.volumeAchieved, null).target
-
-    /** [q] as text ("73,900", "1.5"), one decimal half up, trailing ".0" dropped, digits per [locale]. */
-    fun qtyText(q: FieldQty, locale: UiLocale): String = SkuTargetModel.qtyText(q.milli, 1L, locale)
+    /** [q] as text ("73,900", "1.5"): one decimal, rounded once from the exact quotient, trailing ".0" dropped, digits per [locale]. */
+    fun qtyText(q: FieldQty, locale: UiLocale): String {
+        val t = Qty.tenths(q.milli.coerceAtLeast(0L), q.den) ?: return Percent.DASH
+        val frac = t % 10L
+        return Formats.integer(t / 10L, locale) + if (frac != 0L) Formats.digits(".$frac", locale) else ""
+    }
 
     /** Whole taka from milli-taka with the sign in front ("৳5,700"); a dash when null (the owner has not defined it). */
     fun takaText(mtk: Long?, locale: UiLocale): String = if (mtk == null) Percent.DASH else "৳" + Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 0), locale)

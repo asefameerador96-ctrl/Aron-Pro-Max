@@ -88,7 +88,7 @@ class SrSkuTargetScreenshotTests {
     )
     private fun t(id: Long, q: String) = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":$id,"std_target":"$q","std_unit":"stick","memo_target":0}"""
     private fun a(id: Long, q: Long) = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":$id,"achieved_qty_base":$q,"memo_count":1,"as_of":"2026-11-18T01:00:00Z","through_date":"2026-11-17"}"""
-    private fun cal(through: String) = """"calendar":{"month":"2026-11","working_days":26,"elapsed_working_days_before_today":14,"remaining_working_days_after_today":11,"today_is_working":true,"last_month_working_days":26,"through_date":"$through","as_of":"2026-11-18T01:00:00Z"}"""
+    private fun cal(through: String) = """"calendar":{"month":"2026-11","working_days":26,"elapsed_working_days_before_today":${if (through.take(7) < "2026-11") 0 else 14},"remaining_working_days_after_today":${if (through.take(7) < "2026-11") 25 else 11},"today_is_working":true,"last_month_working_days":26,"through_date":"$through","as_of":"2026-11-18T01:00:00Z"}"""
     private fun route(targets: List<String>, achieved: List<String> = emptyList(), calendar: String? = cal("2026-11-17")) =
         RouteFigures.parse("""{"route_id":7,"targets":[${targets.joinToString(",")}],"achievement_mtd":[${achieved.joinToString(",")}]${calendar?.let { ",$it" } ?: ""}}""")!!
     // the manual's fixture: all targets, nothing achieved yet (screenshot 10)

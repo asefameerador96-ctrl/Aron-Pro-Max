@@ -102,8 +102,8 @@ fun KpiDashboardScreen(
         Section(
             KpiKind.VOLUME, stringResource(R.string.pg_kpi_volume_title), look.red, KpiModel.bpText(data.volume.bp, locale),
             { Totals(data.volume, locale, data.volume.bp) }, volumeToday, locale,
-            rows = data.brands.take(3).map { b -> BarRow(b.name?.text(locale) ?: "#${b.brandId}", b.volumeBp, listOf(KpiModel.bpText(b.volumeBp, locale) to look.red, KpiModel.bpText(b.memoBp, locale) to Amber)) },
-            headers = listOf(stringResource(R.string.pg_kpi_volume) to look.red, stringResource(R.string.pg_kpi_memo) to Amber), seeAll = data.brands.size, onSeeAll = { onSeeAll(KpiKind.VOLUME) },
+            rows = data.volumeBrands.take(3).map { b -> BarRow(b.name?.text(locale) ?: "#${b.brandId}", b.volumeBp, listOf(KpiModel.bpText(b.volumeBp, locale) to look.red, KpiModel.bpText(b.memoBp, locale) to Amber)) },
+            headers = listOf(stringResource(R.string.pg_kpi_volume) to look.red, stringResource(R.string.pg_kpi_memo) to Amber), seeAll = data.volumeBrands.size, onSeeAll = { onSeeAll(KpiKind.VOLUME) },
         )
         Section(
             KpiKind.MEMO, stringResource(R.string.pg_kpi_memo_title), Amber, KpiModel.bpText(data.memo.bp, locale),
@@ -304,9 +304,11 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
             if (kind == KpiKind.BLM) data.categories.forEach { c ->
                 BrandRow(KpiTags.category(c.categoryCode), categoryName(c.categoryCode), stringResource(R.string.pg_tgt_target) + " " + KpiModel.qtyText(c.pair.target, locale) + " " + unitWord(c.pair.target.unitKey),
                     listOf(stringResource(R.string.pg_kpi_volume) to KpiModel.bpText(c.pair.bp, locale)))
-            } else data.brands.forEach { b ->
+            } else (if (kind == KpiKind.VOLUME) data.volumeBrands else data.brands).forEach { b ->
                 val cols = listOf(stringResource(R.string.pg_kpi_volume) to KpiModel.bpText(b.volumeBp, locale), stringResource(R.string.pg_kpi_memo) to KpiModel.bpText(b.memoBp, locale))
-                val target = if (volumeFirst) KpiModel.qtyText(b.volumeTarget, locale) else Formats.integer(b.memoTarget, locale)
+                // every row prints its unit: the volume in the brand's own unit (a brand whose unit the phone cannot tell is a dash with a note), the memo target as a count of memos
+                val target = if (volumeFirst) b.volumeTarget?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) } ?: (Percent.DASH + " (" + stringResource(R.string.pg_kpi_unit_unknown) + ")")
+                else Formats.integer(b.memoTarget, locale) + " " + unitWord("memo")
                 BrandRow(KpiTags.brand(b.brandId), b.name?.text(locale) ?: "#${b.brandId}", stringResource(R.string.pg_kpi_target_line, target, KpiModel.takaText(b.kpiTodayMtk, locale)), if (volumeFirst) cols else cols.reversed())
             }
         }

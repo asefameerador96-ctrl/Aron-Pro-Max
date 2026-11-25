@@ -111,7 +111,7 @@ private fun SkuCard(r: SkuTargetRow, today: LocalToday?, locale: UiLocale) {
     val name = if (locale == UiLocale.BN) r.nameBn ?: r.name else r.name
     val unit = unitWord(r.unitKey)
     fun q(m: Long?) = SkuTargetModel.qtyText(m, r.factor, locale)
-    fun perDay(n: Long, days: Int?) = SkuTargetModel.perDayText(n, days, r.factor, locale) // PADS = ADS (owner question Q-B, the shared default)
+    fun perDay(n: Long?, days: Int?) = SkuTargetModel.perDayText(n, days, r.factor, locale) // PADS = ADS (owner question Q-B, the shared default)
     // at a large font size the eight cells stack two per line so no label or figure is cut, and the name sits beside the pack picture
     val large = LocalDensity.current.fontScale >= 1.3f
     val cells = listOf(

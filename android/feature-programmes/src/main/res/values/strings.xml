@@ -206,6 +206,7 @@
     <string name="pg_kpi_unit_memo">memo</string>
     <string name="pg_kpi_empty">No KPI is set for this month.</string>
     <string name="pg_kpi_incomplete">Some routes have no KPI in this download or a brand list was cut: the percentages over several routes are not shown.</string>
+    <string name="pg_kpi_unit_unknown">unit not clear</string>
     <string name="pg_kpi_brands_cut">The download was cut: some brands are not shown.</string>
     <string name="pg_kpi_on_cigarette">KPI on - Cigarette Sales</string>
     <string name="pg_kpi_on_memo">KPI on - Memo</string>

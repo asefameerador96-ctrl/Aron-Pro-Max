@@ -15,11 +15,12 @@ data class SkuInfo(val skuId: Long, val name: String, val nameBn: String?, val c
  * before the display; [factor] converts it to the unit the field counts in (rule 5: packets of 20s or 10s, boxes of 25 lighters, dozens of matches; [unitKey] names it). NOTHING here is rounded
  * before the display: the percentage is the whole percent of the raw achieved over the raw target ([Percent.whole], once), and the daily figures (ADS, TADS, PADS, RADS) are the exact quotient of the raw
  * figure by the day count the SERVER sent ([elapsedDays], [remainingDays], read through [SkuProgress.dayCounts]) and the unit factor, rounded ONCE at display in the unit shown ([perDayText]).
- * A figure whose divisor is 0 or whose calendar is missing is a dash, never 0.
+ * A figure whose divisor is 0 or whose calendar is missing is a dash, never 0. A negative achieved quantity (not a valid figure: a server question) is a dash for achieved, left, % and the daily
+ * figures, never a crash and never a made-up number; a negative target gives no row.
  */
 data class SkuTargetRow(
     val skuId: Long, val name: String, val nameBn: String?, val categoryCode: String, val unitKey: String, val factor: Long,
-    val targetMilli: Long, val achievedMilli: Long, val remainingMilli: Long, val achievementPct: Long?,
+    val targetMilli: Long, val achievedMilli: Long?, val remainingMilli: Long?, val achievementPct: Long?,
     val elapsedDays: Int?, val remainingDays: Int?,
 )
 
@@ -36,7 +37,7 @@ object SkuTargetModel {
     fun build(figures: List<RouteFigures>, skus: Map<Long, SkuInfo>): SkuTargetData? {
         val targets = HashMap<Long, Long>(); val achieved = HashMap<Long, Long>()
         figures.forEach { f ->
-            f.targets.forEach { t -> targets.merge(t.skuId, t.targetMilli, Long::plus) }
+            f.targets.filter { it.targetMilli >= 0L }.forEach { t -> targets.merge(t.skuId, t.targetMilli, Long::plus) }
             f.achievement.forEach { a -> achieved.merge(a.skuId, a.qtyBase * 1000L, Long::plus) }
         }
         val calendar = figures.firstNotNullOfOrNull { it.calendar }
@@ -47,10 +48,10 @@ object SkuTargetModel {
         val rows = targets.entries.mapNotNull { (id, t) ->
             val k = skus[id] ?: return@mapNotNull null
             val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
-            val a = achieved[id] ?: 0L
+            val a = (achieved[id] ?: 0L).takeIf { it >= 0L } // a negative achieved quantity is not a figure: null (a dash)
             SkuTargetRow(
-                id, k.name, k.nameBn, k.categoryCode, EntryUnits.labelKey(k.categoryCode, spec.unit), spec.factor.toLong(), t, a, (t - a).coerceAtLeast(0L),
-                if (t > 0L) Percent.whole(a, t) else null, counts?.elapsed, counts?.remaining,
+                id, k.name, k.nameBn, k.categoryCode, EntryUnits.labelKey(k.categoryCode, spec.unit), spec.factor.toLong(), t, a, a?.let { (t - it).coerceAtLeast(0L) },
+                if (t > 0L && a != null) Percent.whole(a, t) else null, counts?.elapsed, counts?.remaining,
             )
         }.sortedWith(compareBy({ categoryOrder(it.categoryCode) }, { order[it.skuId] ?: Int.MAX_VALUE }))
         if (rows.isEmpty()) return null
@@ -70,7 +71,8 @@ object SkuTargetModel {
         if (data == null || data.truncated) return null // a cut list gives a partial total: a dash, not a wrong percentage
         val cig = data?.rows?.filter { it.categoryCode == "cigarette" }.orEmpty()
         if (cig.isEmpty()) return null
-        return cig.sumOf { it.achievedMilli } to cig.sumOf { it.targetMilli }
+        if (cig.any { it.achievedMilli == null }) return null // an invalid achieved figure: a dash, never a partial total
+        return cig.sumOf { it.achievedMilli!! } to cig.sumOf { it.targetMilli }
     }
 
     /** [milli] thousandths of base units as entered units ("25", "3.5"), one decimal half up, trailing ".0" dropped, grouped, digits per [locale]. */
@@ -88,8 +90,8 @@ object SkuTargetModel {
      * A daily figure: [numMilli] (thousandths of base units) over [days] working days and the unit [factor], as one exact quotient rounded once to one decimal in the unit shown ("1.7"); a dash when
      * [days] is null or 0.
      */
-    fun perDayText(numMilli: Long, days: Int?, factor: Long, locale: UiLocale): String {
-        if (days == null || days <= 0) return Percent.DASH
+    fun perDayText(numMilli: Long?, days: Int?, factor: Long, locale: UiLocale): String {
+        if (numMilli == null || days == null || days <= 0) return Percent.DASH
         val t = Qty.tenths(numMilli.coerceAtLeast(0L), days.toLong() * factor * 1000L) ?: return Percent.DASH
         val frac = t % 10L
         return Formats.integer(t / 10L, locale) + if (frac != 0L) Formats.digits(".$frac", locale) else ""

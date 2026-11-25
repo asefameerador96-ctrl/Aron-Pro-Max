@@ -96,4 +96,21 @@ class SkuTargetModelTest {
         val d = SkuTargetModel.build(listOf(RouteFigures.parse("""{"route_id":7,"targets_truncated":true,"targets":[${t(903, "100.000")}],"achievement_mtd":[${a(903, 10)}]}""")!!), skus)!!
         assertEquals(true, d.truncated); assertNull(SkuTargetModel.homeStd(d))
     }
+
+    @Test fun aNegativeAchievedQuantityIsADashNotACrashAndANegativeTargetGivesNoRow() {
+        val d = SkuTargetModel.build(listOf(route(t(903, "100.000") + "," + t(900, "-5.000"), a(903, -3))), skus)!!
+        val r = d.rows.single() // the negative target of SKU 900 gives no row
+        assertEquals(903L, r.skuId); assertNull(r.achievedMilli); assertNull(r.remainingMilli); assertNull(r.achievementPct)
+        assertEquals("—", SkuTargetModel.qtyText(r.achievedMilli, r.factor, UiLocale.EN))
+        assertNull(SkuTargetModel.homeStd(d)) // an invalid achieved figure: no partial Home total
+    }
+
+    @Test fun aDayCountOfZeroIsADashNotZero() {
+        val d = SkuTargetModel.build(listOf(route(t(903, "500.000"), a(903, 10), calendar = cal(0, 25))), skus)!!
+        val r = d.rows.single()
+        assertEquals(0, r.elapsedDays)
+        assertEquals("—", SkuTargetModel.perDayText(r.achievedMilli, r.elapsedDays, r.factor, UiLocale.EN)) // ADS, TADS, PADS: no elapsed day
+        assertEquals("—", SkuTargetModel.perDayText(r.targetMilli, r.elapsedDays, r.factor, UiLocale.EN))
+        assertEquals("19.6", SkuTargetModel.perDayText(r.remainingMilli, r.remainingDays, r.factor, UiLocale.EN)) // RADS 490 / 25
+    }
 }

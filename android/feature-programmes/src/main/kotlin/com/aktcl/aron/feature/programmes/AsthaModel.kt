@@ -153,7 +153,7 @@ object AsthaModel {
      * brand node id -> the category code of its SKUs (`products.skus[].category_code`, the seed sets no code on the category nodes), lower case.
      * A brand whose SKUs disagree, or that has none, is left out: its unit is then not guessed.
      */
-    private fun brandCategories(productsJson: String?): Map<Long, String> {
+    fun brandCategories(productsJson: String?): Map<Long, String> {
         val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
         val skuBrand = skuBrands(productsJson)
         val perBrand = HashMap<Long, MutableSet<String>>()
