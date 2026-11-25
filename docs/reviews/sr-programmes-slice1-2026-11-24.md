@@ -192,3 +192,144 @@ Lows:
 - Units in text: the unit word is never pluralised ('Today on this phone: 2 packet'), in English only. PADS is identical to ADS by the SkuProgress convention.
 - Cleanup: ProgrammeHosts.kt has a stale duplicate KDoc stacked above readSkuTargetData. SrSkuTargetScreenshotTests.kt has two stacked class KDocs, and the first, describing the Astha goldens, is stale.
 - Several routes with different through_dates are merged: the calendar is the first route's and through is the minimum. The server sends one through_date per bundle, so this is theoretical.
+
+
+# Recheck of rounding fixes and KPI screens (slice 3), head 11bb7ac89d, 2026-11-25
+
+Reviewers read the code and goldens; no Gradle run, no device.
+
+## rounding-fixes: PASS (blocking raised 0, upheld 0)
+
+PASS: nothing blocking. M1 and M2 are fixed in SkuTargetModel at 11bb7ac89d, checked against the code, not the commit text.
+
+- **Percentage (M1):** computed once as Percent.whole(raw achieved thousandths, raw Decimal3 target thousandths). A zero target gives a dash.
+- **Daily averages (M2):** ADS, TADS, PADS (= ADS) and RADS are worked out at display (SkuTargetScreen) through perDayText. Each is one exact half-up division of the raw thousandths by (server day count x unit factor x 1000), rounded to tenths. The day counts come only from the server calendar through SkuProgress.dayCounts, never the device clock. A null or zero day count shows a dash; achievement and remaining are never shown as 0 in place of null.
+- **Tests:** they assert the exact review cases (19899/20000 gives 99 %, 0.4995 % gives 0 %, 520 sticks over 15 days gives 1.7 packets, 30 of 30.500 dozen gives 98 %). Each one would fail under the old double rounding.
+- **Goldens:** I checked the re-recorded part-way golden by hand and every figure is right (for example Marise TADS 32.1, RADS 25.9; Avon 46 %, RADS 44.5).
+- **Arithmetic safety:** overflow uses checked arithmetic and cannot be reached; division by zero is guarded; remaining is clamped at 0.
+- **Rounding mode:** half up everywhere, the same as shared/rules Percent.
+
+Lows:
+- K-13 now reads 35.7 / 45.5 where the manual capture (docs/16 K-13) shows whole sticks 36 / 45. The arithmetic is correct, but it is a parity deviation; for RADS a reader rounding 45.5 gets 46.
+- The SkuProgress KDoc and the docs/16 oracle still describe whole-base-unit rounding.
+- No test covers a day count of 0.
+- The first-of-month golden uses an inconsistent calendar (14 elapsed days on day 1).
+- A negative achieved figure crashes SkuTargetModel.build; this was already the case before the fix.
+- KpiModel.pairFromPacks divides with truncation, which would double-round for pack factors that do not divide 1000.
+
+Files:
+- /home/user/Aron-Pro-Max/android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/SkuTargetModel.kt
+- /home/user/Aron-Pro-Max/android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/SkuTargetScreen.kt
+- /home/user/Aron-Pro-Max/android/feature-programmes/src/test/kotlin/com/aktcl/aron/feature/programmes/SkuTargetModelTest.kt
+- /home/user/Aron-Pro-Max/shared/rules/src/commonMain/kotlin/com/aktcl/aron/rules/SkuProgress.kt
+
+Lows:
+- K-13 parity (display only, the arithmetic is right). docs/16-data-platform.md K-13 (line 2044) records the 2026-04-18 manual capture as 'target 500 gives TADS 36 and RADS 45': whole numbers, for a SKU counted in sticks. The phone now shows one decimal: 500/14 = 35.714, shown as 35.7, and 500/11 = 45.45, shown as 45.5. For RADS the decimal also goes the other way from the manual's whole number: 45.45 rounds to 45 as a whole, but someone reading '45.5' would round it to 46. This is a deliberate deviation, logged in D-SRPROG-11. One decimal is needed once SKUs show in packets (520 sticks over 15 days = 1.7 packets), so the owner should confirm whether a stick-unit SKU should show whole numbers to match the manual.
+- Stale oracle docs. shared/rules/.../SkuProgress.kt still says 'The phone and the server call these same functions; the server's own figures are the oracle of the phone's local recomputation' and gives K-13 as TADS 36 / RADS 45. docs/16 s9 (line 2069) names dw.sku_target_progress() as the test oracle, and it computes whole base units. After the fix the phone no longer calls SkuProgress.row and rounds in the shown unit to one decimal, so a phone-vs-server oracle comparison would always differ. The KDoc and docs/16 K-13 need the new single-rounding rule.
+- perDayText returns a dash when days is 0, but no test covers 0. Only days == null is tested (withNoCalendar...). Add a test for elapsed_working_days_before_today = 0 (day 1: ADS, TADS and PADS show a dash) and for remaining_working_days_after_today = 0 (last day: RADS shows a dash).
+- The sku_target_bn_first_of_month golden uses cal('2026-10-31') but keeps elapsed = 14 and remaining = 11. It shows the 'from the 1st' label, which is what its name is about, but it also shows ADS 0, TADS 35.7 and RADS 45.5. A real day-1 calendar has 0 elapsed days, so ADS, TADS and PADS would be dashes. The fixture calendar is internally inconsistent. This predates the fix; this round only re-recorded the golden.
+- A negative achieved_qty_base (for example a month with net returns) makes Percent.whole throw IllegalArgumentException inside SkuTargetModel.build. readSkuTargets (ProgrammeHosts.kt:361) has no runCatching, so the screen would crash; readHomeStd is guarded by runCatching. qtyText instead clamps a negative to 0, so a negative figure would show as 0. This predates the fix: the old Percent.bp and SkuProgress.ratio had the same require(n >= 0). Clamp or dash it in build, and confirm on the server side that achieved is never negative.
+- Overflow: Qty.tenths and Percent.whole use checkedMul/checkedAdd, so an overflow throws ArithmeticException instead of wrapping. The first overflow is at about 4.6e17 thousandths (about 4.6e14 base units) in perDayText/qtyText and about 4.6e16 thousandths in Percent.whole. Neither is reachable. The per-SKU sum over routes (HashMap.merge with Long::plus) is unchecked, also unreachable. Division by zero: Percent.whole is only called when t > 0, and perDayText checks days <= 0 before dividing, so neither can happen. Remaining = (t - a) clamped at 0, so an over-achieved SKU shows RADS 0, not a dash (correct).
+- Rounding mode is consistent. All paths are half up as (2kn + d) div (2d): Percent.whole for the %, Qty.tenths for qtyText and perDayText (the exact quotient numMilli / (days * factor * 1000), so packets, boxes and dozens are divided in a single step), and HomeStd.percent ((200a + t) / 2t), which matches Percent.whole but with unchecked arithmetic. Verified in code: the four review cases fail under the old code and pass under the new (19899/20000: old 9950 bp gave 100 %, new 99; 0.4995 %: old 50 bp gave 1 %, new 0; 520 sticks over 15 days: old 35 sticks gave 1.8 packets, new 1.7; 30 of 30.500 dozen: old target rounded to 31 gave 97 %, new 98). The tests assert those exact values.
+- Outside this review's focus: KpiModel.pairFromPacks converts with truncating division (target * 1000 / packFactor), and qtyText then rounds again. This is exact for pack factors 10, 20 and 25 (they divide 1000). Any other factor would floor first and then round, which is double rounding. Worth a guard or an exact quotient.
+
+## kpi-math: FAIL (blocking raised 3, upheld 2)
+
+I checked KpiModel and readKpi against RouteKpi, KpiBrand, KpiTotal, KpiCategory, KpiCpr and KpiPackFigure, and against the SrKpi.kt serializer, at 11bb7ac89d. Verdict FAIL with three blocking findings.
+
+What holds:
+- **Undefined money stays a dash:** achieved KPI, achievement %, KPI today and CPR achieved stay null and show a dash.
+- **Multi-route percentages:** they come from Percent.bp of the raw sums, computed once.
+- **Day counts:** they come only from the server calendar (SkuProgress.dayCounts reads no clock).
+- **BLM:** each category gets its own line (dozens, boxes) and dozens and boxes are never added together.
+- **'Today on this phone':** it is shown on its own line and never added to a server figure.
+
+Blocking:
+1. **Brand volume rows:** they convert every by_pack entry to 'packets' and add them. A mixed brand adds dozens or boxes into the packet count. Match and lighter brands appear in the cigarette list, and the row shows no unit.
+2. **Cigarette Volume total:** the phone checks it against the by_pack of every brand row, but the server total counts cigarettes only. So it falls back to sticks on any route that has match or lighter brands, which is the normal data.
+3. **Missing route section:** a route whose route.<id> section is missing is dropped before build. The result is then treated as a single complete route, with no 'incomplete' note.
+
+Lows cover second rounding at a 12-stick bidi pack, an over-strict incomplete flag, partial totals still shown when incomplete, mismatched memo-count semantics, a golden fixture the server could not produce, hardcoded '#id' and '>' text, and an unguarded substring on the month.
+
+Files:
+- /home/user/Aron-Pro-Max/android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/KpiModel.kt
+- /home/user/Aron-Pro-Max/android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/KpiScreens.kt
+- /home/user/Aron-Pro-Max/android/app-sr/src/main/kotlin/com/aktcl/aron/sr/ProgrammeHosts.kt
+- /home/user/Aron-Pro-Max/backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrKpi.kt
+
+### UPHELD: Brand volume adds dozens and boxes into one packet number, and match/lighter brands show up in the cigarette list
+
+android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/KpiModel.kt
+
+brandQty(b) = pairFromPacks(b.byPack, "packet", ...) divides every by_pack entry by its own pack_factor and adds them all under the unit key "packet". The server's brand by_pack is not split by category. SrKpi.kt's pack query groups route_monthly_target by brand and base_per_pack across every category, and the achieved side does the same, so by_pack adds up to volume_target and the phone takes the packet path. Two concrete inputs go wrong: (1) A mixed brand. The server comment admits these exist ('a brand that mixed categories adds only its cigarette SKUs'). Example: a brand with a 20s cigarette SKU (2,000 sticks) and a match SKU (base_per_pack 1, 30 dozen) gives by_pack [{1,30,..},{20,2000,..}]. The phone shows 'Target 130' on Brand wise KPI (KPI on - Cigarette Sales), which is 100 packets plus 30 dozen added together. (2) A lighter-only brand (base_per_pack 25, 100 pieces) shows 'Target 4' in the same cigarette list. That figure is boxes, but it reads as packets. The brand row line ('Target %1$s - KPI Today %2$s', KpiScreens.kt BrandRow) also never prints FieldQty.unitKey. So when a brand drops back to base units (for example a by_pack entry lost in parsing, or a multi-route merge whose packs no longer add up), a stick count is shown unlabelled next to packet counts, 20 times too big. KpiBrand carries no category, and KpiModel.build gets only brandNames, so the phone cannot tell these rows apart. No test covers a non-cigarette brand or a mixed brand.
+
+Votes: upheld: I could not refute this. The code bears out the claim.
+
+**Server (`backend/sync/.../SrKpi.kt`):**
+- Each brand's `volume_target` is the sum over all of the brand's SKUs, whatever their category. The first query groups by `b.id, s.category_code` and runs `b.volTarget += ...` for every row.
+- Each brand's `by_pack` is grouped by `b.id, s.base_per_pack`, again with no category filter.
+- The brand's c; upheld: I could not refute the defect, and it is blocking. The code at 11bb7ac89d matches the claim.
+
+1. Server (backend/sync/.../SrKpi.kt): brand `volume_target` sums `route_monthly_target` over every category (only `cigTarget` is limited to cigarettes, and that feeds the totals). The brand pack query groups by `route_id, b.id, s.base_per_pack` with no category filter. The achieved side adds `saleQty` fo; upheld: I could not refute it; the code confirms the defect. In backend SrKpi.kt the brand `by_pack` query groups route_monthly_target by (route, brand, base_per_pack) across every category, and the achieved side is not filtered by category either. The JSON lists every brand that has any data. It does not filter to cigarette brands or send a category or cigarette flag; the `cigarette` flag stays inside th
+
+### UPHELD: The cigarette Volume total falls back to sticks whenever any match or lighter brand row exists
+
+android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/KpiModel.kt
+
+fieldTotals(packBrands, "packet", volT, volA) adds up the by_pack of ALL brand rows and compares the sum with volume.target/achieved. On the server (SrKpi.kt) those totals count cigarette SKUs only (volT = rows.sumOf { it.cigTarget }). But brand rows exist for match and lighter brands too, and their by_pack holds dozens and pieces. Concrete input: cigarette brand A with by_pack [{20,1000,300}] and match brand M with by_pack [{1,30,12}], volume {target:1000, achieved:300}. The packs add up to 1030 and 312, which do not match the totals, so the dashboard shows 'Total Target 1,000 stick' instead of 50 packets. A normal route has BLM targets, so on real data the packet path is effectively dead, against owner rule 5 (cigarettes in packets). The same section shows 'today on this phone' in packets (readKpi), so one card mixes sticks and packets. The only packet test (volumeIsShownInPackets...) has a single cigarette brand and no BLM brand, so this case is never exercised.
+
+Votes: upheld: I could not refute the claim. The code confirms it.
+
+- **Server (SrKpi.kt):** volume.target and achieved are the cigarette-only sums (volT = rows.sumOf { it.cigTarget }, line 131). Brand rows are still built for every brand, and each brand's by_pack covers SKUs of every category. The target query at lines 97-103 has no category filter, and achieved at line 106 adds any SKU with a brand. A match or; upheld: I could not refute the claim. The code does what the reviewer describes.
+
+In KpiModel.build (11bb7ac89d), `packBrands` is every brand row the server sent, and `fieldTotals(packBrands, "packet", volT, volA)` adds up the `by_pack` of all of them. `pairFromPacks` then compares those sums with `volume.target` and `volume.achieved`. If they differ, it falls back to the base unit ("stick").
+
+On the serv; upheld: The code confirms the defect. On the server (backend/sync/.../SrKpi.kt at 11bb7ac89d), the volume totals count cigarettes only: `volT = rows.sumOf { it.cigTarget }` and `volA = rows.sumOf { it.cigAchieved }`. But a brand row is sent for every brand with any figure, match and lighter brands included, and each brand's `by_pack` comes from a target query with no category filter (`... GROUP BY t.route
+
+### refuted: A route whose route.<id> section is missing silently becomes the 'single route, server figures as sent' case
+
+android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/KpiModel.kt
+
+readRouteFigures (ProgrammeHosts.kt) uses routeIds.mapNotNull { RouteFigures.parse(section("route.$it")) }, so a route of the day whose section is absent or not a JSON object is dropped before KpiModel.build runs. build then works out single = figures.size == 1 and incomplete only from the figures it was given. Concrete input: routesOfDay = [7, 8], route.8 section missing. Result: incomplete = false, no 'incomplete' note, and route 7's percentages and totals are shown as the SR's whole KPI. readKpi has routeIds but does not pass them to build. The opposite case is handled more strictly: a section that exists but has no kpi member (which by SrKpi.kt means the route has no KPI data at all) sets incomplete and dashes every percentage.
+
+Votes: refuted: The code does what the reviewer describes. readRouteFigures uses mapNotNull, and KpiModel.build sets single from figures.size, so a dropped route would not show up as incomplete. But the input that triggers it cannot happen on the phone, so this is not blocking. In ReferenceRepository.kt the route rows (dao.insertRoutes) and the route.<id> sections are written in the same db.withTransaction, from ; refuted: The code does what the reviewer says: readRouteFigures (ProgrammeHosts.kt:345-348) uses mapNotNull, and KpiModel.build works out `single = figures.size == 1` without the route ids. But the input that would trigger it cannot happen with stored bundles.
+
+A route of the day comes from the routes table. Every path that writes a route row also writes its `route.<id>` section, in the same transaction an; refuted: The code path is as described, but the input that triggers it cannot be produced by the phone's own storage. readRouteFigures (ProgrammeHosts.kt:345-349) does use routeIds.mapNotNull, and KpiModel.build does set single = figures.size == 1, so a dropped route would be missed. The question is whether a route of the day can ever exist with no parseable route.<id> section. In ReferenceRepository the r
+
+Lows:
+- pairFromPacks / readKpi truncate `target * 1000 / packFactor` to milli before qtyText rounds half-up to one decimal. This is exact for the 10, 20 and 25 factors. A bidi factor of 12 is inexact: today it gives the same displayed figure, but it is a second rounding step, and two inexact factors in one sum could cross a 0.05 boundary.
+- With several routes, incomplete is set when a route has no kpi member. By the server contract that means the route has no KPI data, so the summed percentages would in fact be complete. Dashes appear where a correct figure exists (over-conservative, not wrong).
+- When incomplete is set, Allocated KPI (৳), the Volume/Memo/BLM target and achievement totals and the brand-row targets are still shown as numbers summed over the routes that have a KPI. The incomplete note says only that the percentages are hidden.
+- The memo 'today on this phone' line counts each phone memo once (all.today.memoCount, any sale line including BLM-only or unbranded). The server memo achievement is a sum of per-brand memo counts, so a memo with two brands counts twice there. The two counts are shown separately and never added, but they measure different things.
+- Multi-route: through = minOf(throughDate) feeds the FigureFrame. If routes ever had different through dates, a memo dated between the earliest and a later route's through_date would appear both in that route's server figure and in 'today on this phone'. Within one bundle the through dates are normally equal.
+- Golden fixture inconsistency: memo.target 1102 while the brand memo_targets sum to 1047. The server can never send this, since its totals are sums of the brand rows (D-TKPI-10 withdrew the 1,102 claim). kpi_dashboard_* shows a memo total and percentage the server could not produce.
+- Hardcoded user-facing text in KpiScreens.kt: the brand-name fallback "#${b.brandId}" (also not converted to Bangla digits) and the "  >" suffix on See all.
+- MonthCard calls d.month.substring(5, 7) on a server string with no length guard. A malformed month would crash instead of showing a dash.
+- KpiToday for VOLUME is built with memos = vol.memoCount, and the line shows whenever memos > 0. A cigarette memo whose sale quantity nets to 0 packets would show 'today on this phone: 0 packet'.
+
+## kpi-screens: PASS (blocking raised 0, upheld 0)
+
+I found no blocking defect in 11bb7ac89d. I read the diff and the model, screen and host code, and I viewed the goldens. I did not run the tests.
+
+- **M1 and M2 fixes:** The percentage is now `Percent.whole` of the raw milli figures, rounded once. The daily figures ADS, TADS, PADS and RADS are one exact quotient of raw milli over the server's day count and the unit factor, rounded once through `Qty.tenths`. A Decimal3 target stays unrounded. A missing calendar or a zero divisor gives a dash.
+- **Day counts and clock:** Day counts come only from `calendar.dayCounts()`. Neither the KPI nor the SKU code reads the device clock.
+- **Units:** Packets, dozens and boxes of 25 are never added to each other. Each pack size is divided by its own factor before summing, with a base-unit fallback when the packs do not sum to the sent figure. The BLM section shows match and lighter as separate lines with no total.
+- **Nulls:** `achieved_mtk`, `achievement_bp`, `kpi_today_mtk`, a zero-target percentage and the achieved CPR all show a dash. A genuine zero such as ESSE's memo 0.00% or Supreme's volume 0.00% shows as a zero.
+- **Today and unconfirmed:** 'Today on this phone' and the count of unconfirmed earlier-day memos are separate notes. They are never added to or subtracted from a server figure.
+- **Navigation:** The Home KPI tile opens the dashboard only when a route carries a `kpi` section, and falls back to the earlier `KpiHost` otherwise. Figures do not regress for an older server; only the title changes (see lows). Offline reads the stored sections.
+- **Tests:** No test was deleted, weakened or ignored. The one rename (`anEditChainAllAfterThroughDateCounts...`) keeps its assertions. `emptyAndOfflineAndTruncatedStates` was split, with the truncated case moved into a new test. New tests cover M1, M2, the fork on a missing root, the chain void, the truncated Home STD, and the KPI model and screens.
+- **Goldens:** All 10 KPI goldens and the 3 SKU goldens I opened show what their names say. I checked the numbers by hand: 7,055 and 2,062.8 packets, 29.23% as sent, 35.7 and 45.5 per day, 124% and 46%. I saw no clipped or overlapping text, and no '0' where a dash is required. I did not open the other 4 re-recorded SKU goldens.
+- **Strings:** All other user-facing text is in bn and en resources, and the bn file keeps English where the manual does.
+
+The lows are about presentation only; the most notable is `kpiKind` not surviving a rotation or process kill.
+
+Lows:
+- SrApp.kt: `kpiKind` is `remember`, while `screen` is `rememberSaveable`. After rotation, language switch or process death on SR_KPI_BRANDS, the screen reopens but the kind resets to VOLUME. A user who opened 'See all brands' from the Memo or BLM section sees the cigarette-volume list instead. The summary heading says 'KPI on - Cigarette Sales', so the figures are labelled correctly, but the list is the wrong one. Fix: use `rememberSaveable` for the kind. Not covered by any test.
+- BrandKpiScreen: the brand row line 'Target 1,080 - KPI Today -' shows the volume target (packets) and the memo target (count) with no unit word. The dashboard shows units; this list does not. Both are in the field unit, so nothing is wrong, but it is less clear than the dashboard.
+- Hardcoded user-facing text outside the localization layer in KpiScreens.kt and KpiModel.kt: the '  >' suffix on the See-all button, the '/' in CategoryTotals, the '#<brandId>' fallback name when the product tree has no brand, and the '৳' sign in KpiModel.takaText. Minor, mostly symbols; the '#id' fallback is the only real text.
+- Old-server fallback: when the bundle has no kpi section, KpiDashboardHost shows the earlier KpiHost. SrApp now titles that screen 'KPI Dashboard' (pg_kpi_title) instead of the earlier hm_tile_kpi title, and the offline note is not passed to it. The earlier content and figures are unchanged, so there is no figure regression.
+- Font scale 2.0 (kpi_dashboard_bn_font20): the brand-row bars shrink to a small dot because the 92dp name column and the percent texts take the width. The percentages are still readable but the bar no longer conveys the proportion. The top bar title wraps to two lines, which is acceptable. Nothing is clipped or overlapping.
+- Golden fixtures do not match their names: kpi_dashboard_bn_first_of_month and sku_target_bn_first_of_month use through_date 2026-10-31 and 2026-10-17 'from the 1st' labels, but still show non-zero figures (KPI) and 14 elapsed days (SKU). The label is right; the data is unrealistic for the first of a month. The KPI fixture's volume bp 2923 (truncated) against 41256/141100 = 29.24% is a server-sent figure and shown as sent, which is correct.
+- kpi_dashboard_bn_empty shows the empty state with the offline note. The host never reaches KpiDashboardScreen with null data (it falls back to KpiHost), so this state is only reachable in tests. BrandKpiHost with null data shows the empty text, which is fine.
+- The 'Volume' and 'Memo' column headers in the dashboard brand table are not aligned over their percent columns (start padding 10dp versus 6dp). It is a visible but slight misalignment.
+- pairFromPacks and `readKpi` convert each pack size with truncating integer division (`q*1000/factor`). This is exact for the 20, 10 and 25 factors, and for dozens. An odd factor such as 12 or 7 would truncate before the one-decimal display; the display rounding cannot change the result, but the sum of per-pack truncations could differ from the exact sum by under 0.001 pack.
