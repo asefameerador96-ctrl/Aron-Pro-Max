@@ -217,3 +217,9 @@ Lows sent to the lane for its next round:
 2. When the server cut the SKU list, the unconfirmed count can also be short; the wording does not say so.
 3. StarReadTest does not assert read counts in the good-read case (memo reads = distinct months, acked reads = 1).
 4. The failed-line dash text is not asserted on the screen.
+
+# f2a9669dd8 (Star round 3 + contract 1.27.0 consumption), 2026-11-25: FAIL, 1 blocking upheld 3 of 3
+
+Star round 3: pass by reading (dash for unknown-only, "at least" for mixed, true 0.00 kept, short-count note only when the server cut the SKU list). Lows: "at least" before a dash is possible with a malformed divisor; a fork plus an unknown SKU shows a dash where a lower bound would do (safe direction); f4 and the failed-read assertions pass on the earlier code too.
+
+Blocking (contract lens, upheld by three Opus refuters): a bundle from the 1.26.0 server (train 133) for a route with more than 150 campaign outlets and at least one entry carrying truncated=true is read as new-style, because perOutletCut is true as soon as ANY entry has the member. The outlets flag is absent, so an outlet with no entry gets "No campaign target is set for this outlet" although the list was cut. Before this diff it got the cut note; the test that pinned it (old nW6) was removed. Fix: a route is new-style only when campaigns_outlets_truncated is present or EVERY entry carries the member; otherwise the old route-flag rule. Restore the old-payload test. Cases (a) to (g) of the 1.27.0 reading are right.
