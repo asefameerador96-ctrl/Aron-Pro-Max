@@ -1672,3 +1672,15 @@ Lows:
 Production diff against 4aee68ef54: SrCampaigns.kt sets a local `anyCut` where each row's `cut` is computed and uses it in the route flag instead of reading the JSON member back (the row list is built eagerly, so the flag is set before the Result is constructed); BundleDtos.kt KDoc only. Contract text "true or null" for campaigns_outlets_truncated, still 1.27.0. New bundle-level test with more than 150 campaign outlets (lane's report; not re-run here). No db or Android file differs from the integration branch. Lane CI run 45612156597 green with Infra validation skipped (lane's report). This is the head for the next server train.
 
 Agreed with the lane for a later round (T1, not built yet): memo kind and lines must agree (zero_sale if and only if line_count = 0); a memo that breaks it is quarantined with a typed detail, as an arithmetic mismatch is, never rejected or dropped; stored rows are counted on dev first and tagged for review; a database constraint only after that count is 0.
+
+# c9b552d6ba (dash-drill test and copy; zero_sale rule), 2026-11-25: PASS, 0 blocking (3 read-only lenses + lead's read)
+
+Lenses: web (Sonnet), zero_sale inside the ingest (Opus, T1), zero_sale blast radius over every memo producer (Opus, T1). None ran a test. Lane CI 45634655699 green (lead's read of the jobs API: 17 success, Infra validation skipped). The lead read the production diff of MemoChecks.kt and the fixture change.
+
+Web: the test counts every non-prefetch data read from the moment the page registers its 30 000 ms interval; zero reads up to mount + 29 999 ms, at least one by mount + 31 s; fails readably when no 30 s interval is registered. No retry, skip or widened budget added. Copy says 30 seconds in English and Bangla; the unit test derives the number from REFRESH_MS.
+
+zero_sale rule: both directions; uses the header's stated line_count so upload order does not change the verdict; family held together; a resend is answered from the registry before the check, so no second quarantine item. Only two kinds exist in the contract and the database; a missing kind or count is left to the existing checks. The one Android producer (SaleCommitter, used by SR and AMO) sets kind and count from the same list, so no phone memo trips the rule; paper backfill, smoke and load generator agree with it.
+
+Limits: rows stored before the rule are not re-checked (count on dev still to run); a memo held under this rule cannot be plain-accepted (money holds never are); a pilot phone holding an unsynced memo from a build before 2026-10-07 would be held, not lost (judged very unlikely, not measured).
+
+Lows for the lane's next round: recordMismatch shows only the kind detail when money is also wrong on a header-first upload (collect both, call once); detail prefix differs between the two paths; the children-exceed check hides the kind detail; KDoc "a reviewer decides" should say what a reviewer can actually do; stale "60 s" comment at the top of the spec; the cached token in IngestRulesCheckerTest depends on no test revoking the session.

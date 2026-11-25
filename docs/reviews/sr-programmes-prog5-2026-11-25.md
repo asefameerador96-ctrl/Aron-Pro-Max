@@ -205,3 +205,15 @@ Lows:
 - values-bn pg_star_today_memos has identical one and other items. That is acceptable (the 'one' form covers 0 and 1 in Bengali) but redundant.
 - The failed branch in StarScreen skips the plural and uses Percent.DASH directly, so pg_star_today_failed always receives a dash for %2$s. It works and the test covers it. Folding the memo text into the string would be marginally cleaner.
 - pg_star_today_failed is covered only in English by a test; the bn string has the same placeholders but no bn render assertion.
+
+# 355bfe83d8 (Star follow-up round), 2026-11-25: PASS, 0 blocking (2 read-only lenses)
+
+Lenses: figures; seam, tests and strings. Neither ran a test; both read the diff and the full files. Lane CI 45620449054 green by the lane's report.
+
+Confirmed by reading: no rule = no database read and no line; a failed read = dash line, no crash; reads on the IO dispatcher, none repeated; unresolved SKU on live tips flags the line and is counted as unconfirmed; the two reasons are separate; a Star without a route shows dashes; rounding once; new strings in English and Bangla with matching placeholders; tests n2, n2b, n4 fail on the earlier code.
+
+Lows sent to the lane for its next round:
+1. A live tip whose only sale lines are unresolved SKUs shows "0.00 STD, 0 memos (may be incomplete)". Unknown should be a dash, or the figure visibly a lower bound.
+2. When the server cut the SKU list, the unconfirmed count can also be short; the wording does not say so.
+3. StarReadTest does not assert read counts in the good-read case (memo reads = distinct months, acked reads = 1).
+4. The failed-line dash text is not asserted on the screen.
