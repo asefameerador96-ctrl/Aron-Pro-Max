@@ -501,3 +501,4 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - **Train 134** (Android + CI gate) being built: size lane f30ce2d2a.
 - T-KPI4 told it may push its local round 596e3ecbc after merging INT (tests, log text, contract wording); short check, then it rides the next server train.
 - Next lane to start: programmes successor (phone uses category_code, the per-outlet cut flag, complete campaign achievement, Star SKU list for "today on this phone").
+- 10:25 UTC: train 134 branch lane/lead-train134 0a03c0af61 pushed (lane CI pending; GO check scheduled 10:59). **A-PROG5 = session_014mnioLoU8DBxKWHJjJov1b** started on lane/android-sr-programmes: slice 1 KPI uses category_code; slice 2 outlet target uses the per-outlet flag and the complete achievement; slice 3 Lifting Star "today on this phone". One slice per push, review between slices. Active lanes: T-KPI4, A-PROG5, integrator. A-SIZE1 idle until train 134 lands.
