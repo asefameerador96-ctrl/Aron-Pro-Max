@@ -7113,7 +7113,7 @@ export interface components {
             month: components["schemas"]["Month"];
             through_date: components["schemas"]["BusinessDate"];
             as_of: components["schemas"]["Timestamp"];
-            /** @description True (present only when true) when THIS outlet's `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional. */
+            /** @description SENT ON EVERY ENTRY from 1.27.0 (true or false; absent from an older server, so its presence tells the phone this is a 1.26+ route). True when THIS outlet's `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap; `campaigns_outlets_truncated` says the outlet list itself was cut. Contract 1.26.0 (always sent from 1.27.0), optional. */
             truncated?: boolean | null;
             std: components["schemas"]["CampaignFigure"];
             memo: components["schemas"]["CampaignFigure"];
@@ -7219,6 +7219,8 @@ export interface components {
             campaigns?: components["schemas"]["RouteCampaign"][] | null;
             /** @description True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional. */
             campaigns_truncated?: boolean | null;
+            /** @description True (present only when true) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional. */
+            campaigns_outlets_truncated?: boolean | null;
             /** @description True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional. */
             targets_truncated?: boolean | null;
             /** @description True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional. */

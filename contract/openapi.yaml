@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.26.0
+  version: 1.27.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -10732,7 +10732,7 @@ components:
         month: { $ref: '#/components/schemas/Month' }
         through_date: { $ref: '#/components/schemas/BusinessDate' }
         as_of: { $ref: '#/components/schemas/Timestamp' }
-        truncated: { type: [boolean, 'null'], description: 'True (present only when true) when THIS outlet''s `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign''s SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional.' }
+        truncated: { type: [boolean, 'null'], description: 'SENT ON EVERY ENTRY from 1.27.0 (true or false; absent from an older server, so its presence tells the phone this is a 1.26+ route). True when THIS outlet''s `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign''s SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap; `campaigns_outlets_truncated` says the outlet list itself was cut. Contract 1.26.0 (always sent from 1.27.0), optional.' }
         std: { $ref: '#/components/schemas/CampaignFigure' }
         memo: { $ref: '#/components/schemas/CampaignFigure' }
         skus:
@@ -10855,6 +10855,7 @@ components:
           items: { $ref: '#/components/schemas/RouteCampaign' }
           description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.'
         campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional.' }
+        campaigns_outlets_truncated: { type: [boolean, 'null'], description: 'True (present only when true) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional.' }
         targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional.' }
         star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional.' }
         star:
