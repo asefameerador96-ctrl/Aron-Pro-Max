@@ -812,16 +812,19 @@ class MigrationsBase(unittest.TestCase):
         return r.returncode, r.stdout.strip(), r.stderr
 
     def judge(self, base):
-        r = subprocess.run(["bash", "tools/ci/migrations-check.sh", base, tool("squawk") or "false"], cwd=self.repo, capture_output=True, text=True)
+        r = subprocess.run(["bash", "tools/ci/migrations-check.sh", base, tool("squawk") or "true"], cwd=self.repo, capture_output=True, text=True)
         return r.returncode, r.stdout + r.stderr
 
     def test_a_lane_that_merged_the_moved_integration_branch_is_green_and_uses_the_merge_base(self):
         int_tip = self.integration_renumbers()
         self.lane_from(self.stale)
-        self.git("merge", "-q", "--no-edit", int_tip)  # the lane merged INT after shipping moved
+        self.git("merge", "-q", "--no-ff", "--no-edit", int_tip)  # the lane merged INT after shipping moved
+        self.write("V0005__lane.sql", "SET lock_timeout = '5s';\nCREATE TABLE lane_t (id bigint PRIMARY KEY);\n")
+        self.commit("lane work after the merge: a new migration")  # HEAD != merge-base now, so a base of HEAD would be wrong
         rc, out, err = self.base()
         self.assertEqual(rc, 0, err)
         base, reason = out.split(" ", 1)
+        self.assertNotEqual(base, self.sha())
         self.assertEqual(base, int_tip, "stale last-green base ignored: the merge-base with origin/INT is what is shipped")
         self.assertIn("lane branch lane: merge-base with origin/" + self.INT, reason)
         rc, text = self.judge(base)
@@ -885,11 +888,68 @@ class MigrationsBase(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("no merge-base", err)
 
+    def test_a_shallow_clone_fails_loudly(self):
+        self.integration_renumbers()
+        self.lane_from(self.stale)
+        self.commit("lane work")
+        clone = tempfile.mkdtemp(prefix="aron-migbase-shallow-")
+        self.addCleanup(rmtree_retry, clone)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", "lane", f"file://{self.repo}", clone], check=True, capture_output=True)
+        subprocess.run(["git", "-C", clone, "remote", "set-url", "origin", "file:///nonexistent-origin"], check=True)  # the unshallow fetch cannot succeed
+        env = {**os.environ, "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/lane", "INTEGRATION_BRANCH": self.INT,
+               "GITHUB_SHA": subprocess.run(["git", "-C", clone, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()}
+        r = subprocess.run(["bash", "tools/ci/migrations-base.sh", self.stale], cwd=clone, env=env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("shallow clone", r.stderr)
+        self.assertEqual(r.stdout.strip(), "")
+
+    def test_a_missing_commit_is_named(self):
+        self.integration_renumbers()
+        self.lane_from(self.stale)
+        rc, out, err = self.base(sha="1" * 40)
+        self.assertNotEqual(rc, 0)
+        self.assertIn("not in this checkout", err)
+
+    def test_criss_cross_history_judges_every_merge_base(self):
+        """A train merged lane commit A into INT; the lane merged an older INT commit I0 (which shipped V0004) and then edited V0004:
+        two best common ancestors (A lacks V0004, I0 has it). Picking one could say ok for an edited shipped migration."""
+        self.git("checkout", "-q", "-b", "int")
+        self.write("V0004__shipped.sql", "SET lock_timeout = '5s';\nCREATE TABLE s4 (id bigint PRIMARY KEY);\n")
+        self.commit("I0: integration ships V4")
+        i0 = self.sha()
+        self.git("checkout", "-q", "-b", "lane", self.stale)
+        Path(self.repo, "lane_a.txt").write_text("lane work that is not a migration\n")
+        self.commit("A: lane work")
+        a = self.sha()
+        self.git("checkout", "-q", "int")
+        self.git("merge", "-q", "--no-ff", "--no-edit", a)  # the train merges A into INT
+        self.git("update-ref", f"refs/remotes/origin/{self.INT}", self.sha())
+        self.git("checkout", "-q", "lane")
+        self.git("merge", "-q", "--no-ff", "--no-edit", i0)  # the lane merges the OLDER integration commit
+        green_head = self.sha()
+        rc, out, err = self.base()
+        self.assertEqual(rc, 0, err)
+        bases = [line.split(" ", 1)[0] for line in out.splitlines()]
+        self.assertEqual(sorted(bases), sorted([a, i0]), "criss-cross: both best common ancestors are printed, one line each")
+        for b in bases:  # without the edit every base is green
+            rc, text = self.judge(b)
+            self.assertEqual(rc, 0, text)
+        self.write("V0004__shipped.sql", "SET lock_timeout = '5s';\nCREATE TABLE s4 (id bigint PRIMARY KEY, x int);\n")
+        self.commit("lane edits the shipped V4")
+        rc, out, err = self.base()
+        bases = [line.split(" ", 1)[0] for line in out.splitlines()]
+        results = {b: self.judge(b)[0] for b in bases}
+        self.assertEqual(results[a], 0, "the single-base rule picking A would call the edited shipped migration ok")
+        self.assertEqual(results[i0], 1, "base I0 shipped V4: the edit is red")
+        self.assertIn(1, results.values(), "the gate fails when ANY base fails")
+        self.assertTrue(green_head)
+
     def test_the_workflow_wires_the_base_and_keeps_the_contract_steps_running(self):
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-        self.assertIn('mig_line="$(tools/ci/migrations-base.sh "${check}")"', ci)
-        self.assertIn('tools/ci/migrations-check.sh "${MIGRATIONS_BASE}" squawk', ci)
-        self.assertIn('echo "migrations base: ${mig} (${mig_line#* })"', ci, "the chosen base and why are printed")
+        self.assertIn('mig_lines="$(tools/ci/migrations-base.sh "${check}")"', ci)
+        self.assertIn('tools/ci/migrations-check.sh "${b}" squawk || rc=1', ci, "the gate runs against EVERY base")
+        self.assertIn("for b in ${MIGRATIONS_BASES}; do", ci)
+        self.assertIn('echo "migrations base: ${l%% *} (${l#* })"', ci, "each chosen base and why are printed")
         gates = ci[ci.index("\n  gates:"):ci.index("\n  jvm:")]
         for name in ("Contract breaking-change check (oasdiff)", "contract/slices is current", "Lint contract/openapi.yaml (Redocly"):
             block = gates[gates.index(name):]

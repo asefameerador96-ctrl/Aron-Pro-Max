@@ -7,7 +7,7 @@
 #   Everything else (the integration branch itself, main, pull requests) keeps the gate base given as the argument.
 # Never falls back silently: a lane run without origin/<integration branch> or without the history for the merge-base FAILS loudly.
 # Usage: GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/<ref> GITHUB_SHA=<sha> INTEGRATION_BRANCH=<branch> tools/ci/migrations-base.sh <gate-base>
-# Prints one line on stdout: "<base-sha> <reason>". Owner: infra lane (the lead's T1).
+# Prints one line per base on stdout: "<base-sha> <reason>" (a lane run can have several merge-bases; the gate runs against every one). Owner: infra lane (the lead's T1).
 set -euo pipefail
 gate_base="${1:?gate base (the previous comparison base for the integration branch, main and pull requests)}"
 event="${GITHUB_EVENT_NAME:-}"
@@ -30,10 +30,18 @@ fi
 
 if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
   git fetch -q --unshallow origin 2>/dev/null || true
-  [ "$(git rev-parse --is-shallow-repository)" = false ] || { echo "::error::shallow clone: the history for the merge-base with origin/${integ} is missing (checkout needs fetch-depth 0)" >&2; exit 1; }
+  [ "$(git rev-parse --is-shallow-repository)" = false ] || { echo "::error::shallow clone: the history for the merge-base with origin/${integ} is missing (the checkout needs fetch-depth 0)" >&2; exit 1; }
 fi
-git rev-parse -q --verify "origin/${integ}" >/dev/null \
-  || { echo "::error::origin/${integ} is not in this checkout: a lane run needs it to know what is shipped; refusing to guess" >&2; exit 1; }
-mb="$(git merge-base "origin/${integ}" "${sha}")" \
-  || { echo "::error::no merge-base between ${sha} and origin/${integ} (unrelated history?); refusing to guess" >&2; exit 1; }
-echo "${mb} lane branch ${ref#refs/heads/}: merge-base with origin/${integ} (what the integration branch has shipped)"
+git cat-file -e "${sha}^{commit}" 2>/dev/null \
+  || { echo "::error::commit ${sha} is not in this checkout (GITHUB_SHA missing from the clone); refusing to guess" >&2; exit 1; }
+integ_ref="refs/remotes/origin/${integ}"
+git rev-parse -q --verify "${integ_ref}" >/dev/null \
+  || { echo "::error::${integ_ref} is not in this checkout: a lane run needs it to know what is shipped; refusing to guess" >&2; exit 1; }
+# --all: with criss-cross history (a train merged a lane commit into the integration branch, the lane merged an older integration
+# commit) there are SEVERAL best common ancestors, and one of them may lack a migration the other shipped. Picking one could judge an
+# edited shipped migration ok, so EVERY base is printed (one per line) and the gate must pass against each of them.
+mapfile -t mbs < <(git merge-base --all "${integ_ref}" "${sha}")
+[ "${#mbs[@]}" -gt 0 ] || { echo "::error::no merge-base between ${sha} and ${integ_ref} (unrelated history?); refusing to guess" >&2; exit 1; }
+for mb in "${mbs[@]}"; do
+  echo "${mb} lane branch ${ref#refs/heads/}: merge-base with origin/${integ} (what the integration branch has shipped; ${#mbs[@]} merge-base(s), the gate runs against each)"
+done
