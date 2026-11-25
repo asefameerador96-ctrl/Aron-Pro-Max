@@ -11,6 +11,7 @@ import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.backend.sync.BundleService
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.StarProgress
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -88,6 +89,28 @@ class SrStarBundleTest {
         assertEquals("2027-01", s.s("month")); assertEquals("2027-01-02", s.s("through_date")); assertEquals("MBLS", s.s("programme_code"))
         assertEquals(Instant.parse("2027-01-03T01:00:00Z"), Instant.parse(s.s("as_of")!!))
         assertEquals(fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT name FROM app.route WHERE id = $route").mapTo(String::class.java).one() }, s.s("route_name"), "the Star row carries the route's own name")
+        // contract 1.26.0: the SKU rule of the STD rides with the row so the phone can show "today on this phone" separately (never added into std)
+        assertEquals("1000", s.s("unit_divisor"), "the programme's unit divisor"); assertEquals("match", s.s("sku_category"), "the category rule")
+        assertEquals(null, s["sku_ids"], "no explicit SKU list: sku_ids is absent and sku_category carries the rule")
+    }
+
+    @Test
+    fun anExplicitSkuListIsCarriedInsteadOfTheCategoryAndTheStdCountsExactlyThoseSkus() {
+        val date = LocalDate.parse("2026-12-10")
+        val skuIds = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 2").mapTo(Long::class.java).list() }
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0e2', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val p = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status, rules) VALUES ('superstar', 'MBLS-IDS', 'Star with a SKU list', DATE '2026-12-01', DATE '2026-12-31', 'active', '{\"sku_ids\":\"${skuIds[0]},${skuIds[1]}\",\"unit_divisor\":1}') RETURNING id")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($p, $route, DATE '2026-12-01', 20.000, '00000000-0000-4000-8000-00000000b0e2')")
+        try {
+            val zone = q("SELECT zone_id FROM app.route WHERE id = $route")
+            val star = fresh.db.jdbi.withHandle<JsonObject?, Exception> { h ->
+                val sn = com.aktcl.aron.backend.sync.SrTargets.load(h, mapOf(route to zone), date, clock.now(), null).getValue(route)
+                com.aktcl.aron.backend.sync.SrStar.load(h, mapOf(route to com.aktcl.aron.backend.sync.SrStar.RouteInfo("Route", null, null, sn.calendar)), date, date.minusDays(1))[route]
+            }
+            val ids = (assertNotNull(star)["sku_ids"] as JsonArray).map { it.jsonPrimitive.content.toLong() }
+            assertEquals(skuIds, ids, "the explicit list is carried"); assertEquals(null, star["sku_category"], "and the category is absent")
+            assertEquals("1", star.s("unit_divisor"))
+        } finally { x("DELETE FROM app.route_programme_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p") }
     }
 
     @Test

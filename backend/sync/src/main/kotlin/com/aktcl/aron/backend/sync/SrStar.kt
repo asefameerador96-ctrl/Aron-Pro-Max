@@ -7,6 +7,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
@@ -28,6 +29,9 @@ import java.time.YearMonth
  * applied to a memo. Nothing here is written by a device; the phone may recompute with the same rules.
  */
 object SrStar {
+    /** The most SKU ids carried in `sku_ids` of one Star row (the STD itself counts every listed SKU). */
+    const val MAX_SKU_IDS = 500
+
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
     fun load(
@@ -85,6 +89,9 @@ object SrStar {
                 put("sr_name", info.srName?.let { JsonPrimitive(it) } ?: JsonNull); put("sr_code", info.srUserId?.let { users[it] }?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("route_name", info.routeName)
                 put("lmwd", c.last_month_working_days); put("wd", c.working_days); put("ewd", days.elapsed)
+                // WHICH SKUs the STD counts, so the phone can show "today on this phone" as a separate, labelled figure (never added into `std`): the explicit SKU list when the rules give one, else the category
+                put("unit_divisor", divisor)
+                if (ids.isNotEmpty()) { put("sku_ids", buildJsonArray { ids.take(MAX_SKU_IDS).forEach { add(JsonPrimitive(it)) } }); if (ids.size > MAX_SKU_IDS) put("sku_ids_truncated", true) } else put("sku_category", category)
                 put("target", d3(res.targetMilli)); put("std", d3(res.stdMilli)); put("projection", d3(res.projectionMilli)); put("achievement_bp", l(res.achievementBp))
                 put("lms", d3(res.lmsMilli)); put("lmads", d3(res.lmadsMilli)); put("pads", d3(res.padsMilli)); put("growth_bp", l(res.growthBp))
                 put("status_en", st.en); put("status_bn", st.bn)

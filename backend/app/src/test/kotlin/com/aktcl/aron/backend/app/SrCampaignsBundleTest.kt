@@ -169,4 +169,32 @@ class SrCampaignsBundleTest {
         assertTrue(raw.size <= 120 * 1024, "campaigns raw ${raw.size} bytes over the 120 KB budget")
         assertTrue(gz <= 20 * 1024, "campaigns gzip $gz bytes over the 20 KB budget")
     }
+
+    @Test
+    fun aCutSkuTableStillCountsEveryCampaignSkuAndOnlyTheCutOutletsAreFlagged() {
+        // an outlet whose campaign has 22 SKU targets: the table shows the first 20, the sales are on SKUs 21 and 22 (the two that are cut)
+        val skus = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku ORDER BY id OFFSET 3 LIMIT 22").mapTo(Long::class.java).list() }
+        assertEquals(22, skus.size, "the seed has at least 25 SKUs (the first 3 are used by the other tests)")
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0c4', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val b = "'00000000-0000-4000-8000-00000000b0c4'"
+        val p22 = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSL22', 'Twenty-two SKUs', DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id")
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($p22, DATE '2027-01-01', $o2, 2200, 9, $b)")
+        skus.forEach { x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($p22, DATE '2027-01-01', $o2, $it, 100, $b)") }
+        val m21 = memo(); val m22 = memo()
+        line("2027-01-02", m21, o2, skus[20], 7); line("2027-01-02", m22, o2, skus[21], 5)
+        try {
+            val rows = campaigns()
+            val cut = rows.single { it.l("outlet_id") == o2 }
+            assertEquals(20, cut["skus"]!!.jsonArray.size, "the table is cut at 20 SKUs")
+            assertEquals(true, cut["truncated"]!!.jsonPrimitive.content.toBoolean(), "this outlet's own flag says its table is cut")
+            assertEquals(12L, cut["std"]!!.jsonObject.l("achieved"), "the achieved STD counts the SALES of SKUs 21 and 22 although the table does not list them (7 + 5)")
+            assertEquals(2L, cut["memo"]!!.jsonObject.l("achieved"), "and the memo count counts both memos")
+            val other = rows.single { it.l("outlet_id") == o1 }
+            assertEquals(null, other["truncated"], "an outlet whose table is whole carries no flag")
+            assertEquals(true, bundle().full.routes.single { it.route_id == route }.campaigns_truncated, "the route-level flag stays")
+        } finally {
+            x("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid IN (CAST('$m21' AS uuid), CAST('$m22' AS uuid))")   // synced rows are tombstoned, never deleted
+            x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p22"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p22"); x("DELETE FROM app.programme WHERE id = $p22")
+        }
+    }
 }
