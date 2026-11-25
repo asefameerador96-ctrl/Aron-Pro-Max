@@ -127,7 +127,7 @@ class EveryWriterIsGatedTest {
         val found = discovered()
         assertTrue("the discovery found only ${found.size} files: it is broken", found.size >= 8)
         val unknown = found - gatedFiles - systemWriters.keys
-        assertEquals("these files write (outbox insert or a Room write transaction) but are on neither list: gate them (ActionGate.requireOpen() first) and add them to gatedFiles, or add them to systemWriters WITH a reason: $unknown", emptySet<String>(), unknown)
+        assertEquals("these files write (outbox insert, a Room write transaction or a direct DAO write) but are on neither list: gate them (ActionGate.requireOpen() first) and add them to gatedFiles, or add them to systemWriters WITH a reason: $unknown", emptySet<String>(), unknown)
         val stale = (systemWriters.keys - found)
         assertEquals("a stale system allow-list hides a renamed writer: $stale", emptySet<String>(), stale)
     }
