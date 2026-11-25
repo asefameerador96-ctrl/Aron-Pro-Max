@@ -494,3 +494,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - **Train 132 LANDED**: INT 3b9f6e6883 (fast-forward of 7d12b16300 + row). Lane CI 45568535116 18/18; integration CI 45574176330 green with non-Android jobs skipped by the filter (lead's read); deploy #372 skipped by design (live build stays 2767ef1eaa). APK aron-release-signed-dev-2558 42,277,015 B (+0.04 %). Size gate: 10 warnings, no failure; sr-release armeabi-v7a +11.5 % (highest), arm64-v8a +10.6 %; amo about +10 %; tso -0.5 %.
 - Four trains today (129 to 132). On the integration branch now: CI migration gate (every merge-base), SR parity fixes, SR programme screens (SKU target, Home STD, KPI dashboard, brand-wise KPI, Lifting Star, outlet target page and pop-up), KPI by_pack category_code (contract 1.25.0).
 - Not verified for any of them: a device; migrate/start-up consoles; a live by_pack entry.
+
+## 2026-11-25 10:20 UTC
+
+- **Train 133 LANDED**: INT da7fd7b1f5 (fast-forward of 2efcbb9bf3 + row). Lane CI 45580513429 18/18; integration CI 45587315871 green (lead's read); oasdiff "0 breaking change(s) ... 1.25.0 -> 1.26.0"; deploy #373 succeeded (no migration files, worker 0 restarts, SR smoke passed); health read by the lead: build da7fd7b1f5. APK aron-release-signed-dev-2564 42,277,070 B. Not observable live: the new campaign figures, the per-outlet flag and the RouteStar fields (lane tests only).
+- **Train 134** (Android + CI gate) being built: size lane f30ce2d2a.
+- T-KPI4 told it may push its local round 596e3ecbc after merging INT (tests, log text, contract wording); short check, then it rides the next server train.
+- Next lane to start: programmes successor (phone uses category_code, the per-outlet cut flag, complete campaign achievement, Star SKU list for "today on this phone").
