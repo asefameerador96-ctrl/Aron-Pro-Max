@@ -233,3 +233,7 @@ Truth table over servers 1.25, 1.26 and 1.27 and every cut combination: no paylo
 Lows: orphan KDoc above perOutletCut and two stale KDoc lines; no test for two routes of different shapes in one list; a malformed entry dropped by the parser can change the reading (as before this diff).
 
 Not verified: any of this on a device or against a live 1.27.0 bundle.
+
+# b38ea3405e (delta on ec48c3684d), 2026-11-25: PASS (lead's own read of the 16-line production delta)
+
+OutletTargetModel reads the old-style route flag per route (the entry's own route) and no longer across all routes; accepted because the server computes the cap and flags per route (SrCampaigns.load). An outlet with no entry on any route still gets the cut note when any route's list may be cut. KDoc corrections; tests nY1 to nY4 (two routes of different shapes); device-walk list added (written from code, not from a phone). Low: one inline comment in build() still says "a 1.26.0 route (some entry carries the flag)". Not run by the lead; lane CI 45650554059 green by the lane's report.
