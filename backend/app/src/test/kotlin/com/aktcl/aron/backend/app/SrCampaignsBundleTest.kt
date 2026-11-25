@@ -135,6 +135,7 @@ class SrCampaignsBundleTest {
             assertEquals(390, c["std"]!!.jsonObject.l("achieved"))
             assertEquals(true, c["truncated"]!!.jsonPrimitive.content.toBoolean(), "this outlet's own flag says another active campaign of the outlet is not shown (second-campaign branch)")
             assertEquals(true, bundle().full.routes.single { it.route_id == route }.campaigns_truncated, "a second active campaign at the outlet was not shown: the route says so (never a silent drop)")
+            assertEquals(null, bundle().full.routes.single { it.route_id == route }.campaigns_outlets_truncated, "an outlet with a hidden second campaign is still a COMPLETE outlet: no outlet is missing")
         } finally {
             x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p2"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p2"); x("DELETE FROM app.programme WHERE id = $p2")
         }
@@ -191,7 +192,7 @@ class SrCampaignsBundleTest {
             assertEquals(12L, cut["std"]!!.jsonObject.l("achieved"), "the achieved STD counts the SALES of SKUs 21 and 22 although the table does not list them (7 + 5)")
             assertEquals(2L, cut["memo"]!!.jsonObject.l("achieved"), "and the memo count counts both memos")
             val other = rows.single { it.l("outlet_id") == o1 }
-            assertEquals(null, other["truncated"], "an outlet whose table is whole carries no flag")
+            assertEquals(false, other["truncated"]!!.jsonPrimitive.content.toBoolean(), "an outlet whose table is whole carries false (the member is on every entry from 1.27.0)")
             assertEquals(true, bundle().full.routes.single { it.route_id == route }.campaigns_truncated, "the route-level flag stays")
         } finally {
             x("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid IN (CAST('$m21' AS uuid), CAST('$m22' AS uuid))")   // synced rows are tombstoned, never deleted
@@ -224,5 +225,48 @@ class SrCampaignsBundleTest {
             x("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid IN (CAST('$m21' AS uuid), CAST('$m22' AS uuid), CAST('$mc' AS uuid))")
             x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id IN ($chosen, $second)"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id IN ($chosen, $second)"); x("DELETE FROM app.programme WHERE id IN ($chosen, $second)")
         }
+    }
+
+    @Test
+    fun everyEntryCarriesTruncatedAndTheRouteSaysWhenOutletsThemselvesAreMissing() {
+        // contract 1.27.0: `truncated` is on EVERY entry (false when whole) so the phone can tell a 1.26+ route; `campaigns_outlets_truncated` is true only when the outlet LIST was cut by the cap
+        val solo = campaigns().single()
+        assertEquals(false, solo["truncated"]!!.jsonPrimitive.content.toBoolean(), "an uncut outlet carries false, not an absent member")
+        assertEquals(null, bundle().full.routes.single { it.route_id == route }.campaigns_outlets_truncated, "nothing cut: the route-level flag is absent")
+        // a second campaign outlet (o2) with a one-SKU table; the cap lets ONE outlet through: the route is over the outlet cap, and NO shown outlet is itself cut
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0c5', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val b = "'00000000-0000-4000-8000-00000000b0c5'"
+        val p = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSLO', 'Outlet cap', DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id")
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($p, DATE '2027-01-01', $o2, 10, 1, $b)")
+        x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($p, DATE '2027-01-01', $o2, $skuA, 10, $b)")
+        try {
+            val capped = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SrCampaigns.Result, Exception> { h ->
+                com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1, o2)), day, day.minusDays(1), maxOutlets = 1).getValue(route)
+            }
+            assertEquals(listOf(o1), capped.rows.map { it.l("outlet_id") }, "the lowest outlet id passes the cap")
+            assertEquals(false, capped.rows.single()["truncated"]!!.jsonPrimitive.content.toBoolean(), "the shown outlet is whole: its own flag is false")
+            assertTrue(capped.outletsTruncated, "but outlets are missing: the route-level outlet flag says so"); assertTrue(capped.truncated, "and campaigns_truncated (the OR) is true")
+            val whole = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SrCampaigns.Result, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1, o2)), day, day.minusDays(1)).getValue(route) }
+            assertEquals(2, whole.rows.size); assertEquals(false, whole.outletsTruncated); assertEquals(false, whole.truncated)
+            assertTrue(whole.rows.all { it["truncated"]!!.jsonPrimitive.content == "false" })
+        } finally { x("DELETE FROM app.outlet_campaign_sku_target WHERE programme_id = $p"); x("DELETE FROM app.outlet_campaign_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p") }
+    }
+
+    @Test
+    fun aBundleWithMoreThan150CampaignOutletsSaysOutletsAreMissing() {
+        // bundle level: 151 cloned outlets on the route (plus o1) enrolled in the campaign; the cap is 150, the lowest outlet ids pass
+        x("INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel, lat, lng, location_basis, location_confirmed, status, visit_sequence) SELECT 'TC'||g, 'Cap clone '||g, 'Owner', zone_id, route_id, cluster_id, channel, lat, lng, location_basis, location_confirmed, 'active', 100 + g FROM app.outlet, generate_series(1, 151) g WHERE id = $o1")
+        val clones = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE code LIKE 'TC%' ORDER BY id").mapTo(Long::class.java).list() }
+        assertEquals(151, clones.size)
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('00000000-0000-4000-8000-00000000b0c6', decode(repeat('ab', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        val b = "'00000000-0000-4000-8000-00000000b0c6'"
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) SELECT $programme, DATE '2027-01-01', id, 10, 1, $b FROM app.outlet WHERE code LIKE 'TC%'")
+        try {
+            val r = bundle().full.routes.single { it.route_id == route }
+            assertEquals(150, r.campaigns!!.size, "the list is cut at the outlet cap")
+            assertEquals(true, r.campaigns_outlets_truncated, "outlets are missing: the route says so")
+            assertEquals(true, r.campaigns_truncated, "and the OR flag is true")
+            assertTrue(r.campaigns!!.all { it.jsonObject["truncated"]!!.jsonPrimitive.content == "false" }, "no shown outlet is itself cut")
+        } finally { x("DELETE FROM app.outlet_campaign_target WHERE outlet_id IN (SELECT id FROM app.outlet WHERE code LIKE 'TC%')"); x("DELETE FROM app.outlet WHERE code LIKE 'TC%'") }
     }
 }

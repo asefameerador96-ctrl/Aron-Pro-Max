@@ -7113,7 +7113,7 @@ export interface components {
             month: components["schemas"]["Month"];
             through_date: components["schemas"]["BusinessDate"];
             as_of: components["schemas"]["Timestamp"];
-            /** @description True (present only when true) when THIS outlet's `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap. Contract 1.26.0, optional. */
+            /** @description SENT ON EVERY ENTRY from 1.27.0 (true or false; absent from an older server, so its presence tells the phone this is a 1.26+ route). True when THIS outlet's `skus` table is cut at the SKU cap or another active campaign of the outlet is not shown; the figures `std` and `memo` still cover ALL the shown campaign's SKUs of the outlet, so a cut table never under-reports the achieved STD or the memo count. The route-level `campaigns_truncated` stays the OR of these and the outlet cap; `campaigns_outlets_truncated` says the outlet list itself was cut. Contract 1.26.0 (always sent from 1.27.0), optional. */
             truncated?: boolean | null;
             std: components["schemas"]["CampaignFigure"];
             memo: components["schemas"]["CampaignFigure"];
@@ -7140,7 +7140,7 @@ export interface components {
             /** Format: int64 */
             sold_qty_base: number;
         };
-        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0. */
+        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. A row with neither `sku_ids` nor `sku_category` (the programme names a category outside the enum and lists no usable SKU) gives the phone no SKU rule: it shows no "today on this phone" line for the Star. Contract 1.24.0. */
         RouteStar: {
             programme_id: components["schemas"]["Id"];
             programme_code: string;
@@ -7161,7 +7161,7 @@ export interface components {
             sku_category?: "cigarette" | "bidi" | "match" | "lighter" | null;
             /** @description The explicit SKU ids the STD and LMS count (the programme rule `sku_ids`), present only when the rules list them; then `sku_category` is absent. The list is cleaned on the server (distinct, existing in the catalogue) and ordered ASCENDING BY ID. Contract 1.26.0, optional. */
             sku_ids?: components["schemas"]["Id"][] | null;
-            /** @description True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. Contract 1.26.0, optional. */
+            /** @description True when the CLEANED rule list (distinct, existing SKUs) holds more than 500 ids and `sku_ids` holds the first 500 in ascending id order (the STD itself counts all of them); absent otherwise. When true, the phone's local "today on this phone" figure is incomplete (it can only match the 500 SKUs carried). Contract 1.26.0, optional. */
             sku_ids_truncated?: boolean | null;
             /** @description Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`. */
             lmwd: number;
@@ -7219,6 +7219,8 @@ export interface components {
             campaigns?: components["schemas"]["RouteCampaign"][] | null;
             /** @description True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional. */
             campaigns_truncated?: boolean | null;
+            /** @description True or null (never false) when the route had more than 150 campaign outlets and the list `campaigns` was cut at 150 (lowest outlet id first), so OUTLETS ARE MISSING. Null or absent: the list holds every campaign outlet of the route (an entry with `truncated` true is still a complete outlet whose SKU table is cut). `campaigns_truncated` stays the OR of every cut. Contract 1.27.0, optional. */
+            campaigns_outlets_truncated?: boolean | null;
             /** @description True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional. */
             targets_truncated?: boolean | null;
             /** @description True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional. */
