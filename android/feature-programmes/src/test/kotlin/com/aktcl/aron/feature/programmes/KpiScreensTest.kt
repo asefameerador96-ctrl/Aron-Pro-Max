@@ -137,4 +137,18 @@ class KpiScreensTest {
         compose.onNodeWithText("Target 100 packet · 30 dozen - KPI Today —").assertExists()
         assertEquals(0, compose.onAllNodesWithTag(KpiTags.LEFT_OUT).fetchSemanticsNodes().size)
     }
+
+    @Test fun aBidiOrUnknownCategoryIsPrintedWithItsWordAndADashNeverLeftOut() {
+        val b = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("bidi", null), KpiCategoryVolume("gift", null)))
+        show(AppLanguage.EN) { BrandKpiScreen(data!!.copy(brands = data.brands + b), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("Target 100 packet · Bidi — · Other — - KPI Today —").assertExists()
+    }
+
+    @Test fun theSamePartsInBanglaUseTheResourceWordsAndSeparator() {
+        val b = KpiBrandRow(77, BrandName("Mixed Co", null), null, null, null, 5, null, null, 0, null,
+            listOf(KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), KpiCategoryVolume("bidi", null)))
+        show(AppLanguage.BN) { BrandKpiScreen(data!!.copy(brands = data.brands + b), KpiKind.VOLUME, it) }
+        compose.onNodeWithText("বিড়ি —", substring = true).assertExists()
+    }
 }

@@ -119,6 +119,14 @@ class SrKpiScreenshotTests {
             }, KpiKind.VOLUME, UiLocale.BN)
         }
     }
+    @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_mixed_bidi_pending() = shot("kpi_brands_bn_mixed_bidi_pending") {
+        Frame(ProgR.string.pg_kpi_brands_title) {
+            BrandKpiScreen(kpi()!!.let { d ->
+                d.copy(brands = d.brands + com.aktcl.aron.feature.programmes.KpiBrandRow(6, BrandName("Mixed Co", "মিক্সড কো"), null, null, null, 50, 4000, null, 0, null,
+                    listOf(com.aktcl.aron.feature.programmes.KpiCategoryVolume("cigarette", FieldQty(100_000, "packet")), com.aktcl.aron.feature.programmes.KpiCategoryVolume("bidi", null))))
+            }, KpiKind.VOLUME, UiLocale.BN)
+        }
+    }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_bn_memo() = shot("kpi_brands_bn_memo") { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.MEMO, UiLocale.BN) } }
     @Test @Config(qualifiers = "bn-w360dp-h900dp") fun kpi_brands_en_blm() = shot("kpi_brands_en_blm", AppLanguage.EN) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.BLM, UiLocale.EN) } }
     @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun kpi_brands_bn_font20() = shot("kpi_brands_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_kpi_brands_title) { BrandKpiScreen(kpi(), KpiKind.VOLUME, UiLocale.BN) } }

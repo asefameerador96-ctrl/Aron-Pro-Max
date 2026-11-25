@@ -219,6 +219,11 @@
     <string name="pg_kpi_target_line">Target %1$s - KPI Today %2$s</string>
     <string name="pg_kpi_cat_match">Match</string>
     <string name="pg_kpi_cat_lighter">Lighter</string>
+    <string name="pg_kpi_part_cigarette">Cigarette</string>
+    <string name="pg_kpi_part_bidi">Bidi</string>
+    <string name="pg_kpi_part_other">Other</string>
+    <string name="pg_kpi_part_sep">" · "</string>
+    <string name="pg_kpi_part_unknown">%1$s —</string>
     <string-array name="pg_months_full">
         <item>January</item><item>February</item><item>March</item><item>April</item><item>May</item><item>June</item>
         <item>July</item><item>August</item><item>September</item><item>October</item><item>November</item><item>December</item>

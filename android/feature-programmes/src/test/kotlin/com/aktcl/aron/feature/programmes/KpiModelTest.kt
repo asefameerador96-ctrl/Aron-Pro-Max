@@ -285,4 +285,25 @@ class KpiModelTest {
         assertEquals("cigarette", f.kpi!!.brands.single().byPack.single().categoryCode)
         assertNull(RouteFigures.parse("""{"route_id":7,"kpi":${kpi(listOf(brand(1, 20, 0, 1, 0)))}}""")!!.kpi!!.brands.single().byPack.single().categoryCode)
     }
+
+    // lead review B1 + lows
+    @Test fun c9_aBidiOrUnknownCategoryEntryIsKeptAsItsOwnCategoryWithNoUnitNeverDropped() {
+        val bidi = brand(1, 2500, 0, 5, 0, packs = coded(Triple("cigarette", 20, 2000L to 0L), Triple("bidi", 25, 500L to 0L)))
+        val r = KpiModel.build(listOf(route(kpi(listOf(bidi), vol = """{"target":2000,"achieved":0,"bp":0}"""))), names, emptyMap())!!.brands.single()
+        assertEquals(listOf("cigarette", "bidi"), r.categoryVolumes.map { it.categoryCode }); assertEquals("100", KpiModel.qtyText(r.categoryVolumes[0].target!!, UiLocale.EN)); assertNull(r.categoryVolumes[1].target)
+        val unk = brand(1, 2500, 0, 5, 0, packs = coded(Triple("cigarette", 20, 2000L to 0L), Triple("gift", 1, 500L to 0L)))
+        val u = KpiModel.build(listOf(route(kpi(listOf(unk)))), names, emptyMap())!!.brands.single()
+        assertEquals(listOf("cigarette", "gift"), u.categoryVolumes.map { it.categoryCode }); assertNull(u.categoryVolumes[1].target)
+    }
+
+    @Test fun c10_aLighterIsABoxOnlyAtPackSize25OtherwisePiecesWithTheirWord() {
+        fun l(f: Int) = KpiModel.build(listOf(route(kpi(listOf(brand(4, 100, 0, 5, 0, packs = coded(Triple("lighter", f, 100L to 0L)))), vol = """{"target":0,"achieved":0,"bp":null}"""))), names, emptyMap())!!.brands.single().categoryVolumes.single().target!!
+        assertEquals("box", l(25).unitKey); assertEquals("4", KpiModel.qtyText(l(25), UiLocale.EN))
+        assertEquals("piece", l(10).unitKey); assertEquals("100", KpiModel.qtyText(l(10), UiLocale.EN))
+    }
+
+    @Test fun c11_aPaddedCategoryCodeIsTrimmedBeforeLowercasing() {
+        val f = RouteFigures.parse("""{"route_id":7,"kpi":${kpi(listOf(brand(1, 20, 0, 1, 0, packs = """[{"pack_factor":20,"category_code":" Cigarette ","target":20,"achieved":0}]""")))}}""")!!
+        assertEquals("cigarette", f.kpi!!.brands.single().byPack.single().categoryCode)
+    }
 }

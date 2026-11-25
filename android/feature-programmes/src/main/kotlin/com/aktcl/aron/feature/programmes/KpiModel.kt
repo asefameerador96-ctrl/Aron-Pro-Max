@@ -159,8 +159,9 @@ object KpiModel {
         return when (code) {
             "cigarette" -> pairFromPacks(packs, "packet", t, a, null).target
             "match" -> FieldQty(t * 1000L, "dozen")
-            "lighter" -> pairFromPacks(packs, "box", t, a, null).target
-            else -> null
+            // a box is 25 pieces: another pack size is shown in pieces with their word, never as boxes
+            "lighter" -> if (packs.all { it.packFactor == 25 }) pairFromPacks(packs, "box", t, a, null).target else FieldQty(t * 1000L, "piece")
+            else -> null // bidi (unit pending the owner) or an unknown category: the screen prints the category with a dash, never leaves it out
         }
     }
 

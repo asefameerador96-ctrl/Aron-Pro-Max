@@ -123,6 +123,10 @@ fun KpiDashboardScreen(
     }
 }
 
+@Composable private fun partCategoryName(code: String) = stringResource(
+    when (code) { "cigarette" -> R.string.pg_kpi_part_cigarette; "bidi" -> R.string.pg_kpi_part_bidi; "match" -> R.string.pg_kpi_cat_match; "lighter" -> R.string.pg_kpi_cat_lighter; else -> R.string.pg_kpi_part_other },
+)
+
 @Composable private fun categoryName(code: String) = stringResource(if (code == "match") R.string.pg_kpi_cat_match else R.string.pg_kpi_cat_lighter)
 
 @Composable private fun Note(text: String, tag: String) {
@@ -309,9 +313,12 @@ fun BrandKpiScreen(data: KpiData?, kind: KpiKind, locale: UiLocale, modifier: Mo
             } else (if (kind == KpiKind.VOLUME) data.volumeBrands else data.brands).forEach { b ->
                 val cols = listOf(stringResource(R.string.pg_kpi_volume) to KpiModel.bpText(b.volumeBp, locale), stringResource(R.string.pg_kpi_memo) to KpiModel.bpText(b.memoBp, locale))
                 // every row prints its unit: the volume in the brand's own unit (a brand whose unit the phone cannot tell is a dash with a note), the memo target as a count of memos
-                val perCategory = b.categoryVolumes.mapNotNull { c -> c.target?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) } }
-                // a brand of several categories (a 1.25.0 server) shows each in its own unit, never added; the dot is a separator, not a sum
-                val target = if (volumeFirst) (if (b.volumeTarget == null && perCategory.isNotEmpty()) perCategory.joinToString(" · ") else b.volumeTarget?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) }) ?: (Percent.DASH + " (" + stringResource(R.string.pg_kpi_unit_unknown) + ")")
+                val perCategory = b.categoryVolumes.map { c ->
+                    c.target?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) } // a category whose unit is not known yet is still a part of its own (category word and a dash), never left out
+                        ?: stringResource(R.string.pg_kpi_part_unknown, partCategoryName(c.categoryCode))
+                }
+                // a brand of several categories (a 1.25.0 server) shows each in its own unit, never added; the separator is a separator, not a sum
+                val target = if (volumeFirst) (if (b.volumeTarget == null && perCategory.isNotEmpty()) perCategory.joinToString(stringResource(R.string.pg_kpi_part_sep)) else b.volumeTarget?.let { KpiModel.qtyText(it, locale) + " " + unitWord(it.unitKey) }) ?: (Percent.DASH + " (" + stringResource(R.string.pg_kpi_unit_unknown) + ")")
                 else Formats.integer(b.memoTarget, locale) + " " + unitWord("memo")
                 BrandRow(KpiTags.brand(b.brandId), b.name?.text(locale) ?: "#${b.brandId}", stringResource(R.string.pg_kpi_target_line, target, KpiModel.takaText(b.kpiTodayMtk, locale)), if (volumeFirst) cols else cols.reversed())
             }

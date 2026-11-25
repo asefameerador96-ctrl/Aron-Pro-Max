@@ -122,7 +122,7 @@ data class RouteFigures(
 
         private fun packs(o: JsonObject): List<PackFigure> = o.list("by_pack").mapNotNull { e ->
             val p = e as? JsonObject ?: return@mapNotNull null
-            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null, p.str("category_code")?.lowercase()?.takeIf { it.isNotBlank() })
+            PackFigure(p.int("pack_factor")?.takeIf { it > 0 } ?: return@mapNotNull null, p.long("target") ?: return@mapNotNull null, p.long("achieved") ?: return@mapNotNull null, p.str("category_code")?.trim()?.lowercase()?.takeIf { it.isNotBlank() })
         }
 
         private fun total(o: JsonObject?): KpiTotal? = o?.let { KpiTotal(it.long("target") ?: return null, it.long("achieved") ?: return null, it.long("bp")) }
