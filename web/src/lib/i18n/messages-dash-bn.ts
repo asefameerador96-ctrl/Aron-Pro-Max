@@ -372,7 +372,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "home.extras.rank": "টিএসও / জোন র\u200d্যাংকিং",
   "home.extras.sr_note": "ব্যবসায়িক তারিখে আপনার জোনের এসআর, সর্বোচ্চ নিট বিক্রয় আগে।",
   "home.extras.rank_note": "ব্যবসায়িক তারিখে আপনার এলাকার টিম, সর্বোচ্চ নিট বিক্রয় আগে।",
-  "dashboard.auto_refresh": "এই ট্যাব খোলা থাকলে প্রতি মিনিটে নিজে হালনাগাদ হয়।",
+  "dashboard.auto_refresh": "এই ট্যাব খোলা থাকলে প্রতি ৩০ সেকেন্ডে নিজে হালনাগাদ হয়।",
   "drill.open": "বিস্তারিত",
   "drill.back": "ড্যাশবোর্ডে ফিরুন",
   "drill.cat.routes": "{name}: রুট",

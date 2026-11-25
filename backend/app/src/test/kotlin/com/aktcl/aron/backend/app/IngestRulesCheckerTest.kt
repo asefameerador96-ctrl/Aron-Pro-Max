@@ -100,13 +100,16 @@ class IngestRulesCheckerTest {
     private fun JsonObject.s(k: String) = this[k]!!.jsonPrimitive.content
     private fun JsonObject.p(k: String, v: JsonElement) = JsonObject(this + ("payload" to JsonObject(this["payload"]!!.jsonObject + (k to v))))
 
+    private var cachedToken: String? = null   // one login per class: the per-username login limiter allows 10 per window and this class has more tests than that
+
     private suspend fun HttpClient.token(): String {
+        cachedToken?.let { return it }
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
             setBody("""{"username":"sr1001","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""")
         }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        return json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content
+        return json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content.also { cachedToken = it }
     }
 
     private fun gz(s: String): ByteArray = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(s.toByteArray()) } }.toByteArray()
@@ -260,6 +263,53 @@ class IngestRulesCheckerTest {
         assertEquals(listOf("accepted", "accepted"), codes(client.ok(token, batch(fam.take(2)))), "visit and memo header")
         assertEquals(List(fam.size - 2) { "accepted" }, codes(client.ok(token, batch(fam.drop(2)))), "the late children")
         assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND net_mtk < 0 AND cardinality(COALESCE(server_flags, '{}')) = 0"))
+    }
+
+    // memo kind and line count must agree (zero_sale iff line_count = 0): quarantined arithmetic_mismatch, never rejected, never stored half way.
+    private fun kindLines(uuid: String) = count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$uuid' AND code = 'arithmetic_mismatch' AND detail LIKE '%memo_kind_lines:%'")
+
+    @Test
+    fun checkerAZeroSaleMemoThatCarriesLinesIsQuarantinedWithItsFamily() = testApplication {
+        app()
+        val token = client.token()
+        val fam = memoFamily(twoLines()).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("zero_sale")) }
+        val memo = fam[1].s("client_uuid")
+        val c = codes(client.ok(token, batch(fam)))
+        assertEquals("quarantined:arithmetic_mismatch", c[1], "the memo: $c"); assertEquals("quarantined:arithmetic_mismatch", c[2], "its lines are held with it: $c")
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"), "nothing of the memo is stored")
+        assertEquals(1, kindLines(memo), "one quarantine item with the typed detail")
+    }
+
+    @Test
+    fun checkerASaleMemoWithNoLinesIsQuarantinedAndNormalKindsAreUnchanged() = testApplication {
+        app()
+        val token = client.token()
+        val bad = memoFamily(emptyList()).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("sale")) }
+        assertEquals("quarantined:arithmetic_mismatch", codes(client.ok(token, batch(bad)))[1], "a 'sale' that states line_count 0")
+        assertEquals(1, kindLines(bad[1].s("client_uuid")))
+        val sale = memoFamily(twoLines()); val zero = memoFamily(emptyList())
+        assertEquals(List(sale.size) { "accepted" }, codes(client.ok(token, batch(sale))), "a normal sale is stored")
+        assertEquals(List(zero.size) { "accepted" }, codes(client.ok(token, batch(zero))), "a normal zero sale is stored")
+    }
+
+    @Test
+    fun checkerAZeroSaleHeaderThatStatesLinesIsQuarantinedWhenItComesFirstAndAReUploadAddsNothing() = testApplication {
+        app()
+        val token = client.token()
+        val fam = memoFamily(twoLines()).toMutableList().also { it[1] = it[1].p("memo_kind", JsonPrimitive("zero_sale")) }
+        val memo = fam[1].s("client_uuid")
+        // the header alone first (its lines come later): the header check holds on its own
+        assertEquals("quarantined:arithmetic_mismatch", codes(client.ok(token, batch(fam.take(2))))[1])
+        val items = count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$memo'")
+        assertEquals(1, items)
+        // the phone resends the same header: no second quarantine item and no stored memo
+        client.ok(token, batch(fam.take(2)))
+        assertEquals(items, count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$memo'"), "a re-upload of the same quarantined memo adds no second item")
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
+        // and the whole family again, in one batch
+        client.ok(token, batch(fam))
+        assertEquals(1, count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$memo'"), "still one item for the memo after the family is resent")
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
     }
 
     // F-SYS-062 / s7.4 "line_count = the number of child records": more lines than the header states, all in one batch.
