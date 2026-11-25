@@ -227,4 +227,24 @@ class FigureRuleBTest {
         assertEquals(emptyList<String>(), d2.add.map { it.uuid }) // the original may be in the figure: nothing can be netted
         assertEquals(2, FigureRuleB.unknownOrder(listOf(earlyOld, earlyEdit), false, month, through)) // and the note says so
     }
+
+    @Test fun anEditChainOfThreeAllAfterThroughDateCountsTheNewestOnceAndNamesNothing() {
+        val through = "2026-11-04"
+        val a = lm("a", "2026-11-17", "acked", 10); val b = lm("b", "2026-11-17", "acked", 11, supersedes = "a"); val c = lm("c", "2026-11-17", "pending", 12, supersedes = "b")
+        val d = FigureRuleB.delta(listOf(a, b, c), null, month, through)!!
+        assertEquals(listOf("c"), d.add.map { it.uuid })
+        assertEquals(0, FigureRuleB.unknownOrder(listOf(a, b, c), false, month, through))
+    }
+
+    @Test fun anEditChainOfThreeWhoseRootIsDatedUpToThroughDateIsLeftOutAndNotCountedTwice() {
+        val through = "2026-11-04"
+        val a = lm("a", "2026-11-03", "acked", 10)                       // may be in the figure
+        val b = lm("b", "2026-11-17", "acked", 11, supersedes = "a")
+        val c = lm("c", "2026-11-17", "pending", 12, supersedes = "b")
+        val d = FigureRuleB.delta(listOf(a, b, c), null, month, through)!!
+        assertEquals(emptyList<String>(), d.add.map { it.uuid }) // never a double count: c is NOT added while a may already be in the figure
+        assertEquals(2, FigureRuleB.unknownOrder(listOf(a, b, c), false, month, through)) // a (may be in) and c (the edit); b is counted by its edit c
+        val shown = FigureRuleB.show(FigureRuleB.ServerFigure(100, 1), listOf(a, b, c), null, month, through)!!
+        assertEquals(100L, shown.qtyBase)
+    }
 }

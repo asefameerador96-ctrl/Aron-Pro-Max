@@ -147,3 +147,8 @@ tasks.withType<Test>().configureEach {
         },
     ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
 }
+
+// D-AGATE-31: UnitsAcceptanceTest reads the seed SKU catalogue (db/seed/sku_catalog.csv), outside the android tree.
+tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.layout.projectDirectory.file("db/seed/sku_catalog.csv")).withPropertyName("skuCatalogSeed").withPathSensitivity(PathSensitivity.RELATIVE)
+}

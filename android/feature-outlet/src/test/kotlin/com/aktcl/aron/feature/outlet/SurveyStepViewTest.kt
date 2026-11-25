@@ -32,4 +32,10 @@ class SurveyStepViewTest {
 
     @Test fun theDropdownSpeaksItsQuestionAndItsAnswer() { show("Yes"); assertEquals("Is there POSM at your outlet?, Answer: Yes", spoken()) }
     @Test fun anUnansweredDropdownSpeaksItsQuestionAndTheHint() { show(null); assertEquals("Is there POSM at your outlet?, Answer: Select", spoken()) }
+
+    @Test fun theContentItemIsNamedForTalkBack() {
+        rule.setContent { AronTheme(AppLanguage.EN) { ContentStepView("KV", "Close", {}, "Key visual (KV) picture") { } } }
+        val d = rule.onNodeWithTag(CallContentTags.PICTURE).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ")
+        assertEquals("Key visual (KV) picture", d)
+    }
 }

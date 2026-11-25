@@ -28,3 +28,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.snakeyaml.engine)
 }
+
+// D-AGATE-31: the tests read contract/openapi.yaml (ContractYaml, via the aron.openapi property, which Gradle does not see as a file): declare it as an input.
+tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.layout.projectDirectory.file("contract/openapi.yaml")).withPropertyName("contractYaml").withPathSensitivity(PathSensitivity.RELATIVE)
+}
