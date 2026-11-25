@@ -87,7 +87,7 @@ object StarFormat {
  * Match Box Lifting Star (manual 62): the server's snapshot as sent (`RouteSnapshot.star`), read-only, in the reference layout: the title block, the Target / STD / Projection = Achievement row, the LMS /
  * LMADS / PADS = Growth row, the Status, Achieved Slab and Slab Amount pills and the Projected Amount band. Every ratio is the SERVER's figure with its through_date; a figure the server could not
  * compute (a divisor of 0) is a dash, never 0, and the slab and projected amounts are a dash with "Tk" until a slab is reached. When last month has not closed at the cut the page says LMS and LMADS are not final.
- * [stars] empty is the empty state; loading and error belong to the host. The phone's own sales are not shown here: the programme's SKU list is not in the bundle.
+ * [stars] empty is the empty state; loading and error belong to the host. Under a row whose server figures name the SKUs the STD counts (`sku_ids` or `sku_category`, contract 1.26.0) a separate "today on this phone" line shows this phone's own sales since the closed day, in the programme unit, never added to the STD (see [StarTodayModel]).
  */
 @Composable
 fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Modifier, truncated: Boolean = false, offline: Boolean = false, today: List<StarToday?> = emptyList()) {
@@ -163,8 +163,9 @@ fun StarScreen(stars: List<RouteStar>, locale: UiLocale, modifier: Modifier = Mo
         }
         // this phone's own sales since the closed day, SEPARATE from the server's STD (never added to it) and only when the row names the SKUs it counts
         if (today != null) Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val memos = if (today.failed) Percent.DASH else pluralStringResource(R.plurals.pg_star_today_memos, today.memoCount.coerceIn(0L, 1_000_000L).toInt(), StarTodayModel.memoCountText(today, locale))
             Text(
-                stringResource(if (today.incomplete) R.string.pg_star_today_partial else R.string.pg_star_today, StarTodayModel.qtyText(today, locale), Formats.integer(today.memoCount, locale)),
+                stringResource(if (today.failed) R.string.pg_star_today_failed else if (today.incomplete) R.string.pg_star_today_partial else R.string.pg_star_today, StarTodayModel.qtyText(today, locale), memos),
                 Modifier.testTag(StarTags.TODAY), style = TextStyle(fontSize = 14.sp, color = look.ink),
             )
             if (today.unconfirmedEarlier > 0) Text(

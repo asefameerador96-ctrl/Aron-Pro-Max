@@ -437,25 +437,25 @@ fun BrandKpiHost(day: SrDay, locale: UiLocale, kind: com.aktcl.aron.feature.prog
 internal suspend fun readStars(day: SrDay): StarLoad = withContext(Dispatchers.IO) {
     val (figures, _) = readRouteFigures(day)
     val withStar = figures.filter { it.star != null }
-    val categories = day.reference.skus().associate { it.skuId to it.categoryCode }
-    val acked = day.programmes.ackedBeforeRequest()
-    val memosByMonth = withStar.map { it.star!!.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
-    // "today on this phone" per Star: this route's memos, the SKUs the programme counts (sku_ids or sku_category), in the programme unit; no line when the row names neither
-    val today = withStar.map { f ->
-        val s = f.star!!
-        val keep = com.aktcl.aron.feature.programmes.StarTodayModel.skuFilter(s) { categories[it] } ?: return@map null
-        runCatching {
-            val frame = com.aktcl.aron.feature.programmes.FigureFrame.of(memosByMonth[s.month].orEmpty(), s.month, s.throughDate, s.asOf, acked, memoIn = { it.routeId == null || it.routeId == f.routeId }, lineIn = { keep(it.skuId) })
-            com.aktcl.aron.feature.programmes.StarTodayModel.of(s, frame)
-        }.getOrNull()
+    val rows = withStar.map { it.star!! }
+    val model = com.aktcl.aron.feature.programmes.StarTodayModel
+    // an older server names no SKUs: nothing is read for the line (no new failure path), no line
+    val today = if (rows.none { model.hasRule(it) }) rows.map { null } else try {
+        // the category of EVERY SKU the phone holds (not only the active ones), and this phone's memos of the Star months
+        val categories = day.reference.skuCategories()
+        val acked = day.programmes.ackedBeforeRequest()
+        val memosByMonth = rows.map { it.month }.distinct().associateWith { day.programmes.memosOfMonth(it) }
+        model.forRoutes(withStar, categories, { memosByMonth[it].orEmpty() }, acked)
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) {
+        rows.map { if (model.hasRule(it)) model.failedOf(it) else null } // a dash line, never a vanished one
     }
-    StarLoad(withStar.map { it.star!! }, figures.any { it.starTruncated }, today)
+    StarLoad(rows, figures.any { it.starTruncated }, today)
 }
 
 /** The Star rows of the bundle, whether the bundle cut a list, and the phone's own "today" line of each row (null: the row names no SKUs). */
 internal class StarLoad(val stars: List<com.aktcl.aron.feature.programmes.RouteStar>, val truncated: Boolean, val today: List<com.aktcl.aron.feature.programmes.StarToday?>)
 
-/** Match Box Lifting Star of the SR (manual 62): the downloaded server snapshot, read-only, works offline from the stored bundle. */
+/** Match Box Lifting Star of the SR (manual 62): the downloaded server snapshot, works offline from the stored bundle, with a separate "today on this phone" line under a row that names its SKUs (this phone's own memos, never added to the server STD). */
 @Composable
 fun StarHost(day: SrDay, locale: UiLocale, offline: Boolean = false) {
     val load = rememberAsyncLoad(locale) { readStars(day) }
