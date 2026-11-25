@@ -1313,3 +1313,119 @@ Round b792475026..a7890c654 changes 11 files (+88/-36): DECISIONS.md (D-TKPI-20 
 - low: Merge with integration head 0baf2b4dda is not clean. `git merge-tree --write-tree a7890c654 0baf2b4dda` exits 1. The only conflicted path is DECISIONS.md: both sides appended entries near the file's tail (this branch D-TKPI-20; integration D-PAR-SR1-26..30 and later trains). Fix it by keeping both sides' entries. No code conflict.
 - low: New helper SrTargets.lastMonthWorkingDaysThrough returns 0 when through_date falls before the 1st of last month (a bundle built more than a month ahead). lms is then also 0, so lmads is 0/0. I did not check how StarProgress handles lmwd = 0. The contract text only promises null for the `ewd` divisor. Narrow edge case, and no test covers it.
 - low: The Star month-end test asserts `lmwd` only from the star object, not `calendar.last_month_working_days`. Both come from the same value, because SrStar.kt:73/87 uses `c.last_month_working_days`, so the gap is cosmetic.
+
+# T1 check of 780820b1ab (KPI by_pack category_code, contract 1.25.0, lows round), 2026-11-25
+
+Three Opus reviewers read the diff against the integration branch; nothing was built or run by them. Lane CI run 45539923487: all jobs green except Repository gates (Migrations step, stale base; the fix is in train 129), which skipped oasdiff, slices and Redocly.
+
+## figures-sql: PASS (blocking upheld 0)
+
+I read the diff of the two lane commits (026911530a, b611dd910d) against the integration branch, the request doc, and the landed phone's KpiModel.kt and RouteFigures.kt. Nothing was built or run.
+
+**The figures still add up.** In SrKpi.kt the by_pack maps are now keyed by PackKey(category, base_per_pack). Both sides group finer but read from the same sources as the brand totals:
+- **Target:** the same route_monthly_target query with the sku -> variant -> brand joins, now also grouped by s.category_code.
+- **Achieved:** the same figures lines and the same dim.skus brand and category, filtered on saleQty != 0. The brand total skips lines with no sale line, which adds the same sum.
+
+So for each brand the entries still add up exactly to the sent volume_target / volume_achieved. The cigarette-only Volume total (cigTarget / cigAchieved) is untouched. The match and lighter category rows now key on PackKey(code, pack), so each of their entries carries the row's own category.
+
+**Inactive SKUs, missing categories, ordering:**
+- SKUs of an inactive SKU or variant are counted, because neither the target SQL nor SrMemoFigures.dim filters on status. This was already true before the change.
+- A missing category cannot happen: the column is NOT NULL with a CHECK on the four values.
+- PackKey's equals, hashCode and compareTo agree, so the TreeMap order is deterministic.
+
+**Snapshot, scope and cost:** SrKpi.load still runs on the read-only repeatable-read handle h (BundleService line 543, inside the inSnapshot transaction) and reads only the bundle's own route ids. The query count is unchanged (one more GROUP BY column, no new query, no N+1). Bundle size grows by about 25 bytes per entry, and entries multiply only for brands that mix categories.
+
+**Older phones keep working:**
+- The landed phone parses with ignoreUnknownKeys and builds PackFigure from pack_factor, target and achieved only.
+- It always merges entries with the same pack_factor (groupBy, then sum) in KpiModel lines 79, 84 and 125, so a split pack-1 entry adds back to exactly what it showed before. It cannot show a different number.
+
+**Contract:** category_code is an optional, additive enum in openapi.yaml (1.25.0), the KpiPackFigure slice, INDEX.md and web/src/contract/openapi.d.ts, and they agree with each other. KpiPackFigure has additionalProperties false and the new member is declared. The version test is bumped to 1.25.0, not weakened.
+
+**b611dd910d** adds stronger assertions:
+- a pinned seed-calendar check;
+- a test that a bundle built on a Friday for Saturday anchors on the Friday;
+- checks of the Star figures (ewd, pads, growth_bp, lmads) on an empty month window;
+- descriptions for lms and lmads.
+
+The only removal is a doc-comment sentence (the PARKED POST /v1/sync/figures mention) in SrBundleFiguresIngestTest.kt; no assertion is weakened or deleted.
+
+The new tests prove the split by category and the labels. Their gaps, and one phone-side follow-up, are in the lows.
+
+Lows:
+- SrKpiByPackCategoryTest never checks the two totals that matter most. For the mixed brand it should check that the by_pack entries add up to the brand's volume_target / volume_achieved (2037 / 415), and that KPI volume.target / volume.achieved still count only the cigarette SKUs (2007 / 403), with the match SKU's 30 / 12 left out. Those figures are correct in the code (both sides use the same joins and the same dim.skus brand and category, now just split more finely), but no test pins them.
+- In test 1 the check on the big cigarette pack only runs when the seeded cigarette SKU's base_per_pack is not 1. If the seed ever had a pack of 1, the cigarette pack-1 entry would merge with MIXCIG1 and the test would fail loudly rather than pass weakly, so this is only a readability point. Asserting cigPack != 1 up front would be clearer.
+- anInactiveSkuAndAnInactiveVariantAreCountedAndLabelledLikeAnyOther would also have passed before this change, apart from the category_code label. Neither the target SQL nor SrMemoFigures.dim has ever filtered on status. It is a useful regression guard but does not prove anything new.
+- The `rs.getString(3) ?: ""` and `sku.category ?: ""` fallbacks, which leave category_code out of an entry, can never run. app.sku.category_code is NOT NULL with a CHECK that allows only the four enum values (V0003). Harmless, but the comment could say so, or the code could fail fast instead.
+- The order of by_pack entries is now category first, then pack size (TreeMap with PackKey.compareTo); before it was pack size only. It is deterministic and identical for single-category brands, and the landed phone groups by pack_factor, so order does not matter to it. The order is not documented in KpiPackFigure.
+- Phone side, not this lane: KpiModel's cigarette-volume pack check (flatMap of the cigarette brands' byPack) still includes the match and lighter entries of a mixed brand. Once category_code arrives the phone should filter entries to category_code == cigarette, or the packet total falls back to sticks for such brands. That is the same as today, so it is not a regression.
+
+## contract-compat: PASS (blocking upheld 0)
+
+Verdict: PASS. Contract 1.25.0 is purely additive and optional, and no phone build, landed or pending, can show a wrong number because of the new shape.
+
+**Contract**
+- `KpiPackFigure` gains only an optional `category_code`.
+- Its enum (cigarette, bidi, match, lighter) is exactly the CHECK on app.sku.category_code in V0003.
+- `required` is unchanged, and `contract/openapi.yaml`, `contract/slices/schemas/KpiPackFigure.yaml` and `web/src/contract/openapi.d.ts` (`category_code?:`) agree.
+- `RouteStar.yaml` changed in its descriptions only (of `lms` and `lmads`); the shape is the same.
+- `contract/slices/INDEX.md` and the version test (versionIs1250) are bumped. No other version constant needs it.
+- Every Android JSON parser uses `ignoreUnknownKeys` or reads by field, so the extra member does no harm.
+
+**Server (backend/sync/.../SrKpi.kt)**
+- Both by_pack target queries add `s.category_code` to SELECT and GROUP BY. They stay batched with `route_id = ANY(:r)`: one query per section, no N+1, inside the existing `load(h, ...)` handle, so the snapshot and the rep's routes are unchanged.
+- Achieved is keyed by `dim.skus[..].category`. That is the same column, read from an unfiltered SKU table, so inactive SKUs and variants are counted.
+- The only change is that a former (brand, pack) bucket is split by category. The split entries sum exactly to the old entry, so they still add up to the brand's `volume_target` / `volume_achieved`.
+- BLM category rows have one category each, so their figures are identical to before.
+
+**Phone**
+- The landed phone (the integration branch) has no KpiModel and does not read KPI by_pack at all. Only AsthaModel reads by_pack, and that is Astha's own `by_pack`, a different schema.
+- The pending phone (lane android-sr-programmes) parses `PackFigure(pack_factor, target, achieved)` as a list (RouteFigures.kt:120), with no map. Then:
+  - `merge`, the cigarette total and the category rows use `groupBy { packFactor }` and sum.
+  - `packTotal` is linear per entry, with an LCM denominator that is safe when a pack size repeats.
+  - So two entries with the same pack_factor give exactly what the old merged entry gave. Nothing is overwritten.
+- Worked example (the new test's brand): cigarette 20s 2000/400, match pack 1 30/12, cigarette pack 1 7/3.
+  - Old server: [{1, 37/15}, {20, 2000/400}].
+  - New server: [{cig,1,7/3}, {cig,20,2000/400}, {match,1,30/12}].
+  - On the phone the brand is mixed, so `brandCategory` is absent and the row shows a dash and no percentage. This is unchanged.
+  - If the match SKU were inactive, `resolvedCategory` would see the tree's SKUs sum to 2007 against 2037 and return null, so again a dash.
+  - The brand is excluded from the cigarette pack check either way, so the volume total falls back to sticks exactly as before.
+- The worst case is the existing dash or "unit not clear", never a wrong figure.
+
+**Tests**
+- No test was weakened or deleted. SrBundleFiguresIngestTest only drops a doc-comment sentence, and SrBundleThroughAndSnapshotTest gains a calendar-assumption guard, a Friday-anchor test and Star empty-window asserts.
+- The new SrKpiByPackCategoryTest uses real memos and the real BundleService.
+
+Files reviewed: `/home/user/Aron-Pro-Max/backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/SrKpi.kt`, `/home/user/Aron-Pro-Max/contract/openapi.yaml`, `/home/user/Aron-Pro-Max/contract/slices/schemas/KpiPackFigure.yaml`, `/home/user/Aron-Pro-Max/contract/slices/schemas/RouteStar.yaml`, `/home/user/Aron-Pro-Max/web/src/contract/openapi.d.ts`, `/home/user/Aron-Pro-Max/backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrKpiByPackCategoryTest.kt`, plus the phone's KpiModel.kt and RouteFigures.kt on lane android-sr-programmes.
+
+Lows:
+- SrKpiByPackCategoryTest (new) never asserts that the mixed brand's by_pack entries add up to that brand's volume_target / volume_achieved (expected 2037 / 415). It checks each entry on its own but not the invariant the request depends on. One line would cover it: sum of p target/achieved == brand volume_target/volume_achieved.
+- SrProgrammesEndToEndTest:93 still turns by_pack into a map with `associate { pack_factor to achieved }`. With 1.25.0 a mixed brand has two entries with the same pack_factor, so the map overwrites one of them. The seed has no mixed brand today, and if one appears the test fails loudly (the sum assert on line 95 also catches it), so nothing is hidden. It should still key by (category_code, pack_factor), the same way the server does now.
+- Entry order inside by_pack changed from pack size to (category, pack size) because the TreeMap is keyed by PackKey. The contract states no order and no phone code depends on it (KpiModel uses groupBy and sums; AsthaModel sorts its own list). Deploying this changes the bundle bytes once, which costs one extra resend per route, not a wrong figure. The order could be stated in the KpiPackFigure description.
+- `PackKey(rs.getString(3) ?: "")` and the `if (key.category.isNotEmpty())` that drops category_code cannot be reached: V0003 has app.sku.category_code NOT NULL with CHECK IN (cigarette, bidi, lighter, match), which is exactly the contract enum. This is harmless dead defence; a comment saying why it is there would help.
+
+## tests: PASS (blocking upheld 0)
+
+PASS: nothing blocking. I checked by reading the code only; nothing was run, in line with the read-only rule.
+
+SrKpi.kt: by_pack is now keyed by (category, pack). Both the target query and the achieved sides read the same rows as the brand and category totals, so nothing is double-counted. The entries still add up to volume_target / volume_achieved: both target sums use the same route_monthly_target rows, only grouped by category as well, and both achieved sides count the same sold quantity. sku.category_code is NOT NULL and restricted to the four enum values. It is the same queries with one more grouping column, run on the same handle, so the reads stay inside the snapshot and the rep's routes, and no new query is added. category_code is optional and not in `required`, and it is the same in openapi.yaml, the KpiPackFigure slice and openapi.d.ts. The landed phone (RouteFigures/KpiModel) ignores the field and sums by_pack per pack_factor. That gives exactly the old single entry, so an older phone shows no wrong figure.
+
+Tests:
+- SrKpiByPackCategoryTest, mixed-brand test: does what its name says. It gets a cigarette pack-1 entry and a match pack-1 entry with separate figures, plus the big cigarette pack. On the old code it would throw on the missing category_code.
+- SrKpiByPackCategoryTest, inactive test: counts and labels the inactive SKU and the inactive variant.
+- Neither test checks that the entries add up to the brand totals (low).
+- SrBundleFiguresIngestTest: only a KDoc sentence was removed; no assertion was touched.
+- AmoManualContractTest: version bump only; nothing weakened.
+- Friday-anchor and empty-window tests: they use fixed Instants on an AronClock, and the hand-worked counts are right (6 / false / 20 out of 26; ewd 0, pads and growth_bp null, lmads 0.000).
+- The pinned seed calendar asserts its assumptions. The only seed that depends on the wall clock (06, rolling targets from now()) returns early under the test profile, so no test reads the real date.
+
+The lows are test strength and two inaccurate assertion messages.
+
+Lows:
+- SrKpiByPackCategoryTest never checks that a brand's by_pack entries add up to that brand's volume_target / volume_achieved, though the request asks for exactly that. In the code they still add up: the volume and by_pack target sums come from the same route_monthly_target rows, only grouped more finely, and the achieved sides count the same sold quantity. One line in aBrandThatMixesCategories... (sum of target == volume_target, sum of achieved == volume_achieved) would prove it.
+- SrProgrammesEndToEndTest:93 builds a map keyed by pack_factor alone (`associate { pack_factor to achieved }`). Since 1.25.0 one brand can have two entries with the same pack_factor (cigarette 1 and match 1). The map would then keep only one of them, and the comparison on line 94 could silently miss the other. The Mirpur fixture probably has no such brand today; keying by (category_code, pack_factor) would make this safe. Line 95 compares sums and is not affected.
+- SrKpiByPackCategoryTest, last check of the mixed-brand test: the match category row's by_pack entries saying 'match' is true by construction. catPacks only ever holds match and lighter rows keyed by their own category, so this check proves nothing new.
+- anInactiveSkuAndAnInactiveVariantAreCountedAndLabelledLikeAnyOther is a regression guard, not a proof of a change: the target query and SrMemoFigures.dim never filtered on status, so the old code counted these too. It also does not check the brand total. The name is accurate.
+- The `if (cigPack != 1)` guard in the mixed-brand test: if the first cigarette SKU had pack 1, the c1 check would fail first (cig and cig1 would merge), so the guarded branch is never the deciding one. Harmless, but the assumption should be pinned with an explicit assert.
+- SrBundleThroughAndSnapshotTest empty-window message says 'no memo in January'. There is a cigarette memo on 2027-01-30. lmads is 0.000 only because the Star counts match SKUs by default (SrStar sku_category). It should say 'no match memo'.
+- Friday-anchor test message says 'Sat 9 .. Sat 30 minus Fridays 15, 22, 29 remain'. The count of 20 is right, but the range is Sat 9 .. Sun 31 (2027-01-31 is a Sunday).
+- No contract test pins KpiPackFigure.category_code as optional (absent from `required`) with the four-value enum. AmoManualContractTest only bumps the version (1.24.0 to 1.25.0, history line appended, nothing weakened). No test shows that the old phone's per-pack_factor sum is unchanged for a mixed brand; by reading the code, RouteFigures/KpiModel group by packFactor and sum, so the result is identical to the 1.24.0 single entry.

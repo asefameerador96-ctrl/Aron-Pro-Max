@@ -106,3 +106,15 @@ Lows for a follow-up (not holding the landing):
 - ci.yml loop: an empty `MIGRATIONS_BASES` would run zero checks and exit 0. Not reachable today (the chooser exits non-zero with no base and the step runs under `-e`), but the loop should fail on an empty list.
 - With several bases, a migration already shipped on the integration branch is "new" relative to the older base and is linted again by squawk there. This fails closed (possible false red on a lane whose history criss-crosses and whose shipped migration predates a squawk rule), never open. Lint only files absent from every base.
 - Known limit unchanged: the Migrations step is skipped when the changes filter says db=false.
+
+## Follow-up 2a013a5b8f (empty-list guard; lint only files absent from every base): PASS, 2026-11-25 04:35 UTC
+
+Lead's own pass on the final diff (ci.yml loop and tools/ci/migrations-check.sh read in full; real scripts run in the throwaway criss-cross repository with a lint stub that fails on every file it is given, so "linted" shows as red and "not linted" as silent):
+
+- no edit: the migration shipped at the other base is "not linted again", rc 0;
+- edit or delete of the shipped migration: still red through the checksum/order check of the base that has it (the lint skip does not touch those checks);
+- renumbered, duplicate-version and new V0005 files: still handed to the linter on both bases;
+- a base id that does not resolve makes `git cat-file -e` fail, so the file is linted (fails closed);
+- empty or blank base list: the step exits 1 by reading the code (covered by the lane's self-test with the step text extracted from ci.yml; not re-run here).
+
+Lane CI run 45545022952 green on all 18 jobs (lane's report). Rides the next server train at exactly this sha.
