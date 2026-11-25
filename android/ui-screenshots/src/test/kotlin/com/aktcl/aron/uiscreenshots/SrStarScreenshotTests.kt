@@ -78,9 +78,9 @@ class SrStarScreenshotTests {
 
     @Composable private fun Frame(content: @Composable () -> Unit) = AronScreen(topBar = { AronTopBar(title = stringResource(ProgR.string.pg_star_title), onBack = {}) }) { content() }
 
-    private fun star(through: String = "2026-11-10", ewd: Int = 10, projection: Long? = 7_366, pads: Long? = 283, growth: Long? = -3_987, slab: Long? = null, slabName: String? = null, projected: Long? = null) = RouteStar(
+    private fun star(through: String = "2026-11-10", ewd: Int = 10, projection: Long? = 7_366, pads: Long? = 283, growth: Long? = -3_987, ach: Long? = 3_683, lmads: Long? = 471, slab: Long? = null, slabName: String? = null, projected: Long? = null) = RouteStar(
         3, "Match Box Lifting Star", "ম্যাচ বক্স লিফটিং স্টার", "2026-11", through, "2026-11-11T01:00:00Z", "MD. ABDUR RAHMAN EMON", "sr22233", "Agora Goli-22233", 26, 26, ewd,
-        20_000, 2_833, projection, 3_683, 12_250, 471, pads, growth, "Keep Pushing", "চালিয়ে যান", slabName, slab, slabName, projected,
+        20_000, 2_833, projection, ach, 12_250, lmads, pads, growth, "Keep Pushing", "চালিয়ে যান", slabName, slab, slabName, projected,
     )
 
     @Test fun star_bn() = shot("star_bn") { Frame { StarScreen(listOf(star()), UiLocale.BN) } }
@@ -89,6 +89,6 @@ class SrStarScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun star_bn_font20() = shot("star_bn_font20", fontScale = 2.0f) { Frame { StarScreen(listOf(star()), UiLocale.BN) } }
     @Test fun star_en_slab_reached() = shot("star_en_slab_reached", AppLanguage.EN) { Frame { StarScreen(listOf(star(slabName = "Gold", slab = 1_500_000, projected = 2_000_000)), UiLocale.EN) } }
     @Test fun star_bn_last_month_open() = shot("star_bn_last_month_open") { Frame { StarScreen(listOf(star(through = "2026-10-28")), UiLocale.BN) } }
-    @Test fun star_bn_no_figures() = shot("star_bn_no_figures") { Frame { StarScreen(listOf(star(ewd = 0, projection = null, pads = null, growth = null)), UiLocale.BN) } }
+    @Test fun star_bn_no_figures() = shot("star_bn_no_figures") { Frame { StarScreen(listOf(star(ewd = 0, projection = null, ach = null, lmads = null, pads = null, growth = null)), UiLocale.BN) } }
     @Test fun star_bn_empty() = shot("star_bn_empty") { Frame { StarScreen(emptyList(), UiLocale.BN, offline = true) } }
 }

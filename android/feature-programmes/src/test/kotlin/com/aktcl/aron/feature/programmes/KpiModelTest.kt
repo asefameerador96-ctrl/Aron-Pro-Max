@@ -155,6 +155,31 @@ class KpiModelTest {
         assertEquals("cigarette", KpiModel.build(listOf(whole), names, mapOf(1L to "cigarette"), mapOf(900L to 1L))!!.brands.single().category)
     }
 
+    // P1: the server's figures are exact, so a gap of even one base unit means an unmapped SKU and the brand is unresolved
+    @Test fun aGapOfOneOrTwoBaseUnitsMakesTheBrandUnresolvedNotACigaretteWithAWrongPercent() {
+        fun fig(vt: Long, va: Long, packs: String): RouteFigures {
+            val t900 = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"std_target":"2000.000","std_unit":"stick","memo_target":0}"""
+            val t901 = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":901,"std_target":"0.000","std_unit":"stick","memo_target":0}"""
+            val a = """{"scope_type":"route","scope_id":7,"month":"2026-11","product_level":"sku","product_id":900,"achieved_qty_base":300,"memo_count":1,"as_of":"x"}"""
+            return RouteFigures.parse("""{"route_id":7,"targets":[$t900,$t901],"achievement_mtd":[$a],"kpi":${kpi(listOf(brand(1, vt, va, 50, 20, packs = packs)))}}""")!!
+        }
+        val map = mapOf(900L to 1L, 901L to 1L)
+        // the exact example: an inactive match variant (2 dozen target, 2 sold) adds 2 to the target and 2 to the sold
+        val gap2 = KpiModel.build(listOf(fig(2002, 302, """[{"pack_factor":20,"target":2000,"achieved":300},{"pack_factor":1,"target":2,"achieved":2}]""")), names, mapOf(1L to "cigarette"), map)!!.brands.single()
+        assertNull(gap2.category); assertNull(gap2.volumeTarget); assertNull(gap2.volumeBp)
+        val gap1 = KpiModel.build(listOf(fig(2001, 300, """[{"pack_factor":20,"target":2000,"achieved":300},{"pack_factor":1,"target":1,"achieved":0}]""")), names, mapOf(1L to "cigarette"), map)!!.brands.single()
+        assertNull(gap1.category)
+        val exact = KpiModel.build(listOf(fig(2000, 300, """[{"pack_factor":20,"target":2000,"achieved":300}]""")), names, mapOf(1L to "cigarette"), map)!!.brands.single()
+        assertEquals("cigarette", exact.category)
+    }
+
+    // cheap low: an unresolved brand whose visible SKUs are matches is not listed under cigarette sales
+    @Test fun anUnresolvedMatchBrandIsNotInTheCigaretteList() {
+        val fig = route(kpi(listOf(brand(3, 130, 0, 5, 0))))
+        val d = KpiModel.build(listOf(fig), names, mapOf(3L to "match"), emptyMap())!!
+        assertTrue(d.volumeBrands.none { it.brandId == 3L })
+    }
+
     @Test fun theExactQuotientCrossesADisplayBoundaryWhereTruncatedThousandthsWouldNot() {
         // 1 stick of 30s (0.0333 packet) + 1 stick of 60s (0.01667) = exactly 0.05 -> 0.1 at display; thousandths truncated first (0.033 + 0.016 = 0.049) would show 0.0
         val b = brand(1, 2, 0, 5, 0, packs = """[{"pack_factor":30,"target":1,"achieved":0},{"pack_factor":60,"target":1,"achieved":0}]""")

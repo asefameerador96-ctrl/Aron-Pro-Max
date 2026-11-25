@@ -22,6 +22,8 @@ data class KpiPair(val target: FieldQty, val achieved: FieldQty, val bp: Long?)
  */
 data class KpiBrandRow(
     val brandId: Long, val name: BrandName?, val category: String?, val volumeTarget: FieldQty?, val volumeBp: Long?, val memoTarget: Long, val memoBp: Long?, val kpiTodayMtk: Long?, val kpiAllocMtk: Long,
+    /** The category the product tree shows for the brand's visible SKUs, whether or not the brand's volume could be accounted for ([category] is null then). */
+    val visibleCategory: String? = null,
 )
 
 /** A BLM category row (match, lighter): target, achieved and percentage in the field unit (dozens of matches, boxes of 25 lighters). */
@@ -42,8 +44,11 @@ data class KpiData(
     /** Several routes and at least one has no KPI section or a cut brand list: the summed percentages would not be complete, so they are dashes and the page says so (never a partial figure presented as the server's). */
     val incomplete: Boolean = false,
 ) {
-    /** The brands of the cigarette volume list: cigarette brands and brands whose unit the phone cannot tell (shown with a dash and a note). */
-    val volumeBrands: List<KpiBrandRow> get() = brands.filter { it.category == null || it.category == "cigarette" }
+    /**
+     * The brands of the cigarette volume list: cigarette brands, and brands whose unit the phone cannot tell (a dash and a note) unless the tree says their visible SKUs are matches, lighters or bidi: such a
+     * brand is not listed under cigarette sales.
+     */
+    val volumeBrands: List<KpiBrandRow> get() = brands.filter { it.category == "cigarette" || (it.category == null && (it.visibleCategory == null || it.visibleCategory == "cigarette")) }
 }
 
 object KpiModel {
@@ -91,7 +96,7 @@ object KpiModel {
             merged.map { b ->
                 val cat = resolved[b.brandId]
                 // a brand with no single known category has no unit and so no volume percentage either (the figure may mix sticks and dozens)
-                KpiBrandRow(b.brandId, brandNames[b.brandId], cat, brandVolume(b, cat), if (cat == null) null else bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk)
+                KpiBrandRow(b.brandId, brandNames[b.brandId], cat, brandVolume(b, cat), if (cat == null) null else bp(b.volumeAchieved, b.volumeTarget, b.volumeBp), b.memoTarget, bp(b.memoAchieved, b.memoTarget, b.memoBp), b.kpiTodayMtk, b.kpiAllocMtk, brandCategory[b.brandId])
             },
             ks.any { it.brandsTruncated }, through.take(7) < k.month, incomplete,
         )
@@ -107,8 +112,10 @@ object KpiModel {
         val skus = skuBrand.filterValues { it == b.brandId }.keys
         val targetMilli = figures.sumOf { f -> f.targets.filter { it.skuId in skus }.sumOf { it.targetMilli } }
         val achieved = figures.sumOf { f -> f.achievement.filter { it.skuId in skus }.sumOf { it.qtyBase } }
-        val tol = maxOf(1L, skus.size.toLong())
-        return if (kotlin.math.abs((targetMilli + 500L) / 1000L - b.volumeTarget) <= tol && kotlin.math.abs(achieved - b.volumeAchieved) <= tol) category else null
+        // the server's figures are exact integers of base units (std_target is the Decimal3 of qty_base and the brand target is the sum of the same quantities), so ANY gap is an unmapped SKU: tolerance 0.
+        // Only a fractional mapped target (a dozen counted in parts) can make the server round its brand sum to a whole base unit: then, and only then, half a base unit of rounding is allowed.
+        val allowed = if (targetMilli % 1000L == 0L) 0L else 500L
+        return if (kotlin.math.abs(targetMilli - b.volumeTarget * 1000L) <= allowed && achieved == b.volumeAchieved) category else null
     }
 
     /** One brand summed over the routes that carry it (a single route returns it as sent). */

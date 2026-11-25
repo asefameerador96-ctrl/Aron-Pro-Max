@@ -29,9 +29,9 @@ class StarScreenTest {
     @get:Rule val compose = createComposeRule()
 
     /** The manual's screenshot 62: Target 20.00, STD 2.83, Projection 7.37, Achievement 36.83 %, LMS 12.25, LMADS 0.47, PADS 0.28, Growth -39.87 %, status Keep Pushing, no slab. */
-    private fun star(through: String = "2026-11-10", ewd: Int = 10, projection: Long? = 7_366, pads: Long? = 283, growth: Long? = -3_987, slab: Long? = null, bn: String? = "ম্যাচ বক্স লিফটিং স্টার") = RouteStar(
+    private fun star(through: String = "2026-11-10", ewd: Int = 10, projection: Long? = 7_366, pads: Long? = 283, growth: Long? = -3_987, ach: Long? = 3_683, lmads: Long? = 471, slab: Long? = null, bn: String? = "ম্যাচ বক্স লিফটিং স্টার") = RouteStar(
         3, "Match Box Lifting Star", bn, "2026-11", through, "2026-11-11T01:00:00Z", "MD. ABDUR RAHMAN EMON", "sr22233", "Agora Goli-22233", 26, 26, ewd,
-        20_000, 2_833, projection, 3_683, 12_250, 471, pads, growth, "Keep Pushing", "চালিয়ে যান", null, slab, null, null,
+        20_000, 2_833, projection, ach, 12_250, lmads, pads, growth, "Keep Pushing", "চালিয়ে যান", null, slab, null, null,
     )
 
     private fun show(language: AppLanguage, stars: List<RouteStar>, truncated: Boolean = false, offline: Boolean = false) {
@@ -55,8 +55,13 @@ class StarScreenTest {
     }
 
     @Test fun aFigureTheServerCouldNotComputeIsADashNeverZero() {
-        show(AppLanguage.EN, listOf(star(ewd = 0, projection = null, pads = null, growth = null)))
-        tagHas(StarTags.PROJECTION, "—"); tagHas(StarTags.PADS, "—"); tagHas(StarTags.GROWTH, "—")
+        show(AppLanguage.EN, listOf(star(ewd = 0, projection = null, ach = null, pads = null, growth = null)))
+        tagHas(StarTags.PROJECTION, "—"); tagHas(StarTags.ACHIEVEMENT, "—"); tagHas(StarTags.PADS, "—"); tagHas(StarTags.GROWTH, "—")
+    }
+
+    @Test fun aMonthWithNoLastMonthWorkingDaysShowsADashForLmads() {
+        show(AppLanguage.EN, listOf(star(lmads = null, growth = null)))
+        tagHas(StarTags.LMADS, "—"); tagHas(StarTags.GROWTH, "—")
     }
 
     @Test fun banglaUsesTheBanglaProgrammeNameStatusAndDigitsAndASlabAmountShowsTaka() {
