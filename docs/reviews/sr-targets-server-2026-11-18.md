@@ -1433,3 +1433,89 @@ Lows:
 ## Confirming pass on the final diff 780820b1ab..3684b63db3 (lead, 2026-11-25 04:50 UTC): PASS
 
 Read in full by the lead (small diff): SrKpi.kt replaces the two unreachable `?: ""` fallbacks by `checkNotNull` (app.sku.category_code is NOT NULL with a CHECK in V0003; SrMemoFigures reads the same column) and always sends category_code; KpiPackFigure documents the entry order; SrKpiByPackCategoryTest gains the by_pack sums (2037/415), the cigarette-only total (2007/403) and `cigPack != 1`; dash-perf.spec.ts keeps all four assertions and its budgets unchanged, wrapped so that a failure attaches the LCP entries and a request timeline and then rethrows. Lane CI run 45546501979: 18 of 18 green (lane's report), Repository gates ran Migrations, oasdiff, slices and Redocly; the gate printed "migrations base: 2d64ac3f87... (lane branch lane/sr-targets-server: merge-base ...; 1 merge-base(s))", the first proof of the new base rule on a real lane that had been red on the stale base. Lands in the next server train at 3684b63db3. Note for the final account: a fail-fast on the bundle path is acceptable only because the schema makes it unreachable.
+
+
+# T1 check of aba1b10ec8 (campaign achievement over all SKUs, per-outlet cut flag, Star SKU list; contract 1.26.0), 2026-11-25
+
+Three Opus reviewers read the diff; nothing built or run by them. Lane CI run 45571391822 18/18 (lane's report).
+
+## campaign-figures: PASS (blocking raised 0, upheld 0)
+
+I found no blocking issue in SrCampaigns.kt at aba1b10ec8.
+
+What goes into the sales query: `pairs` now comes from `skuTargets`, not from `shown`. That covers every (outlet, SKU) target row of the chosen campaign (lowest programme id), for outlets inside each route's 150-outlet cap. The rows were already filtered with `camps[outlet].programmeId == programme_id` before this point, so SKUs of a campaign that is not chosen cannot leak in. The exception is a SKU that both campaigns share: it counts because it is the chosen campaign's own SKU. Other outlets cannot leak in, because the unnest join is on (outlet, sku) and `outlet_id = ANY` is limited to the bundle's campaign outlets.
+
+What did not change in SrMemoFigures.forOutletPairs:
+- The window is first-of-month through `through`.
+- Only active memos count (status active, line_count > 0, not voided), and voided lines are excluded.
+- Only sale lines count. Free goods, superseded memos and the bundle date stay out.
+- The memo count is still distinct memo UUIDs per outlet that have a sale line of any SKU of the chosen campaign, now over the wider SKU set. One memo carrying several campaign SKUs counts once (it is a HashSet).
+
+Achieved and remaining: achievedStd sums `sold` over all of the outlet's campaign SKUs, so it matches the target, which is also the whole campaign's. Remaining is still Targets.remaining(target, achieved). Quantities stay in base units.
+
+The flags:
+- The per-outlet `truncated` is set only when the outlet has more than 20 SKU targets or a second active campaign. It is emitted only when true.
+- The route-level `campaigns_truncated` is now `ids.size > maxOutlets || rows.any{truncated}`. Since rows = ids.take(maxOutlets), that is the same condition as before (outlet cap OR any shown outlet with more than 20 SKUs OR more than one campaign).
+
+Effect on the landed phone build:
+- On an untruncated route nothing changes. Every outlet there has 20 SKUs or fewer, so `pairs` equals the old shown set and the figures are byte-identical.
+- On a truncated route the phone already dashes Achievement and Remaining, so no landed build shows a different number.
+- The phone ignores unknown fields. The contract change is additive: an optional boolean-or-null, with no migration.
+
+Snapshot: no new query was added. It is the same three queries on the same handle, and BundleService was not touched.
+
+Queries stay bounded: still three queries, no N+1. Pairs are bounded by the primary key on outlet_campaign_sku_target.
+
+The new test aCutSkuTableStillCountsEveryCampaignSkuAndOnlyTheCutOutletsAreFlagged would fail on the old code: the sales sit on SKUs 21 and 22, so the old code returns achieved 0 instead of 12, and 0 memos instead of 2. The test does not touch skuA, which o2's setup sale uses, so 12 is the right figure. It cleans up in `finally`. No existing test was weakened or deleted.
+
+The low items are a stale KDoc in forOutletPairs, an untested per-outlet flag on the second-campaign branch, a pair bound that depends on catalogue size rather than a fixed cap, and a stale `achievedPartial` doc on the phone.
+
+Lows:
+- Stale KDoc: SrMemoFigures.forOutletPairs (backend/sync/.../SrMemoFigures.kt l.91) still says "Only the pairs asked for are read, so a figure can never count a SKU the table does not show". After this change the caller sends every SKU target of the chosen campaign, including SKUs past the 20-row cut, so the sentence is now false. It should say the read covers the chosen campaign's SKUs. Result's KDoc (SrCampaigns l.30) also leaves out the second-campaign case (moreThanOne), which was already missing before this change.
+- Test gap: no test checks the per-outlet `truncated` flag when an outlet has a second active campaign that is not shown (the `oid in moreThanOne` branch). aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne asserts only the route-level flag. Nothing combines a cut SKU table with a second campaign that sells a SKU outside the chosen campaign. The code is correct here (the filter on chosen programmeId comes before the pairs are built), but no test pins it.
+- Cost bound is now data-bound per outlet instead of 20 per outlet: pairs <= (sum over routes of min(150, campaign outlets)) x (that outlet's SKU target rows of the chosen campaign). The primary key (programme_id, month, outlet_id, sku_id) caps it at the catalogue size per outlet. Example: 150 outlets x 40 SKUs gives 6,000 pairs as two bigint arrays in one unnest join, plus one outlet_id = ANY array. It is still one query and nothing changes on the phone payload (`skus` stays cut at 20). The skuTargets query already read every one of these rows before this change. An explicit cap or a note in the docs/04 budget would make the bound visible.
+- The phone's OutletCampaignView.achievedPartial doc on lane/android-sr-programmes still says the server's achieved covers only the sent SKUs. The server figure is now complete, so the phone's dash on a cut route is conservative but no longer needed. The phone lane could use the per-outlet flag later and show the complete figures. Wrong numbers are not possible today because the route-level flag is set in exactly the same cases as before.
+
+## star-and-contract: FAIL (blocking raised 1, upheld 1)
+
+The 1.26.0 contract change is purely additive and optional, and it matches across contract/openapi.yaml, the RouteCampaign.yaml and RouteStar.yaml slices, INDEX.md (version and sizes) and web/src/contract/openapi.d.ts. No new member is in a required list. additionalProperties:false is kept and the new properties are declared, so ContractConformanceTest still accepts the bundle. AmoManualContractTest pins 1.26.0, and its history string was extended, not weakened.
+
+In SrStar.kt, unit_divisor is always emitted and is always 1 or more: num() takes values of 0 or more, then takeIf >= 1, else 1. sku_category is absent exactly when the parsed id list is non-empty, and that is the same condition the STD accept function uses, so the payload and the figure agree even when every listed id fails to parse. sku_ids come only from the chosen programme's own rules (no leak of other programmes' SKUs), are capped at 500, and sku_ids_truncated is set only above 500.
+
+The landed phone parser is unaffected. RouteFigures.kt is identical on the integration branch and on origin/lane/android-sr-programmes. It uses ignoreUnknownKeys and reads named members only, so it ignores unit_divisor, sku_category, sku_ids, sku_ids_truncated and the per-outlet truncated flag. OutletTargetModel still dashes achievement whenever campaigns_truncated is set, and that flag is still raised for every cut outlet.
+
+Blocking: the new SrStarBundleTest case claims in its name that the STD counts exactly the listed SKUs, but it asserts nothing about std, and its fixture has no in-window sale that could tell the explicit list apart from the category rule. Lows: no check of the rule-supplied sku_ids (catalogue, duplicates, values below 1) or of sku_category against the enum; no test at the 500/501 boundary; the order of sku_ids is not documented.
+
+### UPHELD: New Star test claims the STD counts exactly the listed SKUs but never checks the STD
+
+backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrStarBundleTest.kt
+
+anExplicitSkuListIsCarriedInsteadOfTheCategoryAndTheStdCountsExactlyThoseSkus checks only that sku_ids == the two listed SKU ids, that sku_category is absent and that unit_divisor == "1". It never reads `std` or `lms`. The fixture also cannot tell the cases apart. With date 2026-12-10, through is 2026-12-09, and the only December memos (m5 dated 2026-12-10, m6 dated 2026-12-31, both on the first match SKU) fall outside the window, so the STD is 0 whatever the accept rule does. That is a test that does not prove what its name claims. Fix: put sales in the window on a listed SKU and on an unlisted SKU of the same category (for example the third match SKU), and on another route or after through_date. Then assert that std equals only the listed sales divided by unit_divisor, or rename the test so it no longer claims the STD part.
+
+Lows:
+- SrStar.kt: sku_ids are parsed from the free-text rule `sku_ids` with toLongOrNull and never checked against app.sku. The list is not deduplicated and 0 or negative values are not rejected. So the wire can carry ids that break `Id` (minimum 1), duplicates, or SKUs that are not in the catalogue, and `ids.size > 500` (which sets sku_ids_truncated) counts duplicates and junk entries. There is no scope leak, since the ids come only from the chosen programme's own rules, and the STD cannot double-count because the match is a membership test (`sku in ids`). Suggest distinct(), filtering to ids >= 1 (ideally to dim.skus), and checking the rule when it is written.
+- SrStar.kt: sku_category is the raw rule string (default "match") with no check against the contract enum [cigarette, bidi, match, lighter]. An admin typo such as "matches" would put a value outside the enum on the wire. ContractConformanceTest would then fail, and the STD would silently be 0. Validate the value on programme write, or emit it only when it is a known category_code.
+- No test covers the MAX_SKU_IDS boundary: sku_ids_truncated absent at 500 ids and true at 501 with 500 carried. The code is correct (take(500) plus size > 500), but nothing pins it.
+- sku_ids order follows the order of the rule text. It is deterministic but not sorted, and the contract does not say which order it uses.
+- Scope note: pairs in SrCampaigns now cover every SKU target of the chosen campaign for each outlet. The cap is the catalogue size, not MAX_SKUS. It is still a single join query with no N+1, and the payload is unchanged (the table is still cut at 20), so it is acceptable at pilot size. Worth stating the expected upper bound.
+
+## tests-3: FAIL (blocking raised 1, upheld 1)
+
+Test lens on aba1b10ec8. The campaign test does prove its claim: a cut SKU table (22 targets, sales only on SKUs 21 and 22) still counts STD 12 and 2 memos, and it would fail if the pairs came from the cut table. It also proves the flagged outlet, the unflagged outlet (key absent) and the route flag. The other-campaign-same-outlet exclusion is covered only by the existing uncut test, and remaining is not asserted on the cut outlet. Star: the category branch (unit_divisor 1000, sku_category match, no sku_ids) is checked through the bundle. The explicit-list branch checks only the wire members, yet its name claims STD counts exactly those SKUs. STD is never asserted, it is 0 in the window, and the listed SKUs are match SKUs, so a fallback to the category rule could not be caught. That is the one blocking item: rename the test or add discriminating sales and assert STD. The 500 / sku_ids_truncated boundary is untested. AmoManualContractTest is only the version bump to 1.26.0; nothing is weakened or deleted. The tests do not depend on the wall clock.
+
+### UPHELD: The new Star test's name claims the STD counts exactly the listed SKUs, but the test never checks STD
+
+/home/user/Aron-Pro-Max/backend/app/src/test/kotlin/com/aktcl/aron/backend/app/SrStarBundleTest.kt
+
+`anExplicitSkuListIsCarriedInsteadOfTheCategoryAndTheStdCountsExactlyThoseSkus` (lines ~97-114) checks only three things: `sku_ids` equals the two ids, `sku_category` is absent, and `unit_divisor` is "1". It never reads `std`. It also cannot prove it as built. The date is 2026-12-10, so through is 2026-12-09, and no setup memo falls in 2026-12-01..09, so STD is 0 whatever the rule is. On top of that, the two listed ids come from `category_code = 'match' ORDER BY id LIMIT 2`, so the list and the default match category select the same SKUs and a regression back to the category rule would look the same. The brief counts a test that does not prove what it claims as blocking. Fix: either rename the test to cover only the wire members, or add in-window sales (for example on 2026-12-05) on (a) a listed SKU, (b) a match SKU that is not listed and (c) a non-match SKU that is listed, then assert STD = a + c. Use unit_divisor 1 so the base-unit numbers read straight.
+
+Lows:
+- Campaign test aCutSkuTableStillCountsEveryCampaignSkuAndOnlyTheCutOutletsAreFlagged holds up on its main claim. It takes SKUs by id (OFFSET 3 LIMIT 22). skuTargets is ordered by sku_id, so `shown` holds skus[0..19], and the sales on skus[20] (7) and skus[21] (5) fall in the cut part. If the pairs came from `shown`, STD achieved would be 0 instead of 12 and the memo count 0 instead of 2, so the test would fail. It also proves the cut outlet o2 carries truncated=true, the whole outlet o1 has no `truncated` key at all (a `false` value would fail assertEquals(null, ...)), and the route-level campaigns_truncated is true.
+- Campaign test: `remaining` is not checked on the cut outlet (STD 2200-12=2188, memo 9-2=7). Add both so remaining/achieved consistency is proven on the new path.
+- Campaign test: the case 'a SKU of another campaign of the same outlet is NOT counted' is not tested together with a cut table. It is still covered: the existing aSecondCampaignOnTheOutletNeverMixesItsMemosIntoTheShownOne (o1, programme p2 owning SKU C) still asserts STD 390 and memos 7, and it runs through the same `.filter { camps[it[0]]?.programmeId == it[1] }` that now feeds `pairs`. The o2 set-up sale of skuA (5000, not a p22 SKU) also shows that an out-of-campaign SKU at the cut outlet stays out (12, not 5012). A second campaign at o2 that owns one of the cut-range SKUs would make this explicit.
+- Campaign test: the through_date and voided-line exclusions are not re-tested for the cut-range SKUs (they are covered for skuA/skuB in setUp). This is acceptable because the same forOutletPairs query handles every pair.
+- Star: the 500-SKU boundary (MAX_SKU_IDS take(500) plus sku_ids_truncated=true when there are more than 500) has no test. That leaves one new wire path, sku_ids_truncated, untested against the 'every sync path tested' rule. Add a rule listing 501 ids and assert the array has 500 items and the flag is set, plus a 500-id case with no flag.
+- Star: sku_category is written straight from rules.str("sku_category"). A rule value outside the contract enum (cigarette/bidi/match/lighter) would put an off-enum value on the wire. No test covers it, and duplicate ids in the rule string would also be carried unchanged.
+- The new Star test calls SrStar.load/SrTargets.load directly on a plain handle, not through BundleService.inSnapshot. That is fine for a unit check, but it does not show the new members inside the bundle snapshot (the extended bundle test covers only the category branch).
+- AmoManualContractTest: only the version pin changed (versionIs1250 -> versionIs1260, 1.25.0 -> 1.26.0, with history text added). Nothing is weakened and no test is deleted. Both changed test classes add tests and remove none.
+- Wall clock: both test classes use a fixed AronClock (2027-01-03T02:00Z) and literal dates. DB now() appears only as voided_at and an insert timestamp, where only its presence matters, so the results do not depend on the wall clock. The new campaign test cleans up by tombstoning its memo lines rather than deleting them, which matches the existing convention.
